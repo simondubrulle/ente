@@ -1,11 +1,11 @@
-name: "Release (photos independent)"
+name: "Daily release (photos independent)"
 on:
     workflow_dispatch: # Allow manually running the action
     schedule:
         # Run daily at 12:00 UTC (noon)
         - cron: '0 12 * * *'
         # Run daily at 00:00 UTC (midnight)
-        # - cron: '0 0 * * *'
+        - cron: '0 0 * * *'
 env:
     FLUTTER_VERSION: "3.24.3"
 permissions:
@@ -96,7 +96,7 @@ jobs:
               with:
                   artifacts: "mobile/apps/photos/build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk,mobile/apps/photos/build/app/outputs/flutter-apk/sha256sum"
                   tag: ${{ steps.tag.outputs.tag }}
-                  name: "Photos Release ${{ steps.tag.outputs.tag }}"
+                  name: "${{ steps.tag.outputs.tag }}"
                   draft: false
                   generateReleaseNotes: true
 
