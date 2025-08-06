@@ -1,0 +1,67 @@
+name: "Manual branch release (photos independent)"
+on:
+    workflow_dispatch: # Allow manually running the action
+env:
+    FLUTTER_VERSION: "3.24.3"
+permissions:
+    contents: write
+jobs:
+    build:
+        runs-on: ubuntu-latest
+        defaults:
+            run:
+                working-directory: mobile/apps/photos
+        steps:
+            - name: Checkout code and submodules
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+            
+            - name: Generate release tag
+              id: tag
+              run: |
+                  # Generate timestamp-based tag: photos-v2025.08.01.1200
+                  TAG="photos-v$(date -u +'%Y.%m.%d.%H%M')"
+                  echo "tag=$TAG" >> $GITHUB_OUTPUT
+                  echo "Generated tag: $TAG"
+            
+            - name: Setup JDK 17
+              uses: actions/setup-java@v4
+              with:
+                  java-version: 17
+                  distribution: 'temurin'
+            
+            - name: Install Flutter ${{ env.FLUTTER_VERSION  }}
+              uses: subosito/flutter-action@v2
+              with:
+                  channel: "stable"
+                  flutter-version: ${{ env.FLUTTER_VERSION  }}
+                  cache: true
+            
+            - name: Setup keys
+              uses: timheuer/base64-to-file@v1
+              with:
+                  fileName: "keystore/ente_photos_key.jks"
+                  encodedString: ${{ secrets.SIGNING_KEY_PHOTOS }}
+            
+            - name: Build independent APK
+              run: |
+                flutter build apk --dart-define=cronetHttpNoPlay=true --release --flavor independent
+                mv build/app/outputs/flutter-apk/app-independent-release.apk build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk
+              env:
+                  SIGNING_KEY_PATH: "/home/runner/work/_temp/keystore/ente_photos_key.jks"
+                  SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS_PHOTOS }}
+                  SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD_PHOTOS }}
+                  SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD_PHOTOS }}
+            
+            - name: Checksum
+              run: sha256sum build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk > build/app/outputs/flutter-apk/sha256sum
+            
+            - name: Create a GitHub release
+              uses: ncipollo/release-action@v1
+              with:
+                  artifacts: "mobile/apps/photos/build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk,mobile/apps/photos/build/app/outputs/flutter-apk/sha256sum"
+                  tag: "manual-${{ steps.tag.outputs.tag }}"
+                  name: "${{ steps.tag.outputs.tag }}"
+                  draft: true
+                  generateReleaseNotes: true
