@@ -76,7 +76,7 @@ jobs:
                   
                   # Store version for later use
                   echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
-                  echo "NEW_VERSION_TAG=photos-v${{ env.NEW_VERSION }}" >> $GITHUB_ENV
+                  echo "NEW_VERSION_TAG=photos-v${NEW_VERSION}" >> $GITHUB_ENV
             
             - name: Setup keys
               uses: timheuer/base64-to-file@v1
