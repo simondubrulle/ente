@@ -7,7 +7,7 @@ on:
         # Run daily at 00:00 UTC
         - cron: '0 16 * * *'
 env:
-    FLUTTER_VERSION: "3.24.3"
+    FLUTTER_VERSION: "3.32.8"
 permissions:
     contents: write
 jobs:
@@ -17,7 +17,7 @@ jobs:
             - name: Checkout fork
               uses: actions/checkout@v4
               with:
-                  token: ${{ secrets.GITHUB_TOKEN }}
+                  token: ${{ secrets.APP_TOKEN }}
                   fetch-depth: 0
 
             - name: Sync fork with upstream
@@ -51,19 +51,10 @@ jobs:
               with:
                   submodules: recursive
             
-            - name: Generate release tag
-              id: tag
-              run: |
-                  # Generate timestamp-based tag: photos-v2025.08.01.1200
-                  TAG="photos-v$(date -u +'%Y.%m.%d.%H%M')"
-                  echo "tag=$TAG" >> $GITHUB_OUTPUT
-                  echo "Generated tag: $TAG"
-            
             - name: Setup JDK 17
-              uses: actions/setup-java@v4
+              uses: actions/setup-java@v1
               with:
                   java-version: 17
-                  distribution: 'temurin'
             
             - name: Install Flutter ${{ env.FLUTTER_VERSION  }}
               uses: subosito/flutter-action@v2
@@ -71,6 +62,21 @@ jobs:
                   channel: "stable"
                   flutter-version: ${{ env.FLUTTER_VERSION  }}
                   cache: true
+
+            - name: Increment version code for build
+              run: |
+                  CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+                  VERSION_NAME=$(echo $CURRENT_VERSION | cut -d'+' -f1)
+                  CURRENT_BUILD=$(echo $CURRENT_VERSION | cut -d'+' -f2)
+                  NEW_BUILD=$((CURRENT_BUILD + ${{ github.run_number }}))
+                  NEW_VERSION="${VERSION_NAME}+${NEW_BUILD}"
+
+                  sed -i "s/^version: .*/version: $NEW_VERSION/" pubspec.yaml
+                  echo "Building with version ${NEW_VERSION}"
+                  
+                  # Store version for later use
+                  echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+                  echo "NEW_VERSION_TAG=photos-v${{ env.NEW_VERSION }}" >> $GITHUB_ENV
             
             - name: Setup keys
               uses: timheuer/base64-to-file@v1
@@ -81,7 +87,7 @@ jobs:
             - name: Build independent APK
               run: |
                 flutter build apk --dart-define=cronetHttpNoPlay=true --release --flavor independent
-                mv build/app/outputs/flutter-apk/app-independent-release.apk build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk
+                mv build/app/outputs/flutter-apk/app-independent-release.apk build/app/outputs/flutter-apk/ente-${{ env.NEW_VERSION_TAG }}.apk
               env:
                   SIGNING_KEY_PATH: "/home/runner/work/_temp/keystore/ente_photos_key.jks"
                   SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS_PHOTOS }}
@@ -89,14 +95,14 @@ jobs:
                   SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD_PHOTOS }}
             
             - name: Checksum
-              run: sha256sum build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk > build/app/outputs/flutter-apk/sha256sum
+              run: sha256sum build/app/outputs/flutter-apk/ente-${{ env.NEW_VERSION_TAG }}.apk > build/app/outputs/flutter-apk/sha256sum
             
             - name: Create a GitHub release
               uses: ncipollo/release-action@v1
               with:
-                  artifacts: "mobile/apps/photos/build/app/outputs/flutter-apk/ente-${{ steps.tag.outputs.tag }}.apk,mobile/apps/photos/build/app/outputs/flutter-apk/sha256sum"
-                  tag: ${{ steps.tag.outputs.tag }}
-                  name: "${{ steps.tag.outputs.tag }}"
+                  artifacts: "mobile/apps/photos/build/app/outputs/flutter-apk/ente-${{ env.NEW_VERSION_TAG }}.apk,mobile/apps/photos/build/app/outputs/flutter-apk/sha256sum"
+                  tag: ${{ env.NEW_VERSION_TAG }}
+                  name: "${{ env.NEW_VERSION_TAG }}"
                   draft: false
                   generateReleaseNotes: true
 
