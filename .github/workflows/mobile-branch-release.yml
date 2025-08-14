@@ -87,6 +87,3 @@ jobs:
                   name: "${{ env.NEW_VERSION_TAG }}"
                   draft: false
                   generateReleaseNotes: true
-                  name: "${{ steps.tag.outputs.tag }}"
-                  draft: true
-                  generateReleaseNotes: true
