@@ -431,6 +431,7 @@
         "year": "一年后"
     },
     "copy_link": "复制链接",
+    "copy_embed_html": "",
     "done": "已完成",
     "share_link_section_title": "或共享一个链接",
     "remove_link": "移除链接",
@@ -700,5 +701,5 @@
     "continuous": "连续",
     "trip": "旅游",
     "album_layout": "相册布局",
-    "maps_privacy_notice": "大致坐标将被发送给注重隐私的第三方，如 OpenStreetMaps，以显示地图和位置。"
+    "maps_privacy_notice": "大致坐标将被发送给注重隐私的第三方，如 OpenStreetMap，以显示地图和位置。"
 }
