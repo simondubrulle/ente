@@ -1,32 +1,21 @@
-name: "Release (auth)"
-
-# [Note: Testing release workflows that are triggered by tags]
-#
-# To test this out, push a tag with a pre-release version. The version number
-# should be the version number of the next actual release.
-#
-# > When major, minor, and patch are equal, a pre-release version has lower
-# > precedence than a normal version. Example: 1.0.0-alpha < 1.0.0.
-# > https://semver.org
-#
-# So if the next release we intend to put out is 1.2.3, you can:
-#
-#     git tag auth-v1.2.3-test
-#     git push origin auth-v1.2.3-test
-#
-# We use a suffix like `-test` to indicate that these are test tags, and that
-# they belong to a pre-release.
-#
-# If you need to do multiple tests, add a .x at the end of the tag. e.g.
-# `auth-v1.2.3-test.1`.
-#
-# Once the testing is done, also delete the tag(s) please.
+name: "Beta release (auth)"
 
 on:
     push:
-        # Run when a tag matching the pattern "auth-v*"" is pushed
-        tags:
-            - "auth-v*"
+        branches:
+            - main
+        paths:
+            - 'mobile/apps/auth/**'
+            - 'mobile/packages/accounts/**'
+            - 'mobile/packages/base/**'
+            - 'mobile/packages/configuration/**'
+            - 'mobile/packages/events/**'
+            - 'mobile/packages/lock_screen/**'
+            - 'mobile/packages/logging/**'
+            - 'mobile/packages/network/**'
+            - 'mobile/packages/strings/**'
+            - 'mobile/packages/ui/**'
+    workflow_dispatch: # Allow manual trigger
 
 env:
     FLUTTER_VERSION: "3.32.8"
@@ -35,7 +24,7 @@ permissions:
     contents: write
 
 jobs:
-    build-linux-latest:
+    build-android-linux:
         runs-on: ubuntu-22.04
 
         defaults:
@@ -47,6 +36,8 @@ jobs:
               uses: actions/checkout@v4
               with:
                   submodules: recursive
+                  # Need to fetch all history for proper tagging
+                  fetch-depth: 0
 
             - name: Free up disk space
               run: |
@@ -92,6 +83,72 @@ jobs:
                   flutter-version: ${{ env.FLUTTER_VERSION  }}
                   cache: true
 
+            - name: Increment version code for build
+              run: |
+                  CURRENT_VERSION=$(grep '^version:' pubspec.yaml | sed 's/version: //')
+                  VERSION_NAME=$(echo $CURRENT_VERSION | cut -d'+' -f1)
+                  CURRENT_BUILD=$(echo $CURRENT_VERSION | cut -d'+' -f2)
+                  NEW_VERSION_CODE=$((CURRENT_BUILD + ${{ github.run_number }}))
+                  NEW_VERSION="${VERSION_NAME}+${NEW_VERSION_CODE}"
+
+                  sed -i "s/^version: .*/version: $NEW_VERSION/" pubspec.yaml
+                  echo "Building with version ${NEW_VERSION}"
+
+                  # Store version for later use
+                  echo "NEW_VERSION=${NEW_VERSION}" >> $GITHUB_ENV
+                  echo "NEW_VERSION_CODE=${NEW_VERSION_CODE}" >> $GITHUB_ENV
+                  echo "VERSION_NAME=${VERSION_NAME}" >> $GITHUB_ENV
+
+            - name: Prepare and validate changelog for Play Store
+              run: |
+                  mkdir -p whatsnew
+                  CHANGELOG_FILE="scripts/store_changes.txt"
+                  DISCORD_FILE="scripts/internal_changes.txt"
+                  OUTPUT_FILE="whatsnew/whatsnew-en-US"
+
+                  # Use provided changelog or fallback
+                  if [ -f "$CHANGELOG_FILE" ]; then
+                          head -c 500 "$CHANGELOG_FILE" > "$OUTPUT_FILE"
+                  else
+                          echo "Bug fixes and improvements" > "$OUTPUT_FILE"
+                  fi
+
+                  # Validate: file exists
+                  if [ ! -s "$OUTPUT_FILE" ]; then
+                          echo "❌ Changelog is empty."
+                          exit 1
+                  fi
+
+                  # Validate: <= 500 chars
+                  LENGTH=$(wc -m < "$OUTPUT_FILE")
+                  if [ "$LENGTH" -gt 500 ]; then
+                          echo "❌ Changelog exceeds 500 characters ($LENGTH)."
+                          exit 1
+                  fi
+
+                  # Validate: no markdown or HTML
+                  if grep -Eq '[\*\_\<\>\[\]\(\)]' "$OUTPUT_FILE"; then
+                          echo "❌ Changelog contains markdown/HTML formatting."
+                          exit 1
+                  fi
+
+                  echo "✅ Changelog valid:"
+                  cat "$OUTPUT_FILE"
+
+                  # Store changelog for Play Store (with escaped newlines)
+                  CHANGELOG_PLAYSTORE=$(cat "$OUTPUT_FILE" | sed ':a;N;$!ba;s/\n/\\n/g' | sed 's/"/\\"/g')
+                  echo "CHANGELOG=${CHANGELOG_PLAYSTORE}" >> $GITHUB_ENV
+
+                  # Store changelog for Discord (with proper newlines)
+                  if [ -f "$DISCORD_FILE" ]; then
+                      CHANGELOG_DISCORD=$(cat "$DISCORD_FILE" | sed 's/"/\\"/g')
+                  else
+                      CHANGELOG_DISCORD=$(cat "$OUTPUT_FILE" | sed 's/"/\\"/g')
+                  fi
+                  echo "CHANGELOG_DISCORD<<EOF" >> $GITHUB_ENV
+                  echo "$CHANGELOG_DISCORD" >> $GITHUB_ENV
+                  echo "EOF" >> $GITHUB_ENV
+
             - name: Setup keys
               uses: timheuer/base64-to-file@v1
               with:
@@ -104,7 +161,7 @@ jobs:
             - name: Build independent APK
               run: |
                   flutter build apk --dart-define=cronetHttpNoPlay=true --release --flavor independent
-                  mv build/app/outputs/flutter-apk/app-independent-release.apk artifacts/ente-${{ github.ref_name }}.apk
+                  mv build/app/outputs/flutter-apk/app-independent-release.apk artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.apk
               env:
                   SIGNING_KEY_PATH: "/home/runner/work/_temp/keystore/ente_auth_key.jks"
                   SIGNING_KEY_ALIAS: ${{ secrets.SIGNING_KEY_ALIAS }}
@@ -112,8 +169,6 @@ jobs:
                   SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
 
             - name: Build PlayStore AAB
-              # disable this step if release tag contains nightly or beta
-              if: startsWith(github.ref, 'refs/tags/auth-v') && !contains(github.ref, 'nightly') && !contains(github.ref, 'beta')
               run: |
                   flutter build appbundle --release --flavor playstore --dart-define=app.flavor=playstore --dart-define=cronetHttpNoPlay=true
               env:
@@ -140,50 +195,69 @@ jobs:
                   dart pub global activate --source git https://github.com/ente-io/flutter_distributor_fork --git-ref develop --git-path packages/flutter_distributor
                   # RPM
                   flutter_distributor package --platform=linux --targets=rpm --skip-clean
-                  mv dist/**/*-*-linux.rpm artifacts/ente-${{ github.ref_name }}-x86_64.rpm
+                  mv dist/**/*-*-linux.rpm artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-x86_64.rpm
                   # APPIMAGE
                   flutter_distributor package --platform=linux --targets=appimage --skip-clean
-                  mv dist/**/*-*-linux.AppImage artifacts/ente-${{ github.ref_name }}-x86_64.AppImage
+                  mv dist/**/*-*-linux.AppImage artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-x86_64.AppImage
                   # DEB
                   flutter_distributor package --platform=linux --targets=deb --skip-clean
-                  mv dist/**/*-*-linux.deb artifacts/ente-${{ github.ref_name }}-x86_64.deb
+                  mv dist/**/*-*-linux.deb artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-x86_64.deb
 
             - name: Generate checksums
               run: |
                 sha256sum artifacts/ente-auth-*.apk >> artifacts/sha256sum-apk
                 sha256sum artifacts/ente-auth-*.deb artifacts/ente-auth-*.rpm artifacts/ente-auth-*.AppImage >> artifacts/sha256sum-linux
 
-            - name: Create a draft GitHub release
-              uses: ncipollo/release-action@v1
+            - name: Upload artifacts for release
+              uses: actions/upload-artifact@v4
               with:
-                  artifacts: "mobile/apps/auth/artifacts/*"
-                  draft: true
-                  allowUpdates: true
-                  updateOnlyUnreleased: true
+                  name: android-linux-artifacts
+                  path: mobile/apps/auth/artifacts/*
 
             - name: Upload AAB to PlayStore
-              # disable this step if release tag contains nightly or beta
-              if: startsWith(github.ref, 'refs/tags/auth-v') && !contains(github.ref, 'nightly') && !contains(github.ref, 'beta')
               uses: r0adkll/upload-google-play@v1
               with:
                   serviceAccountJsonPlainText: ${{ secrets.SERVICE_ACCOUNT_JSON }}
                   packageName: io.ente.auth
                   releaseFiles: mobile/apps/auth/build/app/outputs/bundle/playstoreRelease/app-playstore-release.aab
                   track: internal
+                  whatsNewDirectory: mobile/apps/auth/whatsnew
+                  mappingFile: mobile/apps/auth/build/app/outputs/mapping/playstoreRelease/mapping.txt
+
+            - name: Export version info for job outputs
+              id: version-info
+              run: |
+                  echo "version_name=${{ env.VERSION_NAME }}" >> $GITHUB_OUTPUT
+                  echo "new_version=${{ env.NEW_VERSION }}" >> $GITHUB_OUTPUT
+                  echo "new_version_code=${{ env.NEW_VERSION_CODE }}" >> $GITHUB_OUTPUT
+                  echo "changelog_discord<<EOF" >> $GITHUB_OUTPUT
+                  echo "${{ env.CHANGELOG_DISCORD }}" >> $GITHUB_OUTPUT
+                  echo "EOF" >> $GITHUB_OUTPUT
+
+        outputs:
+            version_name: ${{ steps.version-info.outputs.version_name }}
+            new_version: ${{ steps.version-info.outputs.new_version }}
+            new_version_code: ${{ steps.version-info.outputs.new_version_code }}
+            changelog_discord: ${{ steps.version-info.outputs.changelog_discord }}
 
     build-windows:
         runs-on: windows-latest
         environment: "auth-win-build"
+        needs: build-android-linux
 
         defaults:
             run:
                 working-directory: mobile/apps/auth
+
+        env:
+            VERSION_NAME: ${{ needs.build-android-linux.outputs.version_name }}
 
         steps:
             - name: Checkout code and submodules
               uses: actions/checkout@v4
               with:
                   submodules: recursive
+                  fetch-depth: 0
 
             - name: Install Flutter ${{ env.FLUTTER_VERSION  }}
               uses: subosito/flutter-action@v2
@@ -204,11 +278,11 @@ jobs:
                   export PATH="$PATH:$LOCALAPPDATA/Pub/Cache/bin"
                   flutter_distributor package --platform=windows --targets=exe --skip-clean
                   shopt -s globstar
-                  mv dist/**/*-windows-setup.exe artifacts/ente-${{ github.ref_name }}-installer.exe
+                  mv dist/**/*-windows-setup.exe artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-installer.exe
               shell: bash
 
             - name: Retain Windows EXE and DLLs
-              run: cp -r build/windows/x64/runner/Release ente-${{ github.ref_name }}-windows
+              run: cp -r build/windows/x64/runner/Release ente-auth-v${{ env.VERSION_NAME }}-beta-windows
               shell: bash
 
             - name: Sign files with Trusted Signing
@@ -221,41 +295,44 @@ jobs:
                 trusted-signing-account-name: ${{ secrets.AZURE_CODE_SIGNING_NAME }}
                 certificate-profile-name: ${{ secrets.AZURE_CERT_PROFILE_NAME }}
                 files: |
-                      ${{ github.workspace }}/mobile/apps/auth/artifacts/ente-${{ github.ref_name }}-installer.exe
-                      ${{ github.workspace }}/mobile/apps/auth/ente-${{ github.ref_name }}-windows/auth.exe
+                      ${{ github.workspace }}/mobile/apps/auth/artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-installer.exe
+                      ${{ github.workspace }}/mobile/apps/auth/ente-auth-v${{ env.VERSION_NAME }}-beta-windows/auth.exe
                 file-digest: SHA256
                 timestamp-rfc3161: http://timestamp.acs.microsoft.com
-                timestamp-digest: SHA256  
+                timestamp-digest: SHA256
 
 
             - name: Zip Windows EXE and DLLs
-              run: tar.exe -a -c -f artifacts/ente-${{ github.ref_name }}-windows.zip ente-${{ github.ref_name }}-windows
+              run: tar.exe -a -c -f artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta-windows.zip ente-auth-v${{ env.VERSION_NAME }}-beta-windows
               shell: bash
 
             - name: Generate checksums
-              run: sha256sum artifacts/ente-* > artifacts/sha256sum-windows
+              run: sha256sum artifacts/ente-auth-* > artifacts/sha256sum-windows
               shell: bash
 
-            - name: Create a draft GitHub release
-              uses: ncipollo/release-action@v1
+            - name: Upload artifacts for release
+              uses: actions/upload-artifact@v4
               with:
-                  artifacts: "mobile/apps/auth/artifacts/*"
-                  draft: true
-                  allowUpdates: true
-                  updateOnlyUnreleased: true
+                  name: windows-artifacts
+                  path: mobile/apps/auth/artifacts/*
 
     build-macos:
         runs-on: macos-13 # latest is 12
+        needs: build-android-linux
 
         defaults:
             run:
                 working-directory: mobile/apps/auth
+
+        env:
+            VERSION_NAME: ${{ needs.build-android-linux.outputs.version_name }}
 
         steps:
             - name: Checkout code and submodules
               uses: actions/checkout@v4
               with:
                   submodules: recursive
+                  fetch-depth: 0
 
             - name: Install Flutter ${{ env.FLUTTER_VERSION  }}
               uses: subosito/flutter-action@v2
@@ -309,22 +386,22 @@ jobs:
                   flutter config --enable-macos-desktop
                   dart pub global activate flutter_distributor
                   flutter_distributor package --platform=macos --targets=dmg --skip-clean
-                  mv dist/**/*-macos.dmg artifacts/ente-${{ github.ref_name }}.dmg
+                  mv dist/**/*-macos.dmg artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.dmg
 
             - name: Code sign DMG
               run: |
                   CERT_NAME=$(security find-identity -v -p codesigning | grep "Developer ID Application" | awk -F'"' '{print $2}' | grep -m1 "")
-                  codesign --force --timestamp --sign "$CERT_NAME" --options runtime artifacts/ente-${{ github.ref_name }}.dmg
-                  codesign --verify --verbose=4 artifacts/ente-${{ github.ref_name }}.dmg
+                  codesign --force --timestamp --sign "$CERT_NAME" --options runtime artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.dmg
+                  codesign --verify --verbose=4 artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.dmg
 
             - name: Notarize and staple DMG
               run: |
-                  xcrun notarytool submit artifacts/ente-${{ github.ref_name }}.dmg \
+                  xcrun notarytool submit artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.dmg \
                     --wait \
                     --apple-id $APPLE_ID \
                     --password $APPLE_PASSWORD \
                     --team-id $APPLE_TEAM_ID
-                  xcrun stapler staple artifacts/ente-${{ github.ref_name }}.dmg
+                  xcrun stapler staple artifacts/ente-auth-v${{ env.VERSION_NAME }}-beta.dmg
               env:
                   APPLE_ID: ${{ secrets.APPLE_ID }}
                   APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
@@ -333,10 +410,74 @@ jobs:
             - name: Generate checksums
               run: shasum -a 256 artifacts/ente-* > artifacts/sha256sum-macos
 
-            - name: Create a draft GitHub release
+            - name: Upload artifacts for release
+              uses: actions/upload-artifact@v4
+              with:
+                  name: macos-artifacts
+                  path: mobile/apps/auth/artifacts/*
+
+    create-release:
+        needs: [build-android-linux, build-windows, build-macos]
+        runs-on: ubuntu-latest
+
+        defaults:
+            run:
+                working-directory: mobile/apps/auth
+
+        env:
+            VERSION_NAME: ${{ needs.build-android-linux.outputs.version_name }}
+            NEW_VERSION: ${{ needs.build-android-linux.outputs.new_version }}
+            NEW_VERSION_CODE: ${{ needs.build-android-linux.outputs.new_version_code }}
+            CHANGELOG_DISCORD: ${{ needs.build-android-linux.outputs.changelog_discord }}
+
+        steps:
+            - name: Checkout code and submodules
+              uses: actions/checkout@v4
+              with:
+                  submodules: recursive
+                  fetch-depth: 0
+
+            - name: Download all artifacts
+              uses: actions/download-artifact@v4
+              with:
+                  path: mobile/apps/auth/artifacts
+                  merge-multiple: true
+
+            - name: Combine checksums into single file
+              run: |
+                  cd artifacts
+                  cat sha256sum-* > sha256sum
+                  rm sha256sum-apk sha256sum-linux sha256sum-windows sha256sum-macos
+                  echo "✅ Unified checksum file created:"
+                  cat sha256sum
+
+            - name: Create pre-release on GitHub
               uses: ncipollo/release-action@v1
               with:
                   artifacts: "mobile/apps/auth/artifacts/*"
-                  draft: true
+                  tag: "auth-v${{ env.VERSION_NAME }}-beta"
+                  name: "Auth v${{ env.VERSION_NAME }} Beta (Build ${{ env.NEW_VERSION_CODE }})"
+                  body: |
+                      Nightly build for Auth v${{ env.VERSION_NAME }}
+
+                      Build: ${{ env.NEW_VERSION_CODE }}
+                      Commit: ${{ github.sha }}
+                  prerelease: true
                   allowUpdates: true
                   updateOnlyUnreleased: true
+
+            - name: Notify Discord
+              uses: sarisia/actions-status-discord@v1
+              with:
+                  webhook: ${{ secrets.DISCORD_INTERNAL_RELEASE_WEBHOOK }}
+                  nodetail: true
+                  title: "🏆 Nightly build Auth v${{ env.NEW_VERSION }} (Branch: ${{ github.ref_name }})"
+                  description: |
+                      **Version:** ${{ env.NEW_VERSION }}
+                      **Flutter:** ${{ env.FLUTTER_VERSION }}
+                      **Commit:** [${{ github.sha }}](${{ github.server_url }}/${{ github.repository }}/commit/${{ github.sha }})
+                      **Download:** [Play Store](https://play.google.com/store/apps/details?id=io.ente.auth) | [GitHub Release](https://github.com/${{ github.repository }}/releases/tag/auth-v${{ env.VERSION_NAME }}-beta)
+                      **Sentry:** [Exceptions](https://sentry.ente.io/organizations/ente/issues/?environment=production&project=auth&query=release.build%3A%3E%3D${{ env.NEW_VERSION_CODE }}&referrer=issue-list&statsPeriod=7d)
+                      **Changes:**
+                      ${{ env.CHANGELOG_DISCORD }}
+                  color: 0x800080
