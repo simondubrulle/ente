@@ -126,7 +126,7 @@ jobs:
             
             - name: Build independent APK
               run: |
-                flutter build apk --dart-define=cronetHttpNoPlay=true --release --flavor independent
+                flutter build apk --dart-define=cronetHttpNoPlay=true --release --flavor independent --target-platform android-arm64
                 mv build/app/outputs/flutter-apk/app-independent-release.apk build/app/outputs/flutter-apk/ente-${{ env.NEW_VERSION_TAG }}.apk
               env:
                   SIGNING_KEY_PATH: "/home/runner/work/_temp/keystore/ente_photos_key.jks"
