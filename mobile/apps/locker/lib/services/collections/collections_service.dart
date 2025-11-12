@@ -261,7 +261,11 @@ class CollectionService {
     }
   }
 
-  Future<void> trashFile(EnteFile file, Collection collection) async {
+  Future<void> trashFile(
+    EnteFile file,
+    Collection collection, {
+    bool runSync = true,
+  }) async {
     try {
       final List<TrashRequest> requests = [];
       requests.add(TrashRequest(file.uploadedFileID!, collection.id));
@@ -269,10 +273,10 @@ class CollectionService {
 
       await _db.deleteFilesFromCollection(collection, [file]);
 
-      Bus.instance.fire(CollectionsUpdatedEvent('trash_file'));
-
-      await sync();
-      await TrashService.instance.syncTrash();
+      if (runSync) {
+        await sync();
+        await TrashService.instance.syncTrash();
+      }
     } catch (e) {
       _logger.severe("Failed to remove file from collections: $e");
       rethrow;
@@ -383,13 +387,9 @@ class CollectionService {
         await moveFilesFromCurrentCollection(collection, files);
       }
 
-      await _apiClient.trashCollection(
-        collection,
-        keepFiles: true,
-      );
-
-      Bus.instance
-          .fire(CollectionsUpdatedEvent('collection_trashed_keeping_files'));
+      await _apiClient.trashCollection(collection, keepFiles: true);
+      await sync();
+      await TrashService.instance.syncTrash();
     } catch (e) {
       _logger.severe("Failed to trash collection keeping files: $e");
       rethrow;
@@ -402,25 +402,46 @@ class CollectionService {
 
       if (files.isNotEmpty) {
         for (final file in files) {
-          // Get all collections this file belongs to
           final fileCollections = await getCollectionsForFile(file);
-
-          // Trash the file from ALL collections it belongs to
           for (final fileCollection in fileCollections) {
-            await trashFile(file, fileCollection);
+            await trashFile(file, fileCollection, runSync: false);
           }
         }
       }
 
       await _apiClient.trashCollection(collection);
 
-      Bus.instance
-          .fire(CollectionsUpdatedEvent('collection_trashed_with_files'));
-
       await sync();
       await TrashService.instance.syncTrash();
     } catch (e) {
       _logger.severe("Failed to trash collection with files: $e");
+      rethrow;
+    }
+  }
+
+  /// Trash an empty collection directly without moving files.
+  /// The server will verify that the collection is actually empty before
+  /// deleting. If keepFiles is set as False and the collection is not empty,
+  /// then the files in the collection will be moved to trash.
+  ///
+  /// [isBulkDelete] - During bulk deletion, this event is not fired to avoid
+  /// quick refresh of the collection gallery
+  Future<void> trashEmptyCollection(
+    Collection collection, {
+    bool isBulkDelete = false,
+  }) async {
+    try {
+      await _apiClient.trashCollection(
+        collection,
+        keepFiles: true,
+        skipEventFiring: isBulkDelete,
+      );
+      if (!isBulkDelete) {
+        await sync();
+        await TrashService.instance.syncTrash();
+      }
+    } catch (e) {
+      _logger.severe("Failed to trash empty collection: $e");
       rethrow;
     }
   }
@@ -463,9 +484,6 @@ class CollectionService {
       await _apiClient.removeFromCollection(collection.id, ownedByCurrentUser);
       removalsPerformed = true;
       if (removalsPerformed) {
-        Bus.instance.fire(
-          CollectionsUpdatedEvent('files_moved_from_collection'),
-        );
         await sync();
       }
       return;
@@ -476,9 +494,6 @@ class CollectionService {
         "Cannot remove files owned by others from collection ${collection.id}",
       );
       if (removalsPerformed) {
-        Bus.instance.fire(
-          CollectionsUpdatedEvent('files_moved_from_collection'),
-        );
         await sync();
       }
       return;
@@ -486,9 +501,6 @@ class CollectionService {
 
     if (ownedByCurrentUser.isEmpty) {
       if (removalsPerformed) {
-        Bus.instance.fire(
-          CollectionsUpdatedEvent('files_moved_from_collection'),
-        );
         await sync();
       }
       return;
@@ -550,12 +562,6 @@ class CollectionService {
       }
     }
 
-    if (removalsPerformed) {
-      Bus.instance.fire(
-        CollectionsUpdatedEvent('files_moved_from_collection'),
-      );
-    }
-
     if (movesPerformed || removalsPerformed) {
       await sync();
     }
@@ -601,21 +607,12 @@ class CollectionService {
     return true;
   }
 
-  // Track if default collections have been set up
-  bool _defaultCollectionsSetupCompleted = false;
-
   Future<void> setupDefaultCollections() async {
     try {
       if (Configuration.instance.getKey() == null) {
         _logger.warning(
           "Cannot setup default collections - master key not available",
         );
-        return;
-      }
-
-      // Skip if already completed
-      if (_defaultCollectionsSetupCompleted) {
-        _logger.info("Default collections already set up, skipping.");
         return;
       }
 
@@ -630,25 +627,9 @@ class CollectionService {
       // Create Documents collection if it doesn't exist
       await _getOrCreateDocumentsCollection();
 
-      _defaultCollectionsSetupCompleted = true;
       _logger.info("Default collections setup completed.");
     } catch (e, s) {
       _logger.severe("Failed to setup default collections", e, s);
-    }
-  }
-
-  /// Ensures default collections are set up if they haven't been already
-  /// This should be called from HomePage once the master key is available
-  Future<void> ensureDefaultCollections() async {
-    if (!_defaultCollectionsSetupCompleted &&
-        Configuration.instance.getKey() != null) {
-      await setupDefaultCollections();
-    } else {
-      if (_defaultCollectionsSetupCompleted) {
-        _logger.info("Default collections already setup, skipping");
-      } else {
-        _logger.warning("Master key not available, cannot setup collections");
-      }
     }
   }
 
