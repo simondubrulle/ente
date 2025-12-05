@@ -4,7 +4,9 @@ on:
     schedule:
         # Run daily at 04:00 UTC
         - cron: '0 4 * * *'
-
+        # Run daily at 00:00 UTC
+        - cron: '0 16 * * *'
+        
 permissions:
     contents: write
 
