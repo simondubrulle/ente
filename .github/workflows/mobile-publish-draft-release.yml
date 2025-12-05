@@ -2,7 +2,6 @@ name: "Auto-publish draft releases"
 
 on:
     release:
-        types: [created]
 
 permissions:
     contents: write
