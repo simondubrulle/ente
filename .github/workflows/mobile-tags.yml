@@ -1,0 +1,54 @@
+name: "Sync fork and create tag"
+on:
+    workflow_dispatch: # Allow manually running the action
+    schedule:
+        # Run daily at 04:00 UTC
+        - cron: '0 4 * * *'
+
+permissions:
+    contents: write
+
+jobs:
+    sync-and-tag:
+        runs-on: ubuntu-latest
+        steps:
+            - name: Checkout fork
+              uses: actions/checkout@v4
+              with:
+                  token: ${{ secrets.APP_TOKEN }}
+                  fetch-depth: 0
+
+            - name: Sync fork with upstream
+              run: |
+                  # Configure git
+                  git config user.name "github-actions[bot]"
+                  git config user.email "github-actions[bot]@users.noreply.github.com"
+                  
+                  # Add upstream remote
+                  git remote add upstream https://github.com/ente-io/ente.git
+                  
+                  # Fetch upstream changes
+                  git fetch upstream
+                  
+                  # Merge upstream changes into main branch
+                  git checkout main
+                  git merge upstream/main --allow-unrelated-histories
+                  
+                  # Push the updated fork
+                  git push origin main
+
+            - name: Create and push tag
+              run: |
+                  # Generate datetime-based tag (format: photos-vYYYYMMDD-HHMMSS)
+                  DATETIME=$(date -u +"%Y%m%d-%H%M%S")
+                  TAG_NAME="photos-v${DATETIME}"
+                  
+                  echo "Creating tag: ${TAG_NAME}"
+                  
+                  # Create the tag
+                  git tag "${TAG_NAME}"
+                  
+                  # Push the tag
+                  git push origin "${TAG_NAME}"
+                  
+                  echo "Successfully created and pushed tag: ${TAG_NAME}"
