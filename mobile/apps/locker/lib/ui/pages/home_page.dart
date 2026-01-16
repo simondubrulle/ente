@@ -159,6 +159,7 @@ class CustomLockerAppBar extends StatelessWidget
                         icon: HugeIcons.strokeRoundedSearch01,
                         color: colorScheme.primary700,
                         size: 20,
+                        strokeWidth: 1.75,
                       ),
                     ),
                     prefixIconConstraints: const BoxConstraints(
@@ -627,7 +628,7 @@ class _HomePageState extends UploaderPageState<HomePage>
                   backgroundColor: colorScheme.backgroundBase,
                   child: _settingsPage,
                 ),
-                drawerEnableOpenDragGesture: !Platform.isAndroid,
+                drawerEnableOpenDragGesture: true,
                 onDrawerChanged: (isOpened) => _isSettingsOpen = isOpened,
                 appBar: CustomLockerAppBar(
                   scaffoldKey: scaffoldKey,
