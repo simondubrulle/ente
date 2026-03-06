@@ -1,13 +1,15 @@
 import "dart:async";
+import "dart:convert" show jsonEncode;
 import "dart:io" show Platform;
 import "dart:math" show min;
-import "dart:typed_data" show Uint8List;
+import "dart:typed_data" show Float32List, Uint8List;
 
 import "package:flutter/foundation.dart" show kDebugMode;
 import "package:logging/logging.dart";
 import "package:photos/core/event_bus.dart";
 import "package:photos/db/files_db.dart";
 import "package:photos/db/ml/db.dart";
+import "package:photos/db/ml/db_pet_model_mappers.dart";
 import "package:photos/db/offline_files_db.dart";
 import "package:photos/events/compute_control_event.dart";
 import "package:photos/events/people_changed_event.dart";
@@ -18,6 +20,7 @@ import "package:photos/service_locator.dart";
 import "package:photos/services/filedata/model/file_data.dart";
 import 'package:photos/services/machine_learning/face_ml/face_clustering/face_clustering_service.dart';
 import "package:photos/services/machine_learning/face_ml/face_clustering/face_db_info_for_clustering.dart";
+import "package:photos/services/machine_learning/face_ml/face_detection/detection.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_indexing_isolate.dart";
 import 'package:photos/services/machine_learning/ml_result.dart';
@@ -626,6 +629,81 @@ class MLService {
           );
         }
       }
+
+      // Pet results locally
+      final rustPets =
+          result.petFaces != null || result.detectedObjects != null;
+      if (rustPets) {
+        if (result.petFaces != null && result.petFaces!.isNotEmpty) {
+          final dbPetFaces = result.petFaces!.map((pf) {
+            final floatList = Float32List.fromList(pf.embedding);
+            final blob = Uint8List.view(
+              floatList.buffer,
+              floatList.offsetInBytes,
+              floatList.lengthInBytes,
+            );
+            return DBPetFace(
+              fileId: result.fileId,
+              petFaceId: pf.petFaceId,
+              detection: jsonEncode(pf.detection.toJson()),
+              faceVectorId: -1,
+              species: pf.species,
+              faceScore: pf.detection.score,
+              imageHeight: result.decodedImageSize.height,
+              imageWidth: result.decodedImageSize.width,
+              mlVersion: petMlVersion,
+              embeddingBlob: blob,
+            );
+          }).toList();
+          await mlDataDB.bulkInsertPetFaces(dbPetFaces);
+          await mlDataDB.storePetFaceEmbeddings(
+            dbPetFaces,
+            result.petFaces!,
+          );
+        }
+
+        if (result.detectedObjects != null &&
+            result.detectedObjects!.isNotEmpty) {
+          final dbObjects = result.detectedObjects!.map((obj) {
+            final detectionObj = FaceDetectionRelative(
+              score: obj.score,
+              box: [
+                obj.boxXyxy[0],
+                obj.boxXyxy[1],
+                obj.boxXyxy[2],
+                obj.boxXyxy[3],
+              ],
+              allKeypoints: const [],
+            );
+            final floatList = Float32List.fromList(obj.embedding);
+            final blob = Uint8List.view(
+              floatList.buffer,
+              floatList.offsetInBytes,
+              floatList.lengthInBytes,
+            );
+            return DBDetectedObject(
+              fileId: result.fileId,
+              objectId: obj.objectId,
+              detection: jsonEncode(detectionObj.toJson()),
+              bodyVectorId: -1,
+              species: obj.cocoClass == 15 ? 1 : 0,
+              score: obj.score,
+              imageHeight: result.decodedImageSize.height,
+              imageWidth: result.decodedImageSize.width,
+              mlVersion: petMlVersion,
+              embeddingBlob: blob,
+            );
+          }).toList();
+          await mlDataDB.bulkInsertDetectedObjects(dbObjects);
+          await mlDataDB.storeObjectEmbeddings(
+            dbObjects,
+            result.detectedObjects!,
+          );
+        }
+      }
+      if (instruction.shouldRunPets && rustPets) {
+        await mlDataDB.markPetIndexed(result.fileId, petMlVersion);
+      }
       _logger.info("ML result for fileID ${result.fileId} stored remote+local");
       return actuallyRanML;
     } catch (e, s) {
@@ -653,6 +731,9 @@ class MLService {
           await SemanticSearchService.instance.storeEmptyClipImageResult(
             instruction.file,
           );
+        }
+        if (instruction.shouldRunPets) {
+          await mlDataDB.markPetIndexed(instruction.fileKey, petMlVersion);
         }
         return true;
       }

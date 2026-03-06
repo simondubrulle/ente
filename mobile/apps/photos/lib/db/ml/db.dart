@@ -13,6 +13,8 @@ import "package:photos/db/ml/base.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
 import "package:photos/db/ml/cluster_centroid_vector_db.dart";
 import "package:photos/db/ml/db_model_mappers.dart";
+import "package:photos/db/ml/db_pet_model_mappers.dart";
+import "package:photos/db/ml/pet_vector_db.dart";
 import 'package:photos/db/ml/schema.dart';
 import "package:photos/events/embedding_updated_event.dart";
 import "package:photos/generated/protos/ente/common/vector.pb.dart";
@@ -96,6 +98,14 @@ class MLDataDB with SqlDbBase implements IMLDataDB<int> {
     createFaceCacheTable,
     createTextEmbeddingsCacheTable,
     createClusterCentroidVectorIdMappingTable,
+    createPetFacesTable,
+    createDetectedObjectsTable,
+    createPetFaceClustersTable,
+    petFcClusterIDIndex,
+    createPetClusterSummaryTable,
+    createPetFaceVectorIdMappingTable,
+    createObjectVectorIdMappingTable,
+    createPetIndexedFilesTable,
   ];
   static const List<String> _offlineMigrationScripts = [
     ..._defaultMigrationScripts,
@@ -170,6 +180,246 @@ class MLDataDB with SqlDbBase implements IMLDataDB<int> {
       }).toList();
 
       await db.executeBatch(sql, parameterSets);
+    }
+  }
+
+  @override
+  Future<void> bulkInsertPetFaces(List<DBPetFace> petFaces) async {
+    final db = await asyncDB;
+    const batchSize = 500;
+    final numBatches = (petFaces.length / batchSize).ceil();
+    for (int i = 0; i < numBatches; i++) {
+      final start = i * batchSize;
+      final end = min((i + 1) * batchSize, petFaces.length);
+      final batch = petFaces.sublist(start, end);
+
+      const String sql = '''
+        INSERT INTO $petFacesTable (
+          $fileIDColumn, $petFaceIDColumn, $faceDetectionColumn, $faceVectorIdColumn, $speciesColumn, $faceScore, $imageHeight, $imageWidth, $mlVersionColumn, $petFaceEmbeddingColumn
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT($fileIDColumn, $petFaceIDColumn) DO UPDATE SET $faceDetectionColumn = excluded.$faceDetectionColumn, $faceVectorIdColumn = excluded.$faceVectorIdColumn, $speciesColumn = excluded.$speciesColumn, $faceScore = excluded.$faceScore, $imageHeight = excluded.$imageHeight, $imageWidth = excluded.$imageWidth, $mlVersionColumn = excluded.$mlVersionColumn, $petFaceEmbeddingColumn = excluded.$petFaceEmbeddingColumn
+      ''';
+      final parameterSets = batch.map((petFace) {
+        final map = petFace.toMap();
+        return [
+          map[fileIDColumn],
+          map[petFaceIDColumn],
+          map[faceDetectionColumn],
+          map[faceVectorIdColumn],
+          map[speciesColumn],
+          map[faceScore],
+          map[imageHeight],
+          map[imageWidth],
+          map[mlVersionColumn],
+          map[petFaceEmbeddingColumn],
+        ];
+      }).toList();
+
+      await db.executeBatch(sql, parameterSets);
+    }
+  }
+
+  @override
+  Future<void> bulkInsertDetectedObjects(List<DBDetectedObject> objects) async {
+    final db = await asyncDB;
+    const batchSize = 500;
+    final numBatches = (objects.length / batchSize).ceil();
+    for (int i = 0; i < numBatches; i++) {
+      final start = i * batchSize;
+      final end = min((i + 1) * batchSize, objects.length);
+      final batch = objects.sublist(start, end);
+
+      const String sql = '''
+        INSERT INTO $detectedObjectsTable (
+          $fileIDColumn, $detectedObjectIDColumn, $detectionColumn, $bodyVectorIdColumn, $speciesColumn, $faceScore, $imageHeight, $imageWidth, $mlVersionColumn, $petBodyEmbeddingColumn
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT($fileIDColumn, $detectedObjectIDColumn) DO UPDATE SET $detectionColumn = excluded.$detectionColumn, $bodyVectorIdColumn = excluded.$bodyVectorIdColumn, $speciesColumn = excluded.$speciesColumn, $faceScore = excluded.$faceScore, $imageHeight = excluded.$imageHeight, $imageWidth = excluded.$imageWidth, $mlVersionColumn = excluded.$mlVersionColumn, $petBodyEmbeddingColumn = excluded.$petBodyEmbeddingColumn
+      ''';
+      final parameterSets = batch.map((obj) {
+        final map = obj.toMap();
+        return [
+          map[fileIDColumn],
+          map[detectedObjectIDColumn],
+          map[detectionColumn],
+          map[bodyVectorIdColumn],
+          map[speciesColumn],
+          map[faceScore],
+          map[imageHeight],
+          map[imageWidth],
+          map[mlVersionColumn],
+          map[petBodyEmbeddingColumn],
+        ];
+      }).toList();
+
+      await db.executeBatch(sql, parameterSets);
+    }
+  }
+
+  @override
+  Future<void> updatePetFaceVectorIds(
+    Map<String, int> petFaceIdToVectorId,
+  ) async {
+    if (petFaceIdToVectorId.isEmpty) return;
+    final db = await asyncDB;
+    const batchSize = 500;
+    final entries = petFaceIdToVectorId.entries.toList();
+    final numBatches = (entries.length / batchSize).ceil();
+    for (int i = 0; i < numBatches; i++) {
+      final start = i * batchSize;
+      final end = min((i + 1) * batchSize, entries.length);
+      final batch = entries.sublist(start, end);
+
+      const String sql = '''
+        UPDATE $petFacesTable
+        SET $faceVectorIdColumn = ?
+        WHERE $petFaceIDColumn = ?
+      ''';
+      final parameterSets = batch.map((e) => [e.value, e.key]).toList();
+      await db.executeBatch(sql, parameterSets);
+    }
+  }
+
+  @override
+  Future<void> updateObjectVectorIds(
+    Map<String, int> objectIdToVectorId,
+  ) async {
+    if (objectIdToVectorId.isEmpty) return;
+    final db = await asyncDB;
+    const batchSize = 500;
+    final entries = objectIdToVectorId.entries.toList();
+    final numBatches = (entries.length / batchSize).ceil();
+    for (int i = 0; i < numBatches; i++) {
+      final start = i * batchSize;
+      final end = min((i + 1) * batchSize, entries.length);
+      final batch = entries.sublist(start, end);
+
+      const String sql = '''
+        UPDATE $detectedObjectsTable
+        SET $bodyVectorIdColumn = ?
+        WHERE $detectedObjectIDColumn = ?
+      ''';
+      final parameterSets = batch.map((e) => [e.value, e.key]).toList();
+      await db.executeBatch(sql, parameterSets);
+    }
+  }
+
+  /// Store pet face embeddings into PetVectorDB after SQLite insert.
+  /// Failure is logged but does not block indexing.
+  Future<void> storePetFaceEmbeddings(
+    List<DBPetFace> dbPetFaces,
+    List<PetFaceResult> petFaces,
+  ) async {
+    try {
+      // Group by species
+      final bySpecies = <int, List<(DBPetFace, PetFaceResult)>>{};
+      for (int i = 0; i < dbPetFaces.length; i++) {
+        final species = petFaces[i].species;
+        bySpecies.putIfAbsent(species, () => []);
+        bySpecies[species]!.add((dbPetFaces[i], petFaces[i]));
+      }
+      for (final entry in bySpecies.entries) {
+        final vdb = PetVectorDB.forModel(
+          species: entry.key,
+          isFace: true,
+        );
+        final petFaceIds = entry.value.map((e) => e.$1.petFaceId).toList();
+        final idMap = await vdb.getPetFaceVectorIdMap(
+          petFaceIds,
+          createIfMissing: true,
+        );
+        final vectorIds = <int>[];
+        final embeddings = <Float32List>[];
+        final insertedPetFaceIds = <String>[];
+        for (final (dbFace, pfResult) in entry.value) {
+          final vid = idMap[dbFace.petFaceId];
+          if (vid == null) continue;
+          final emb = Float32List.fromList(pfResult.embedding);
+          if (emb.length != PetVectorDB.faceDimension) {
+            _logger.warning(
+              "Skipping pet face embedding with wrong dimension ${emb.length}",
+            );
+            continue;
+          }
+          vectorIds.add(vid);
+          embeddings.add(emb);
+          insertedPetFaceIds.add(dbFace.petFaceId);
+        }
+        if (vectorIds.isNotEmpty) {
+          await vdb.bulkInsertEmbeddings(
+            vectorIds: vectorIds,
+            embeddings: embeddings,
+          );
+          final updateMap = Map.fromIterables(
+            insertedPetFaceIds,
+            vectorIds,
+          );
+          await updatePetFaceVectorIds(updateMap);
+        }
+      }
+    } catch (e, s) {
+      _logger.severe("Failed to store pet face embeddings in vector DB", e, s);
+    }
+  }
+
+  /// Store detected object embeddings into PetVectorDB after SQLite insert.
+  /// Failure is logged but does not block indexing.
+  Future<void> storeObjectEmbeddings(
+    List<DBDetectedObject> dbObjects,
+    List<DetectedObjectResult> objects,
+  ) async {
+    try {
+      // Group by species (0 = dog, 1 = cat)
+      final bySpecies = <int, List<(DBDetectedObject, DetectedObjectResult)>>{};
+      for (int i = 0; i < dbObjects.length; i++) {
+        final species = dbObjects[i].species;
+        bySpecies.putIfAbsent(species, () => []);
+        bySpecies[species]!.add((dbObjects[i], objects[i]));
+      }
+      for (final entry in bySpecies.entries) {
+        final vdb = PetVectorDB.forModel(
+          species: entry.key,
+          isFace: false,
+        );
+        final objectIds = entry.value.map((e) => e.$1.objectId).toList();
+        final idMap = await vdb.getObjectVectorIdMap(
+          objectIds,
+          createIfMissing: true,
+        );
+        final vectorIds = <int>[];
+        final embeddings = <Float32List>[];
+        final insertedObjectIds = <String>[];
+        for (final (dbObj, objResult) in entry.value) {
+          final vid = idMap[dbObj.objectId];
+          if (vid == null) continue;
+          final emb = Float32List.fromList(objResult.embedding);
+          if (emb.length != PetVectorDB.bodyDimension) {
+            _logger.warning(
+              "Skipping object embedding with wrong dimension ${emb.length}",
+            );
+            continue;
+          }
+          vectorIds.add(vid);
+          embeddings.add(emb);
+          insertedObjectIds.add(dbObj.objectId);
+        }
+        if (vectorIds.isNotEmpty) {
+          await vdb.bulkInsertEmbeddings(
+            vectorIds: vectorIds,
+            embeddings: embeddings,
+          );
+          final updateMap = Map.fromIterables(
+            insertedObjectIds,
+            vectorIds,
+          );
+          await updateObjectVectorIds(updateMap);
+        }
+      }
+    } catch (e, s) {
+      _logger.severe(
+        "Failed to store object embeddings in vector DB",
+        e,
+        s,
+      );
     }
   }
 
@@ -307,6 +557,17 @@ class MLDataDB with SqlDbBase implements IMLDataDB<int> {
     await db.execute(deleteFileDataTable);
     await _clipVectorDB.deleteIndexFile();
     await _clusterCentroidVectorDB.deleteIndexFile();
+    // Pet tables
+    await db.execute(deletePetFacesTable);
+    await db.execute(deleteDetectedObjectsTable);
+    await db.execute(deletePetFaceClustersTable);
+    await db.execute(deletePetClusterSummaryTable);
+    await db.execute(deletePetFaceVectorIdMappingTable);
+    await db.execute(deleteObjectVectorIdMappingTable);
+    await db.execute(deletePetIndexedFilesTable);
+    for (final vdb in PetVectorDB.allInstances) {
+      await vdb.deleteIndexFile();
+    }
     _markClusterSummaryMutated();
   }
 
@@ -474,6 +735,42 @@ class MLDataDB with SqlDbBase implements IMLDataDB<int> {
       return null;
     }
     return maps.map((e) => mapRowToFace(e)).toList();
+  }
+
+  @override
+  Future<List<DBPetFace>?> getPetFacesForFileID(int fileUploadID) async {
+    final db = await asyncDB;
+    const String query = '''
+      SELECT * FROM $petFacesTable
+      WHERE $fileIDColumn = ?
+    ''';
+    final List<Map<String, dynamic>> maps = await db.getAll(
+      query,
+      [fileUploadID],
+    );
+    if (maps.isEmpty) {
+      return null;
+    }
+    return maps.map((e) => DBPetFace.fromMap(e)).toList();
+  }
+
+  @override
+  Future<List<DBDetectedObject>?> getDetectedObjectsForFileID(
+    int fileUploadID,
+  ) async {
+    final db = await asyncDB;
+    const String query = '''
+      SELECT * FROM $detectedObjectsTable
+      WHERE $fileIDColumn = ?
+    ''';
+    final List<Map<String, dynamic>> maps = await db.getAll(
+      query,
+      [fileUploadID],
+    );
+    if (maps.isEmpty) {
+      return null;
+    }
+    return maps.map((e) => DBDetectedObject.fromMap(e)).toList();
   }
 
   @override
@@ -2044,6 +2341,62 @@ class MLDataDB with SqlDbBase implements IMLDataDB<int> {
         'SELECT COUNT(DISTINCT $fileIDColumn) as count FROM $clipTable WHERE $mlVersionColumn >= $minimumMlVersion';
     final List<Map<String, dynamic>> maps = await db.getAll(query);
     return maps.first['count'] as int;
+  }
+
+  @override
+  Future<Map<int, int>> petIndexedFileIds({
+    int minimumMlVersion = petMlVersion,
+  }) async {
+    final db = await asyncDB;
+    final String query = '''
+      SELECT $fileIDColumn, $mlVersionColumn
+      FROM $petIndexedFilesTable
+      WHERE $mlVersionColumn >= $minimumMlVersion
+    ''';
+    final List<Map<String, dynamic>> maps = await db.getAll(query);
+    final Map<int, int> result = {};
+    for (final map in maps) {
+      result[map[fileIDColumn] as int] = map[mlVersionColumn] as int;
+    }
+    return result;
+  }
+
+  @override
+  Future<int> getPetIndexedFileCount({
+    int minimumMlVersion = petMlVersion,
+  }) async {
+    final db = await asyncDB;
+    final String query =
+        'SELECT COUNT(*) as count FROM $petIndexedFilesTable WHERE $mlVersionColumn >= $minimumMlVersion';
+    final List<Map<String, dynamic>> maps = await db.getAll(query);
+    return maps.first['count'] as int;
+  }
+
+  @override
+  Future<void> markPetIndexed(int fileID, int mlVersion) async {
+    final db = await asyncDB;
+    await db.execute(
+      '''INSERT INTO $petIndexedFilesTable ($fileIDColumn, $mlVersionColumn)
+         VALUES (?, ?)
+         ON CONFLICT($fileIDColumn) DO UPDATE SET $mlVersionColumn = excluded.$mlVersionColumn''',
+      [fileID, mlVersion],
+    );
+  }
+
+  @override
+  Future<void> deletePetDataForFiles(List<int> fileIDs) async {
+    if (fileIDs.isEmpty) return;
+    final db = await asyncDB;
+    final ids = fileIDs.join(", ");
+    await db.execute(
+      'DELETE FROM $petFacesTable WHERE $fileIDColumn IN ($ids)',
+    );
+    await db.execute(
+      'DELETE FROM $detectedObjectsTable WHERE $fileIDColumn IN ($ids)',
+    );
+    await db.execute(
+      'DELETE FROM $petIndexedFilesTable WHERE $fileIDColumn IN ($ids)',
+    );
   }
 
   @override
