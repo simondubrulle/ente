@@ -1,13 +1,11 @@
 {
-    "name": "locker",
+    "name": "twoof3",
     "version": "0.0.0",
     "private": true,
     "dependencies": {
-        "@hugeicons/core-free-icons": "^1.1.0",
-        "@hugeicons/react": "^1.1.4",
-        "ente-accounts-rs": "*",
+        "@fontsource/space-grotesk": "^5.2.10",
         "ente-base": "*",
-        "ente-wasm": "*"
+        "qr": "^0.5.5"
     },
     "devDependencies": {
         "ente-build-config": "*"
