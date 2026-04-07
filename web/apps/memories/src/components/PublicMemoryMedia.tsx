@@ -86,6 +86,8 @@ function MediaLoadingOverlay() {
 export interface PhotoImageProps {
     file: EnteFile;
     onFullLoad?: () => void;
+    onThumbnailResolved?: () => void;
+    enableFullLoad?: boolean;
     fillFrame?: boolean;
     objectFit?: "contain" | "cover";
     thumbnailOnly?: boolean;
@@ -103,6 +105,8 @@ export interface PhotoImageProps {
 export function PhotoImage({
     file,
     onFullLoad,
+    onThumbnailResolved,
+    enableFullLoad = true,
     fillFrame,
     objectFit = "contain",
     thumbnailOnly = false,
@@ -121,13 +125,17 @@ export function PhotoImage({
     const [isLoading, setIsLoading] = useState(true);
     const imageRef = useRef<HTMLImageElement | null>(null);
     const onFullLoadRef = useRef(onFullLoad);
+    const onThumbnailResolvedRef = useRef(onThumbnailResolved);
     const onAspectRatioRef = useRef(onAspectRatio);
     const mediaReadyRef = useRef(false);
+    const thumbnailResolvedRef = useRef(false);
+    const fullImageLoadTokenRef = useRef<symbol | null>(null);
     const hasNotifiedDisplayReadyRef = useRef(false);
+    const hasNotifiedThumbnailResolvedRef = useRef(false);
     const lastReportedAspectRatioRef = useRef<number | undefined>(undefined);
-    const loadGenerationRef = useRef(0);
 
     onFullLoadRef.current = onFullLoad;
+    onThumbnailResolvedRef.current = onThumbnailResolved;
     onAspectRatioRef.current = onAspectRatio;
 
     const signalReady = useCallback(() => {
@@ -137,6 +145,19 @@ export function PhotoImage({
         }
         hasNotifiedDisplayReadyRef.current = true;
         onFullLoadRef.current();
+    }, []);
+
+    const signalThumbnailResolved = useCallback(() => {
+        thumbnailResolvedRef.current = true;
+        if (
+            hasNotifiedThumbnailResolvedRef.current ||
+            !onThumbnailResolvedRef.current
+        ) {
+            return;
+        }
+
+        hasNotifiedThumbnailResolvedRef.current = true;
+        onThumbnailResolvedRef.current();
     }, []);
 
     const reportAspectRatio = useCallback((width: number, height: number) => {
@@ -159,75 +180,47 @@ export function PhotoImage({
     }, []);
 
     useEffect(() => {
-        const loadGeneration = loadGenerationRef.current + 1;
-        loadGenerationRef.current = loadGeneration;
-        const loadState = { cancelled: false };
+        let cancelled = false;
         setIsLoading(true);
         setThumbnailURL(undefined);
         setFullImageURL(undefined);
         mediaReadyRef.current = false;
+        thumbnailResolvedRef.current = false;
         hasNotifiedDisplayReadyRef.current = false;
+        hasNotifiedThumbnailResolvedRef.current = false;
         lastReportedAspectRatioRef.current = undefined;
 
         const loadThumbnail = async () => {
             try {
                 const nextThumbnailURL =
                     await downloadManager.renderableThumbnailURL(file);
-                if (!loadState.cancelled && nextThumbnailURL) {
+                if (cancelled) {
+                    return;
+                }
+
+                if (nextThumbnailURL) {
                     setThumbnailURL(nextThumbnailURL);
-                } else if (!loadState.cancelled) {
+                } else if (thumbnailOnly) {
                     setIsLoading(false);
                 }
             } catch (error) {
                 log.error("Failed to load thumbnail", error);
-                if (!loadState.cancelled) {
+                if (!cancelled && thumbnailOnly) {
                     setIsLoading(false);
                 }
-            }
-        };
-
-        const loadFullImage = async () => {
-            if (thumbnailOnly) {
-                return;
-            }
-            try {
-                const sourceURLs =
-                    await downloadManager.renderableSourceURLs(file);
-                if (loadState.cancelled) {
-                    return;
-                }
-                if (sourceURLs.type === "video") {
-                    signalReady();
-                    return;
-                }
-
-                const nextFullImageURL =
-                    sourceURLs.type === "livePhoto"
-                        ? await sourceURLs.imageURL()
-                        : sourceURLs.imageURL;
-                if (loadGeneration !== loadGenerationRef.current) {
-                    return;
-                }
-
-                setFullImageURL(nextFullImageURL);
-            } catch (error) {
-                log.error("Failed to load full image", error);
-                if (!loadState.cancelled) {
-                    signalReady();
+            } finally {
+                if (!cancelled) {
+                    signalThumbnailResolved();
                 }
             }
         };
 
         void loadThumbnail();
-        void loadFullImage();
 
         return () => {
-            loadState.cancelled = true;
-            if (loadGenerationRef.current === loadGeneration) {
-                loadGenerationRef.current += 1;
-            }
+            cancelled = true;
         };
-    }, [file, signalReady, thumbnailOnly]);
+    }, [file, signalThumbnailResolved, thumbnailOnly]);
 
     useEffect(() => {
         if (!onFullLoad) {
@@ -239,6 +232,70 @@ export function PhotoImage({
             onFullLoad();
         }
     }, [onFullLoad]);
+
+    useEffect(() => {
+        if (!onThumbnailResolved) {
+            hasNotifiedThumbnailResolvedRef.current = false;
+            return;
+        }
+        if (
+            thumbnailResolvedRef.current &&
+            !hasNotifiedThumbnailResolvedRef.current
+        ) {
+            hasNotifiedThumbnailResolvedRef.current = true;
+            onThumbnailResolved();
+        }
+    }, [onThumbnailResolved]);
+
+    useEffect(() => {
+        if (thumbnailOnly || !enableFullLoad) {
+            return;
+        }
+
+        const loadToken = Symbol("full-image-load");
+        fullImageLoadTokenRef.current = loadToken;
+
+        const isStaleLoad = () => fullImageLoadTokenRef.current !== loadToken;
+
+        const loadFullImage = async () => {
+            try {
+                const sourceURLs =
+                    await downloadManager.renderableSourceURLs(file);
+                if (isStaleLoad()) {
+                    return;
+                }
+                if (sourceURLs.type === "video") {
+                    signalReady();
+                    return;
+                }
+
+                let nextFullImageURL: string;
+                if (sourceURLs.type === "livePhoto") {
+                    nextFullImageURL = await sourceURLs.imageURL();
+                    if (isStaleLoad()) {
+                        return;
+                    }
+                } else {
+                    nextFullImageURL = sourceURLs.imageURL;
+                }
+
+                setFullImageURL(nextFullImageURL);
+            } catch (error) {
+                log.error("Failed to load full image", error);
+                if (!isStaleLoad()) {
+                    signalReady();
+                }
+            }
+        };
+
+        void loadFullImage();
+
+        return () => {
+            if (fullImageLoadTokenRef.current === loadToken) {
+                fullImageLoadTokenRef.current = null;
+            }
+        };
+    }, [enableFullLoad, file, signalReady, thumbnailOnly]);
 
     useEffect(() => {
         if (thumbnailOnly || !fullImageURL) {
@@ -326,6 +383,8 @@ export function PhotoImage({
 export interface VideoPlayerProps {
     file: EnteFile;
     onReady?: () => void;
+    onThumbnailResolved?: () => void;
+    enableFullLoad?: boolean;
     onDuration?: (durationSeconds: number) => void;
     onEnded?: () => void;
     onPlaybackBlocked?: () => void;
@@ -348,6 +407,8 @@ export interface VideoPlayerProps {
 export function VideoPlayer({
     file,
     onReady,
+    onThumbnailResolved,
+    enableFullLoad = true,
     onDuration,
     onEnded,
     onPlaybackBlocked,
@@ -376,14 +437,18 @@ export function VideoPlayer({
     );
     const videoRef = useRef<HTMLVideoElement>(null);
     const onReadyRef = useRef(onReady);
+    const onThumbnailResolvedRef = useRef(onThumbnailResolved);
     const onDurationRef = useRef(onDuration);
     const onEndedRef = useRef(onEnded);
     const onPlaybackBlockedRef = useRef(onPlaybackBlocked);
     const pausedRef = useRef(paused);
     const playbackRequestIDRef = useRef(0);
     const hasSignalledReadyRef = useRef(false);
+    const thumbnailResolvedRef = useRef(false);
+    const hasNotifiedThumbnailResolvedRef = useRef(false);
 
     onReadyRef.current = onReady;
+    onThumbnailResolvedRef.current = onThumbnailResolved;
     onDurationRef.current = onDuration;
     onEndedRef.current = onEnded;
     onPlaybackBlockedRef.current = onPlaybackBlocked;
@@ -418,6 +483,19 @@ export function VideoPlayer({
         });
     }, []);
 
+    const signalThumbnailResolved = useCallback(() => {
+        thumbnailResolvedRef.current = true;
+        if (
+            hasNotifiedThumbnailResolvedRef.current ||
+            !onThumbnailResolvedRef.current
+        ) {
+            return;
+        }
+
+        hasNotifiedThumbnailResolvedRef.current = true;
+        onThumbnailResolvedRef.current();
+    }, []);
+
     const setVideoElementRef = useCallback(
         (node: HTMLVideoElement | null) => {
             videoRef.current = node;
@@ -438,15 +516,59 @@ export function VideoPlayer({
         setHlsData(undefined);
         setThumbnailURL(undefined);
         hasSignalledReadyRef.current = false;
+        thumbnailResolvedRef.current = false;
+        hasNotifiedThumbnailResolvedRef.current = false;
 
-        const load = async () => {
+        const loadThumbnail = async () => {
             try {
                 const nextThumbnailURL =
                     await downloadManager.renderableThumbnailURL(file);
-                if (!cancelled && nextThumbnailURL) {
-                    setThumbnailURL(nextThumbnailURL);
+                if (cancelled) {
+                    return;
                 }
 
+                if (nextThumbnailURL) {
+                    setThumbnailURL(nextThumbnailURL);
+                }
+            } catch (error) {
+                log.error("Failed to load video thumbnail", error);
+            } finally {
+                if (!cancelled) {
+                    signalThumbnailResolved();
+                }
+            }
+        };
+
+        void loadThumbnail();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [file, invalidatePlaybackRequest, signalThumbnailResolved]);
+
+    useEffect(() => {
+        if (!onThumbnailResolved) {
+            hasNotifiedThumbnailResolvedRef.current = false;
+            return;
+        }
+        if (
+            thumbnailResolvedRef.current &&
+            !hasNotifiedThumbnailResolvedRef.current
+        ) {
+            hasNotifiedThumbnailResolvedRef.current = true;
+            onThumbnailResolved();
+        }
+    }, [onThumbnailResolved]);
+
+    useEffect(() => {
+        if (!enableFullLoad) {
+            return;
+        }
+
+        let cancelled = false;
+
+        const load = async () => {
+            try {
                 const nextHlsData =
                     await downloadManager.hlsPlaylistDataForPublicMemory(file);
                 if (
@@ -479,7 +601,7 @@ export function VideoPlayer({
         return () => {
             cancelled = true;
         };
-    }, [file, invalidatePlaybackRequest]);
+    }, [enableFullLoad, file]);
 
     useEffect(() => {
         const video = videoRef.current;
