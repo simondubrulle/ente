@@ -32,18 +32,28 @@ class ContactsService {
   Future<void> open(ContactsSession session) async {
     final accountKey = await session.resolveAccountKey();
     final cachedRootKey = _cachedRootKey(session.userId);
-    final opened = await _rustApi.open(
-      OpenContactsContextInput(
-        baseUrl: session.baseUrl,
-        authToken: session.authToken,
-        userId: session.userId,
-        accountKey: accountKey,
-        cachedRootKey: cachedRootKey,
-        userAgent: session.userAgent,
-        clientPackage: session.clientPackage,
-        clientVersion: session.clientVersion,
-      ),
-    );
+    final opened = await _rustApi
+        .open(
+          OpenContactsContextInput(
+            baseUrl: session.baseUrl,
+            authToken: session.authToken,
+            userId: session.userId,
+            accountKey: accountKey,
+            cachedRootKey: cachedRootKey,
+            userAgent: session.userAgent,
+            clientPackage: session.clientPackage,
+            clientVersion: session.clientVersion,
+          ),
+        )
+        .catchError((Object error, StackTrace stackTrace) {
+          _logger.warning(
+            "Failed to open contacts context for account user ${session.userId} "
+            "at ${session.baseUrl} (hasCachedRootKey: ${cachedRootKey != null})",
+            error,
+            stackTrace,
+          );
+          throw error;
+        });
 
     _ctx = opened.ctx;
     _session = session;
@@ -170,7 +180,7 @@ class ContactsService {
   }
 
   Future<Uint8List> getProfilePicture(String contactId) {
-    return _getAttachment(contactId, ContactAttachmentType.profilePicture);
+    return _getProfilePicture(contactId);
   }
 
   Future<ContactRecord> deleteProfilePicture(String contactId) {
@@ -203,27 +213,17 @@ class ContactsService {
     return updated;
   }
 
-  Future<Uint8List> _getAttachment(
-    String contactId,
-    ContactAttachmentType attachmentType,
-  ) async {
+  Future<Uint8List> _getProfilePicture(String contactId) async {
     final contact = await _database.getContact(contactId);
     final attachmentId = contact?.profilePictureAttachmentId;
     if (attachmentId == null) {
-      throw StateError(
-        'Contact $contactId does not have attachment $attachmentType',
-      );
+      throw StateError('Contact $contactId does not have a profile picture');
     }
     final cached = await _database.getCachedAttachment(attachmentId);
     if (cached != null) {
       return cached;
     }
-    final ctx = _requireCtx();
-    final bytes = switch (attachmentType) {
-      ContactAttachmentType.profilePicture => await ctx.getProfilePicture(
-          contactId,
-        ),
-    };
+    final bytes = await _requireCtx().getProfilePicture(contactId);
     await _database.upsertCachedAttachment(attachmentId, bytes);
     return bytes;
   }
