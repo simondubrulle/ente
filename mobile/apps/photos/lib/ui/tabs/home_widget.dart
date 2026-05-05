@@ -139,7 +139,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   late StreamSubscription<BackupFoldersUpdatedEvent> _backupFoldersUpdatedEvent;
   late StreamSubscription<AccountConfiguredEvent> _accountConfiguredEvent;
   late StreamSubscription<CollectionUpdatedEvent> _collectionUpdatedEvent;
-  late StreamSubscription _publicAlbumLinkSubscription;
+  StreamSubscription? _publicAlbumLinkSubscription;
   StreamSubscription<Uri?>? _authDeepLinkSubscription;
   late StreamSubscription<HomepageSwipeToSelectInProgressEvent>
       _homepageSwipeToSelectInProgressEventSubscription;
@@ -552,7 +552,7 @@ class _HomeWidgetState extends State<HomeWidget> {
     _collectionUpdatedEvent.cancel();
     isOnSearchTabNotifier.dispose();
     _pageController.dispose();
-    _publicAlbumLinkSubscription.cancel();
+    _publicAlbumLinkSubscription?.cancel();
     _authDeepLinkSubscription?.cancel();
     _homepageSwipeToSelectInProgressEventSubscription.cancel();
     _christmasBannerEventSubscription.cancel();
@@ -605,7 +605,10 @@ class _HomeWidgetState extends State<HomeWidget> {
               );
             },
           ).then((shouldOpenFile) {
-            if (shouldOpenFile) {
+            if (!mounted) {
+              return;
+            }
+            if (shouldOpenFile == true) {
               Navigator.pushReplacement(
                 context,
                 MaterialPageRoute(
@@ -614,13 +617,11 @@ class _HomeWidgetState extends State<HomeWidget> {
                   },
                 ),
               );
-            } else {
-              if (mounted) {
-                setState(() {
-                  _shouldRenderCreateCollectionSheet = true;
-                  _sharedFiles = value;
-                });
-              }
+            } else if (shouldOpenFile == false) {
+              setState(() {
+                _shouldRenderCreateCollectionSheet = true;
+                _sharedFiles = value;
+              });
             }
           });
         }
@@ -668,14 +669,14 @@ class _HomeWidgetState extends State<HomeWidget> {
     final appLinks = AppLinks();
 
     // Handle public album deep links:
-    // - iOS: Universal Links (https://albums.ente.io/...)
-    // - Android: Custom scheme (ente://albums.ente.io/...) from web join feature
+    // - iOS: Universal Links (https://albums.ente.io/... or
+    //   https://albums.ente.com/...)
+    // - Android: App Links (https://albums...) or custom scheme
+    //   (ente://albums...)
     try {
       final initialUri = await appLinks.getInitialLink();
       if (initialUri != null) {
-        if (_isPublicAlbumUrl(initialUri.toString()) &&
-            (Platform.isIOS ||
-                (Platform.isAndroid && initialUri.scheme == "ente"))) {
+        if (_isPublicAlbumDeepLink(initialUri)) {
           await _handlePublicAlbumLink(initialUri, "appLinks.getInitialLink");
         } else {
           _logger.info("Ignoring deep link: $initialUri");
@@ -692,9 +693,7 @@ class _HomeWidgetState extends State<HomeWidget> {
     _publicAlbumLinkSubscription = appLinks.uriLinkStream.listen(
       (Uri? uri) {
         if (uri != null) {
-          if (_isPublicAlbumUrl(uri.toString()) &&
-              (Platform.isIOS ||
-                  (Platform.isAndroid && uri.scheme == "ente"))) {
+          if (_isPublicAlbumDeepLink(uri)) {
             _handlePublicAlbumLink(uri, "appLinks.uriLinkStream");
           } else {
             _logger.info("Ignoring deep link: $uri");
@@ -709,8 +708,26 @@ class _HomeWidgetState extends State<HomeWidget> {
     );
   }
 
+  bool _isPublicAlbumDeepLink(Uri uri) {
+    if (!_isPublicAlbumHost(uri.host)) {
+      return false;
+    }
+    if (Platform.isIOS) {
+      return uri.scheme == "https";
+    }
+    if (Platform.isAndroid) {
+      return uri.scheme == "ente" || uri.scheme == "https";
+    }
+    return false;
+  }
+
   bool _isPublicAlbumUrl(String url) {
-    return url.contains("albums.ente.io");
+    final host = Uri.tryParse(url)?.host ?? "";
+    return _isPublicAlbumHost(host);
+  }
+
+  bool _isPublicAlbumHost(String host) {
+    return host == "albums.ente.io" || host == "albums.ente.com";
   }
 
   @override
@@ -1062,12 +1079,16 @@ class _HomeWidgetState extends State<HomeWidget> {
     if (Configuration.instance.hasConfiguredAccount() || link == null) {
       return;
     }
-    final ott = link.queryParameters["ott"]!;
+    final ott = link.queryParameters["ott"];
+    if (ott == null || ott.isEmpty) {
+      _logger.info("Ignoring auth deep link without ott parameter");
+      return;
+    }
     UserService.instance.verifyEmail(context, ott);
   }
 
   showChangeLog(BuildContext context) async {
-    if (_isShowingChangeLog) {
+    if (_isShowingChangeLog || !mounted) {
       return;
     }
     _isShowingChangeLog = true;
