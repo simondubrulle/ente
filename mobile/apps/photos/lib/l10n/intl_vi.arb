@@ -640,6 +640,7 @@
   "youveNoDuplicateFilesThatCanBeCleared": "Bạn không có tệp nào bị trùng để xóa",
   "success": "Thành công",
   "rateUs": "Xếp hạng ứng dụng",
+  "changeLogReferralCta": "Tặng 10 GB, Nhận 10 GB",
   "remindToEmptyDeviceTrash": "Hãy xóa luôn \"Đã xóa gần đây\" từ \"Cài đặt\" -> \"Lưu trữ\" để lấy lại dung lượng đã giải phóng",
   "youHaveSuccessfullyFreedUp": "Bạn đã giải phóng thành công {storageSaved}!",
   "@youHaveSuccessfullyFreedUp": {
@@ -994,7 +995,7 @@
   "playstoreSubscription": "Gói PlayStore",
   "appstoreSubscription": "Gói AppStore",
   "subAlreadyLinkedErrMessage": "ID {id} của bạn đã được liên kết với một tài khoản Ente khác.\nNếu bạn muốn sử dụng ID {id} này với tài khoản này, vui lòng liên hệ bộ phận hỗ trợ của chúng tôi.",
-  "visitWebToManage": "Vui lòng truy cập web.ente.io để quản lý gói đăng ký",
+  "visitWebToManage": "Vui lòng truy cập {webUrl} để quản lý gói đăng ký",
   "managePaymentMethod": "Quản lý phương thức thanh toán",
   "couldNotUpdateSubscription": "Không thể cập nhật gói",
   "pleaseContactSupportAndWeWillBeHappyToHelp": "Vui lòng liên hệ support@ente.com và chúng tôi rất sẵn sàng giúp đỡ!",
@@ -1450,7 +1451,7 @@
   "loadMessage5": "Mã nguồn và mã hóa của chúng tôi đã được kiểm nghiệm ngoại bộ",
   "loadMessage6": "Bạn có thể chia sẻ liên kết đến album của mình với người thân",
   "loadMessage7": "Các ứng dụng di động của chúng tôi chạy ngầm để mã hóa và sao lưu bất kỳ ảnh nào bạn mới chụp",
-  "loadMessage8": "web.ente.io có một trình tải lên mượt mà",
+  "loadMessage8": "{webUrl} có một trình tải lên mượt mà",
   "loadMessage9": "Chúng tôi sử dụng Xchacha20Poly1305 để mã hóa dữ liệu của bạn",
   "photoDescriptions": "Mô tả ảnh",
   "searchResultFileName": "Tên tệp",
@@ -1663,6 +1664,7 @@
   "successfullyUnhid": "Đã hiện thành công",
   "crashReporting": "Báo cáo sự cố",
   "resumableUploads": "Cho phép tiếp tục tải lên",
+  "fasterUploads": "Tải lên nhanh hơn",
   "addToHiddenAlbum": "Thêm vào album ẩn",
   "moveToHiddenAlbum": "Di chuyển đến album ẩn",
   "fileTypes": "Loại tệp",
@@ -1727,7 +1729,7 @@
   "playOnTv": "Phát album trên TV",
   "pair": "Kết nối",
   "deviceNotFound": "Không tìm thấy thiết bị",
-  "castInstruction": "Truy cập cast.ente.io trên thiết bị bạn muốn kết nối.\n\nNhập mã dưới đây để phát album trên TV của bạn.",
+  "castInstruction": "Truy cập {castUrl} trên thiết bị bạn muốn kết nối.\n\nNhập mã dưới đây để phát album trên TV của bạn.",
   "deviceCodeHint": "Nhập mã",
   "joinDiscord": "Tham gia Discord",
   "locations": "Vị trí",
@@ -2850,6 +2852,10 @@
   "likedYourVideo": "đã thích video của bạn",
   "@likedYourVideo": {
     "description": "Social notification action text shown after a person's name, for example 'John liked your video'. Make sure the translation reads naturally with a name before it, and do not capitalize the first letter."
+  },
+  "likedAVideo": "đã thích một video",
+  "@likedAVideo": {
+    "description": "Social action text shown after a person's name, for example 'John liked a video'. Make sure the translation reads naturally with a name before it, and do not capitalize the first letter."
   },
   "commentedOnYourPhoto": "đã bình luận về video của bạn",
   "@commentedOnYourPhoto": {
