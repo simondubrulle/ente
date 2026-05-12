@@ -662,7 +662,8 @@ class FilesDB with SqlDbBase {
     final results = await db.getAll(
       'SELECT $columnLocalID, $columnUploadedFileID, $columnFileSize FROM $filesTable'
       ' WHERE $columnLocalID IS NOT NULL AND ($columnOwnerID IS NULL OR $columnOwnerID = ?) '
-      'AND ($columnUploadedFileID IS NOT NULL AND $columnUploadedFileID IS NOT -1)',
+      'AND ($columnUploadedFileID IS NOT NULL AND $columnUploadedFileID IS NOT -1) '
+      'AND $columnUpdationTime IS NOT NULL',
       [ownerID],
     );
     final Set<String> localIDs = <String>{};
@@ -2050,6 +2051,14 @@ class FilesDB with SqlDbBase {
       ),
     );
     return deduplicatedFiles;
+  }
+
+  Future<bool> hasAnyFile() async {
+    final db = await instance.sqliteAsyncDB;
+    final rows = await db.getAll(
+      'SELECT 1 FROM $filesTable LIMIT 1',
+    );
+    return rows.isNotEmpty;
   }
 
   Future<FileLoadResult> fetchAllUploadedAndSharedFilesWithLocation(
