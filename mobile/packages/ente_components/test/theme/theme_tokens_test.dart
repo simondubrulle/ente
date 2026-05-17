@@ -7,12 +7,14 @@ void main() {
     test("expose expected spacing, radii, motion, and shadow values", () {
       expect(2, 2);
       expect(Spacing.sm, 8);
-      expect(Spacing.xl, 24);
+      expect(Spacing.xl, 20);
+      expect(Spacing.xxl, 24);
       expect(40, 40);
 
       expect(Radii.xs, 4);
       expect(Radii.md, 12);
       expect(Radii.button, 20);
+      expect(Radii.bottomSheet, 20);
       expect(Radii.buttonRadius, const Radius.circular(20));
       expect(Radii.buttonBorder, const BorderRadius.all(Radius.circular(20)));
 
