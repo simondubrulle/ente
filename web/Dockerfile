@@ -1,6 +1,6 @@
 # Docs - https://github.com/ente-io/ente/blob/main/web/docs/docker.md
 
-FROM node:22 AS builder
+FROM node:24 AS builder
 
 # Install Rust for building ente-wasm
 RUN apt-get update && apt-get install -y curl build-essential && rm -rf /var/lib/apt/lists/* && \
@@ -9,8 +9,8 @@ ENV PATH="/root/.cargo/bin:${PATH}"
 
 WORKDIR /build
 COPY web/ ./web
-COPY rust/core ./rust/core
-COPY rust/contacts ./rust/contacts
+COPY rust/crates/core ./rust/crates/core
+COPY rust/crates/contacts ./rust/crates/contacts
 
 WORKDIR /build/web
 
