@@ -51,10 +51,7 @@ class AlbumListItemWidget extends StatelessWidget {
     );
   }
 
-  Widget _buildItem(
-    BuildContext context, {
-    required bool isSelected,
-  }) {
+  Widget _buildItem(BuildContext context, {required bool isSelected}) {
     final bool isOwner = collection.isOwner(
       Configuration.instance.getUserID() ?? -1,
     );
@@ -92,17 +89,27 @@ class AlbumListItemWidget extends StatelessWidget {
       ),
       subtitle: FutureBuilder<int>(
         future: CollectionsService.instance.getFileCount(collection),
+        initialData: CollectionsService.instance.getCachedFileCount(collection),
         builder: (context, snapshot) {
           String countText = "";
           if (snapshot.hasData) {
-            countText = AppLocalizations.of(context).itemCount(
-              count: snapshot.data!,
-            );
+            countText = AppLocalizations.of(
+              context,
+            ).itemCount(count: snapshot.data!);
           } else if (snapshot.hasError) {
             Logger("AlbumListItemWidget").severe(
               "Failed to fetch file count of collection",
               snapshot.error,
             );
+          } else {
+            final cachedCount = CollectionsService.instance.getCachedFileCount(
+              collection,
+            );
+            if (cachedCount != null) {
+              countText = AppLocalizations.of(
+                context,
+              ).itemCount(count: cachedCount);
+            }
           }
           return _buildSubtitle(
             context,
@@ -182,11 +189,7 @@ class AlbumListItemWidget extends StatelessWidget {
               strokeWidth: 2.0,
             ),
           if (isFavoriteAlbum)
-            Icon(
-              EnteIcons.favoriteFilled,
-              size: 12,
-              color: colors.primary,
-            ),
+            Icon(EnteIcons.favoriteFilled, size: 12, color: colors.primary),
         ],
       ],
     );
@@ -201,9 +204,7 @@ class AlbumListItemWidget extends StatelessWidget {
     final double slotOverlap = getOverlapPadding(AvatarType.medium);
 
     if (isSelected) {
-      return const CollectionSelectedBadge(
-        key: ValueKey("selected"),
-      );
+      return const CollectionSelectedBadge(key: ValueKey("selected"));
     }
     if (!isOwner) {
       return UserAvatarWidget(
