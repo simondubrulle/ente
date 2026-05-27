@@ -65,7 +65,7 @@ class AlbumRowItemWidget extends StatelessWidget {
             icon: HugeIcons.strokeRoundedLink02,
             color: c.publicURLs.first.isExpired
                 ? componentColors.warning
-                : componentColors.specialWhite,
+                : componentColors.textBase,
             size: 8,
             strokeWidth: 2,
           )
@@ -116,21 +116,33 @@ class AlbumRowItemWidget extends StatelessWidget {
                               );
                               return Hero(
                                 tag: heroTag,
+                                flightShuttleBuilder:
+                                    (
+                                      flightContext,
+                                      animation,
+                                      flightDirection,
+                                      fromHeroContext,
+                                      toHeroContext,
+                                    ) => (toHeroContext.widget as Hero).child,
                                 transitionOnUserGestures: true,
-                                child: Stack(
-                                  fit: StackFit.expand,
-                                  children: [
-                                    thumbnailWidget,
-                                    if (shouldShowSharePill)
-                                      const _ThumbnailShareGradientOverlay(),
-                                    if (isSelected)
-                                      Container(
-                                        decoration: BoxDecoration(
-                                          color: componentColors.specialScrim
-                                              .withValues(alpha: 0.4),
+                                child: ClipSmoothRect(
+                                  radius: SmoothBorderRadius(
+                                    cornerRadius: _cornerRadius,
+                                    cornerSmoothing: _cornerSmoothing,
+                                  ),
+                                  child: Stack(
+                                    fit: StackFit.expand,
+                                    children: [
+                                      thumbnailWidget,
+                                      if (isSelected)
+                                        Container(
+                                          decoration: BoxDecoration(
+                                            color: componentColors.specialScrim
+                                                .withValues(alpha: 0.4),
+                                          ),
                                         ),
-                                      ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
                               );
                             } else {
@@ -153,7 +165,10 @@ class AlbumRowItemWidget extends StatelessWidget {
                               transitionOnUserGestures: true,
                               child: Container(
                                 padding: _sharePillPadding,
-                                decoration: _sharePillDecoration(context),
+                                decoration: BoxDecoration(
+                                  color: componentColors.fillLight,
+                                  borderRadius: BorderRadius.circular(40),
+                                ),
                                 child: SizedBox(
                                   height: getAvatarSize(AvatarType.xs),
                                   child: _AlbumRowSharePillContent(
@@ -216,8 +231,7 @@ class AlbumRowItemWidget extends StatelessWidget {
                                           decoration: BoxDecoration(
                                             shape: BoxShape.circle,
                                             border: Border.all(
-                                              color:
-                                                  componentColors.specialWhite,
+                                              color: componentColors.fillLight,
                                               width: _sharedAvatarStrokeWidth,
                                             ),
                                           ),
@@ -340,33 +354,6 @@ class AlbumRowItemWidget extends StatelessWidget {
     );
   }
 
-  BoxDecoration _sharePillDecoration(BuildContext context) {
-    final isDarkMode = Theme.of(context).brightness == Brightness.dark;
-    return BoxDecoration(
-      borderRadius: BorderRadius.circular(40),
-      gradient: RadialGradient(
-        center: Alignment.center,
-        radius: isDarkMode ? 1.28 : 1.18,
-        colors: isDarkMode
-            ? const [
-                Color.fromRGBO(46, 46, 46, 1),
-                Color.fromRGBO(50, 50, 50, 0),
-              ]
-            : const [
-                Color.fromRGBO(255, 255, 255, 0.51),
-                Color.fromRGBO(255, 255, 255, 0.1275),
-              ],
-      ),
-      boxShadow: [
-        BoxShadow(
-          color: Color.fromRGBO(0, 0, 0, isDarkMode ? 0.15 : 0.05),
-          offset: const Offset(0, 1),
-          blurRadius: isDarkMode ? 1.5 : 0.8,
-        ),
-      ],
-    );
-  }
-
   Widget _buildAlbumStatusChips({required bool isOwner}) {
     final bool isFavoriteAlbum = c.type == CollectionType.favorites;
     final bool showPin = isOwner ? c.isPinned : c.hasShareePinned();
@@ -392,32 +379,6 @@ class AlbumRowItemWidget extends StatelessWidget {
   }
 }
 
-class _ThumbnailShareGradientOverlay extends StatelessWidget {
-  const _ThumbnailShareGradientOverlay();
-
-  @override
-  Widget build(BuildContext context) {
-    return IgnorePointer(
-      child: DecoratedBox(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.bottomLeft,
-            end: Alignment.topRight,
-            transform: const GradientRotation(pi / 4),
-            colors: [
-              Colors.black.withValues(alpha: 0.16),
-              Colors.black.withValues(alpha: 0.06),
-              Colors.transparent,
-            ],
-            stops: const [0, 0.42, 0.78],
-          ),
-        ),
-        child: const SizedBox.expand(),
-      ),
-    );
-  }
-}
-
 class _AlbumRowSharePillContent extends StatelessWidget {
   static const _limitCountTo = 2;
 
@@ -428,8 +389,11 @@ class _AlbumRowSharePillContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final displayCount = min(sharees.length, _limitCountTo);
     final hasMore = sharees.length > _limitCountTo;
+    final displayCount = min(
+      sharees.length,
+      hasMore ? _limitCountTo - 1 : _limitCountTo,
+    );
     const type = AvatarType.xs;
     final double avatarSize = getAvatarSize(type);
     final double overlapPadding = getOverlapPadding(type);
@@ -464,6 +428,7 @@ class _AlbumRowSharePillContent extends StatelessWidget {
             sharees.length - displayCount,
             type: moreCountTypeFromAvatarType(type),
             thumbnailView: true,
+            backgroundColor: getUserAvatarColor(context, sharees[displayCount]),
           ),
         ),
       );

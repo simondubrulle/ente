@@ -1127,7 +1127,9 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   Widget _buildTabHeroMode(int tabIndex, int selectedTabIndex, Widget child) {
-    return HeroMode(enabled: tabIndex == selectedTabIndex, child: child);
+    return ClipRect(
+      child: HeroMode(enabled: tabIndex == selectedTabIndex, child: child),
+    );
   }
 
   void _closeDrawerIfOpen(BuildContext context) {
@@ -1191,7 +1193,6 @@ class _HomeWidgetState extends State<HomeWidget> {
     try {
       final action = await updateService.getChangeLogAction(
         locale: Localizations.localeOf(context),
-        isAndroid: Platform.isAndroid,
         isLocalGallery: isLocalGalleryMode,
         isSignedIn: Configuration.instance.isLoggedIn(),
       );
