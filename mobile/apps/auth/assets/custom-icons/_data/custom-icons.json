@@ -38,7 +38,8 @@
       "hex": "189cd9"
     },
     {
-      "title": "Adobe"
+      "title": "Adobe",
+      "hex": "EB1000"
     },
     {
       "title": "Affiliprint",
@@ -63,13 +64,15 @@
     },
     {
       "title": "aliyun",
+      "hex": "F76E05",
       "altNames": [
         "\u963f\u91cc\u4e91"
       ]
     },
     {
       "title": "Allegro",
-      "slug": "allegro"
+      "slug": "allegro",
+      "hex": "FF5A00"
     },
     {
       "title": "Amazon",
@@ -81,11 +84,12 @@
     },
     {
       "title": "Amtrak",
-      "slug": "amtrak"
+      "slug": "amtrak",
+      "hex": "004D6E"
     },
     {
       "title": "Animal Crossing",
-      "slug:": "animal_crossing",
+      "slug": "animal_crossing",
       "altNames": [
         "AnimalCrossing",
         "Bell Tree Forums",
@@ -137,13 +141,6 @@
       "slug": "autenti"
     },
     {
-      "title": "Autenticacion Digital",
-      "slug": "autenticacion-digital",
-      "altNames": [
-        "autenticaciondigital.and.gov.co"
-      ]
-    },
-    {
       "title": "authentik",
       "altNames": [
         "goauthentik"
@@ -173,7 +170,7 @@
     },
     {
       "title": "AzurWare",
-      "slug": "azuware"
+      "slug": "azurware"
     },
     {
       "title": "Badlion",
@@ -288,7 +285,8 @@
       "title": "BitSkins"
     },
     {
-      "title": "Bitstamp"
+      "title": "Bitstamp",
+      "hex": "003B2F"
     },
     {
       "title": "Bitvavo"
@@ -465,6 +463,7 @@
     {
       "title": "Clipper",
       "slug": "clippercard",
+      "hex": "006298",
       "altNames": [
         "ClipperCard",
         "clipper-card",
@@ -876,7 +875,7 @@
     },
     {
       "title": "Gate.io",
-      "slug": "gateio.svg"
+      "slug": "gateio"
     },
     {
       "title": "GERID"
@@ -962,7 +961,8 @@
     },
     {
       "title": "1984 Hosting",
-      "slug": "1984"
+      "slug": "1984",
+      "hex": "000000"
     },
     {
       "title": "HRDocumentBox",
@@ -1036,10 +1036,6 @@
       ]
     },
     {
-      "title": "Impact.com",
-      "slug": "impact"
-    },
-    {
       "title": "Infomaniak"
     },
     {
@@ -1103,6 +1099,7 @@
     {
       "title": "JOYclub",
       "slug": "joyclub",
+      "hex": "000000",
       "altNames": [
         "JOYCE"
       ]
@@ -1120,6 +1117,7 @@
     },
     {
       "title": "Keygen",
+      "hex": "000000",
       "altNames": [
         "keygen.sh"
       ]
@@ -1133,6 +1131,7 @@
     {
       "title": "Kiwix",
       "slug": "kiwix",
+      "hex": "000000",
       "altNames": [
         "kiwix.org",
         "get.kiwix.org",
@@ -1382,6 +1381,7 @@
     {
       "title": "Mobile01",
       "slug": "mobile01",
+      "hex": "2A5E00",
       "altNames": [
         "M01"
       ]
@@ -1426,7 +1426,8 @@
       "slug": "name_com"
     },
     {
-      "title": "nasdaq"
+      "title": "nasdaq",
+      "hex": "0090BA"
     },
     {
       "title": "NekoHosting",
@@ -1454,6 +1455,7 @@
     {
       "title": "NeteaseMail",
       "slug": "netease_mail",
+      "hex": "D81E06",
       "altNames": [
         "\u7f51\u6613\u90ae\u7bb1",
         "Mail.163"
@@ -1534,7 +1536,8 @@
       "title": "Notion"
     },
     {
-      "title": "NuCommunity"
+      "title": "NuCommunity",
+      "hex": "820AD1"
     },
     {
       "title": "NumberBarn",
@@ -1651,6 +1654,7 @@
     {
       "title": "Peking University",
       "slug": "peking_university",
+      "hex": "9A0000",
       "altNames": [
         "\u5317\u4eac\u5927\u5b66",
         "PKU",
@@ -1764,6 +1768,7 @@
     },
     {
       "title": "qiniuyun",
+      "hex": "02A7E0",
       "altNames": [
         "\u4e03\u725b\u4e91",
         "qiniu"
@@ -1771,7 +1776,8 @@
     },
     {
       "title": "Questrade",
-      "slug": "questrade"
+      "slug": "questrade",
+      "hex": "3EA448"
     },
     {
       "title": "R10.net",
@@ -1847,14 +1853,12 @@
       ]
     },
     {
-      "title": "reMarkable"
+      "title": "reMarkable",
+      "hex": "000000"
     },
     {
       "title": "Reolink",
       "slug": "reolink"
-    },
-    {
-      "title": "Restorecord"
     },
     {
       "title": "Restream",
@@ -1867,7 +1871,8 @@
       "title": "Ripio"
     },
     {
-      "title": "RippleMatch"
+      "title": "RippleMatch",
+      "hex": "000000"
     },
     {
       "title": "Rockstar Games",
@@ -1942,7 +1947,8 @@
       "title": "service-bw"
     },
     {
-      "title": "Shakepay"
+      "title": "Shakepay",
+      "hex": "00A2FF"
     },
     {
       "title": "Sherweb",
@@ -1995,10 +2001,12 @@
     },
     {
       "title": "Sony",
-      "slug": "sony"
+      "slug": "sony",
+      "hex": "000000"
     },
     {
-      "title": "SpaceHey"
+      "title": "SpaceHey",
+      "hex": "1D4ED8"
     },
     {
       "title": "Square Enix",
@@ -2062,6 +2070,7 @@
     },
     {
       "title": "T-Mobile",
+      "hex": "E20074",
       "altNames": [
         "T Mobile",
         "T-Mobile ID"
@@ -2157,18 +2166,21 @@
     {
       "title": "ThreatLocker",
       "slug": "threatlocker",
+      "hex": "000000",
       "altNames": [
         "ThreatLocker,Inc"
       ]
     },
     {
       "title": "tianyiyun",
+      "hex": "F3A22F",
       "altNames": [
         "\u5929\u7ffc\u4e91"
       ]
     },
     {
-      "title": "TikTok"
+      "title": "TikTok",
+      "hex": "000000"
     },
     {
       "title": "Titan"
@@ -2217,6 +2229,7 @@
     },
     {
       "title": "TRowePrice",
+      "hex": "00CFEC",
       "altNames": [
         "T Rowe Price",
         "TRowe Price",
@@ -2434,7 +2447,8 @@
     },
     {
       "title": "xAI",
-      "slug": "xai"
+      "slug": "xai",
+      "hex": "000000"
     },
     {
       "title": "Xbox",
@@ -2475,7 +2489,8 @@
     },
     {
       "title": "Zivver",
-      "slug": "zivver"
+      "slug": "zivver",
+      "hex": "000000"
     },
     {
       "title": "Zoom"

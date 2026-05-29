@@ -26,7 +26,9 @@ import "package:photos/ui/viewer/search_tab/people_section.dart";
 import "package:photos/ui/wrapped/wrapped_discovery_section.dart";
 
 class SearchTab extends StatefulWidget {
-  const SearchTab({super.key});
+  const SearchTab({super.key, this.shouldConsumeBackNotifier});
+
+  final ValueNotifier<bool>? shouldConsumeBackNotifier;
 
   @override
   State<SearchTab> createState() => _SearchTabState();
@@ -68,7 +70,12 @@ class _SearchTabState extends State<SearchTab> {
       children: [
         ColoredBox(
           color: headerColor,
-          child: const SafeArea(bottom: false, child: SearchWidget()),
+          child: SafeArea(
+            bottom: false,
+            child: SearchWidget(
+              shouldConsumeBackNotifier: widget.shouldConsumeBackNotifier,
+            ),
+          ),
         ),
         Expanded(
           child: AllSectionsExamplesProvider(
@@ -102,6 +109,8 @@ class _AllSearchSectionsState extends State<AllSearchSections> {
   @override
   Widget build(BuildContext context) {
     final searchTypes = SectionType.values.toList(growable: true);
+    final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
+    final bottomPadding = keyboardInset > 130.0 ? keyboardInset + 50.0 : 180.0;
 
     return Padding(
       padding: const EdgeInsets.only(top: 4),
@@ -144,7 +153,7 @@ class _AllSearchSectionsState extends State<AllSearchSections> {
                     faceSectionIndex < sectionResultsByType.length &&
                     sectionResultsByType.elementAt(faceSectionIndex).isNotEmpty;
                 return ListView.builder(
-                      padding: const EdgeInsets.only(bottom: 180),
+                      padding: EdgeInsets.only(bottom: bottomPadding),
                       physics: const BouncingScrollPhysics(),
                       itemCount: searchTypes.length + 1,
                       itemBuilder: (context, index) {
@@ -266,7 +275,7 @@ class _RitualsDiscoverySection extends StatelessWidget {
       return const SizedBox.shrink();
     }
     return const Padding(
-      padding: EdgeInsets.symmetric(vertical: 8),
+      padding: EdgeInsets.only(top: 8, bottom: 24),
       child: RitualsBanner(),
     );
   }

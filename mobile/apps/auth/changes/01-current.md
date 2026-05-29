@@ -1,3 +1,9 @@
+- App icon picker to customize your home screen appearance
+- New QR code dialog with branded design for sharing codes
+- Import 2FA codes from andOTP encrypted backups
+- Enhanced search and copy with keyboard shortcuts on desktop (press '/' to search, Enter to select, 'C' to copy, 'N' for next code)
+- Refreshed empty home screen when no codes are imported
+- Bug fixes and performance improvements
 - Upgraded Auth to Flutter 3.38.10 and Android target SDK 36
 - Worked around Android search and app-lock password autofocus not reliably opening the keyboard on app start ([#279](https://github.com/ente-io/ente/issues/279), [#10614](https://github.com/ente-io/ente/issues/10614))
 - Made overflowing Auth tag strips scrollable with desktop mouse wheel and drag interactions, and made tag chips reachable by keyboard Tab and selectable with Enter or Space ([#4079](https://github.com/ente-io/ente/issues/4079), [#1811](https://github.com/ente-io/ente/issues/1811), [#1929](https://github.com/ente-io/ente/issues/1929), [#4686](https://github.com/ente-io/ente/issues/4686))
@@ -6,6 +12,8 @@
 - Added custom icons for 1984 Hosting, Art Fight, BJ-Share, CatRealm, CoinMarketCap, Cove Backup, eClinicalWorks, HaloPSA, JumpCloud, Patchmon, Racket Coach, RustDesk, Sherweb, Smogon, Sony, Trade Republic, Zabbix, and Zyxel Nebula
 - Updated the Availity and Mozilla custom icons, and fixed several multi-color custom icons rendering as single-color masks ([#10281](https://github.com/ente-io/ente/pull/10281), [#10328](https://github.com/ente-io/ente/pull/10328), [#10453](https://github.com/ente-io/ente/pull/10453), [#10710](https://github.com/ente-io/ente/pull/10710))
 - Fixed the CoinMarketCap custom icon being invisible in dark mode ([#10615](https://github.com/ente-io/ente/issues/10615))
+- Fixed several single-color custom icons rendering with the wrong color or disappearing in dark mode ([#7828](https://github.com/ente-io/ente/issues/7828))
+- Fixed some Simple Icons and custom icons not loading in the Auth icon picker because their registry filenames were not resolved correctly
 - Fixed Auth desktop custom icons flashing for Amazon and other monochrome icons ([#8264](https://github.com/ente-io/ente/issues/8264), [#8499](https://github.com/ente-io/ente/issues/8499))
 - Fixed missing Auth tray icons in sandboxed Linux builds ([#4608](https://github.com/ente-io/ente/issues/4608), [#7815](https://github.com/ente-io/ente/issues/7815), [flathub/io.ente.auth#75](https://github.com/flathub/io.ente.auth/issues/75))
 - Fixed Auth tray close, exit, and menu actions on Windows ([#8164](https://github.com/ente-io/ente/issues/8164), [#4360](https://github.com/ente-io/ente/issues/4360), [#3518](https://github.com/ente-io/ente/issues/3518))
