@@ -1,6 +1,6 @@
 # App release process
 
-Auth, Locker, and Ensu use the same release process, as described here.
+Photos, Auth, Locker, and Ensu use the same release process, as described here.
 
 > For simplicity, the following assumes we're trying to release Ensu, that main is `0.1.16-beta`, we want to release `0.1.16` and move main to `0.1.17-beta`.
 >
@@ -30,6 +30,10 @@ This:
 1. Creates a release branch `release/ensu-v0.1.16` with the version set to `0.1.16`
 2. Pushes the branch, which triggers `ensu-build.yml` and creates the draft `ensu-v0.1.16-rc` GitHub release
 3. Removes the `ensu-v0.1.16-beta` draft and tag
+
+> [!TIP]
+>
+> You can trigger the workflow using GitHub's UI also.
 
 The workflow also opens a PR to move `main` to `0.1.17-beta`. Merge that PR after it is created. Scheduled nightlies are skipped while the release branch exists.
 
