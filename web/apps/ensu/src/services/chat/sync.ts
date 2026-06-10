@@ -1,3 +1,4 @@
+import { isTauriRuntime } from "@/services/tauri-runtime";
 import { savedLocalUser } from "ente-accounts/services/accounts-db";
 import {
     authenticatedRequestHeaders,
@@ -8,7 +9,6 @@ import { getKV, setKV } from "ente-base/kv";
 import log from "ente-base/log";
 import { apiOrigin, apiURL } from "ente-base/origins";
 import { savedAuthToken } from "ente-base/token";
-import { isTauriRuntime } from "services/tauri-runtime";
 import { masterKeyFromSession } from "../session";
 import { decryptAttachmentBytes, encryptAttachmentBytes } from "./attachments";
 import { cachedLocalChatKey } from "./chatKey";
@@ -556,7 +556,7 @@ const applyDiff = async (response: DiffResponse, chatKey: string) => {
             continue;
         }
 
-        let decrypted: { title?: string } = {};
+        let decrypted: { title?: string };
         try {
             decrypted = (await decryptChatPayload(
                 {
@@ -957,7 +957,7 @@ const ensureAttachmentEncryptedForUpload = async (
     attachmentId: string,
     sessionUuid: string,
     chatKey: string,
-): Promise<Uint8Array> => {
+): Promise<Uint8Array<ArrayBuffer>> => {
     const bytes = await readAttachmentBytes(attachmentId);
 
     try {

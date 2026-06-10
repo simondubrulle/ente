@@ -1,10 +1,10 @@
-import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
-import { Box, IconButton } from "@mui/material";
-import useMediaQuery from "@mui/material/useMediaQuery";
 import type {
     PasteResolvedMode,
     PasteThemeTokens,
-} from "features/paste/theme/pasteThemeTokens";
+} from "@/features/paste/theme/pasteThemeTokens";
+import CloseRoundedIcon from "@mui/icons-material/CloseRounded";
+import { Box, IconButton } from "@mui/material";
+import useMediaQuery from "@mui/material/useMediaQuery";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
     getPasteQrCodeOptions,
@@ -64,9 +64,8 @@ export const PasteQrCode = ({
 
         const renderQr = async () => {
             try {
-                const qrCodeStylingModule = (await import(
-                    "qr-code-styling"
-                )) as unknown;
+                const qrCodeStylingModule =
+                    (await import("qr-code-styling")) as unknown;
                 if (!isActive) return;
 
                 const container = qrContainerRef.current;

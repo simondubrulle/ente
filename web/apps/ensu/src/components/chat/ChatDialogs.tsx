@@ -1,3 +1,4 @@
+import { isTauriRuntime as detectTauriAppRuntime } from "@/services/tauri-runtime";
 import {
     ArrowRight01Icon,
     Bug01Icon,
@@ -31,7 +32,6 @@ import {
     type NotificationAttributes,
 } from "ente-new/photos/components/Notification";
 import React, { memo } from "react";
-import { isTauriRuntime as detectTauriAppRuntime } from "services/tauri-runtime";
 
 interface IconProps {
     size: number;
@@ -177,9 +177,8 @@ export const ChatDialogs = memo(
         const openExternalUrl = async (url: string) => {
             if (isTauriRuntime || detectTauriAppRuntime()) {
                 try {
-                    const { openUrl } = await import(
-                        "@tauri-apps/plugin-opener"
-                    );
+                    const { openUrl } =
+                        await import("@tauri-apps/plugin-opener");
                     await openUrl(url);
                     return;
                 } catch {
