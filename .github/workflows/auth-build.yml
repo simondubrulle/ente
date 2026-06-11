@@ -34,6 +34,7 @@ jobs:
             release_title: ${{ steps.prepare.outputs.release_title }}
             release_body: ${{ steps.prepare.outputs.release_body }}
             release_body_grouped: ${{ steps.prepare.outputs.release_body_grouped }}
+            has_new_changes: ${{ steps.prepare.outputs.has_new_changes }}
             play_store_release_notes: ${{ steps.prepare.outputs.play_store_release_notes }}
             artifact_stem: ${{ steps.prepare.outputs.artifact_stem }}
 
@@ -559,20 +560,14 @@ jobs:
                   BUILD_CERTIFICATE_BASE64: ${{ secrets.MAC_OS_CERTIFICATE }}
                   P12_PASSWORD: ${{ secrets.MAC_OS_CERTIFICATE_PASSWORD }}
 
-            - name: Install build dependencies
-              run: |
-                  pip3 install setuptools --break-system-packages
-                  npm install -g appdmg
-
             - name: Create artifacts directory
               run: mkdir artifacts
 
             - name: Build macOS DMG
               run: |
                   flutter config --enable-macos-desktop
-                  dart pub global activate --source git https://github.com/ente-io/fastforgefork --git-ref develop --git-path packages/fastforge
-                  fastforge package --platform=macos --targets=dmg --skip-clean
-                  mv dist/**/*-macos.dmg "artifacts/${ARTIFACT_STEM}.dmg"
+                  flutter build macos --release
+                  ./macos/packaging/dmg/make-dmg.sh "build/macos/Build/Products/Release/Ente Auth.app" "artifacts/${ARTIFACT_STEM}.dmg"
 
             - name: Code sign DMG
               run: |
@@ -774,6 +769,7 @@ jobs:
               run: gh release upload "${RELEASE_TAG}" SHA256SUMS --clobber
 
             - name: Notify Discord
+              if: github.event_name != 'schedule' || needs.build-metadata.outputs.has_new_changes == 'true'
               continue-on-error: true
               env:
                   DISCORD_WEBHOOK: ${{ secrets.DISCORD_INTERNAL_RELEASE_WEBHOOK }}
