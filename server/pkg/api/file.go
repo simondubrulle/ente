@@ -56,6 +56,7 @@ func (h *FileHandler) CreateOrUpdate(c *gin.Context) {
 			handler.Error(c, stacktrace.Propagate(err, ""))
 			return
 		}
+		h.Controller.AddOutstandingURLs(userID, -2)
 		c.JSON(http.StatusOK, file)
 		return
 	}
@@ -64,6 +65,7 @@ func (h *FileHandler) CreateOrUpdate(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
 	}
+	h.Controller.AddOutstandingURLs(userID, -2)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -131,6 +133,7 @@ func (h *FileHandler) Update(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
 	}
+	h.Controller.AddOutstandingURLs(userID, -2)
 	c.JSON(http.StatusOK, response)
 }
 
@@ -175,6 +178,10 @@ func (h *FileHandler) GetUploadURLV2(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
 	}
+	if !h.Controller.AddOutstandingURLs(userID, 1) {
+		handler.Error(c, stacktrace.Propagate(ente.ErrTooManyBadRequest, "too many outstanding upload URLs"))
+		return
+	}
 	c.JSON(http.StatusOK, url)
 }
 
@@ -208,6 +215,10 @@ func (h *FileHandler) GetMultipartUploadURLV2(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
 	}
+	if !h.Controller.AddOutstandingURLs(userID, 1) {
+		handler.Error(c, stacktrace.Propagate(ente.ErrTooManyBadRequest, "too many outstanding upload URLs"))
+		return
+	}
 	c.JSON(http.StatusOK, upload)
 }
 
@@ -223,32 +234,6 @@ func (h *FileHandler) Get(c *gin.Context) {
 	c.Redirect(http.StatusTemporaryRedirect, url)
 }
 
-// GetUsingFusedLookup redirects the request to the file location using a temporary
-// fused access-check and object lookup path.
-func (h *FileHandler) GetUsingFusedLookup(c *gin.Context) {
-	userID, fileID := getUserAndFileIDs(c)
-	url, err := h.Controller.GetFileURLUsingFusedLookup(c, userID, fileID)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-	h.logBadRedirect(c)
-	c.Redirect(http.StatusTemporaryRedirect, url)
-}
-
-// GetV2 returns the URL of the file to client
-func (h *FileHandler) GetV2(c *gin.Context) {
-	userID, fileID := getUserAndFileIDs(c)
-	url, err := h.Controller.GetFileURL(c, userID, fileID)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"url": url,
-	})
-}
-
 // GetThumbnail redirects the request to the file's thumbnail location
 func (h *FileHandler) GetThumbnail(c *gin.Context) {
 	userID, fileID := getUserAndFileIDs(c)
@@ -259,32 +244,6 @@ func (h *FileHandler) GetThumbnail(c *gin.Context) {
 	}
 	h.logBadRedirect(c)
 	c.Redirect(http.StatusTemporaryRedirect, url)
-}
-
-// GetThumbnailUsingFusedLookup redirects the request to the file's thumbnail
-// location using a temporary fused access-check and object lookup path.
-func (h *FileHandler) GetThumbnailUsingFusedLookup(c *gin.Context) {
-	userID, fileID := getUserAndFileIDs(c)
-	url, err := h.Controller.GetThumbnailURLUsingFusedLookup(c, userID, fileID)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-	h.logBadRedirect(c)
-	c.Redirect(http.StatusTemporaryRedirect, url)
-}
-
-// GetThumbnailV2 returns the URL of the thumbnail to the client
-func (h *FileHandler) GetThumbnailV2(c *gin.Context) {
-	userID, fileID := getUserAndFileIDs(c)
-	url, err := h.Controller.GetThumbnailURL(c, userID, fileID)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"url": url,
-	})
 }
 
 // Trash moves the given files to the trash bin

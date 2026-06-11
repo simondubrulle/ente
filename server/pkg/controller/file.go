@@ -40,23 +40,26 @@ import (
 
 // FileController exposes functions to retrieve and access encrypted files
 type FileController struct {
-	FileRepo              *repo.FileRepository
-	ObjectRepo            *repo.ObjectRepository
-	ObjectCleanupRepo     *repo.ObjectCleanupRepository
-	TrashRepository       *repo.TrashRepository
-	UserRepo              *repo.UserRepository
-	UsageCtrl             *UsageController
-	CollectionRepo        *repo.CollectionRepository
-	TaskLockingRepo       *repo.TaskLockRepository
-	QueueRepo             *repo.QueueRepository
-	AccessCtrl            access.Controller
-	S3Config              *s3config.S3Config
-	ObjectCleanupCtrl     *ObjectCleanupController
-	LockController        *lock.LockController
-	EmailNotificationCtrl *email.EmailNotificationController
-	DiscordController     *discord.DiscordController
-	HostName              string
-	cleanupCronRunning    bool
+	FileRepo               *repo.FileRepository
+	ObjectRepo             *repo.ObjectRepository
+	ObjectCleanupRepo      *repo.ObjectCleanupRepository
+	TrashRepository        *repo.TrashRepository
+	UserRepo               *repo.UserRepository
+	UsageCtrl              *UsageController
+	CollectionRepo         *repo.CollectionRepository
+	TaskLockingRepo        *repo.TaskLockRepository
+	QueueRepo              *repo.QueueRepository
+	AccessCtrl             access.Controller
+	S3Config               *s3config.S3Config
+	ObjectCleanupCtrl      *ObjectCleanupController
+	LockController         *lock.LockController
+	EmailNotificationCtrl  *email.EmailNotificationController
+	DiscordController      *discord.DiscordController
+	HostName               string
+	cleanupCronRunning     bool
+	outstandingURLsMu      sync.Mutex
+	outstandingURLs        map[int64]int // userID -> minted-but-uncommitted upload URLs
+	outstandingURLsResetAt gTime.Time
 }
 
 // StorageOverflowAboveSubscriptionLimit is the amount (50 MB) by which user can go beyond their storage limit
@@ -320,6 +323,26 @@ func (c *FileController) Update(ctx context.Context, userID int64, file ente.Fil
 	return response, nil
 }
 
+// AddOutstandingURLs adjusts the count of upload URLs the user has minted
+// but not yet committed via /files. It will return false if the user has
+// too many outstanding URLs.
+func (c *FileController) AddOutstandingURLs(userID int64, n int) bool {
+	c.outstandingURLsMu.Lock()
+	defer c.outstandingURLsMu.Unlock()
+	if now := gTime.Now(); now.After(c.outstandingURLsResetAt) {
+		c.outstandingURLs = map[int64]int{} // periodically discard stranded counts
+		c.outstandingURLsResetAt = now.Add(gTime.Hour)
+	}
+	total := max(c.outstandingURLs[userID]+n, 0)
+	ok := total <= 250
+	if !ok {
+		go c.DiscordController.NotifyPotentialAbuse(fmt.Sprintf("Too many outstanding upload URLs for user %d", userID))
+		total = 0 // so that stranded counts don't lock the user out
+	}
+	c.outstandingURLs[userID] = total
+	return ok
+}
+
 // GetUploadURLs returns a bunch of presigned URLs for uploading files
 func (c *FileController) GetUploadURLs(ctx context.Context, userID int64, count int, app ente.App, ignoreLimit bool) ([]ente.UploadURL, error) {
 	err := c.UsageCtrl.CanUploadFile(ctx, userID, nil, app)
@@ -385,49 +408,11 @@ func (c *FileController) GetUploadURLWithMetadata(ctx context.Context, userID in
 
 // GetFileURL verifies permissions and returns a presigned url to the requested file
 func (c *FileController) GetFileURL(ctx *gin.Context, userID int64, fileID int64) (string, error) {
-	if err := c.AccessCtrl.CanAccessFile(ctx, &access.CanAccessFileParams{
-		ActorUserID: userID,
-		FileIDs:     []int64{fileID},
-	}); err != nil {
-		return "", stacktrace.Propagate(err, "")
-	}
-	url, err := c.getSignedURLForType(ctx, fileID, ente.FILE)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			go c.CleanUpStaleCollectionFiles(userID, fileID)
-		}
-		return "", stacktrace.Propagate(err, "")
-	}
-	return url, nil
+	return c.getSignedURLForAccessibleObject(ctx, userID, fileID, ente.FILE)
 }
 
 // GetThumbnailURL verifies permissions and returns a presigned url to the requested thumbnail
 func (c *FileController) GetThumbnailURL(ctx *gin.Context, userID int64, fileID int64) (string, error) {
-	if err := c.AccessCtrl.CanAccessFile(ctx, &access.CanAccessFileParams{
-		ActorUserID: userID,
-		FileIDs:     []int64{fileID},
-	}); err != nil {
-		return "", stacktrace.Propagate(err, "")
-	}
-	url, err := c.getSignedURLForType(ctx, fileID, ente.THUMBNAIL)
-	if err != nil {
-		if errors.Is(err, sql.ErrNoRows) {
-			go c.CleanUpStaleCollectionFiles(userID, fileID)
-		}
-		return "", stacktrace.Propagate(err, "")
-	}
-	return url, nil
-}
-
-// GetFileURLUsingFusedLookup verifies permissions and returns a presigned URL
-// using the temporary fused access-check and object lookup path.
-func (c *FileController) GetFileURLUsingFusedLookup(ctx *gin.Context, userID int64, fileID int64) (string, error) {
-	return c.getSignedURLForAccessibleObject(ctx, userID, fileID, ente.FILE)
-}
-
-// GetThumbnailURLUsingFusedLookup verifies permissions and returns a presigned
-// URL using the temporary fused access-check and object lookup path.
-func (c *FileController) GetThumbnailURLUsingFusedLookup(ctx *gin.Context, userID int64, fileID int64) (string, error) {
 	return c.getSignedURLForAccessibleObject(ctx, userID, fileID, ente.THUMBNAIL)
 }
 
