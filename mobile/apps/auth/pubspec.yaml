@@ -21,7 +21,7 @@ dependencies:
   convert: 3.1.2
   device_info_plus: 11.5.0
   dio: 5.9.2
-  dots_indicator: 3.1.0
+  dots_indicator: 4.0.1
   dotted_border: 3.1.0
   dropdown_button2: 2.3.9
   email_validator: 3.0.0
@@ -100,7 +100,7 @@ dependencies:
       url: https://github.com/ente-io/move_to_background.git
       ref: 0cdfeed654d79636eff0c57110f3f6ad5801ba2f
   native_dio_adapter: 1.5.1
-  otp: 3.1.4
+  otp: 3.2.0
   package_info_plus: 8.3.1
   password_strength: 0.2.0
   path: 1.9.1
@@ -109,10 +109,7 @@ dependencies:
   pointycastle: 3.9.1
   privacy_screen: 0.0.8
   protobuf: 4.1.0
-  qr_code_scanner: # no package updates on pub.dev
-    git:
-      url: https://github.com/juliuscanute/qr_code_scanner
-      ref: a2d31633d4744f72ada87cfa85d221358ab082af
+  qr_code_scanner_plus: 2.1.2
   qr_flutter: 4.1.0
   saf_stream: 2.0.0
   saf_util: 2.0.0
