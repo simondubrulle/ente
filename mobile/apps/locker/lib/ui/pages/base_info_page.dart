@@ -2,10 +2,7 @@ import 'dart:io';
 
 import 'package:ente_components/ente_components.dart';
 import 'package:ente_events/event_bus.dart';
-import 'package:ente_ui/components/alert_bottom_sheet.dart';
 import "package:ente_ui/components/title_bar_title_widget.dart";
-import 'package:ente_ui/theme/ente_theme.dart';
-import 'package:ente_ui/utils/dialog_util.dart';
 import 'package:ente_ui/utils/toast_util.dart';
 import "package:ente_utils/email_util.dart";
 import 'package:flutter/material.dart';
@@ -22,6 +19,8 @@ import 'package:locker/services/info_file_service.dart';
 import 'package:locker/services/trash/models/trash_file.dart';
 import 'package:locker/ui/components/collection_selection_widget.dart';
 import 'package:locker/ui/pages/home_page.dart';
+import "package:locker/utils/bottom_sheet_illustration.dart";
+import "package:locker/utils/error_sheet.dart";
 import 'package:logging/logging.dart';
 
 enum InfoPageMode { view, edit }
@@ -282,7 +281,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
       }
     } catch (e) {
       if (mounted) {
-        await showGenericErrorBottomSheet(context: context, error: e);
+        await showLockerErrorSheet(context, e);
       }
     }
   }
@@ -474,20 +473,23 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
   }
 
   Future<void> _showUploadErrorSheet(String title, String message) async {
-    await showAlertBottomSheet(
-      context,
-      title: title,
-      message: message,
-      assetPath: "assets/warning-grey.png",
+    await showBottomSheetComponent(
+      context: context,
       isDismissible: true,
-      buttons: [
-        ButtonComponent(
-          label: context.l10n.contactSupport,
-          onTap: () async {
-            await sendEmail(context, to: "support@ente.com", body: message);
-          },
-        ),
-      ],
+      enableDrag: true,
+      builder: (_) => BottomSheetComponent(
+        title: title,
+        message: message,
+        illustration: LockerBottomSheetIllustration.warningGrey,
+        actions: [
+          ButtonComponent(
+            label: context.l10n.contactSupport,
+            onTap: () async {
+              await sendEmail(context, to: "support@ente.com", body: message);
+            },
+          ),
+        ],
+      ),
     );
   }
 
@@ -510,8 +512,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
     bool isSecret = false,
     int? maxLines,
   }) {
-    final colorScheme = getEnteColorScheme(context);
-    final textTheme = getEnteTextTheme(context);
+    final colors = context.componentColors;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -519,7 +520,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
         if (label.isNotEmpty) ...[
           Text(
             label,
-            style: textTheme.body,
+            style: TextStyles.body,
           ), // Use default style to match FormTextInputWidget
           const SizedBox(height: 12),
         ],
@@ -533,12 +534,12 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
                   width: double.infinity,
                   padding: const EdgeInsets.fromLTRB(12, 12, 12, 12),
                   decoration: BoxDecoration(
-                    color: colorScheme.fillFaint,
+                    color: colors.fillDark,
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
                     isSecret ? '••••••••' : value,
-                    style: textTheme.body,
+                    style: TextStyles.body,
                     maxLines: maxLines,
                     overflow: maxLines != null ? TextOverflow.ellipsis : null,
                   ),
@@ -554,7 +555,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
                       child: Icon(
                         Icons.copy,
                         size: 16,
-                        color: colorScheme.textMuted,
+                        color: colors.textLight,
                       ),
                     ),
                   ),
@@ -603,7 +604,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
   Widget build(BuildContext context) {
     final isViewMode = _currentMode == InfoPageMode.view;
     final isEditMode = _currentMode == InfoPageMode.edit;
-    final colorScheme = getEnteColorScheme(context);
+    final colors = context.componentColors;
 
     return PopScope(
       canPop: false,
@@ -614,7 +615,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
       },
       child: Scaffold(
         appBar: AppBar(
-          backgroundColor: colorScheme.backgroundBase,
+          backgroundColor: colors.backgroundBase,
           surfaceTintColor: Colors.transparent,
           toolbarHeight: 48,
           leadingWidth: 48,
@@ -642,7 +643,7 @@ abstract class BaseInfoPageState<T extends InfoData, W extends BaseInfoPage<T>>
               ),
           ],
         ),
-        backgroundColor: colorScheme.backgroundBase,
+        backgroundColor: colors.backgroundBase,
         body: GestureDetector(
           onTap: Platform.isIOS
               ? () {
