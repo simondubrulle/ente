@@ -11,6 +11,7 @@ import 'package:photos/db/file_updation_db.dart';
 import 'package:photos/db/files_db.dart';
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
+import 'package:photos/module/upload/model/media_upload_data.dart';
 import 'package:photos/utils/file_uploader_util.dart';
 import 'package:photos/utils/file_util.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -220,18 +221,6 @@ class LocalFileUpdateService {
     // succeeds.
     await _deleteCopiedIOSUploadFile(mediaUploadData.sourceFile);
     return mediaUploadData;
-  }
-
-  Future<(MediaUploadData, int)> getUploadDataWithSizeSize(
-    EnteFile file,
-  ) async {
-    final mediaUploadData = await getUploadDataFromEnteFile(file);
-    final int size = await mediaUploadData.sourceFile!.length();
-    // delete the file from app's internal cache if it was copied to app
-    // for upload. Shared Media should only be cleared when the upload
-    // succeeds.
-    await _deleteCopiedIOSUploadFile(mediaUploadData.sourceFile);
-    return (mediaUploadData, size);
   }
 
   Future<void> _deleteCopiedIOSUploadFile(File? sourceFile) async {

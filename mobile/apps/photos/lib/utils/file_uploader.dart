@@ -30,6 +30,7 @@ import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
 import "package:photos/models/metadata/file_magic.dart";
 import "package:photos/models/user_details.dart";
+import 'package:photos/module/upload/model/media_upload_data.dart';
 import 'package:photos/module/upload/model/upload_url.dart';
 import "package:photos/module/upload/service/multipart.dart";
 import "package:photos/service_locator.dart";
@@ -50,7 +51,6 @@ import "package:uuid/uuid.dart";
 class FileUploader {
   static const kMaximumConcurrentUploads = 4;
   static const kMaximumConcurrentVideoUploads = 2;
-  static const kMaximumThumbnailCompressionAttempts = 2;
   static const kMaximumUploadAttempts = 4;
   static const kMaxFileSize10Gib = 10737418240;
   static const kBlockedUploadsPollFrequency = Duration(seconds: 2);
@@ -1643,6 +1643,6 @@ class FileUploadItem {
   });
 }
 
-enum UploadStatus { notStarted, inProgress, inBackground, completed }
+enum UploadStatus { notStarted, inProgress, inBackground }
 
 enum ProcessType { background, foreground }

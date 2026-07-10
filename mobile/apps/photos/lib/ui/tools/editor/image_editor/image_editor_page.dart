@@ -134,6 +134,10 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
       newFile.generatedID = await FilesDB.instance.insertAndGetId(newFile);
       Bus.instance.fire(LocalPhotosUpdatedEvent([newFile], source: "editSave"));
       unawaited(SyncService.instance.sync());
+      if (!mounted) {
+        await dialog.hide();
+        return;
+      }
       showShortToast(context, AppLocalizations.of(context).editsSaved);
       _logger.info("Original file " + widget.originalFile.toString());
       _logger.info("Saved edits to file " + newFile.toString());
@@ -149,6 +153,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
         selectionIndex = files.length - 1;
       }
       await dialog.hide();
+      if (!mounted) return;
       replacePage(
         context,
         DetailPage(
@@ -160,7 +165,9 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
       );
     } catch (e, s) {
       await dialog.hide();
-      showToast(context, AppLocalizations.of(context).oopsCouldNotSaveEdits);
+      if (mounted) {
+        showToast(context, AppLocalizations.of(context).oopsCouldNotSaveEdits);
+      }
       _logger.severe("Failed to save image edits", e, s);
     } finally {
       if (hasStoppedChangeNotify) {
@@ -194,6 +201,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
       body: AppLocalizations.of(context).doYouWantToDiscardTheEditsYouHaveMade,
       actionSheetType: ActionSheetType.defaultActionSheet,
     );
+    if (!context.mounted) return;
     if (actionResult?.action != null &&
         actionResult!.action == ButtonAction.first) {
       replacePage(context, DetailPage(widget.detailPageConfig));
