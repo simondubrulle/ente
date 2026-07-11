@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
+
 import 'package:collection/collection.dart';
 import "package:dio/dio.dart";
 import 'package:ente_crypto/ente_crypto.dart';
@@ -28,26 +29,27 @@ import "package:photos/models/backup/backup_item.dart";
 import "package:photos/models/backup/backup_item_status.dart";
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
-import "package:photos/models/metadata/file_magic.dart";
 import "package:photos/models/user_details.dart";
+import "package:photos/module/download/file.dart";
+import "package:photos/module/metadata/exif.dart";
 import 'package:photos/module/upload/model/media_upload_data.dart';
 import 'package:photos/module/upload/model/upload_url.dart';
 import "package:photos/module/upload/service/multipart.dart";
+import "package:photos/module/upload/upload_data.dart";
+import "package:photos/module/upload/upload_metadata.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/account/user_service.dart";
 import 'package:photos/services/collections_service.dart';
 import 'package:photos/services/file_magic_service.dart';
 import 'package:photos/services/sync/local_sync_service.dart';
 import 'package:photos/services/sync/sync_service.dart';
-import "package:photos/utils/exif_util.dart";
 import "package:photos/utils/file_key.dart";
-import 'package:photos/utils/file_uploader_util.dart';
-import "package:photos/utils/file_util.dart";
 import "package:photos/utils/network_util.dart";
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:tuple/tuple.dart';
 import "package:uuid/uuid.dart";
 
+/// Coordinates encryption, transfer, persistence, and retries for file uploads.
 class FileUploader {
   static const kMaximumConcurrentUploads = 4;
   static const kMaximumConcurrentVideoUploads = 2;
@@ -223,20 +225,11 @@ class FileUploader {
   }
 
   void clearQueue(final Error reason) {
-    final List<String> uploadsToBeRemoved = [];
-    _queue.entries
+    final pendingUploadIDs = _queue.entries
         .where((entry) => entry.value.status == UploadStatus.notStarted)
-        .forEach((pendingUpload) {
-          uploadsToBeRemoved.add(pendingUpload.key);
-        });
-    for (final id in uploadsToBeRemoved) {
-      _queue.remove(id)?.completer.completeError(reason);
-      _allBackups[id] = _allBackups[id]!.copyWith(
-        status: BackupItemStatus.retry,
-        error: reason,
-      );
-      Bus.instance.fire(BackupUpdatedEvent(_allBackups));
-    }
+        .map((entry) => entry.key)
+        .toList();
+    _removePendingUploads(pendingUploadIDs, reason);
     _totalCountInUploadSession = 0;
   }
 
@@ -267,26 +260,30 @@ class FileUploader {
     final bool Function(EnteFile) fn,
     final Error reason,
   ) {
-    final List<String> uploadsToBeRemoved = [];
-    _queue.entries
-        .where((entry) => entry.value.status == UploadStatus.notStarted)
-        .forEach((pendingUpload) {
-          if (fn(pendingUpload.value.file)) {
-            uploadsToBeRemoved.add(pendingUpload.key);
-          }
-        });
-    for (final id in uploadsToBeRemoved) {
-      _queue.remove(id)?.completer.completeError(reason);
-      _allBackups[id] = _allBackups[id]!.copyWith(
+    final pendingUploadIDs = _queue.entries
+        .where(
+          (entry) =>
+              entry.value.status == UploadStatus.notStarted &&
+              fn(entry.value.file),
+        )
+        .map((entry) => entry.key)
+        .toList();
+    _removePendingUploads(pendingUploadIDs, reason);
+    _logger.info(
+      'number of entries removed from queue ${pendingUploadIDs.length}',
+    );
+    _totalCountInUploadSession -= pendingUploadIDs.length;
+  }
+
+  void _removePendingUploads(List<String> localIDs, Error reason) {
+    for (final localID in localIDs) {
+      _queue.remove(localID)?.completer.completeError(reason);
+      _allBackups[localID] = _allBackups[localID]!.copyWith(
         status: BackupItemStatus.retry,
         error: reason,
       );
       Bus.instance.fire(BackupUpdatedEvent(_allBackups));
     }
-    _logger.info(
-      'number of enteries removed from queue ${uploadsToBeRemoved.length}',
-    );
-    _totalCountInUploadSession -= uploadsToBeRemoved.length;
   }
 
   void _pollQueue() {
@@ -574,7 +571,7 @@ class FileUploader {
 
     MediaUploadData? mediaUploadData;
     try {
-      mediaUploadData = await getUploadDataFromEnteFile(file, parseExif: true);
+      mediaUploadData = await getUploadDataFromEnteFile(file);
     } catch (e) {
       // This additional try catch block is added because for resumable upload,
       // we need to compute the hash before the next step. Previously, this
@@ -587,15 +584,13 @@ class FileUploader {
       rethrow;
     }
 
-    final String? existingMultipartEncFileName =
-        mediaUploadData.hashData?.fileHash != null
-        ? await _uploadLocks.getEncryptedFileName(
-            lockKey,
-            mediaUploadData.hashData!.fileHash!,
-            collectionID,
-          )
-        : null;
-    final sourceLength = await mediaUploadData.sourceFile!.length();
+    final String? existingMultipartEncFileName = await _uploadLocks
+        .getEncryptedFileName(
+          lockKey,
+          mediaUploadData.hashData.fileHash,
+          collectionID,
+        );
+    final sourceLength = await mediaUploadData.sourceFile.length();
     final bool hasExistingMultiPart = existingMultipartEncFileName != null;
     final tempDirectory = Configuration.instance.getTempDirectory();
     final String uniqueID =
@@ -626,7 +621,7 @@ class FileUploader {
       final FileEncryptResult? multiPartFileEncResult = hasExistingMultiPart
           ? await _multiPartUploader.getEncryptionResult(
               lockKey,
-              mediaUploadData.hashData!.fileHash!,
+              mediaUploadData.hashData.fileHash,
               collectionID,
               existingMultipartEncFileName,
             )
@@ -677,7 +672,7 @@ class FileUploader {
         _logger.severe('File exists without multipart entry, deleting file');
         await File(encryptedFilePath).delete();
       }
-      await _checkIfWithinStorageLimit(mediaUploadData.sourceFile!);
+      await _checkIfWithinStorageLimit(mediaUploadData.sourceFile);
       final encryptedFile = File(encryptedFilePath);
 
       // Calculate the number of parts to determine if we need MD5
@@ -693,7 +688,7 @@ class FileUploader {
 
       if (fileAttributes == null) {
         final result = await CryptoUtil.encryptFileWithMD5(
-          mediaUploadData.sourceFile!.path,
+          mediaUploadData.sourceFile.path,
           encryptedFilePath,
           key: key,
           multiPartChunkSizeInBytes: (estimatedCount > 1)
@@ -769,7 +764,7 @@ class FileUploader {
           fileObjectKey = await _multiPartUploader.putExistingMultipartFile(
             encryptedFile,
             lockKey,
-            mediaUploadData.hashData!.fileHash!,
+            mediaUploadData.hashData.fileHash,
             collectionID,
             existingMultipartEncFileName,
           );
@@ -790,7 +785,7 @@ class FileUploader {
           final encFileName = encryptedFile.path.split('/').last;
           await _multiPartUploader.createTableEntry(
             lockKey,
-            mediaUploadData.hashData!.fileHash!,
+            mediaUploadData.hashData.fileHash,
             collectionID,
             fileUploadURLs,
             encFileName,
@@ -823,17 +818,19 @@ class FileUploader {
           contentMd5: thumbnailMd5,
         );
       }
-      final ParsedExifDateTime? exifTime = mediaUploadData.exifData != null
-          ? await tryParseExifDateTime(null, mediaUploadData.exifData)
+      final exifData = mediaUploadData.derivedMetadata.exifData;
+      final ParsedExifDateTime? exifTime = exifData != null
+          ? await tryParseExifDateTime(null, exifData)
           : null;
       file.metadataVersion = EnteFile.kCurrentMetadataVersion;
-      final metadata = await file.getMetadataForUpload(
+      final preparedMetadata = await prepareUploadMetadata(
+        file,
         mediaUploadData,
         exifTime,
       );
 
       final encryptedMetadataResult = await CryptoUtil.encryptChaCha(
-        utf8.encode(jsonEncode(metadata)),
+        utf8.encode(jsonEncode(preparedMetadata.canonicalMetadata)),
         fileAttributes.key,
       );
       final fileDecryptionHeader = CryptoUtil.bin2base64(fileAttributes.header);
@@ -858,10 +855,7 @@ class FileUploader {
         throw LockFreedError();
       }
 
-      final Map<String, dynamic> pubMetadata = _buildPublicMagicData(
-        mediaUploadData,
-        exifTime,
-      );
+      final pubMetadata = preparedMetadata.publicMetadata;
       EnteFile remoteFile;
       if (isUpdatedFile) {
         // Verify that the encrypted file can be decrypted before uploading
@@ -916,9 +910,9 @@ class FileUploader {
         final keyDecryptionNonce = CryptoUtil.bin2base64(
           encryptedFileKeyData.nonce!,
         );
-        MetadataRequest? pubMetadataRequest;
+        PreparedPublicMetadata? preparedPublicMetadata;
         if (pubMetadata.isNotEmpty) {
-          pubMetadataRequest = await getPubMetadataRequest(
+          preparedPublicMetadata = await preparePublicMetadata(
             file,
             pubMetadata,
             fileAttributes.key,
@@ -947,8 +941,13 @@ class FileUploader {
           encThumbSize,
           encryptedMetadata,
           metadataDecryptionHeader,
-          pubMetadata: pubMetadataRequest,
+          pubMetadata: preparedPublicMetadata?.request,
         );
+        if (preparedPublicMetadata != null) {
+          remoteFile
+            ..pubMmdEncodedJson = preparedPublicMetadata.encodedJson
+            ..pubMagicMetadata = preparedPublicMetadata.decodedMetadata;
+        }
         if (mediaUploadData.isDeleted) {
           _logger.info("File found to be deleted");
           remoteFile.localID = null;
@@ -1003,40 +1002,6 @@ class FileUploader {
     }
   }
 
-  Map<String, dynamic> _buildPublicMagicData(
-    MediaUploadData mediaUploadData,
-    ParsedExifDateTime? exifTime,
-  ) {
-    final Map<String, dynamic> pubMetadata = {};
-    if ((mediaUploadData.height ?? 0) != 0 &&
-        (mediaUploadData.width ?? 0) != 0) {
-      pubMetadata[heightKey] = mediaUploadData.height;
-      pubMetadata[widthKey] = mediaUploadData.width;
-      pubMetadata[mediaTypeKey] = mediaUploadData.isPanorama == true ? 1 : 0;
-    }
-    if (mediaUploadData.motionPhotoStartIndex != null) {
-      pubMetadata[motionVideoIndexKey] = mediaUploadData.motionPhotoStartIndex;
-    }
-    if (mediaUploadData.thumbnail == null) {
-      pubMetadata[noThumbKey] = true;
-    }
-    if (exifTime != null) {
-      if (exifTime.dateTime != null) {
-        pubMetadata[dateTimeKey] = exifTime.dateTime;
-      }
-      if (exifTime.offsetTime != null) {
-        pubMetadata[offsetTimeKey] = exifTime.offsetTime;
-      }
-    }
-    if ((mediaUploadData.cameraMake ?? '').isNotEmpty) {
-      pubMetadata[cameraMakeKey] = mediaUploadData.cameraMake;
-    }
-    if ((mediaUploadData.cameraModel ?? '').isNotEmpty) {
-      pubMetadata[cameraModelKey] = mediaUploadData.cameraModel;
-    }
-    return pubMetadata;
-  }
-
   bool isPutOrMultiPartError(Object e) {
     if (e is MultiPartFileMissingError ||
         e is MultiPartError ||
@@ -1084,7 +1049,7 @@ class FileUploader {
 
     final List<EnteFile> existingUploadedFiles = await FilesDB.instance
         .getUploadedFilesWithHashes(
-          mediaUploadData.hashData!,
+          mediaUploadData.hashData,
           fileToUpload.fileType,
           Configuration.instance.getUserID()!,
         );
@@ -1194,7 +1159,7 @@ class FileUploader {
     required String lockKey,
     bool isMultiPartUpload = false,
   }) async {
-    if (mediaUploadData != null && mediaUploadData.sourceFile != null) {
+    if (mediaUploadData != null) {
       // delete the file from app's internal cache if it was copied to app
       // for upload. On iOS, only remove the file from photo_manager/app cache
       // when upload is either completed or there's a tempFailure
@@ -1202,7 +1167,7 @@ class FileUploader {
       // succeeds.
       if ((Platform.isIOS && (uploadCompleted || uploadHardFailure)) ||
           (uploadCompleted && file.isSharedMediaToAppSandbox)) {
-        await deleteFileSystemEntityIfPresent(mediaUploadData.sourceFile!);
+        await deleteFileSystemEntityIfPresent(mediaUploadData.sourceFile);
       }
     }
     if (File(encryptedFilePath).existsSync()) {
