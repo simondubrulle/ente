@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:collection';
 import 'dart:convert';
 import 'dart:io';
 
@@ -26,15 +25,15 @@ import "package:photos/gateways/collections/models/metadata.dart";
 import "package:photos/gateways/files/file_upload_gateway.dart";
 import "package:photos/main.dart" show isProcessBg, kLastBGTaskHeartBeatTime;
 import "package:photos/models/backup/backup_item.dart";
-import "package:photos/models/backup/backup_item_status.dart";
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
 import "package:photos/models/user_details.dart";
-import "package:photos/module/download/file.dart";
 import "package:photos/module/metadata/exif.dart";
 import 'package:photos/module/upload/model/media_upload_data.dart';
 import 'package:photos/module/upload/model/upload_url.dart';
 import "package:photos/module/upload/service/multipart.dart";
+import 'package:photos/module/upload/service/upload_artifact_lifecycle.dart';
+import 'package:photos/module/upload/service/upload_queue.dart';
 import "package:photos/module/upload/upload_data.dart";
 import "package:photos/module/upload/upload_metadata.dart";
 import "package:photos/service_locator.dart";
@@ -63,39 +62,30 @@ class FileUploader {
   final _logger = Logger("FileUploader");
   final _dio = NetworkClient.instance.getDio();
   FileUploadGateway get _gateway => fileUploadGateway;
-  final LinkedHashMap<String, FileUploadItem> _queue =
-      LinkedHashMap<String, FileUploadItem>();
-  final LinkedHashMap<String, BackupItem> _allBackups =
-      LinkedHashMap<String, BackupItem>();
+  final _queue = UploadQueue(
+    (change) => Bus.instance.fire(BackupUpdatedEvent(change)),
+  );
   final _uploadLocks = UploadLocksDB.instance;
+  final _uploadArtifactLifecycle = UploadArtifactLifecycle(
+    UploadLocksDB.instance,
+    FilesDB.instance,
+  );
   final kSafeBufferForLockExpiry = const Duration(hours: 4).inMicroseconds;
   final kBGTaskDeathTimeout = const Duration(seconds: 5).inMicroseconds;
   // Track used upload URLs to detect race conditions
   final Map<String, DateTime> _usedUploadURLs = {};
 
-  LinkedHashMap<String, BackupItem> get allBackups => _allBackups;
+  Map<String, BackupItem> get allBackups => _queue.backupItems;
 
   /// Returns true if any file uploads are currently in progress
-  bool get isUploading => _uploadCounter > 0;
+  bool get isUploading => _queue.isUploading;
 
   /// Returns true if an upload is queued, running, or waiting in background.
-  bool get hasPendingUploads => _queue.isNotEmpty;
-
-  // Maintains the count of files in the current upload session.
-  // Upload session is the period between the first entry into the _queue and last entry out of the _queue
-  int _totalCountInUploadSession = 0;
-
-  // _uploadCounter indicates number of uploads which are currently in progress
-  int _uploadCounter = 0;
-  int _videoUploadCounter = 0;
+  bool get hasPendingUploads => _queue.hasPendingUploads;
   late ProcessType _processType;
   late SharedPreferences _prefs;
+  bool _hasStartedBackgroundUploadPolling = false;
 
-  // _hasInitiatedForceUpload is used to track if user attempted force upload
-  // where files are uploaded directly (without adding them to DB). In such
-  // cases, we don't want to clear the stale upload files. See #removeStaleFiles
-  // as it can result in clearing files which are still being force uploaded.
-  bool _hasInitiatedForceUpload = false;
   late MultiPartUploader _multiPartUploader;
   StreamSubscription<LocalPhotosUpdatedEvent>? _localPhotosUpdatedSubscription;
 
@@ -133,8 +123,11 @@ class FileUploader {
           "BG task is alive, not clearing locks ${DateTime.fromMicrosecondsSinceEpoch(lastBGTaskHeartBeatTime)}",
         );
       }
-      // ignore: unawaited_futures
-      _pollBackgroundUploadStatus();
+      if (!_hasStartedBackgroundUploadPolling) {
+        _hasStartedBackgroundUploadPolling = true;
+        // ignore: unawaited_futures
+        _pollBackgroundUploadStatus();
+      }
     }
     _multiPartUploader = MultiPartUploader(
       _dio, // legacy parameter, not used by MultiPartUploader
@@ -179,28 +172,15 @@ class FileUploader {
     if (file.localID == null || file.localID!.isEmpty) {
       return Future.error(Exception("file's localID can not be null or empty"));
     }
-    // If the file hasn't been queued yet, queue it for upload
-    _totalCountInUploadSession++;
-    final String localID = file.localID!;
-    if (!_queue.containsKey(localID)) {
-      final completer = Completer<EnteFile>();
-      _queue[localID] = FileUploadItem(file, collectionID, completer);
-      _allBackups[localID] = BackupItem(
-        status: BackupItemStatus.inQueue,
-        file: file,
-        collectionID: collectionID,
-        completer: completer,
-      );
-      Bus.instance.fire(BackupUpdatedEvent(_allBackups));
+    final request = _queue.add(file, collectionID);
+    if (request.disposition == UploadQueueDisposition.added) {
       _pollQueue();
-      return completer.future;
+      return request.item.completer.future;
     }
     // If the file exists in the queue for a matching collectionID,
     // return the existing future
-    final FileUploadItem item = _queue[localID]!;
-    if (item.collectionID == collectionID) {
-      _totalCountInUploadSession--;
-      return item.completer.future;
+    if (request.disposition == UploadQueueDisposition.sameCollection) {
+      return request.item.completer.future;
     }
     debugPrint(
       "Wait on another upload on same local ID to finish before "
@@ -208,7 +188,7 @@ class FileUploader {
     );
     // Else wait for the existing upload to complete,
     // and add it to the relevant collection
-    return item.completer.future.then((uploadedFile) {
+    return request.item.completer.future.then((uploadedFile) {
       // If the fileUploader completer returned null,
       _logger.info(
         "original upload completer resolved, try adding the file to another "
@@ -224,16 +204,11 @@ class FileUploader {
   }
 
   int getCurrentSessionUploadCount() {
-    return _totalCountInUploadSession;
+    return _queue.sessionUploadCount;
   }
 
   void clearQueue(final Error reason) {
-    final pendingUploadIDs = _queue.entries
-        .where((entry) => entry.value.status == UploadStatus.notStarted)
-        .map((entry) => entry.key)
-        .toList();
-    _removePendingUploads(pendingUploadIDs, reason);
-    _totalCountInUploadSession = 0;
+    _queue.clear(reason);
   }
 
   void clearCachedUploadURLs() {
@@ -263,30 +238,8 @@ class FileUploader {
     final bool Function(EnteFile) fn,
     final Error reason,
   ) {
-    final pendingUploadIDs = _queue.entries
-        .where(
-          (entry) =>
-              entry.value.status == UploadStatus.notStarted &&
-              fn(entry.value.file),
-        )
-        .map((entry) => entry.key)
-        .toList();
-    _removePendingUploads(pendingUploadIDs, reason);
-    _logger.info(
-      'number of entries removed from queue ${pendingUploadIDs.length}',
-    );
-    _totalCountInUploadSession -= pendingUploadIDs.length;
-  }
-
-  void _removePendingUploads(List<String> localIDs, Error reason) {
-    for (final localID in localIDs) {
-      _queue.remove(localID)?.completer.completeError(reason);
-      _allBackups[localID] = _allBackups[localID]!.copyWith(
-        status: BackupItemStatus.retry,
-        error: reason,
-      );
-      Bus.instance.fire(BackupUpdatedEvent(_allBackups));
-    }
+    final removedCount = _queue.removeWhere(fn, reason);
+    _logger.info('number of entries removed from queue $removedCount');
   }
 
   void _pollQueue() {
@@ -294,55 +247,21 @@ class FileUploader {
       clearQueue(SyncStopRequestedError());
       return;
     }
-    if (_queue.isEmpty) {
-      // Upload session completed
-      _totalCountInUploadSession = 0;
-      return;
-    }
-    if (_uploadCounter < kMaximumConcurrentUploads) {
-      var pendingEntry = _queue.entries
-          .firstWhereOrNull(
-            (entry) => entry.value.status == UploadStatus.notStarted,
-          )
-          ?.value;
-
-      if (pendingEntry != null &&
-          pendingEntry.file.fileType == FileType.video &&
-          _videoUploadCounter >= kMaximumConcurrentVideoUploads) {
-        // check if there's any non-video entry which can be queued for upload
-        pendingEntry = _queue.entries
-            .firstWhereOrNull(
-              (entry) =>
-                  entry.value.status == UploadStatus.notStarted &&
-                  entry.value.file.fileType != FileType.video,
-            )
-            ?.value;
-      }
-      if (pendingEntry != null) {
-        pendingEntry.status = UploadStatus.inProgress;
-        _allBackups[pendingEntry.file.localID!] =
-            _allBackups[pendingEntry.file.localID]!.copyWith(
-              status: BackupItemStatus.uploading,
-            );
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
-        _encryptAndUploadFileToCollection(
-          pendingEntry.file,
-          pendingEntry.collectionID,
-        );
-      }
+    final pendingItem = _queue.startNext(
+      maximumConcurrentUploads: kMaximumConcurrentUploads,
+      maximumConcurrentVideoUploads: kMaximumConcurrentVideoUploads,
+    );
+    if (pendingItem != null) {
+      _encryptAndUploadFileToCollection(pendingItem);
     }
   }
 
   Future<EnteFile?> _encryptAndUploadFileToCollection(
-    EnteFile file,
-    int collectionID, {
+    UploadQueueItem item, {
     bool forcedUpload = false,
   }) async {
-    _uploadCounter++;
-    if (file.fileType == FileType.video) {
-      _videoUploadCounter++;
-    }
-    final localID = file.localID!;
+    final file = item.file;
+    final collectionID = item.collectionID;
     try {
       final uploadedFile = await _tryToUpload(file, collectionID, forcedUpload)
           .timeout(
@@ -352,110 +271,23 @@ class FileUploader {
               throw TimeoutException(message);
             },
           );
-      _queue.remove(localID)!.completer.complete(uploadedFile);
-      _allBackups[localID] = _allBackups[localID]!.copyWith(
-        status: BackupItemStatus.uploaded,
-      );
-      Bus.instance.fire(BackupUpdatedEvent(_allBackups));
+      _queue.complete(item, uploadedFile);
       return uploadedFile;
     } catch (e) {
       if (e is LockAlreadyAcquiredError) {
-        _queue[localID]!.status = UploadStatus.inBackground;
-        _allBackups[localID] = _allBackups[localID]!.copyWith(
-          status: BackupItemStatus.inBackground,
-        );
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
-        return _queue[localID]!.completer.future;
+        return _queue.moveToBackground(item);
       } else {
-        _queue.remove(localID)!.completer.completeError(e);
-        _allBackups[localID] = _allBackups[localID]!.copyWith(
-          status: BackupItemStatus.retry,
-          error: e,
-        );
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
+        _queue.fail(item, e);
         return null;
       }
     } finally {
-      _uploadCounter--;
-      if (file.fileType == FileType.video) {
-        _videoUploadCounter--;
-      }
+      _queue.finishAttempt(item);
       _pollQueue();
     }
   }
 
-  Future<void> removeStaleFiles() async {
-    if (_hasInitiatedForceUpload) {
-      _logger.info("Force upload was initiated, skipping stale file cleanup");
-      return;
-    }
-    try {
-      final String dir = Configuration.instance.getTempDirectory();
-      // delete all files in the temp directory that start with upload_ and
-      // ends with .encrypted. Fetch files in async manner
-      final files = await Directory(dir).list().toList();
-      final filesToDelete = files.where((file) {
-        return file.path.contains(uploadTempFilePrefix) &&
-            file.path.contains(".encrypted");
-      });
-      if (filesToDelete.isNotEmpty) {
-        _logger.info('Deleting ${filesToDelete.length} stale upload files ');
-        final fileNameToLastAttempt = await _uploadLocks
-            .getFileNameToLastAttemptedAtMap();
-        for (final file in filesToDelete) {
-          final fileName = file.path.split('/').last;
-          final lastAttemptTime = fileNameToLastAttempt[fileName] != null
-              ? DateTime.fromMillisecondsSinceEpoch(
-                  fileNameToLastAttempt[fileName]!,
-                )
-              : null;
-          if (lastAttemptTime == null ||
-              DateTime.now().difference(lastAttemptTime).inDays > 1) {
-            await _deleteStaleFileIfPresent(file);
-          } else {
-            _logger.info(
-              'Skipping file $fileName as it was attempted recently on $lastAttemptTime',
-            );
-          }
-        }
-      }
-
-      if (Platform.isAndroid) {
-        final sharedMediaDir =
-            Configuration.instance.getSharedMediaDirectory() + "/";
-        final sharedFiles = await Directory(sharedMediaDir).list().toList();
-        if (sharedFiles.isNotEmpty) {
-          _logger.info('Shared media directory cleanup ${sharedFiles.length}');
-          final int ownerID = Configuration.instance.getUserID()!;
-          final existingLocalFileIDs = await FilesDB.instance
-              .getExistingLocalFileIDs(ownerID);
-          final Set<String> trackedSharedFilePaths = {};
-          for (String localID in existingLocalFileIDs) {
-            if (localID.contains(sharedMediaIdentifier)) {
-              trackedSharedFilePaths.add(
-                getSharedMediaPathFromLocalID(localID),
-              );
-            }
-          }
-          for (final file in sharedFiles) {
-            if (!trackedSharedFilePaths.contains(file.path)) {
-              _logger.info('Deleting stale shared media file ${file.path}');
-              await _deleteStaleFileIfPresent(file);
-            }
-          }
-        }
-      }
-    } catch (e, s) {
-      _logger.severe("Failed to remove stale files", e, s);
-    }
-  }
-
-  Future<void> _deleteStaleFileIfPresent(FileSystemEntity file) async {
-    final deleted = await deleteFileSystemEntityIfPresent(file);
-    if (!deleted) {
-      _logger.info("Stale file already missing during cleanup: ${file.path}");
-    }
-  }
+  Future<void> removeStaleFiles() =>
+      _uploadArtifactLifecycle.removeStaleFiles();
 
   Future<void> checkNetworkForUpload({bool isForceUpload = false}) async {
     // Note: We don't support force uploading currently. During force upload,
@@ -494,28 +326,26 @@ class FileUploader {
     }
   }
 
-  Future<EnteFile> forceUpload(EnteFile file, int collectionID) async {
-    _hasInitiatedForceUpload = true;
-    final isInQueue = _allBackups[file.localID!] != null;
-    try {
-      final result = await _tryToUpload(file, collectionID, true);
-      if (isInQueue) {
-        _allBackups[file.localID!] = _allBackups[file.localID]!.copyWith(
-          status: BackupItemStatus.uploaded,
-        );
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
+  Future<EnteFile> forceUpload(EnteFile file, int collectionID) {
+    return _uploadArtifactLifecycle.runForceUpload(() async {
+      final localID = file.localID!;
+      final backupOwner = _queue.backupOwner(localID);
+      if (backupOwner != null) {
+        _queue.markBackupUploading(backupOwner, localID);
       }
-      return result;
-    } catch (error) {
-      if (isInQueue) {
-        _allBackups[file.localID!] = _allBackups[file.localID]!.copyWith(
-          status: BackupItemStatus.retry,
-          error: error,
-        );
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
+      try {
+        final result = await _tryToUpload(file, collectionID, true);
+        if (backupOwner != null) {
+          _queue.markBackupUploaded(backupOwner, localID);
+        }
+        return result;
+      } catch (error) {
+        if (backupOwner != null) {
+          _queue.markBackupForRetry(backupOwner, localID, error);
+        }
+        rethrow;
       }
-      rethrow;
-    }
+    });
   }
 
   Future<EnteFile> _tryToUpload(
@@ -537,13 +367,6 @@ class FileUploader {
       }
     }
 
-    if (_allBackups[file.localID!] != null &&
-        _allBackups[file.localID]!.status != BackupItemStatus.uploading) {
-      _allBackups[file.localID!] = _allBackups[file.localID]!.copyWith(
-        status: BackupItemStatus.uploading,
-      );
-      Bus.instance.fire(BackupUpdatedEvent(_allBackups));
-    }
     if ((file.localID ?? '') == '') {
       _logger.severe('Trying to upload file with missing localID');
       return file;
@@ -1554,32 +1377,20 @@ class FileUploader {
   // _pollBackgroundUploadStatus polls the background uploads to check if the
   // upload is completed or failed.
   Future<void> _pollBackgroundUploadStatus() async {
-    final blockedUploads = _queue.entries
-        .where((e) => e.value.status == UploadStatus.inBackground)
-        .toList();
+    final blockedUploads = _queue.backgroundItems;
     for (final upload in blockedUploads) {
-      final file = upload.value.file;
+      final file = upload.file;
       final isStillLocked = await _uploadLocks.isLocked(
         file.localID!,
         ProcessType.background.toString(),
       );
       if (!isStillLocked) {
-        final completer = _queue.remove(upload.key)?.completer;
-        final dbFile = await FilesDB.instance.getFile(
-          upload.value.file.generatedID!,
-        );
+        final dbFile = await FilesDB.instance.getFile(upload.file.generatedID!);
         if (dbFile?.uploadedFileID != null) {
-          _logger.info(
-            "Background upload success detected ${upload.value.file.tag}",
-          );
-          completer?.complete(dbFile);
-          _allBackups[upload.key] = _allBackups[upload.key]!.copyWith(
-            status: BackupItemStatus.uploaded,
-          );
+          _logger.info("Background upload success detected ${upload.file.tag}");
+          _queue.complete(upload, dbFile!);
         } else {
-          _logger.info(
-            "Background upload failure detected ${upload.value.file.tag}",
-          );
+          _logger.info("Background upload failure detected ${upload.file.tag}");
           // The upload status is marked as in background, but the file is not locked
           // by the background process. Release any lock taken by the foreground process
           // and complete the completer with error.
@@ -1587,14 +1398,8 @@ class FileUploader {
             file.localID!,
             ProcessType.foreground.toString(),
           );
-          completer?.completeError(SilentlyCancelUploadsError());
-          _allBackups[upload.key] = _allBackups[upload.key]!.copyWith(
-            status: BackupItemStatus.retry,
-            error: SilentlyCancelUploadsError(),
-          );
+          _queue.fail(upload, SilentlyCancelUploadsError());
         }
-
-        Bus.instance.fire(BackupUpdatedEvent(_allBackups));
       }
     }
     Future.delayed(kBlockedUploadsPollFrequency, () async {
@@ -1602,21 +1407,5 @@ class FileUploader {
     });
   }
 }
-
-class FileUploadItem {
-  final EnteFile file;
-  final int collectionID;
-  final Completer<EnteFile> completer;
-  UploadStatus status;
-
-  FileUploadItem(
-    this.file,
-    this.collectionID,
-    this.completer, {
-    this.status = UploadStatus.notStarted,
-  });
-}
-
-enum UploadStatus { notStarted, inProgress, inBackground }
 
 enum ProcessType { background, foreground }
