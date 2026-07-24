@@ -5,18 +5,12 @@
 
 use std::fmt;
 
-#[cfg(feature = "srp")]
-use crate::crypto::Salt;
-use crate::crypto::{self, SecretVec, argon, kdf, sealed, secretbox};
-
-use super::{AuthError, KeyAttributes, Result, SrpAttributes};
-
-#[cfg(feature = "srp")]
-use super::srp::SrpSession;
-#[cfg(feature = "srp")]
+use ente_core::b64;
+use ente_core::crypto::{self, Salt, SecretVec, argon, kdf, sealed, secretbox};
 use sha2::Sha256;
-#[cfg(feature = "srp")]
 use srp::ClientG4096;
+
+use super::{Error, KeyAttributes, Result, SrpAttributes};
 
 /// Credentials derived from password for SRP authentication.
 pub struct SrpCredentials {
@@ -79,7 +73,6 @@ impl fmt::Debug for GeneratedKek {
 }
 
 /// Attributes needed to register or update SRP for a user.
-#[cfg(feature = "srp")]
 pub struct GeneratedSrpSetup {
     /// SRP salt bytes.
     pub srp_salt: Vec<u8>,
@@ -89,7 +82,6 @@ pub struct GeneratedSrpSetup {
     pub login_sub_key: SecretVec,
 }
 
-#[cfg(feature = "srp")]
 impl fmt::Debug for GeneratedSrpSetup {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("GeneratedSrpSetup")
@@ -112,8 +104,8 @@ impl fmt::Debug for GeneratedSrpSetup {
 /// # Returns
 /// * `SrpCredentials` containing KEK (for later decryption) and login_key (for SRP)
 pub fn derive_srp_credentials(password: &str, srp_attrs: &SrpAttributes) -> Result<SrpCredentials> {
-    let kek_salt = crypto::decode_b64(&srp_attrs.kek_salt)
-        .map_err(|e| AuthError::Decode(format!("kek_salt: {}", e)))?;
+    let kek_salt =
+        b64::decode(&srp_attrs.kek_salt).map_err(|e| Error::Decode(format!("kek_salt: {}", e)))?;
     let salt = crypto::Salt::try_from_slice(&kek_salt)?;
 
     let kek = argon::derive_key(
@@ -150,7 +142,7 @@ pub fn derive_kek(
     ops_limit: u32,
 ) -> Result<SecretVec> {
     let salt_bytes =
-        crypto::decode_b64(kek_salt).map_err(|e| AuthError::Decode(format!("kek_salt: {}", e)))?;
+        b64::decode(kek_salt).map_err(|e| Error::Decode(format!("kek_salt: {}", e)))?;
     let salt = crypto::Salt::try_from_slice(&salt_bytes)?;
 
     let key = argon::derive_key(
@@ -167,8 +159,8 @@ pub fn derive_kek(
 /// Generate a KEK using the current adaptive sensitive client policy.
 pub fn generate_sensitive_kek(password: &str) -> Result<GeneratedKek> {
     let derived = argon::derive_sensitive_key(password).map_err(|e| match e {
-        crypto::Error::InvalidKeyDerivationParams(_) => AuthError::Crypto(e),
-        _ => AuthError::InsufficientMemory,
+        crypto::Error::InvalidKeyDerivationParams(_) => Error::Crypto(e),
+        _ => Error::InsufficientMemory,
     })?;
 
     Ok(generated_kek(derived))
@@ -191,20 +183,18 @@ fn generated_kek(derived: argon::DerivedKey) -> GeneratedKek {
 }
 
 /// Generate the SRP setup payload for a given KEK and SRP user ID.
-#[cfg(feature = "srp")]
 pub fn generate_srp_setup(kek: &[u8], srp_user_id: &str) -> Result<GeneratedSrpSetup> {
     let login_sub_key = kdf::derive_login_key(&crypto::Key::try_from_slice(kek)?);
     generate_srp_setup_with_login_key(&login_sub_key, srp_user_id)
 }
 
 /// Generate the SRP setup payload from an already-derived login key.
-#[cfg(feature = "srp")]
 pub fn generate_srp_setup_with_login_key(
     login_key: &[u8],
     srp_user_id: &str,
 ) -> Result<GeneratedSrpSetup> {
     if login_key.len() != 16 {
-        return Err(AuthError::InvalidKey(format!(
+        return Err(Error::InvalidKey(format!(
             "Login key must be 16 bytes, got {}",
             login_key.len()
         )));
@@ -226,10 +216,10 @@ pub fn generate_srp_setup_with_login_key(
 /// Use this when you only need access to the decrypted keys (e.g. when the
 /// auth token comes from a different source than a sealed box).
 pub fn decrypt_keys_only(kek: &[u8], key_attrs: &KeyAttributes) -> Result<(SecretVec, SecretVec)> {
-    let encrypted_key = crypto::decode_b64(&key_attrs.encrypted_key)
-        .map_err(|e| AuthError::Decode(format!("encrypted_key: {}", e)))?;
-    let key_nonce = crypto::decode_b64(&key_attrs.key_decryption_nonce)
-        .map_err(|e| AuthError::Decode(format!("key_decryption_nonce: {}", e)))?;
+    let encrypted_key = b64::decode(&key_attrs.encrypted_key)
+        .map_err(|e| Error::Decode(format!("encrypted_key: {}", e)))?;
+    let key_nonce = b64::decode(&key_attrs.key_decryption_nonce)
+        .map_err(|e| Error::Decode(format!("key_decryption_nonce: {}", e)))?;
 
     let master_key = SecretVec::new(
         secretbox::decrypt(
@@ -237,13 +227,13 @@ pub fn decrypt_keys_only(kek: &[u8], key_attrs: &KeyAttributes) -> Result<(Secre
             &crypto::Nonce::try_from_slice(&key_nonce)?,
             &crypto::Key::try_from_slice(kek)?,
         )
-        .map_err(|_| AuthError::IncorrectPassword)?,
+        .map_err(|_| Error::IncorrectPassword)?,
     );
 
-    let encrypted_secret_key = crypto::decode_b64(&key_attrs.encrypted_secret_key)
-        .map_err(|e| AuthError::Decode(format!("encrypted_secret_key: {}", e)))?;
-    let secret_key_nonce = crypto::decode_b64(&key_attrs.secret_key_decryption_nonce)
-        .map_err(|e| AuthError::Decode(format!("secret_key_decryption_nonce: {}", e)))?;
+    let encrypted_secret_key = b64::decode(&key_attrs.encrypted_secret_key)
+        .map_err(|e| Error::Decode(format!("encrypted_secret_key: {}", e)))?;
+    let secret_key_nonce = b64::decode(&key_attrs.secret_key_decryption_nonce)
+        .map_err(|e| Error::Decode(format!("secret_key_decryption_nonce: {}", e)))?;
 
     let secret_key = SecretVec::new(
         secretbox::decrypt(
@@ -251,7 +241,7 @@ pub fn decrypt_keys_only(kek: &[u8], key_attrs: &KeyAttributes) -> Result<(Secre
             &crypto::Nonce::try_from_slice(&secret_key_nonce)?,
             &crypto::Key::try_from_slice(&master_key)?,
         )
-        .map_err(|_| AuthError::InvalidKeyAttributes)?,
+        .map_err(|_| Error::InvalidKeyAttributes)?,
     );
 
     Ok((master_key, secret_key))
@@ -277,51 +267,23 @@ pub fn decrypt_secrets(
     let (master_key, secret_key) = decrypt_keys_only(kek, key_attrs)?;
 
     // Decrypt token with sealed box (public key crypto)
-    let public_key = crypto::decode_b64(&key_attrs.public_key)
-        .map_err(|e| AuthError::Decode(format!("public_key: {}", e)))?;
-    let sealed_token = crypto::decode_b64(encrypted_token)
-        .map_err(|e| AuthError::Decode(format!("encrypted_token: {}", e)))?;
+    let public_key = b64::decode(&key_attrs.public_key)
+        .map_err(|e| Error::Decode(format!("public_key: {}", e)))?;
+    let sealed_token = b64::decode(encrypted_token)
+        .map_err(|e| Error::Decode(format!("encrypted_token: {}", e)))?;
 
     let token = sealed::open(
         &sealed_token,
         &crypto::PublicKey::try_from_slice(&public_key)?,
         &crypto::SecretKey::try_from_slice(&secret_key)?,
     )
-    .map_err(|_| AuthError::InvalidKeyAttributes)?;
+    .map_err(|_| Error::InvalidKeyAttributes)?;
 
     Ok(DecryptedSecrets {
         master_key,
         secret_key,
         token: SecretVec::new(token),
     })
-}
-
-/// Start an SRP session for password authentication.
-///
-/// This is a convenience function that:
-/// 1. Derives credentials from password
-/// 2. Creates an SRP session ready for the protocol
-///
-/// # Arguments
-/// * `password` - User's password
-/// * `srp_attrs` - SRP attributes from the server
-///
-/// # Returns
-/// * Tuple of (SrpSession, kek) - use session for SRP, keep kek for later decryption
-#[cfg(feature = "srp")]
-#[cfg_attr(not(test), allow(dead_code))]
-pub(crate) fn start_srp_session(
-    password: &str,
-    srp_attrs: &SrpAttributes,
-) -> Result<(SrpSession, SecretVec)> {
-    let creds = derive_srp_credentials(password, srp_attrs)?;
-
-    let srp_salt = crypto::decode_b64(&srp_attrs.srp_salt)
-        .map_err(|e| AuthError::Decode(format!("srp_salt: {}", e)))?;
-
-    let session = SrpSession::new(&srp_attrs.srp_user_id, &srp_salt, &creds.login_key)?;
-
-    Ok((session, creds.kek))
 }
 
 #[cfg(test)]
@@ -336,10 +298,10 @@ mod tests {
             generate_keys_with_strength(password, KeyDerivationStrength::Interactive).unwrap();
 
         let srp_attrs = SrpAttributes {
-            srp_user_id: "test-user".to_string(),
-            srp_salt: crypto::encode_b64(&[0u8; 16]),
-            mem_limit: gen_result.key_attributes.mem_limit.unwrap(),
-            ops_limit: gen_result.key_attributes.ops_limit.unwrap(),
+            srp_user_id: uuid::Uuid::nil(),
+            srp_salt: b64::encode(&[0u8; 16]),
+            mem_limit: gen_result.key_attributes.mem_limit,
+            ops_limit: gen_result.key_attributes.ops_limit,
             kek_salt: gen_result.key_attributes.kek_salt.clone(),
             is_email_mfa_enabled: false,
         };
@@ -359,20 +321,20 @@ mod tests {
 
         // Create a sealed token
         let token = b"auth_token_12345";
-        let public_key = crypto::decode_b64(&gen_result.key_attributes.public_key).unwrap();
+        let public_key = b64::decode(&gen_result.key_attributes.public_key).unwrap();
         let sealed_token = sealed::seal(
             token,
             &crypto::PublicKey::try_from_slice(&public_key).unwrap(),
         )
         .unwrap();
-        let encrypted_token = crypto::encode_b64(&sealed_token);
+        let encrypted_token = b64::encode(&sealed_token);
 
         // Derive KEK
         let kek = derive_kek(
             password,
             &gen_result.key_attributes.kek_salt,
-            gen_result.key_attributes.mem_limit.unwrap(),
-            gen_result.key_attributes.ops_limit.unwrap(),
+            gen_result.key_attributes.mem_limit,
+            gen_result.key_attributes.ops_limit,
         )
         .unwrap();
 
@@ -380,12 +342,11 @@ mod tests {
         let secrets = decrypt_secrets(&kek, &gen_result.key_attributes, &encrypted_token).unwrap();
 
         // Verify
-        let original_master_key =
-            crypto::decode_b64(&gen_result.private_key_attributes.key).unwrap();
+        let original_master_key = b64::decode(&gen_result.private_key_attributes.key).unwrap();
         assert_eq!(secrets.master_key.as_ref(), original_master_key.as_slice());
 
         let original_secret_key =
-            crypto::decode_b64(&gen_result.private_key_attributes.secret_key).unwrap();
+            b64::decode(&gen_result.private_key_attributes.secret_key).unwrap();
         assert_eq!(secrets.secret_key.as_ref(), original_secret_key.as_slice());
 
         assert_eq!(secrets.token.as_ref(), token);
@@ -397,26 +358,26 @@ mod tests {
             generate_keys_with_strength("correct_password", KeyDerivationStrength::Interactive)
                 .unwrap();
 
-        let public_key = crypto::decode_b64(&gen_result.key_attributes.public_key).unwrap();
+        let public_key = b64::decode(&gen_result.key_attributes.public_key).unwrap();
         let sealed_token = sealed::seal(
             b"token",
             &crypto::PublicKey::try_from_slice(&public_key).unwrap(),
         )
         .unwrap();
-        let encrypted_token = crypto::encode_b64(&sealed_token);
+        let encrypted_token = b64::encode(&sealed_token);
 
         // Derive KEK with wrong password
         let kek = derive_kek(
             "wrong_password",
             &gen_result.key_attributes.kek_salt,
-            gen_result.key_attributes.mem_limit.unwrap(),
-            gen_result.key_attributes.ops_limit.unwrap(),
+            gen_result.key_attributes.mem_limit,
+            gen_result.key_attributes.ops_limit,
         )
         .unwrap();
 
         // Decryption should fail
         let result = decrypt_secrets(&kek, &gen_result.key_attributes, &encrypted_token);
-        assert!(matches!(result, Err(AuthError::IncorrectPassword)));
+        assert!(matches!(result, Err(Error::IncorrectPassword)));
     }
 
     #[test]
@@ -440,17 +401,10 @@ mod tests {
 
         assert_eq!(generated.key.len(), 32);
         assert_eq!(generated.salt.len(), 16);
-        assert_eq!(
-            generated.mem_limit,
-            crate::crypto::argon::Params::INTERACTIVE.mem_limit
-        );
-        assert_eq!(
-            generated.ops_limit,
-            crate::crypto::argon::Params::INTERACTIVE.ops_limit
-        );
+        assert_eq!(generated.mem_limit, argon::Params::INTERACTIVE.mem_limit);
+        assert_eq!(generated.ops_limit, argon::Params::INTERACTIVE.ops_limit);
     }
 
-    #[cfg(feature = "srp")]
     #[test]
     fn test_generate_srp_setup() {
         let srp_setup = generate_srp_setup(&[1; 32], "test-user-id").unwrap();
@@ -460,7 +414,6 @@ mod tests {
         assert!(!srp_setup.srp_verifier.is_empty());
     }
 
-    #[cfg(feature = "srp")]
     #[test]
     fn test_generate_srp_setup_with_login_key() {
         let login_key = [1u8; 16];
@@ -469,27 +422,5 @@ mod tests {
         assert_eq!(srp_setup.srp_salt.len(), 16);
         assert_eq!(srp_setup.login_sub_key.as_ref(), login_key);
         assert!(!srp_setup.srp_verifier.is_empty());
-    }
-
-    #[cfg(feature = "srp")]
-    #[test]
-    fn test_start_srp_session() {
-        let password = "test_password";
-        let gen_result =
-            generate_keys_with_strength(password, KeyDerivationStrength::Interactive).unwrap();
-
-        let srp_attrs = SrpAttributes {
-            srp_user_id: "test-user".to_string(),
-            srp_salt: crypto::encode_b64(&[0u8; 16]),
-            mem_limit: gen_result.key_attributes.mem_limit.unwrap(),
-            ops_limit: gen_result.key_attributes.ops_limit.unwrap(),
-            kek_salt: gen_result.key_attributes.kek_salt,
-            is_email_mfa_enabled: false,
-        };
-
-        let (session, kek) = start_srp_session(password, &srp_attrs).unwrap();
-
-        assert_eq!(kek.len(), 32);
-        assert!(!session.public_a().is_empty());
     }
 }
