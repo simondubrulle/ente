@@ -19,7 +19,6 @@ import {
     useRef,
     useState,
 } from "react";
-import { MemoryEndCard } from "./MemoryEndCard";
 import { PlaybackGlyph, ProgressIndicator } from "./PublicMemoryControls";
 import { PhotoImage, VideoPlayer } from "./PublicMemoryMedia";
 import {
@@ -48,7 +47,6 @@ const DESKTOP_MEDIA_HORIZONTAL_PADDING_PX = 32;
 const DESKTOP_MEDIA_VERTICAL_RESERVED_PX = 184;
 const MOBILE_VIDEO_MAX_WIDTH_PX = 344;
 const MEDIA_SWITCH_TRANSITION_DURATION_MS = 380;
-const MEMORY_END_CARD_ASPECT_RATIO = 518 / 628;
 const DESKTOP_MEDIA_MAX_WIDTH_CSS = `min(${DESKTOP_MEDIA_MAX_WIDTH_PX}px, calc(100vw - ${DESKTOP_MEDIA_HORIZONTAL_PADDING_PX}px))`;
 const DESKTOP_MEDIA_MAX_HEIGHT_CSS = `calc(min(100vh, 100dvh) - ${DESKTOP_MEDIA_VERTICAL_RESERVED_PX}px)`;
 const DESKTOP_BACKGROUND_IMAGE_PATH = "/images/memory-lane-bg-desktop.svg";
@@ -126,6 +124,7 @@ export function MemoryViewer({
     memoryName,
     onNext,
     onPrev,
+    onSeek,
 }: MemoryViewerProps) {
     const currentFile = files[currentIndex]!;
     const [paused, setPaused] = useState(false);
@@ -237,21 +236,28 @@ export function MemoryViewer({
         setPaused(true);
     }, []);
 
-    const resumeCurrentVideoPlayback = useCallback(() => {
-        const video = activeVideoElementRef.current;
-        if (!video) {
-            return;
-        }
+    const resumeCurrentVideoPlayback = useCallback(
+        ({ restart = false }: { restart?: boolean } = {}) => {
+            const video = activeVideoElementRef.current;
+            if (!video) {
+                return;
+            }
 
-        video.muted = false;
-        void video.play().catch((error: unknown) => {
-            log.warn(
-                "Failed to start memory video playback from user gesture",
-                error,
-            );
-            handleVideoPlaybackBlocked();
-        });
-    }, [handleVideoPlaybackBlocked]);
+            if (restart) {
+                video.currentTime = 0;
+            }
+
+            video.muted = false;
+            void video.play().catch((error: unknown) => {
+                log.warn(
+                    "Failed to start memory video playback from user gesture",
+                    error,
+                );
+                handleVideoPlaybackBlocked();
+            });
+        },
+        [handleVideoPlaybackBlocked],
+    );
 
     const handleMediaAspectRatio = useCallback(
         (width: number, height: number) => {
@@ -271,40 +277,6 @@ export function MemoryViewer({
         }
         onNext();
     }, [currentIndex, files.length, onNext]);
-
-    const handlePrevious = useCallback(() => {
-        if (finishedPlayback) {
-            setFinishedPlayback(false);
-            setPaused(false);
-            return;
-        }
-        onPrev();
-    }, [finishedPlayback, onPrev]);
-
-    // The page-level key handler cannot see the viewer-local end-card state.
-    useEffect(() => {
-        const handleKeyDown = (event: KeyboardEvent) => {
-            if (event.key === "ArrowLeft" && finishedPlayback) {
-                event.preventDefault();
-                event.stopPropagation();
-                handlePrevious();
-            } else if (
-                event.key === "ArrowRight" &&
-                currentIndex >= files.length - 1
-            ) {
-                handleAdvanceOrFinish();
-            }
-        };
-        document.addEventListener("keydown", handleKeyDown, true);
-        return () =>
-            document.removeEventListener("keydown", handleKeyDown, true);
-    }, [
-        currentIndex,
-        files.length,
-        finishedPlayback,
-        handleAdvanceOrFinish,
-        handlePrevious,
-    ]);
 
     useEffect(() => {
         if (!isCurrentThumbnailResolved) {
@@ -402,15 +374,39 @@ export function MemoryViewer({
     const headerDate =
         memoryName && currentFileDate ? currentFileDate : undefined;
 
+    const handleRestartPlayback = useCallback(() => {
+        if (currentIndex > 0) {
+            onSeek(0);
+            return;
+        }
+
+        setFinishedPlayback(false);
+        setPaused(false);
+        if (isVideo) {
+            resumeCurrentVideoPlayback({ restart: true });
+        }
+    }, [currentIndex, isVideo, onSeek, resumeCurrentVideoPlayback]);
+
     const handlePlaybackOverlayClick = useCallback(
         (event: ReactMouseEvent<HTMLButtonElement>) => {
             event.stopPropagation();
+
+            if (finishedPlayback) {
+                handleRestartPlayback();
+                return;
+            }
+
             setPaused(false);
             if (isVideo) {
                 resumeCurrentVideoPlayback();
             }
         },
-        [isVideo, resumeCurrentVideoPlayback],
+        [
+            finishedPlayback,
+            handleRestartPlayback,
+            isVideo,
+            resumeCurrentVideoPlayback,
+        ],
     );
 
     const handleViewerClick = useCallback(
@@ -421,15 +417,15 @@ export function MemoryViewer({
 
             const clickX = event.clientX;
             if (clickX <= viewport.width * EDGE_NAV_TAP_ZONE_RATIO) {
-                handlePrevious();
+                onPrev();
             } else if (
                 clickX >=
                 viewport.width * (1 - EDGE_NAV_TAP_ZONE_RATIO)
             ) {
-                handleAdvanceOrFinish();
+                onNext();
             }
         },
-        [handleAdvanceOrFinish, handlePrevious, viewport.width],
+        [onNext, onPrev, viewport.width],
     );
 
     const handleMediaFrameClick = useCallback(
@@ -442,12 +438,12 @@ export function MemoryViewer({
 
             const clickX = event.clientX;
             if (clickX <= viewport.width * EDGE_NAV_TAP_ZONE_RATIO) {
-                handlePrevious();
+                onPrev();
                 return;
             }
 
             if (clickX >= viewport.width * (1 - EDGE_NAV_TAP_ZONE_RATIO)) {
-                handleAdvanceOrFinish();
+                onNext();
                 return;
             }
 
@@ -455,7 +451,7 @@ export function MemoryViewer({
                 setPaused(true);
             }
         },
-        [handleAdvanceOrFinish, handlePrevious, paused, viewport.width],
+        [onNext, onPrev, paused, viewport.width],
     );
 
     const resolvedMediaAspectRatio = useMemo(() => {
@@ -476,30 +472,23 @@ export function MemoryViewer({
 
         return undefined;
     }, [currentFile, mediaAspectRatio]);
-    const effectiveMediaAspectRatio = finishedPlayback
-        ? MEMORY_END_CARD_ASPECT_RATIO
-        : resolvedMediaAspectRatio;
-    const useMobileVideoSizing = isVideo && !finishedPlayback;
 
     const mobileFrameSize = useMemo(() => {
         const availableWidth = Math.max(
             220,
-            viewport.width -
-                (useMobileVideoSizing ? 32 : MOBILE_MEDIA_HORIZONTAL_INSET_PX),
+            viewport.width - (isVideo ? 32 : MOBILE_MEDIA_HORIZONTAL_INSET_PX),
         );
-        const maxWidth = useMobileVideoSizing
+        const maxWidth = isVideo
             ? Math.min(MOBILE_VIDEO_MAX_WIDTH_PX, availableWidth)
             : availableWidth;
         const maxHeight = Math.max(
             180,
             viewport.height -
-                (useMobileVideoSizing
+                (isVideo
                     ? MOBILE_VIDEO_MEDIA_RESERVED_VERTICAL_SPACE_PX
                     : MOBILE_MEDIA_RESERVED_VERTICAL_SPACE_PX),
         );
-        const ratio =
-            effectiveMediaAspectRatio ??
-            (useMobileVideoSizing ? 16 / 9 : 4 / 3);
+        const ratio = resolvedMediaAspectRatio ?? (isVideo ? 16 / 9 : 4 / 3);
 
         let width = maxWidth;
         let height = width / ratio;
@@ -510,12 +499,7 @@ export function MemoryViewer({
         }
 
         return { width: Math.round(width), height: Math.round(height) };
-    }, [
-        effectiveMediaAspectRatio,
-        useMobileVideoSizing,
-        viewport.height,
-        viewport.width,
-    ]);
+    }, [isVideo, resolvedMediaAspectRatio, viewport.height, viewport.width]);
 
     const desktopFrameSize = useMemo(() => {
         const availableWidth = Math.max(
@@ -528,8 +512,8 @@ export function MemoryViewer({
         );
         const maxWidth = Math.min(DESKTOP_MEDIA_MAX_WIDTH_PX, availableWidth);
         const ratio =
-            typeof effectiveMediaAspectRatio === "number"
-                ? effectiveMediaAspectRatio
+            typeof resolvedMediaAspectRatio === "number"
+                ? resolvedMediaAspectRatio
                 : 4 / 3;
 
         let width = maxWidth;
@@ -541,29 +525,28 @@ export function MemoryViewer({
         }
 
         return { width: Math.round(width), height: Math.round(height) };
-    }, [effectiveMediaAspectRatio, viewport.height, viewport.width]);
+    }, [resolvedMediaAspectRatio, viewport.height, viewport.width]);
 
     const mediaFrameStyle = isMobileLayout
         ? {
               width: `${mobileFrameSize.width}px`,
-              aspectRatio: `${effectiveMediaAspectRatio ?? (useMobileVideoSizing ? 16 / 9 : 4 / 3)}`,
+              aspectRatio: `${resolvedMediaAspectRatio ?? (isVideo ? 16 / 9 : 4 / 3)}`,
           }
         : {
               width: `${desktopFrameSize.width}px`,
-              aspectRatio: `${effectiveMediaAspectRatio ?? 4 / 3}`,
+              aspectRatio: `${resolvedMediaAspectRatio ?? 4 / 3}`,
           };
-    const mediaFrameSize = isMobileLayout ? mobileFrameSize : desktopFrameSize;
 
     const isProgressPaused =
         paused || !fileLoaded || (isVideo && !videoDurationKnown);
-    const showPlaybackOverlay = paused && !finishedPlayback;
+    const showPlaybackOverlay = paused;
 
     const header = (
         <SharedMemoryHeader
             title={headerTitle}
             date={headerDate}
             total={files.length}
-            current={finishedPlayback ? files.length : currentIndex}
+            current={currentIndex}
             paused={isProgressPaused}
             duration={progressDuration}
             onComplete={handleAdvanceOrFinish}
@@ -692,22 +675,17 @@ export function MemoryViewer({
                         style={mediaFrameStyle}
                         onClick={handleMediaFrameClick}
                     >
-                        {finishedPlayback ? (
-                            <MediaSwitchLayer
-                                phase="in"
-                                style={{ pointerEvents: "auto" }}
-                            >
-                                <MemoryEndCard width={mediaFrameSize.width} />
-                            </MediaSwitchLayer>
-                        ) : (
-                            mediaLayers
-                        )}
+                        {mediaLayers}
                         {showPlaybackOverlay && (
                             <CenteredPlaybackOverlay>
                                 <CenteredPlaybackControl
                                     type="button"
                                     onClick={handlePlaybackOverlayClick}
-                                    aria-label="Resume playback"
+                                    aria-label={
+                                        finishedPlayback
+                                            ? "Restart memories"
+                                            : "Resume playback"
+                                    }
                                     data-memory-control="true"
                                 >
                                     <CenteredPlaybackGlyph>
