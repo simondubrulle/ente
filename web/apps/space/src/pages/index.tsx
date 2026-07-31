@@ -37,7 +37,6 @@ import {
     type SpaceInviteIntent,
     type SpaceInviteRoute,
 } from "services/spaceInvite";
-import { isSpaceWebPushPilotPublicPage } from "services/spaceWebPushPilot";
 import {
     useSpaceAppState,
     type OnboardingEntrySource,
@@ -619,6 +618,12 @@ export const Page: React.FC<PageProps> = ({ invitePreview }) => {
                 log.error("Failed to send friend request", error);
             }
         };
+        const createSpace = () => {
+            clearPendingSpaceInvite();
+            clearPendingSpaceInviteFriend();
+            clearPendingSpaceInviteIntent();
+            window.location.assign("/");
+        };
 
         return (
             <>
@@ -641,18 +646,15 @@ export const Page: React.FC<PageProps> = ({ invitePreview }) => {
                                 void addFriend(intent)
                             }
                             onBack={() => window.location.assign("/")}
+                            onCreateSpace={createSpace}
                             onLoadPostImage={publicLink.loadPostImage}
                             postGroups={publicPostGroups}
                             postsCount={publicLink.postsCount}
                             profile={publicLink.profile}
                             publicNotificationControl={
-                                isSpaceWebPushPilotPublicPage(
-                                    publicIdentity.username,
-                                ) ? (
-                                    <SpacePublicProfileNotificationControl
-                                        session={publicLink}
-                                    />
-                                ) : undefined
+                                <SpacePublicProfileNotificationControl
+                                    session={publicLink}
+                                />
                             }
                             showAddingFriendSpinner={
                                 isAddingFriend && Boolean(profile)
