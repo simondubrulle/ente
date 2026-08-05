@@ -8,7 +8,7 @@ import type {
 import { wait } from "ente-utils/promise";
 import { t } from "i18next";
 
-export interface SidebarAction {
+interface SidebarAction {
     id: SidebarActionID;
     label: string;
     path: string[];
@@ -16,7 +16,7 @@ export interface SidebarAction {
     available?: () => boolean;
 }
 
-export interface SidebarActionContext {
+interface SidebarActionContext {
     // top-level sidebar controls
     onClose: () => void;
     onShowCollectionSummary: (
@@ -345,7 +345,7 @@ export const performSidebarAction = async (
             return (
                 ctx
                     .onShowCollectionSummary(ctx.pseudoIDs.hidden, true)
-                    // See: [Note: Workarounds for unactionable ARIA warnings]
+                    // Let focus settle before closing to avoid aria-hidden warnings.
                     .then(() => wait(10))
                     .then(() => ctx.onClose())
             );

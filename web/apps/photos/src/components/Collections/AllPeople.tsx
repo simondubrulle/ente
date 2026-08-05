@@ -1,6 +1,6 @@
-import { sortPeople, type PeopleSortBy } from "@/components/people-sort";
 import { PeopleSortOptions } from "@/components/PeopleSortOptions";
 import { useWrapAsyncOperation } from "@/components/utils/use-wrap-async";
+import { sortPeople, type PeopleSortBy } from "@/utils/people-sort";
 import {
     ArrowDownDoubleIcon,
     ArrowUpDoubleIcon,
@@ -131,11 +131,6 @@ export const AllPeople: React.FC<AllPeopleProps> = ({
 
     const hasSearchQuery = !!searchTerm.trim();
 
-    /**
-     * Preparing the additional faces list when showing
-     * more faces, excluding duplicates from the visible list
-     * and excluding hidden cgroups
-     */
     const extraPeople = useMemo(() => {
         const visiblePersonIDs = new Set(people.map(({ id }) => id));
         const extra = allPeople.filter(
