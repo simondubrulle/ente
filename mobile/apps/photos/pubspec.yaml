@@ -27,10 +27,6 @@ dependencies:
   audio_session: 0.2.2
   backup_exclusion:
     path: ../../packages/backup_exclusion
-  battery_info: # replace with battery_plus
-    git:
-      url: https://github.com/ente/battery_info
-      ref: 95c7a9f0400b968b3bfdc98c8c10a07fb4a62ea2
   bip39: 1.0.6
   cached_network_image: 3.4.1
   camera: 0.11.2+1
@@ -70,8 +66,12 @@ dependencies:
     path: ../../packages/install_source
   ente_lock_screen:
     path: ../../packages/lock_screen
+  ente_mail:
+    path: ../../packages/mail
   ente_panorama_viewer:
     path: plugins/ente_panorama_viewer
+  ente_photos_platform:
+    path: plugins/ente_photos_platform
   ente_photos_rust:
     path: rust_builder
   ente_pure_utils:
@@ -111,7 +111,6 @@ dependencies:
       path: flutter_cache_manager
   flutter_displaymode: 0.6.0
   flutter_easyloading: 3.0.5
-  flutter_email_sender: 7.0.0
   flutter_image_compress: 2.4.0
   flutter_inappwebview: 6.1.5
   flutter_local_notifications: 19.3.0
@@ -180,10 +179,6 @@ dependencies:
   native_video_editor:
     path: ../../packages/native_video_editor
   native_video_player: 4.0.1
-  open_mail_app: # replace plugin, git is archived
-    git:
-      url: https://github.com/ente/open-mail-app-flutter.git
-      ref: 13c0244db82b386ad1a53b2451bdfda8d2687cb6
   package_info_plus: 8.3.1
   password_strength: 0.2.0
   path: 1.9.1 #dart
@@ -214,8 +209,6 @@ dependencies:
   sqlite_async: 0.11.7
   styled_text: 8.1.0
   synchronized: 3.4.0
-  system_info_plus: 0.0.6
-  thermal: 1.1.11
   timezone: 0.10.1
   tuple: 2.0.2
   ua_client_hints: 1.4.1
