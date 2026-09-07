@@ -1,9 +1,9 @@
 package middleware
 
 import (
+	"crypto/sha256"
 	"database/sql"
 	"errors"
-	"fmt"
 	"net/http"
 	"strconv"
 	"strings"
@@ -38,9 +38,10 @@ func (m *AuthMiddleware) TokenAuthMiddleware(jwtClaimScope *jwt.ClaimScope) gin.
 		app := auth.GetApp(c)
 		var userID int64
 		if jwtClaimScope == nil {
+			tokenHash := auth.HashToken(token)
 			var expired, cached bool
 			var err error
-			userID, expired, cached, err = authsession.Authenticate(m.UserAuthRepo, m.Cache, token, app)
+			userID, expired, cached, err = authsession.Authenticate(m.UserAuthRepo, m.Cache, tokenHash[:], app)
 			if err != nil && !errors.Is(err, sql.ErrNoRows) {
 				logrus.Errorf("Failed to validate token: %s", err)
 				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to validate token"})
@@ -61,23 +62,31 @@ func (m *AuthMiddleware) TokenAuthMiddleware(jwtClaimScope *jwt.ClaimScope) gin.
 				// skip updating last used for requests routed via CF worker
 				if !network.IsCFWorkerIP(ip) {
 					go func() {
-						_ = m.UserAuthRepo.UpdateLastUsedAt(userID, token, ip, userAgent)
+						_ = m.UserAuthRepo.UpdateLastUsedAtByTokenHash(userID, tokenHash[:], ip, userAgent)
 					}()
 				}
 			}
 		} else {
-			cacheKey := fmt.Sprintf("%s:%s:%s", app, token, *jwtClaimScope)
-			cachedUserID, found := m.Cache.Get(cacheKey)
-			if found {
-				userID = cachedUserID.(int64)
-			} else {
-				claim, err := m.UserController.ValidateJWTToken(token, *jwtClaimScope)
-				if err != nil {
-					c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
-					return
-				}
-				userID = claim.UserID
-				m.Cache.Set(cacheKey, userID, cache.DefaultExpiration)
+			claim, err := m.UserController.ValidateJWTToken(token, *jwtClaimScope)
+			if err != nil {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
+			userID = claim.UserID
+			sessionApp := ente.App(claim.SessionApp)
+			if len(claim.SessionTokenHash) != sha256.Size || !sessionApp.IsValid() {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
+			}
+			sessionUserID, expired, _, err := authsession.Authenticate(m.UserAuthRepo, m.Cache, claim.SessionTokenHash, sessionApp)
+			if err != nil && !errors.Is(err, sql.ErrNoRows) {
+				logrus.Errorf("Failed to validate JWT session: %s", err)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{"error": "failed to validate token"})
+				return
+			}
+			if err != nil || expired || sessionUserID != userID {
+				c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "invalid token"})
+				return
 			}
 		}
 		c.Request.Header.Set("X-Auth-User-ID", strconv.FormatInt(userID, 10))

@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/foundation.dart';
 import 'package:logging/logging.dart';
 import 'package:photo_manager/photo_manager.dart';
@@ -51,7 +53,6 @@ class EnteFile {
 
   set magicMetadata(MagicMetadata? val) => _mmd = val;
 
-  // public magic metadata is shared if during file/album sharing
   String? _pubMmdEncodedJson;
   String? get pubMmdEncodedJson => _pubMmdEncodedJson;
 
@@ -59,15 +60,28 @@ class EnteFile {
     if (_pubMmdEncodedJson == value) return;
     _pubMmdEncodedJson = value;
     _pubMmd = null;
+    _dimensionsDecoded = false;
   }
 
   int pubMmdVersion = 0;
   PubMagicMetadata? _pubMmd;
+  int _width = 0;
+  int _height = 0;
+  bool _dimensionsDecoded = false;
 
   PubMagicMetadata? get pubMagicMetadata =>
       _pubMmd ??= PubMagicMetadata.fromEncodedJson(pubMmdEncodedJson ?? '{}');
 
-  set pubMagicMetadata(PubMagicMetadata? val) => _pubMmd = val;
+  set pubMagicMetadata(PubMagicMetadata? val) {
+    _pubMmd = val;
+    if (val == null) {
+      _dimensionsDecoded = false;
+      return;
+    }
+    _width = val.w ?? 0;
+    _height = val.h ?? 0;
+    _dimensionsDecoded = true;
+  }
 
   // in Version 1, live photo hash is stored as zip's hash.
   // in V2: LivePhoto hash is stored as imgHash:vidHash
@@ -78,6 +92,40 @@ class EnteFile {
   static final _logger = Logger('File');
 
   EnteFile();
+
+  EnteFile.from(EnteFile file) {
+    generatedID = file.generatedID;
+    uploadedFileID = file.uploadedFileID;
+    ownerID = file.ownerID;
+    collectionID = file.collectionID;
+    localID = file.localID;
+    title = file.title;
+    deviceFolder = file.deviceFolder;
+    creationTime = file.creationTime;
+    modificationTime = file.modificationTime;
+    updationTime = file.updationTime;
+    addedTime = file.addedTime;
+    location = file.location;
+    fileType = file.fileType;
+    fileSubType = file.fileSubType;
+    duration = file.duration;
+    exif = file.exif;
+    hash = file.hash;
+    metadataVersion = file.metadataVersion;
+    encryptedKey = file.encryptedKey;
+    keyDecryptionNonce = file.keyDecryptionNonce;
+    fileDecryptionHeader = file.fileDecryptionHeader;
+    thumbnailDecryptionHeader = file.thumbnailDecryptionHeader;
+    metadataDecryptionHeader = file.metadataDecryptionHeader;
+    fileSize = file.fileSize;
+    mMdEncodedJson = file.mMdEncodedJson;
+    mMdVersion = file.mMdVersion;
+    magicMetadata = file.magicMetadata;
+    pubMmdEncodedJson = file.pubMmdEncodedJson;
+    pubMmdVersion = file.pubMmdVersion;
+    pubMagicMetadata = file.pubMagicMetadata;
+    debugCaption = file.debugCaption;
+  }
 
   Future<AssetEntity?> get getAsset {
     if (localID == null) {
@@ -109,7 +157,6 @@ class EnteFile {
         fileType == FileType.livePhoto &&
         metadata.containsKey('imageHash') &&
         metadata.containsKey('videoHash')) {
-      // convert to imgHash:vidHash
       hash =
           '${metadata['imageHash']}$kLivePhotoHashSeparator${metadata['videoHash']}';
     }
@@ -162,13 +209,44 @@ class EnteFile {
     return title ?? '';
   }
 
-  // return 0 if the height is not available
   int get height {
-    return pubMagicMetadata?.h ?? 0;
+    _decodeDimensions();
+    return _height;
   }
 
   int get width {
-    return pubMagicMetadata?.w ?? 0;
+    _decodeDimensions();
+    return _width;
+  }
+
+  void _decodeDimensions() {
+    if (_dimensionsDecoded) return;
+    if (_pubMmd != null) {
+      _width = _pubMmd!.w ?? 0;
+      _height = _pubMmd!.h ?? 0;
+    } else {
+      // Gallery layout only needs these two fields. Decode them without
+      // materializing and retaining PubMagicMetadata for every gallery file.
+      _width = 0;
+      _height = 0;
+      try {
+        final metadata = jsonDecode(pubMmdEncodedJson ?? '{}');
+        if (metadata is Map<String, dynamic>) {
+          _width =
+              PubMagicMetadata.safeParseInt(metadata[widthKey], widthKey) ?? 0;
+          _height =
+              PubMagicMetadata.safeParseInt(metadata[heightKey], heightKey) ??
+              0;
+        }
+      } on FormatException catch (error, stackTrace) {
+        _logger.severe(
+          "Failed to decode public metadata dimensions for file $tag",
+          error,
+          stackTrace,
+        );
+      }
+    }
+    _dimensionsDecoded = true;
   }
 
   bool get hasDimensions {
@@ -197,10 +275,7 @@ class EnteFile {
       ownerID: $ownerID, collectionID: $collectionID, updationTime: $updationTime)''';
   }
 
-  /// Mutates this file in place with upload-result fields from [uploadedFile].
-  /// Used by the gallery's soft refresh path so that all existing references
-  /// (GalleryGroups sub-lists, GalleryFileWidget.widget.file, etc.) see the
-  /// updated state without needing to rebuild GalleryGroups.
+  // Soft refreshes mutate in place because gallery groups retain this object.
   void applyUploadedData(EnteFile uploadedFile) {
     uploadedFileID = uploadedFile.uploadedFileID;
     collectionID = uploadedFile.collectionID;

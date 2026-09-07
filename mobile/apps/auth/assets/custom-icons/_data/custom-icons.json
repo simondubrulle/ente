@@ -24,6 +24,11 @@
       "slug": "abb"
     },
     {
+      "title": "Accountable",
+      "slug": "accountable",
+      "hex": "794FD7"
+    },
+    {
       "title": "Accredible",
       "slug": "accredible",
       "altNames": [
@@ -66,6 +71,10 @@
       "hex": "000000"
     },
     {
+      "title": "AirVPN",
+      "slug": "airvpn"
+    },
+    {
       "title": "AJ Bell",
       "slug": "aj_bell",
       "hex": "c41230"
@@ -94,6 +103,9 @@
       "title": "Amtrak",
       "slug": "amtrak",
       "hex": "004D6E"
+    },
+    {
+      "title": "Ancestry"
     },
     {
       "title": "Animal Crossing",
@@ -199,6 +211,13 @@
       ]
     },
     {
+      "title": "BambooHR",
+      "slug": "bamboohr",
+      "altNames": [
+        "BambooHR"
+      ]
+    },
+    {
       "title": "Band",
       "slug": "band"
     },
@@ -269,6 +288,9 @@
     {
       "title": "Bitazza",
       "slug": "bitazza"
+    },
+    {
+      "title": "Bitbuy"
     },
     {
       "title": "Bitfinex"
@@ -618,6 +640,9 @@
       ]
     },
     {
+      "title": "Cults"
+    },
+    {
       "title": "Cwallet",
       "altNames": [
         "cwallet",
@@ -677,13 +702,6 @@
       "title": "DirectAdmin"
     },
     {
-      "title": "Discogs",
-      "slug": "discogs",
-      "altNames": [
-        "discogs.com"
-      ]
-    },
-    {
       "title": "Discourse"
     },
     {
@@ -699,6 +717,21 @@
     },
     {
       "title": "DocuSeal"
+    },
+    {
+      "title": "DocuSign",
+      "slug": "docusign",
+      "altNames": [
+        "DocuSign",
+        "DocuSign (NA1)",
+        "DocuSign (NA2)",
+        "DocuSign (NA3)",
+        "DocuSign (NA4)",
+        "DocuSign (EU)",
+        "DocuSign (AU)",
+        "DocuSign (CA)",
+        "DocuSign (JP1)"
+      ]
     },
     {
       "title": "Dominos",
@@ -743,6 +776,9 @@
     {
       "title": "dus.net",
       "slug": "dusnet"
+    },
+    {
+      "title": "e621"
     },
     {
       "title": "eBay"
@@ -851,6 +887,9 @@
       "altNames": [
         "FANATICAL"
       ]
+    },
+    {
+      "title": "Fansly"
     },
     {
       "title": "Fastmail"
@@ -964,7 +1003,10 @@
       "title": "GMX"
     },
     {
-      "title": "GoDaddy"
+      "title": "GoDaddy",
+      "altNames": [
+        "GoDaddy"
+      ]
     },
     {
       "title": "GommeHD.net",
@@ -1115,6 +1157,14 @@
       ]
     },
     {
+      "title": "Incogni",
+      "slug": "incogni",
+      "hex": "000000",
+      "altNames": [
+        "incogni.com"
+      ]
+    },
+    {
       "title": "Infomaniak"
     },
     {
@@ -1184,6 +1234,13 @@
     },
     {
       "title": "Jottacloud"
+    },
+    {
+      "title": "Jotty Page",
+      "slug": "jotty",
+      "altNames": [
+        "Jotty"
+      ]
     },
     {
       "title": "JOYclub",
@@ -1303,6 +1360,15 @@
         "Life Miles",
         "lifemiles.com",
         "Avianca LifeMiles"
+      ]
+    },
+    {
+      "title": "Lightyear",
+      "hex": "000000",
+      "altNames": [
+        "Lightyear Investing",
+        "Lightyear: Invest in stocks",
+        "Lightyear: Stocks and ETFs"
       ]
     },
     {
@@ -1525,6 +1591,20 @@
         "FritzBox 7520",
         "FritzBox 7490",
         "FritzBox 7583"
+      ]
+    },
+    {
+      "title": "MyHeritage",
+      "slug": "myheritage",
+      "altNames": [
+        "MyHeritage"
+      ]
+    },
+    {
+      "title": "myHSA",
+      "slug": "myhsa",
+      "altNames": [
+        "myHSA"
       ]
     },
     {
@@ -1759,6 +1839,9 @@
     },
     {
       "title": "PayPal"
+    },
+    {
+      "title": "Payworks"
     },
     {
       "title": "PBTech",
@@ -2073,6 +2156,13 @@
       "slug": "seafile"
     },
     {
+      "title": "Securo Finance",
+      "slug": "securo",
+      "altNames": [
+        "Securo"
+      ]
+    },
+    {
       "title": "SEI",
       "altNames": [
         "sei",
@@ -2129,6 +2219,12 @@
     },
     {
       "title": "Smouter"
+    },
+    {
+      "title": "SMSFAST",
+      "altNames": [
+        "SMSFAST"
+      ]
     },
     {
       "title": "SMSPool",
@@ -2275,14 +2371,6 @@
       ]
     },
     {
-      "title": "tencent cloud",
-      "slug": "tencent_cloud",
-      "altNames": [
-        "\u817e\u8baf\u4e91",
-        "tencentcloud"
-      ]
-    },
-    {
       "title": "Terabit",
       "slug": "terabit",
       "altNames": [
@@ -2401,7 +2489,10 @@
       "hex": "00305d"
     },
     {
-      "title": "TunnelBear"
+      "title": "TunnelBear",
+      "altNames": [
+        "TunnelBear"
+      ]
     },
     {
       "title": "Tuta",
@@ -2476,6 +2567,9 @@
     },
     {
       "title": "Uphold"
+    },
+    {
+      "title": "UPS"
     },
     {
       "title": "Upstox"
@@ -2561,6 +2655,13 @@
       "altNames": [
         "Warner Brothers",
         "WB Games Account"
+      ]
+    },
+    {
+      "title": "Wave Financial",
+      "slug": "wave_financial",
+      "altNames": [
+        "my.waveapps.com"
       ]
     },
     {
@@ -2722,6 +2823,9 @@
       "altNames": [
         "コインチェック"
       ]
+    },
+    {
+      "title": "Luno"
     }
   ]
 }

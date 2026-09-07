@@ -33,12 +33,6 @@ void main() {
     expect(code.counter, 15);
   });
 
-  test("shareCodesSupport", () {
-    expect(Type.totp.canShareCodes, true);
-    expect(Type.steam.canShareCodes, true);
-    expect(Type.hotp.canShareCodes, false);
-  });
-
   test("validateDisplay", () {
     Code code = Code.fromOTPAuthUrl(
       "otpauth://hotp/testdata@ente.io?secret=ASKZNWOU6SVYAMVS&issuer=GitHub&counter=15",
@@ -57,7 +51,6 @@ void main() {
     final secondDataToStore = restoredCode.toOTPAuthUrlFormat();
     expect(dataToStore, secondDataToStore);
   });
-  //
 
   test("parseWithFunnyAccountName", () {
     final code = Code.fromOTPAuthUrl(

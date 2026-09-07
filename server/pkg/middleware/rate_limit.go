@@ -113,7 +113,6 @@ func (r *RateLimitMiddleware) APIRateLimitForUserMiddleware(urlSanitizer func(_ 
 		if rateLimiter != nil {
 			userID := auth.GetUserID(c.Request.Header)
 			if userID == 0 {
-				// do not apply limit, just log
 				log.Error("userID must be present in request header for applying rate-limit")
 				return
 			}
@@ -227,7 +226,7 @@ func (r *RateLimitMiddleware) getLimiter(reqPath string, reqMethod string) *limi
 	if reqPath == "/spaces/:spaceID/conversations" && reqMethod == http.MethodGet {
 		return r.limit60ReqPerMin
 	}
-	if reqPath == "/spaces/:spaceID/feed" && reqMethod == http.MethodGet {
+	if reqPath == "/spaces/:spaceID/home-posts" && reqMethod == http.MethodGet {
 		return r.limit60ReqPerMin
 	}
 	if reqMethod == http.MethodGet && isSpaceViewerReadURLPath(reqPath) {

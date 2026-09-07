@@ -106,8 +106,7 @@ class SyncService {
     });
   }
 
-  // Note: Do not use this future for anything except log out.
-  // This is prone to bugs due to any potential race conditions
+  // Only logout may wait on this future; other uses are prone to sync races.
   Future<bool> existingSync() async {
     return _existingSync?.future ?? Future.value(true);
   }
@@ -236,14 +235,17 @@ class SyncService {
     if (isLocalGalleryMode) {
       await _localSyncService.syncAll();
       if (Platform.isAndroid) {
-        unawaited(
-          OfflineImportMetadataService.instance.processPendingFiles(
-            batchSize: isProcessBg
-                ? 10
-                : OfflineImportMetadataService.kDefaultBatchSize,
-            maxBatches: isProcessBg ? 1 : 4,
-          ),
-        );
+        final processing = OfflineImportMetadataService.instance
+            .processPendingFiles(
+              batchSize: isProcessBg
+                  ? 10
+                  : OfflineImportMetadataService.kDefaultBatchSize,
+            );
+        if (isProcessBg) {
+          await processing;
+        } else {
+          unawaited(processing);
+        }
       }
       _logger.info(
         "[SYNC] Local gallery mode${Platform.isAndroid ? '' : ' (non-Android, no metadata processing)'}, skipping remote sync",

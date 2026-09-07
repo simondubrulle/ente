@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
-use zeroize::Zeroize;
+use zeroize::ZeroizeOnDrop;
 
-use crate::transport::{
-    PostObjectPayload, ProfileAvatarResponse, ProfileCoverResponse, SpaceActorResponse,
-    SpaceKeyResponse,
-};
+use crate::transport::{ProfileAvatarResponse, ProfileCoverResponse, SpaceKeyResponse};
 
 #[derive(Clone)]
 pub struct OpenAccountSpaceCtxInput {
@@ -93,39 +90,13 @@ pub struct DecryptedMessage {
     pub payload: MessagePayload,
 }
 
-#[derive(Clone, Zeroize)]
-#[zeroize(drop)]
+#[derive(Clone, ZeroizeOnDrop)]
 pub struct DecryptedFriendShare {
     pub friend: String,
     pub space_id: String,
     pub space_slug: String,
     pub space_key: Vec<u8>,
     pub key_version: i32,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct FeedItem {
-    pub post_id: i64,
-    pub space_id: String,
-    pub space_slug: String,
-    pub author: SpaceActorResponse,
-    pub encrypted_post_key: String,
-    #[serde(default)]
-    pub caption_cipher: String,
-    pub key_version: i32,
-    #[serde(default)]
-    pub objects: Vec<PostObjectPayload>,
-    pub created_at: String,
-    pub viewer_liked: bool,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
-pub struct FeedPage {
-    pub items: Vec<FeedItem>,
-    #[serde(default)]
-    pub next_cursor: String,
 }
 
 #[derive(Clone)]

@@ -92,9 +92,6 @@ abstract class SuperIsolate {
     });
   }
 
-  /// The common method to run any operation in the isolate.
-  /// It sends the [message] to [_isolateMain] and waits for the result.
-  /// The actual function executed is [isolateFunction].
   Future<dynamic> runInIsolate(
     IsolateOperation operation,
     Map<String, dynamic> args,
@@ -107,35 +104,37 @@ abstract class SuperIsolate {
         return null;
       }
 
-      final completer = Completer<dynamic>();
       final answerPort = ReceivePort();
 
       _activeTasks++;
       final taskID = newIsolateTaskID(operation.name);
-      _mainSendPort.send([taskID, operation.index, args, answerPort.sendPort]);
-
-      answerPort.listen((receivedMessage) {
+      try {
+        _mainSendPort.send([
+          taskID,
+          operation.index,
+          args,
+          answerPort.sendPort,
+        ]);
+        final receivedMessage = await answerPort.first;
         if (receivedMessage['taskID'] != taskID) {
           logger.severe("Received isolate message with wrong taskID");
-          return;
+          throw StateError("Received isolate message with wrong taskID");
         }
-        _activeTasks--;
         final logs = receivedMessage['logs'] as List<String>;
         IsolateLogger.handLogStringsToMainLogger(logs);
         final data = receivedMessage['data'];
         if (data is Map && data.containsKey('error')) {
-          // Handle the error
           final errorMessage = data['error'];
           final errorStackTrace = data['stackTrace'];
           final exception = Exception(errorMessage);
           final stackTrace = StackTrace.fromString(errorStackTrace);
-          completer.completeError(exception, stackTrace);
-        } else {
-          completer.complete(data);
+          Error.throwWithStackTrace(exception, stackTrace);
         }
-      });
-
-      return completer.future;
+        return data;
+      } finally {
+        answerPort.close();
+        _activeTasks--;
+      }
     });
   }
 
@@ -148,7 +147,6 @@ abstract class SuperIsolate {
     });
   }
 
-  /// Clears specific data from the isolate's cache
   Future<void> clearCachedData(String key) async {
     await runInIsolate(IsolateOperation.clearIsolateCache, {'key': key});
   }
@@ -157,15 +155,11 @@ abstract class SuperIsolate {
     await runInIsolate(IsolateOperation.clearAllIsolateCache, {});
   }
 
-  /// Resets a timer that kills the isolate after a certain amount of inactivity.
-  ///
-  /// Should be called after initialization (e.g. inside `init()`) and after every call to isolate (e.g. inside `_runInIsolate()`)
   void _resetInactivityTimer() {
     _inactivityTimer?.cancel();
     _inactivityTimer = Timer(_inactivityDuration, () {
       if (_activeTasks > 0) {
         logger.info('Tasks are still running. Delaying isolate disposal.');
-        // Optionally, reschedule the timer to check again later.
         _resetInactivityTimer();
       } else {
         logger.info(

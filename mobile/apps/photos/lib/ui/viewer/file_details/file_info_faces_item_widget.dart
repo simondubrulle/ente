@@ -161,7 +161,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
   Widget _buildPeopleGrid(double thumbnailWidth) {
     final children = <Widget>[];
 
-    // Add manual person widgets first
     for (final person in _manualPersons) {
       children.add(
         _ManualPersonTag(
@@ -175,7 +174,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       );
     }
 
-    // Add face widgets
     for (final faceInfo in _defaultFaces) {
       children.add(
         FileInfoFaceWidget(
@@ -195,7 +193,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       );
     }
 
-    // Add "Add person" button at the end
     if (!isLocalGalleryMode &&
         flagService.manualTagFileToPerson &&
         widget.file.uploadedFileID != null) {
@@ -217,7 +214,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
   ) async {
     final faceInfoList = <_FaceInfo>[];
 
-    // Build person mapping for sorting
     final faceIdToPersonID = <String, String>{};
     for (final face in faces) {
       final clusterID = faceIdsToClusterIds[face.faceID];
@@ -229,7 +225,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       }
     }
 
-    // Sort faces: named first, then by score, hidden last
     faces.sort((a, b) {
       final aPersonID = faceIdToPersonID[a.faceID];
       final bPersonID = faceIdToPersonID[b.faceID];
@@ -243,7 +238,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       return b.score.compareTo(a.score);
     });
 
-    // Create face info objects
     for (final face in faces) {
       final faceCrop = faceCrops[face.faceID];
       if (faceCrop == null) {
@@ -567,21 +561,14 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
     if (dialog != null) {
       await dialog.show();
     }
-    var completed = 0;
-    var hasUpdates = false;
     var completedAll = false;
-    final changedPersons = <PersonEntity>[];
     try {
-      for (final clusterID in clusterIDs) {
-        final ignoredPerson = await ClusterFeedbackService.instance
-            .ignoreCluster(clusterID, firePeopleChangedEvent: false);
-        changedPersons.add(ignoredPerson);
-        completed++;
-        hasUpdates = true;
-        dialog?.update(
+      await ClusterFeedbackService.instance.ignoreClusters(
+        clusterIDs,
+        onProgress: (completed, _) => dialog?.update(
           message: _bulkIgnoreProgressMessage(l10n, completed, total),
-        );
-      }
+        ),
+      );
       completedAll = true;
     } catch (e, s) {
       _logger.severe('Error while ignoring selected face clusters', e, s);
@@ -592,19 +579,7 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       if (completedAll && mounted) {
         _clearSelectionMode();
       }
-      if (hasUpdates) {
-        _firePeopleChangedEvents(changedPersons);
-      }
     }
-  }
-
-  void _firePeopleChangedEvents(List<PersonEntity> changedPersons) {
-    Bus.instance.fire(
-      PeopleChangedEvent(
-        person: changedPersons.isEmpty ? null : changedPersons.first,
-        source: "file_details_bulk_ignore_faces",
-      ),
-    );
   }
 
   String _bulkIgnoreProgressMessage(
@@ -641,8 +616,7 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       fileKey = widget.file.uploadedFileID!;
     }
 
-    // Fetch persons map early so we can check for manual assignments
-    // even when no faces are detected
+    // Manual assignments can exist even when no faces were detected.
     final persons = isLocalGallery
         ? <String, PersonEntity>{}
         : await PersonService.instance.getPersonsMap();
@@ -666,7 +640,6 @@ class _FacesItemWidgetState extends State<FacesItemWidget> {
       );
     }
 
-    // Get additional data
     final faceIdsToClusterIds = await mlDataDB.getFaceIdsToClusterIds(
       faces.map((face) => face.faceID).toList(),
     );

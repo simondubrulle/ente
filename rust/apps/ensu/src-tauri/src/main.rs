@@ -1,6 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::{Manager, RunEvent};
+use tauri::{Manager, RunEvent, async_runtime};
 
 mod commands;
 mod logging;
@@ -17,6 +17,7 @@ fn main() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(commands::llm::State::default())
         .manage(commands::chat_db::ChatDbState::default())
+        .manage(commands::knowledge::State::default())
         .setup(|app| {
             logging::init_logging(app.handle());
             logging::log("App", "setup started");
@@ -24,21 +25,45 @@ fn main() {
             app.manage(commands::llm::ModelDownloadState::new(
                 app.path().app_data_dir()?,
             ));
-
+            let notes_available = match commands::notes::State::new(app.path().app_data_dir()?) {
+                Ok(state) => {
+                    app.manage(state);
+                    true
+                }
+                Err(error) => {
+                    logging::log(
+                        "Notes",
+                        format!(
+                            "initialization failed; Notes disabled error={}",
+                            error.message
+                        ),
+                    );
+                    false
+                }
+            };
             if let Some(window) = app.get_webview_window("main")
                 && let Err(err) = window.show()
             {
                 logging::log("App", format!("failed to show main window error={err}"));
                 return Err(Box::new(err));
             }
+            if notes_available {
+                let notes_app = app.handle().clone();
+                async_runtime::spawn(async move {
+                    commands::notes::initialize_for_app(notes_app).await;
+                });
+            }
             logging::log("App", "setup complete");
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
-            commands::crypto::crypto_init,
-            commands::crypto::crypto_generate_key,
-            commands::crypto::crypto_encrypt_blob,
-            commands::crypto::crypto_decrypt_blob,
+            commands::crypto::chat_crypto_generate_key,
+            commands::crypto::chat_crypto_encrypt_payload,
+            commands::crypto::chat_crypto_decrypt_payload,
+            commands::crypto::chat_crypto_encrypt_field,
+            commands::crypto::chat_crypto_decrypt_field,
+            commands::crypto::chat_crypto_encrypt_attachment,
+            commands::crypto::chat_crypto_decrypt_attachment,
             commands::secure_storage::secure_storage_get,
             commands::secure_storage::secure_storage_set,
             commands::secure_storage::secure_storage_delete,
@@ -64,12 +89,23 @@ fn main() {
             commands::llm::llm_prewarm_multimodal_context,
             commands::llm::llm_generate_chat_stream,
             commands::llm::llm_cancel,
+            commands::llm::llm_retrieval_epoch,
             commands::system::system_info,
             commands::config::desktop_model_policy,
             commands::llm::llm_model_status,
+            commands::llm::llm_model_download_size,
             commands::llm::llm_migrate_models,
             commands::llm::llm_download_model,
             commands::llm::llm_cancel_model_download,
+            commands::knowledge::knowledge_catalog,
+            commands::knowledge::knowledge_download_pack,
+            commands::knowledge::knowledge_cancel_pack_download,
+            commands::knowledge::knowledge_retrieve,
+            commands::notes::notes_list_collections,
+            commands::notes::notes_add_collection,
+            commands::notes::notes_remove_collection,
+            commands::notes::notes_index_collection,
+            commands::notes::notes_open_document,
         ])
         .build(tauri::generate_context!())
         .unwrap_or_else(|err| {

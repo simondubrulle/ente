@@ -5,16 +5,30 @@ import {
     type BranchSwitcher,
 } from "@/services/chat/branching";
 import type { ChatAttachment, ChatMessage } from "@/services/chat/store";
+import { noteSourceErrorMessage, openNoteDocument } from "@/services/notes";
+import { isTauriRuntime } from "@/services/tauri-runtime";
 import {
     ArrowLeft01Icon,
     ArrowRight01Icon,
     Attachment01Icon,
+    Cancel01Icon,
     Copy01Icon,
     Edit01Icon,
     RepeatIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Box, IconButton, Stack, Typography } from "@mui/material";
+import {
+    Box,
+    Chip,
+    Dialog,
+    DialogContent,
+    DialogTitle,
+    Divider,
+    IconButton,
+    Link,
+    Stack,
+    Typography,
+} from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import type { SystemStyleObject } from "@mui/system";
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
@@ -30,6 +44,51 @@ interface IconProps {
     size: number;
     strokeWidth: number;
 }
+
+const openExternalUrl = async (url: string) => {
+    if (isTauriRuntime()) {
+        const opened = await import("@tauri-apps/plugin-opener")
+            .then(async ({ openUrl }) => {
+                await openUrl(url);
+                return true;
+            })
+            .catch(() => false);
+        if (opened) return;
+    }
+
+    if (typeof window !== "undefined") {
+        const popup = window.open(url, "_blank", "noopener,noreferrer");
+        if (!popup) window.location.href = url;
+    }
+};
+
+const sourceLinkSx = {
+    border: 0,
+    p: 0,
+    bgcolor: "transparent",
+    fontFamily: "inherit",
+    fontSize: "12px",
+    lineHeight: "15px",
+    fontWeight: 500,
+    color: "accent.main",
+    cursor: "pointer",
+} as const;
+
+const sourceChipSx = {
+    height: 25,
+    borderRadius: 1,
+    bgcolor: "fill.faintHover",
+    color: "text.base",
+    fontSize: "12px",
+    lineHeight: "15px",
+    fontWeight: 500,
+    cursor: "pointer",
+    "& .MuiChip-label": { px: 1.25 },
+    "&:hover": { bgcolor: "fill.muted" },
+} as const;
+
+const sourceChipLabel = (label: string, sourceCount: number) =>
+    sourceCount > 1 ? `${label} +${sourceCount - 1}` : label;
 
 export interface ParsedDocuments {
     text: string;
@@ -69,6 +128,9 @@ export interface ChatMessageListProps {
     assistantMarkdownSx: SxProps<Theme>;
     streamingMessageSx: SystemStyleObject<Theme>;
     actionButtonSx: SxProps<Theme>;
+    dialogTitleSx: SystemStyleObject<Theme>;
+    dialogCloseButtonSx: SystemStyleObject<Theme>;
+    dialogCloseIconProps: IconProps;
     smallIconProps: IconProps;
     actionIconProps: IconProps;
 }
@@ -171,6 +233,182 @@ const AiSafetyFooter = memo(() => {
     );
 });
 
+type MessageSource = NonNullable<ChatMessage["sources"]>[number];
+type PackSource = Extract<MessageSource, { type: "ensuPack" }>;
+type LocalNoteSource = Extract<MessageSource, { type: "localNote" }>;
+
+const PackSourceCard = memo(
+    ({ source, number }: { source: PackSource; number: number }) => {
+        const { citation } = source;
+        return (
+            <Stack
+                sx={{
+                    gap: 1.25,
+                    p: 2,
+                    borderRadius: 1.5,
+                    bgcolor: "fill.faint",
+                }}
+            >
+                <Typography variant="mini" sx={{ color: "text.muted" }}>
+                    SOURCE {number} · ENSU PACK ·{" "}
+                    {citation.datasetLabel.toUpperCase()}
+                </Typography>
+                <Typography variant="h6">{citation.title}</Typography>
+                <Divider sx={{ my: 0.25 }} />
+                <Typography variant="small" sx={{ color: "text.muted" }}>
+                    {citation.credit}
+                </Typography>
+                <Stack direction="row" sx={{ gap: 2, flexWrap: "wrap" }}>
+                    <Link
+                        component="button"
+                        type="button"
+                        underline="hover"
+                        onClick={() => void openExternalUrl(citation.sourceUrl)}
+                        sx={sourceLinkSx}
+                    >
+                        Open source ↗
+                    </Link>
+                    <Link
+                        component="button"
+                        type="button"
+                        underline="hover"
+                        onClick={() =>
+                            void openExternalUrl(citation.licenseUrl)
+                        }
+                        sx={sourceLinkSx}
+                    >
+                        {citation.licenseLabel} ↗
+                    </Link>
+                </Stack>
+            </Stack>
+        );
+    },
+);
+
+const LocalNoteSourceCard = memo(
+    ({ source, number }: { source: LocalNoteSource; number: number }) => {
+        const [openError, setOpenError] = useState<string | null>(null);
+        const { reference } = source;
+        return (
+            <Stack
+                sx={{
+                    gap: 1.25,
+                    p: 2,
+                    borderRadius: 1.5,
+                    bgcolor: "fill.faint",
+                }}
+            >
+                <Typography variant="mini" sx={{ color: "text.muted" }}>
+                    SOURCE {number} · YOUR NOTES
+                    {reference.collectionLabel && (
+                        <> · {reference.collectionLabel.toUpperCase()}</>
+                    )}
+                </Typography>
+                <Typography variant="h6">{reference.title}</Typography>
+                {reference.section && (
+                    <Typography variant="small" sx={{ color: "text.muted" }}>
+                        {reference.section}
+                    </Typography>
+                )}
+                <Divider sx={{ my: 0.25 }} />
+                <Typography variant="small" sx={{ color: "text.muted" }}>
+                    {reference.documentId}
+                </Typography>
+                <Link
+                    component="button"
+                    type="button"
+                    underline="hover"
+                    onClick={() => {
+                        setOpenError(null);
+                        void openNoteDocument(
+                            reference.collectionId,
+                            reference.documentId,
+                            reference.indexedRevision,
+                        ).catch((error: unknown) =>
+                            setOpenError(noteSourceErrorMessage(error)),
+                        );
+                    }}
+                    sx={{ ...sourceLinkSx, alignSelf: "flex-start" }}
+                >
+                    Open note ↗
+                </Link>
+                {openError && (
+                    <Typography variant="small" sx={{ color: "critical.main" }}>
+                        {openError}
+                    </Typography>
+                )}
+            </Stack>
+        );
+    },
+);
+
+const KnowledgeSourcesDialog = memo(
+    ({
+        sources,
+        onClose,
+        dialogTitleSx,
+        closeButtonSx,
+        closeIconProps,
+    }: {
+        sources: MessageSource[];
+        onClose: () => void;
+        dialogTitleSx: SystemStyleObject<Theme>;
+        closeButtonSx: SystemStyleObject<Theme>;
+        closeIconProps: IconProps;
+    }) => (
+        <Dialog
+            open
+            onClose={onClose}
+            fullWidth
+            maxWidth="sm"
+            slotProps={{ paper: { sx: { borderRadius: 3 } } }}
+        >
+            <DialogTitle
+                sx={[
+                    dialogTitleSx,
+                    {
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: 1,
+                        px: 3,
+                        py: 1.5,
+                        pr: 1.5,
+                    },
+                ]}
+            >
+                <Box component="span">Sources</Box>
+                <IconButton
+                    aria-label="Close sources"
+                    onClick={onClose}
+                    sx={closeButtonSx}
+                >
+                    <HugeiconsIcon icon={Cancel01Icon} {...closeIconProps} />
+                </IconButton>
+            </DialogTitle>
+            <DialogContent sx={{ px: 3, pt: 1, pb: 3 }}>
+                <Stack sx={{ gap: 1.5 }}>
+                    {sources.map((source, index) =>
+                        source.type === "ensuPack" ? (
+                            <PackSourceCard
+                                key={`${source.type}:${source.citation.datasetId}:${source.citation.sourceUrl}:${index}`}
+                                source={source}
+                                number={index + 1}
+                            />
+                        ) : (
+                            <LocalNoteSourceCard
+                                key={`${source.type}:${source.reference.collectionId}:${source.reference.documentId}:${index}`}
+                                source={source}
+                                number={index + 1}
+                            />
+                        ),
+                    )}
+                </Stack>
+            </DialogContent>
+        </Dialog>
+    ),
+);
+
 interface MessageRowProps {
     message: ChatMessage;
     isLastMessage: boolean;
@@ -198,6 +436,9 @@ interface MessageRowProps {
     assistantMarkdownSx: SxProps<Theme>;
     streamingMessageSx: SystemStyleObject<Theme>;
     actionButtonSx: SxProps<Theme>;
+    dialogTitleSx: SystemStyleObject<Theme>;
+    dialogCloseButtonSx: SystemStyleObject<Theme>;
+    dialogCloseIconProps: IconProps;
     smallIconProps: IconProps;
     actionIconProps: IconProps;
 }
@@ -227,12 +468,39 @@ const MessageRow = memo(
         assistantMarkdownSx,
         streamingMessageSx,
         actionButtonSx,
+        dialogTitleSx,
+        dialogCloseButtonSx,
+        dialogCloseIconProps,
         smallIconProps,
         actionIconProps,
     }: MessageRowProps) => {
         const isSelf = message.sender === "self";
         const isStreaming = message.messageUuid === STREAMING_SELECTION_KEY;
         const isSynthetic = !!message.isSynthetic;
+        const sources = message.sources ?? [];
+        const citations = sources
+            .filter(
+                (source): source is PackSource => source.type === "ensuPack",
+            )
+            .map(({ citation }) => citation);
+        const localNotes = sources.filter(
+            (source): source is LocalNoteSource => source.type === "localNote",
+        );
+        const packCount = new Set(citations.map(({ datasetId }) => datasetId))
+            .size;
+        const noteCount = new Set(
+            localNotes.map(({ reference }) => reference.collectionId),
+        ).size;
+        const packSourceLabel = citations.length
+            ? sourceChipLabel(citations[0]!.datasetLabel, packCount)
+            : undefined;
+        const noteSourceLabel = localNotes.length
+            ? sourceChipLabel(
+                  localNotes[0]!.reference.collectionLabel ?? "Your Notes",
+                  noteCount,
+              )
+            : undefined;
+        const [showSources, setShowSources] = useState(false);
         const switcher = branchSwitchers[message.messageUuid];
         const showSwitcher = !isSynthetic && !!switcher && switcher.total > 1;
         const timestamp = formatTime(message.createdAt);
@@ -390,12 +658,56 @@ const MessageRow = memo(
                                     />
                                 </Stack>
                             ) : (
-                                <Box sx={assistantMarkdownSx}>
-                                    <MarkdownRenderer
-                                        content={displayText}
-                                        className="markdown-content"
-                                    />
-                                </Box>
+                                <Stack
+                                    sx={{ gap: 1, alignItems: "flex-start" }}
+                                >
+                                    <Box sx={assistantMarkdownSx}>
+                                        <MarkdownRenderer
+                                            content={displayText}
+                                            className="markdown-content"
+                                        />
+                                    </Box>
+                                    {(packSourceLabel || noteSourceLabel) && (
+                                        <Stack
+                                            direction="row"
+                                            sx={{ gap: 0.75, flexWrap: "wrap" }}
+                                        >
+                                            {packSourceLabel && (
+                                                <Chip
+                                                    size="small"
+                                                    label={packSourceLabel}
+                                                    onClick={() =>
+                                                        setShowSources(true)
+                                                    }
+                                                    sx={sourceChipSx}
+                                                />
+                                            )}
+                                            {noteSourceLabel && (
+                                                <Chip
+                                                    size="small"
+                                                    label={noteSourceLabel}
+                                                    onClick={() =>
+                                                        setShowSources(true)
+                                                    }
+                                                    sx={sourceChipSx}
+                                                />
+                                            )}
+                                        </Stack>
+                                    )}
+                                    {showSources && (
+                                        <KnowledgeSourcesDialog
+                                            sources={sources}
+                                            onClose={() =>
+                                                setShowSources(false)
+                                            }
+                                            dialogTitleSx={dialogTitleSx}
+                                            closeButtonSx={dialogCloseButtonSx}
+                                            closeIconProps={
+                                                dialogCloseIconProps
+                                            }
+                                        />
+                                    )}
+                                </Stack>
                             )}
                         </Box>
                     )}
@@ -640,6 +952,9 @@ export const ChatMessageList = memo(
         assistantMarkdownSx,
         streamingMessageSx,
         actionButtonSx,
+        dialogTitleSx,
+        dialogCloseButtonSx,
+        dialogCloseIconProps,
         smallIconProps,
         actionIconProps,
     }: ChatMessageListProps) => {
@@ -700,6 +1015,9 @@ export const ChatMessageList = memo(
                         assistantMarkdownSx={assistantMarkdownSx}
                         streamingMessageSx={streamingMessageSx}
                         actionButtonSx={actionButtonSx}
+                        dialogTitleSx={dialogTitleSx}
+                        dialogCloseButtonSx={dialogCloseButtonSx}
+                        dialogCloseIconProps={dialogCloseIconProps}
                         smallIconProps={smallIconProps}
                         actionIconProps={actionIconProps}
                     />
@@ -711,6 +1029,9 @@ export const ChatMessageList = memo(
                 assistantMarkdownSx,
                 attachmentPreviews,
                 branchSwitchers,
+                dialogCloseButtonSx,
+                dialogCloseIconProps,
+                dialogTitleSx,
                 formatTime,
                 isGenerating,
                 isStreamingOutro,

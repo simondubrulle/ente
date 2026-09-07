@@ -1,12 +1,6 @@
 import { ensureLocalUser } from "ente-accounts/services/user";
 import { blobCache } from "ente-base/blob-cache";
-import {
-    boxSeal,
-    boxSealOpen,
-    decryptBox,
-    encryptBox,
-    generateKey,
-} from "ente-base/crypto";
+import { boxSeal, encryptBox, generateKey } from "ente-base/crypto";
 import { haveWindow } from "ente-base/env";
 import { authenticatedRequestHeaders, ensureOk } from "ente-base/http";
 import { apiURL } from "ente-base/origins";
@@ -16,6 +10,7 @@ import {
     CollectionSubType,
     decryptRemoteCollection,
     findUserUncategorizedCollection,
+    maxAlbumDescriptionLength,
     RemoteCollection,
     RemotePublicURL,
     type Collection,
@@ -51,7 +46,7 @@ import {
     savedCollections,
     savedCollectionsUpdationTime,
 } from "./photos-fdb";
-import { ensureUserKeyPair, getPublicKey } from "./user";
+import { getPublicKey } from "./user";
 
 const uncategorizedCollectionName = "Uncategorized";
 const defaultHiddenCollectionName = ".hidden";
@@ -59,13 +54,32 @@ export const defaultHiddenCollectionUserFacingName = "Hidden";
 const favoritesCollectionName = "Favorites";
 const copyRequestBatchSize = 100;
 
+export type OpenCollectionKey = (input: {
+    ownerID: number;
+    encryptedKey: string;
+    keyDecryptionNonce?: string;
+}) => Promise<string>;
+
+let collectionKeyOpener: OpenCollectionKey | undefined;
+
+export const bindCollectionKeyOpener = (opener: OpenCollectionKey) => {
+    collectionKeyOpener = opener;
+};
+
+export const unbindCollectionKeyOpener = () => {
+    collectionKeyOpener = undefined;
+};
+
 export const createAlbum = (albumName: string) =>
     createCollection(albumName, "album");
 
-export const createQuickLinkCollection = (name: string) =>
+export const createQuickLinkCollection = (
+    name: string,
+    visibility: ItemVisibility,
+) =>
     createCollection(name, "album", {
         subType: CollectionSubType.quicklink,
-        visibility: ItemVisibility.visible,
+        visibility,
     });
 
 export const createHiddenAlbum = (albumName: string) =>
@@ -106,16 +120,14 @@ const decryptRemoteKeyAndCollection = async (collection: RemoteCollection) =>
 export const decryptCollectionKey = async (
     collection: RemoteCollection,
 ): Promise<string> => {
-    const { owner, encryptedKey, keyDecryptionNonce } = collection;
-    // Owned keys use the master key; shared keys use a sealed box.
-    if (owner.id == ensureLocalUser().id) {
-        return decryptBox(
-            { encryptedData: encryptedKey, nonce: keyDecryptionNonce! },
-            await ensureMasterKeyFromSession(),
-        );
-    } else {
-        return boxSealOpen(encryptedKey, await ensureUserKeyPair());
+    if (!collectionKeyOpener) {
+        throw new Error("Collection key opener is not bound");
     }
+    return collectionKeyOpener({
+        ownerID: collection.owner.id,
+        encryptedKey: collection.encryptedKey,
+        keyDecryptionNonce: collection.keyDecryptionNonce,
+    });
 };
 
 const CollectionResponse = z.object({ collection: RemoteCollection });
@@ -967,10 +979,37 @@ export const updateCollectionSortOrder = async (
     asc: boolean,
 ) => updateCollectionPublicMagicMetadata(collection, { asc });
 
-export const updateCollectionCover = async (
+const albumDescriptionSegmenter =
+    typeof Intl !== "undefined" && "Segmenter" in Intl
+        ? new Intl.Segmenter(undefined, { granularity: "grapheme" })
+        : null;
+
+export const albumDescriptionGraphemeCount = (description: string) =>
+    albumDescriptionSegmenter
+        ? Array.from(albumDescriptionSegmenter.segment(description)).length
+        : Array.from(description).length;
+
+export const updateCollectionDetails = async (
     collection: Collection,
-    coverID: number,
-) => updateCollectionPublicMagicMetadata(collection, { coverID });
+    { description, coverID }: { description?: string; coverID?: number },
+) => {
+    const updates: CollectionPublicMagicMetadataData = {};
+    if (description !== undefined) {
+        const normalizedDescription = description.trim();
+        if (
+            albumDescriptionGraphemeCount(normalizedDescription) >
+            maxAlbumDescriptionLength
+        ) {
+            throw new Error(
+                `Album descriptions cannot exceed ${maxAlbumDescriptionLength} characters`,
+            );
+        }
+        updates.caption = normalizedDescription;
+    }
+    if (coverID !== undefined) updates.coverID = coverID;
+
+    return updateCollectionPublicMagicMetadata(collection, updates);
+};
 
 export const updateCollectionLayout = async (
     collection: Collection,
@@ -1180,7 +1219,7 @@ const resolveFavoritesFilesForRemoval = async (
     });
 };
 
-const savedOrCreateDefaultHiddenCollection = async () =>
+export const getOrCreateDefaultHiddenCollection = async () =>
     (await savedDefaultHiddenCollection()) ?? createDefaultHiddenCollection();
 
 const savedDefaultHiddenCollection = async () =>
@@ -1241,8 +1280,7 @@ export const canRemoveFilesFromAllParticipants = (collection: Collection) => {
 
 export const hideFiles = async (files: EnteFile[]) => {
     const userID = ensureLocalUser().id;
-    const defaultHiddenCollection =
-        await savedOrCreateDefaultHiddenCollection();
+    const defaultHiddenCollection = await getOrCreateDefaultHiddenCollection();
     const collections = await savedCollections();
     const collectionsByID = new Map(collections.map((c) => [c.id, c]));
 

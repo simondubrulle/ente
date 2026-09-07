@@ -6,7 +6,6 @@ import "package:photos/models/memories/smart_memory.dart";
 enum TimeMemoryKind { day, month, week, lastWeek, lastMonth }
 
 class TimeMemory extends SmartMemory {
-  // For computing the title
   final TimeMemoryKind kind;
   DateTime? day;
   DateTime? month;
@@ -26,7 +25,7 @@ class TimeMemory extends SmartMemory {
     List<Memory> memories,
     int firstDateToShow,
     int lastDateToShow, {
-    String? id,
+    super.id,
     this.day,
     this.month,
     this.yearsAgo,
@@ -42,14 +41,7 @@ class TimeMemory extends SmartMemory {
          kind != TimeMemoryKind.month || month != null,
          "month must be provided for month-based time memories",
        ),
-       super(
-         memories,
-         MemoryType.time,
-         '',
-         firstDateToShow,
-         lastDateToShow,
-         id: id,
-       );
+       super(memories, MemoryType.time, '', firstDateToShow, lastDateToShow);
 
   @override
   String createTitle(StringsLocalizations locals, String languageCode) {

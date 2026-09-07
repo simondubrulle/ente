@@ -19,7 +19,6 @@ import "package:photos/events/guest_view_event.dart";
 import "package:photos/models/file/extensions/file_props.dart";
 import 'package:photos/models/file/file.dart';
 import "package:photos/models/file/file_type.dart";
-import "package:photos/models/file/trash_file.dart";
 import "package:photos/models/gallery_type.dart";
 import 'package:photos/module/download/file.dart';
 import "package:photos/module/download/thumbnail.dart";
@@ -64,8 +63,6 @@ class DetailPageConfiguration {
   final GalleryType? galleryType;
   final FutureOr<void> Function(BuildContext context)? onBackPressed;
 
-  /// Callback invoked with the page context after the page is ready.
-  /// Useful for showing bottom sheets or dialogs after navigation completes.
   final void Function(BuildContext context)? onPageReady;
 
   DetailPageConfiguration(
@@ -134,9 +131,8 @@ class _DetailPageState extends State<DetailPage> {
 
   @override
   Widget build(BuildContext context) {
-    // Separating body to a different widget to avoid
-    // unnecessary reinitialization of the InheritedDetailPageState
-    // when the body is rebuilt, which can reset state stored in it.
+    // Keep InheritedDetailPageState above the rebuilding body so its state
+    // survives body rebuilds.
     return InheritedDetailPageState(
       enableFullScreenNotifier: _enableFullScreenNotifier,
       isInSharedCollectionNotifier: _isInSharedCollectionNotifier,
@@ -172,6 +168,7 @@ class _BodyState extends State<_Body> {
   _captionUpdatedSubscription;
   QrCodeDetectionHelper? _qrHelper;
   final Map<String, File> _renderedFiles = {};
+  final _playbackSpeed = ValueNotifier<double>(1.0);
 
   @override
   void initState() {
@@ -204,7 +201,6 @@ class _BodyState extends State<_Body> {
       _qrHelper = QrCodeDetectionHelper();
     }
 
-    // Update shared collection state after first frame
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final selectedFile = _selectedFile;
@@ -225,6 +221,7 @@ class _BodyState extends State<_Body> {
     _pageController.dispose();
     _selectedIndexNotifier.dispose();
     _qrHelper?.dispose();
+    _playbackSpeed.dispose();
     super.dispose();
 
     SystemChrome.setSystemUIOverlayStyle(
@@ -282,6 +279,7 @@ class _BodyState extends State<_Body> {
                 mode: widget.config.mode,
                 showEditAction: widget.config.showEditAction,
                 onBackPressed: widget.config.onBackPressed,
+                playbackSpeed: _playbackSpeed,
               );
             },
             valueListenable: _selectedIndexNotifier,
@@ -355,7 +353,7 @@ class _BodyState extends State<_Body> {
                   builder: (BuildContext context, int selectedIndex, _) {
                     if (widget.config.mode == DetailPageMode.minimalistic ||
                         isGuestView ||
-                        _files![selectedIndex] is TrashFile) {
+                        _files![selectedIndex].isTrash) {
                       return const SizedBox.shrink();
                     }
                     return ValueListenableBuilder(
@@ -457,6 +455,7 @@ class _BodyState extends State<_Body> {
           autoPlay: shouldAutoPlay(),
           tagPrefix: widget.config.tagPrefix,
           shouldDisableScroll: (value) {
+            if (_selectedFile?.tag != file.tag) return;
             if (_shouldDisableScroll != value) {
               setState(() {
                 _logger.info('setState $_shouldDisableScroll to $value');
@@ -480,6 +479,7 @@ class _BodyState extends State<_Body> {
             }
           },
           qrDetectionsNotifier: _qrHelper?.qrDetectionsNotifier,
+          playbackSpeed: _playbackSpeed,
           onTextSelectionStart:
               flagService.ocrOverlayEnabled &&
                   widget.config.mode != DetailPageMode.minimalistic &&
@@ -507,12 +507,15 @@ class _BodyState extends State<_Body> {
         if (file == null) {
           return;
         }
+        final selectedFileChanged = _selectedFile?.tag != file.tag;
+        if (selectedFileChanged) {
+          _clearZoomStateForSelectedFileChange();
+        }
         if (_selectedIndexNotifier.value == index) {
           if (kDebugMode) {
             debugPrint("onPageChanged called with same index $index");
           }
-          // always notify listeners when the index is the same because
-          // the total number of files might have changed
+          // The file count may have changed even when the index did not.
           // ignore: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
           _selectedIndexNotifier.notifyListeners();
         } else {
@@ -533,7 +536,7 @@ class _BodyState extends State<_Body> {
   void _evaluateQrIfEligible(EnteFile file) {
     _qrHelper?.evaluateFile(
       file,
-      isGuestView || file is TrashFile ? null : _renderedFiles[file.tag],
+      isGuestView || file.isTrash ? null : _renderedFiles[file.tag],
     );
   }
 
@@ -547,9 +550,11 @@ class _BodyState extends State<_Body> {
 
   void _preloadFiles(int index) {
     if (index > 0) {
+      preloadThumbnail(_files![index - 1]);
       preloadFile(_files![index - 1]);
     }
     if (index < _files!.length - 1) {
+      preloadThumbnail(_files![index + 1]);
       preloadFile(_files![index + 1]);
     }
   }
@@ -558,17 +563,18 @@ class _BodyState extends State<_Body> {
     if (!mounted || _files == null) return;
     final totalFiles = _files!.length;
     if (totalFiles == 1) {
-      // Deleted the only file
-      Navigator.of(context).pop(); // Close pageview
+      Navigator.of(context).pop();
       return;
     }
     setState(() {
+      _shouldDisableScroll = false;
       _files!.removeAt(_selectedIndexNotifier.value);
       _selectedIndexNotifier.value = min(
         _selectedIndexNotifier.value,
         totalFiles - 2,
       );
     });
+    _clearZoomNotifiers();
     final currentPageIndex = _pageController.page!.round();
     final int targetPageIndex = _files!.length > currentPageIndex
         ? currentPageIndex
@@ -579,6 +585,24 @@ class _BodyState extends State<_Body> {
         duration: const Duration(milliseconds: 200),
         curve: Curves.easeInOut,
       );
+    }
+  }
+
+  void _clearZoomStateForSelectedFileChange() {
+    if (_shouldDisableScroll) {
+      setState(() => _shouldDisableScroll = false);
+    }
+    _clearZoomNotifiers();
+  }
+
+  void _clearZoomNotifiers() {
+    final detailState = InheritedDetailPageState.maybeOf(context);
+    if (detailState == null) return;
+    if (detailState.isZoomedNotifier.value) {
+      detailState.isZoomedNotifier.value = false;
+    }
+    if (detailState.zoomTransformNotifier.value != ZoomTransform.identity) {
+      detailState.zoomTransformNotifier.value = ZoomTransform.identity;
     }
   }
 
@@ -674,8 +698,7 @@ class _BodyState extends State<_Body> {
       fileID,
     );
 
-    // Guard: Only update if still showing the same file
-    // (user may have swiped to a different file while awaiting)
+    // Ignore results for a file the user swiped away from while awaiting.
     if (_selectedFile?.uploadedFileID == fileID) {
       notifier.value = isShared;
     }
@@ -802,7 +825,7 @@ class _GalleryFileViewerBottomOverlay extends StatelessWidget {
   }
 }
 
-/// Must remain under a [Stack] because this widget builds a [Positioned].
+// This widget returns Positioned, so its parent must be a Stack.
 class _GallerySocialOverlay extends StatelessWidget {
   final EnteFile file;
   final DetailPageMode mode;
@@ -816,9 +839,7 @@ class _GallerySocialOverlay extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (mode == DetailPageMode.minimalistic ||
-        isGuestView ||
-        file is TrashFile) {
+    if (mode == DetailPageMode.minimalistic || isGuestView || file.isTrash) {
       return const SizedBox.shrink();
     }
 

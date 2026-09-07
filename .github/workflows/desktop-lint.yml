@@ -6,8 +6,8 @@ on:
             - ".github/workflows/desktop-lint.yml"
             - "desktop/**"
             - "rust/bindings/napi/**"
-            - "rust/crates/photos/**"
             - "rust/crates/image/**"
+            - "rust/crates/ml/**"
             - "rust/apps/codegen/**"
             - "rust/Cargo.toml"
             - "rust/Cargo.lock"
@@ -33,6 +33,8 @@ jobs:
                   cache-dependency-path: "desktop/package-lock.json"
 
             - run: npm ci
+
+            - run: npm run postinstall
 
             # Restore-only; primed on main by warm-caches.yml.
             - name: Restore Rust cache

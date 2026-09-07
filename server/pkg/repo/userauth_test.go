@@ -1,12 +1,86 @@
 package repo
 
 import (
+	"bytes"
+	"context"
+	"crypto/sha256"
+	"database/sql"
+	"errors"
 	"testing"
 
 	"github.com/ente/museum/ente"
 	"github.com/ente/museum/internal/testutil"
 	"github.com/ente/museum/pkg/utils/time"
 )
+
+func TestTokenHashTrigger(t *testing.T) {
+	testutil.WithServerRoot(t)
+
+	db := testutil.RequireTestDB(t)
+	testutil.ResetTables(t, db)
+	t.Cleanup(func() { testutil.ResetTables(t, db) })
+
+	userID := testutil.InsertUser(t, db, testutil.UserFixture{
+		Email:        "token-hash@example.com",
+		CreationTime: 1,
+	})
+	rawToken := "existing-bearer-token-π"
+	var storedToken sql.NullString
+	var storedHash []byte
+	err := db.QueryRow(
+		`INSERT INTO tokens(user_id, token, token_hash, creation_time, last_used_at, app)
+		 VALUES($1, $2, $3, $4, $5, $6)
+		 RETURNING token, token_hash`,
+		userID, rawToken, bytes.Repeat([]byte{0xff}, sha256.Size), 1, 1, ente.Photos,
+	).Scan(&storedToken, &storedHash)
+	if err != nil {
+		t.Fatalf("failed to insert token: %v", err)
+	}
+
+	expectedHash := sha256.Sum256([]byte(rawToken))
+	if storedToken.Valid {
+		t.Fatalf("raw token was stored: %q", storedToken.String)
+	}
+	if !bytes.Equal(storedHash, expectedHash[:]) {
+		t.Fatalf("unexpected token hash: got %x want %x", storedHash, expectedHash)
+	}
+
+	rawToken = "updated-bearer-token"
+	if err := db.QueryRow(
+		`UPDATE tokens SET token = $1 WHERE user_id = $2 RETURNING token, token_hash`, rawToken, userID,
+	).Scan(&storedToken, &storedHash); err != nil {
+		t.Fatalf("failed to update token: %v", err)
+	}
+	if storedToken.Valid {
+		t.Fatalf("updated raw token was stored: %q", storedToken.String)
+	}
+	expectedHash = sha256.Sum256([]byte(rawToken))
+	if !bytes.Equal(storedHash, expectedHash[:]) {
+		t.Fatalf("unexpected updated token hash: got %x want %x", storedHash, expectedHash)
+	}
+
+	explicitHash := sha256.Sum256([]byte("explicit-token-hash"))
+	err = db.QueryRow(
+		`INSERT INTO tokens(user_id, token_hash, creation_time, last_used_at, app)
+		 VALUES($1, $2, $3, $4, $5)
+		 RETURNING token, token_hash`,
+		userID, explicitHash[:], 2, 2, ente.Photos,
+	).Scan(&storedToken, &storedHash)
+	if err != nil {
+		t.Fatalf("failed to insert explicit token hash: %v", err)
+	}
+	if storedToken.Valid || !bytes.Equal(storedHash, explicitHash[:]) {
+		t.Fatalf("explicit token hash changed: token=%q hash=%x", storedToken.String, storedHash)
+	}
+	if err := db.QueryRow(
+		`UPDATE tokens SET token = NULL WHERE token_hash = $1 RETURNING token_hash`, explicitHash[:],
+	).Scan(&storedHash); err != nil {
+		t.Fatalf("failed to clear token: %v", err)
+	}
+	if !bytes.Equal(storedHash, explicitHash[:]) {
+		t.Fatalf("clearing token changed hash: got %x want %x", storedHash, explicitHash)
+	}
+}
 
 func TestUserAuthRepositoryRemoveOTTReturnsWhetherRowWasConsumed(t *testing.T) {
 	testutil.WithServerRoot(t)
@@ -45,5 +119,78 @@ func TestUserAuthRepositoryRemoveOTTReturnsWhetherRowWasConsumed(t *testing.T) {
 	}
 	if removed {
 		t.Fatal("second remove should report that the ott was already consumed")
+	}
+}
+
+func TestAddTokenForPendingLoginConsumesPasskeyRecoverySession(t *testing.T) {
+	testutil.WithServerRoot(t)
+
+	db := testutil.RequireTestDB(t)
+	testutil.ResetTables(t, db)
+	t.Cleanup(func() { testutil.ResetTables(t, db) })
+
+	userID := testutil.InsertUser(t, db, testutil.UserFixture{
+		Email:        "passkey-recovery@example.com",
+		CreationTime: 1,
+	})
+	sessionID := "passkey-recovery-session"
+	if _, err := db.Exec(`INSERT INTO passkey_login_sessions(user_id, session_id, creation_time, expiration_time) VALUES($1, $2, $3, $4)`, userID, sessionID, 1, time.Microseconds()+1000000); err != nil {
+		t.Fatalf("failed to insert session: %v", err)
+	}
+
+	repo := &UserAuthRepository{DB: db}
+	if err := repo.AddTokenForPendingLogin(context.Background(), userID, sessionID, PasskeyPendingLogin, false, ente.Photos, "first-token", "", "", nil); err != nil {
+		t.Fatalf("first recovery failed: %v", err)
+	}
+	if err := repo.AddTokenForPendingLogin(context.Background(), userID, sessionID, PasskeyPendingLogin, false, ente.Photos, "second-token", "", "", nil); !errors.Is(err, sql.ErrNoRows) {
+		t.Fatalf("replayed recovery returned %v, want no rows", err)
+	}
+}
+
+func TestAddLoginResultRejectsStaleCredentials(t *testing.T) {
+	testutil.WithServerRoot(t)
+
+	db := testutil.RequireTestDB(t)
+	testutil.ResetTables(t, db)
+	t.Cleanup(func() { testutil.ResetTables(t, db) })
+
+	userID := testutil.InsertUser(t, db, testutil.UserFixture{Email: "stale-login@example.com", CreationTime: 1})
+	keyAttributes := ente.KeyAttributes{
+		KEKSalt: "old-salt", EncryptedKey: "old-key", KeyDecryptionNonce: "old-nonce",
+		PublicKey: "public-key", EncryptedSecretKey: "secret-key", SecretKeyDecryptionNonce: "secret-nonce",
+		MemLimit: 1, OpsLimit: 1,
+	}
+	if err := (&UserRepository{DB: db}).SetKeyAttributes(userID, keyAttributes); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO srp_auth(user_id, srp_user_id, salt, verifier) VALUES($1, '00000000-0000-0000-0000-000000000001', 'old-srp-salt', 'old-verifier')`, userID); err != nil {
+		t.Fatal(err)
+	}
+	repo := &UserAuthRepository{DB: db}
+	srpAuth, err := repo.GetSRPAuthEntity(context.Background(), userID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`UPDATE key_attributes SET encrypted_key = 'new-key' WHERE user_id = $1`, userID); err != nil {
+		t.Fatal(err)
+	}
+
+	err = repo.AddLoginResult(context.Background(), userID, srpAuth, &keyAttributes, ente.Photos, "token", "", "", "", "", 0)
+	if !errors.Is(err, ente.ErrAuthenticationRequired) {
+		t.Fatalf("stale key attributes returned %v", err)
+	}
+	if _, err = db.Exec(`UPDATE key_attributes SET encrypted_key = 'old-key' WHERE user_id = $1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	if _, err = db.Exec(`UPDATE srp_auth SET verifier = 'new-verifier' WHERE user_id = $1`, userID); err != nil {
+		t.Fatal(err)
+	}
+	err = repo.AddLoginResult(context.Background(), userID, srpAuth, &keyAttributes, ente.Photos, "token", "", "", "", "", 0)
+	if !errors.Is(err, ente.ErrInvalidPassword) {
+		t.Fatalf("stale SRP returned %v", err)
+	}
+	var tokenCount int
+	if err := db.QueryRow(`SELECT COUNT(*) FROM tokens WHERE user_id = $1`, userID).Scan(&tokenCount); err != nil || tokenCount != 0 {
+		t.Fatalf("token count = %d, err = %v", tokenCount, err)
 	}
 }

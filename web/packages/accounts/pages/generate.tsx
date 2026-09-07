@@ -4,7 +4,11 @@ import {
     AccountsPageFooter,
     AccountsPageTitle,
 } from "ente-accounts/components/layouts/centered-paper";
-import { RecoveryKey } from "ente-accounts/components/RecoveryKey";
+import {
+    RecoveryKey,
+    RecoveryKeyContents,
+    type RecoveryKeyPresentationProps,
+} from "ente-accounts/components/RecoveryKey";
 import {
     savedJustSignedUp,
     savedOriginalKeyAttributes,
@@ -12,6 +16,10 @@ import {
     saveJustSignedUp,
 } from "ente-accounts/services/accounts-db";
 import { appHomeRoute } from "ente-accounts/services/redirect";
+import {
+    haveMasterKeyInSession,
+    saveMasterKeyInSessionAndSafeStore,
+} from "ente-accounts/services/session-storage";
 import {
     generateSRPSetupAttributes,
     getAndSaveSRPAttributes,
@@ -25,21 +33,28 @@ import {
 import { LinkButton } from "ente-base/components/LinkButton";
 import { LoadingIndicator } from "ente-base/components/loaders";
 import { useBaseContext } from "ente-base/context";
-import { deriveKeyInsufficientMemoryErrorMessage } from "ente-base/crypto/types";
+import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
-import {
-    haveMasterKeyInSession,
-    saveMasterKeyInSessionAndSafeStore,
-} from "ente-base/session";
 import { t } from "i18next";
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, type ComponentType } from "react";
 import {
     NewPasswordForm,
     type NewPasswordFormProps,
+    type NewPasswordPresentationProps,
 } from "../components/NewPasswordForm";
 
-const Page: React.FC = () => {
+export interface GeneratePageProps {
+    passwordPresentation?: ComponentType<NewPasswordPresentationProps>;
+    recoveryKeyPresentation?: ComponentType<RecoveryKeyPresentationProps>;
+    onRecoveryKeyClose?: () => void;
+}
+
+const Page: React.FC<GeneratePageProps> = ({
+    passwordPresentation,
+    recoveryKeyPresentation,
+    onRecoveryKeyClose,
+}) => {
     const { logout, showMiniDialog } = useBaseContext();
 
     const [userEmail, setUserEmail] = useState("");
@@ -83,8 +98,7 @@ const Page: React.FC = () => {
             } catch (e) {
                 log.error("Could not generate key attributes from password", e);
                 setPasswordsFieldError(
-                    e instanceof Error &&
-                        e.message == deriveKeyInsufficientMemoryErrorMessage
+                    isNamedError(e, "insufficient_memory")
                         ? t("password_generation_failed")
                         : t("generic_error"),
                 );
@@ -93,31 +107,54 @@ const Page: React.FC = () => {
         [userEmail],
     );
 
-    return (
-        <>
-            {openRecoveryKey ? (
-                <RecoveryKey
-                    open={openRecoveryKey}
-                    onClose={() => void router.push(appHomeRoute)}
-                    showMiniDialog={showMiniDialog}
-                />
-            ) : userEmail ? (
-                <AccountsPageContents>
-                    <AccountsPageTitle>{t("set_password")}</AccountsPageTitle>
-                    <NewPasswordForm
-                        userEmail={userEmail}
-                        submitButtonTitle={t("set_password")}
-                        onSubmit={handleSubmit}
-                    />
-                    <Divider sx={{ mt: 1 }} />
-                    <AccountsPageFooter>
-                        <LinkButton onClick={logout}>{t("go_back")}</LinkButton>
-                    </AccountsPageFooter>
-                </AccountsPageContents>
-            ) : (
-                <LoadingIndicator />
-            )}
-        </>
+    function handleRecoveryKeyClose() {
+        if (onRecoveryKeyClose) {
+            onRecoveryKeyClose();
+        } else {
+            void router.push(appHomeRoute);
+        }
+    }
+
+    if (openRecoveryKey && recoveryKeyPresentation) {
+        return (
+            <RecoveryKeyContents
+                open
+                onClose={handleRecoveryKeyClose}
+                showMiniDialog={showMiniDialog}
+                presentation={recoveryKeyPresentation}
+            />
+        );
+    }
+
+    return openRecoveryKey ? (
+        <RecoveryKey
+            open
+            onClose={handleRecoveryKeyClose}
+            showMiniDialog={showMiniDialog}
+        />
+    ) : userEmail && passwordPresentation ? (
+        <NewPasswordForm
+            userEmail={userEmail}
+            submitButtonTitle={t("set_password")}
+            onSubmit={handleSubmit}
+            onBack={logout}
+            presentation={passwordPresentation}
+        />
+    ) : userEmail ? (
+        <AccountsPageContents>
+            <AccountsPageTitle>{t("set_password")}</AccountsPageTitle>
+            <NewPasswordForm
+                userEmail={userEmail}
+                submitButtonTitle={t("set_password")}
+                onSubmit={handleSubmit}
+            />
+            <Divider sx={{ mt: 1 }} />
+            <AccountsPageFooter>
+                <LinkButton onClick={logout}>{t("go_back")}</LinkButton>
+            </AccountsPageFooter>
+        </AccountsPageContents>
+    ) : (
+        <LoadingIndicator />
     );
 };
 

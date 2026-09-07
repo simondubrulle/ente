@@ -13,6 +13,7 @@ import (
 	"github.com/ente/museum/ente"
 	"github.com/ente/museum/ente/jwt"
 	"github.com/ente/museum/pkg/controller/user"
+	"github.com/ente/museum/pkg/repo"
 	"github.com/ente/museum/pkg/utils/auth"
 	emailUtil "github.com/ente/museum/pkg/utils/email"
 	"github.com/ente/museum/pkg/utils/handler"
@@ -320,6 +321,11 @@ func (h *UserHandler) FinishPasskeyAuthenticationCeremony(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(ente.ErrBadRequest, "Failed to bind request: %s", err))
 		return
 	}
+	ceremonySessionID, err := uuid.Parse(request.CeremonySessionID)
+	if err != nil {
+		handler.Error(c, stacktrace.Propagate(ente.ErrBadRequest, "invalid ceremonySessionID"))
+		return
+	}
 
 	userID, err := h.UserController.PasskeyRepo.GetUserIDWithPasskeyTwoFactorSession(request.SessionID)
 	if err != nil {
@@ -333,7 +339,7 @@ func (h *UserHandler) FinishPasskeyAuthenticationCeremony(c *gin.Context) {
 		return
 	}
 
-	err = h.UserController.PasskeyRepo.FinishAuthentication(&user, c.Request, uuid.MustParse(request.CeremonySessionID))
+	err = h.UserController.PasskeyRepo.FinishAuthentication(&user, c.Request, ceremonySessionID)
 	if err != nil {
 		reqID := requestid.Get(c)
 		logrus.WithField("req_id", reqID).
@@ -343,15 +349,9 @@ func (h *UserHandler) FinishPasskeyAuthenticationCeremony(c *gin.Context) {
 		return
 	}
 
-	response, err := h.UserController.GetKeyAttributeAndToken(c, userID)
+	response, err := h.UserController.GetKeyAttributeAndToken(c, userID, request.SessionID, repo.PasskeyPendingLogin, false, true)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-
-	err = h.UserController.PasskeyRepo.StoreTokenData(request.SessionID, response)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, "failed to store token data"))
 		return
 	}
 
@@ -374,7 +374,7 @@ func (h *UserHandler) GetTokenForPasskeySession(c *gin.Context) {
 
 func (h *UserHandler) IsPasskeyRecoveryEnabled(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
-	response, err := h.UserController.GetKeyAttributeAndToken(c, userID)
+	response, err := h.UserController.GetKeyAttributeAndToken(c, userID, "", repo.NoPendingLogin, false, false)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
@@ -440,7 +440,7 @@ func (h *UserHandler) ReportEvent(c *gin.Context) {
 
 func (h *UserHandler) GetPaymentToken(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
-	token, err := h.UserController.GetJWTToken(userID, jwt.PAYMENT)
+	token, err := h.UserController.GetSessionJWTToken(userID, jwt.PAYMENT, auth.GetToken(c), auth.GetApp(c))
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
@@ -452,7 +452,7 @@ func (h *UserHandler) GetPaymentToken(c *gin.Context) {
 
 func (h *UserHandler) GetFamiliesToken(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
-	token, err := h.UserController.GetJWTToken(userID, jwt.FAMILIES)
+	token, err := h.UserController.GetSessionJWTToken(userID, jwt.FAMILIES, auth.GetToken(c), auth.GetApp(c))
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
@@ -465,7 +465,7 @@ func (h *UserHandler) GetFamiliesToken(c *gin.Context) {
 
 func (h *UserHandler) GetAccountsToken(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
-	token, err := h.UserController.GetJWTToken(userID, jwt.ACCOUNTS)
+	token, err := h.UserController.GetSessionJWTToken(userID, jwt.ACCOUNTS, auth.GetToken(c), auth.GetApp(c))
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
@@ -495,8 +495,8 @@ func (h *UserHandler) GetActiveSessions(c *gin.Context) {
 
 func (h *UserHandler) TerminateSession(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
-	token := c.Query("token")
-	err := h.UserController.TerminateSession(userID, token)
+	identifier := c.Query("token")
+	err := h.UserController.TerminateSessionByIdentifier(userID, auth.GetToken(c), identifier)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return

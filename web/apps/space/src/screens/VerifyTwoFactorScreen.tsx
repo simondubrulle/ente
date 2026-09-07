@@ -1,19 +1,23 @@
 import { Shield01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box } from "@mui/material";
-import { SpaceBackIcon } from "components/SpaceBackIcon";
-import { SpaceButtonSpinner } from "components/SpaceButtonSpinner";
-import { SpaceOtpInput } from "components/SpaceOtpInput";
+import { SpaceBackIcon } from "components/BackIcon";
+import { SpaceButtonSpinner } from "components/ButtonSpinner";
+import { SpaceOtpInput } from "components/OtpInput";
 import React, { useEffect, useRef, useState } from "react";
-import { spaceTouchTargetSize } from "styles/touchTargets";
-import { sanitizeSpaceOTP, spaceOTPCodeLength } from "utils/spaceOtp";
-
-export const verifyTwoFactorBackground = "#FAFAFA";
+import {
+    spaceAppBackground,
+    spaceSurface,
+    spaceText,
+    spaceTextMuted,
+} from "styles/colors";
+import { spaceTouchTargetSize } from "styles/touch-targets";
+import { sanitizeSpaceOTP, spaceOTPCodeLength } from "utils/otp";
 
 const green = "#08C225";
-const textBase = "#000";
-const textMuted = "#666";
-const textLight = "#969696";
+const textBase = spaceText;
+const textMuted = spaceTextMuted;
+const textLight = spaceTextMuted;
 const warning = "#F63A3A";
 const verifyTwoFactorFormID = "space-verify-two-factor-form";
 
@@ -71,7 +75,7 @@ export const VerifyTwoFactorScreen: React.FC<VerifyTwoFactorScreenProps> = ({
         <Box
             component="main"
             sx={{
-                bgcolor: verifyTwoFactorBackground,
+                background: spaceAppBackground,
                 color: textBase,
                 display: "grid",
                 minHeight: "100svh",
@@ -81,7 +85,7 @@ export const VerifyTwoFactorScreen: React.FC<VerifyTwoFactorScreenProps> = ({
         >
             <Box
                 sx={{
-                    bgcolor: verifyTwoFactorBackground,
+                    bgcolor: "transparent",
                     boxSizing: "border-box",
                     display: "flex",
                     flexDirection: "column",
@@ -232,7 +236,7 @@ export const VerifyTwoFactorScreen: React.FC<VerifyTwoFactorScreenProps> = ({
 
                 <Box
                     sx={{
-                        bgcolor: verifyTwoFactorBackground,
+                        bgcolor: "transparent",
                         bottom: 0,
                         boxSizing: "border-box",
                         left: "50%",
@@ -255,7 +259,9 @@ export const VerifyTwoFactorScreen: React.FC<VerifyTwoFactorScreenProps> = ({
                         aria-busy={isSubmitting ? true : undefined}
                         sx={{
                             alignItems: "center",
-                            bgcolor: isVerifyButtonActive ? green : "#F5F5F5",
+                            bgcolor: isVerifyButtonActive
+                                ? green
+                                : spaceSurface,
                             border: 0,
                             borderRadius: "20px",
                             color: isVerifyButtonActive ? "white" : textLight,

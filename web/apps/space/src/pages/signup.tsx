@@ -1,17 +1,14 @@
-import { SpacePageMeta } from "components/SpacePageMeta";
+import { SpacePageMeta } from "components/PageMeta";
 import React, { useState } from "react";
 import {
     CreateAccountScreen,
-    createAccountBackground,
     type CreateAccountInput,
 } from "screens/CreateAccountScreen";
-import {
-    beginSpaceSignup,
-    spaceSignupErrorMessage,
-} from "services/spaceSignup";
-import { useSpaceAppState } from "state/spaceAppState";
-import { spaceRoutes } from "utils/spaceRoutes";
-import { useSpaceRouter } from "utils/spaceRouteTransitions";
+import { beginSpaceSignup, spaceSignupErrorMessage } from "services/signup";
+import { useSpaceAppState } from "state/app-state";
+import { spaceAppBackgroundColor } from "styles/colors";
+import { useSpaceRouter } from "utils/route-transitions";
+import { spaceRoutes } from "utils/routes";
 
 const Page: React.FC = () => {
     const router = useSpaceRouter();
@@ -35,7 +32,7 @@ const Page: React.FC = () => {
 
     return (
         <>
-            <SpacePageMeta themeColor={createAccountBackground} />
+            <SpacePageMeta themeColor={spaceAppBackgroundColor} />
             <CreateAccountScreen
                 errorMessage={signupError}
                 isSubmitting={isSubmitting}

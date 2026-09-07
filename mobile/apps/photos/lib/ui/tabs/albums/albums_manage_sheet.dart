@@ -10,7 +10,6 @@ import "package:hugeicons/hugeicons.dart";
 import "package:photos/core/configuration.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/services/collections_service.dart";
-import "package:photos/services/hidden_service.dart";
 import "package:photos/ui/tabs/shared/all_links_page.dart";
 import "package:photos/ui/viewer/gallery/archive_page.dart";
 import "package:photos/ui/viewer/gallery/hidden_page.dart";
@@ -106,18 +105,14 @@ Future<void> showAlbumsManageSheet(BuildContext context) {
               label: strings.trash,
               icon: HugeIcons.strokeRoundedDelete01,
               iconColor: const Color(0xFFE3505A),
-              onTap: () async {
-                final ok = await LocalAuthenticationService.instance
-                    .requestLocalAuthentication(
-                      context,
-                      strings.authToViewTrashedFiles,
-                    );
-                if (!ok || !context.mounted) return;
-                if (sheetContext.mounted) {
-                  Navigator.of(sheetContext).pop();
-                }
-                unawaited(routeToPage(context, TrashPage()));
-              },
+              onTap: () => showTrashPage(
+                context,
+                beforeRouteToPage: () {
+                  if (sheetContext.mounted) {
+                    Navigator.of(sheetContext).pop();
+                  }
+                },
+              ),
             ),
           ],
         ),

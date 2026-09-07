@@ -42,20 +42,7 @@ func (c *CollectionController) AddFiles(ctx *gin.Context, userID int64, files []
 		return stacktrace.Propagate(err, "Failed to verify fileOwnership")
 	}
 
-	trashedOrDeletedFileIDs, err := c.TrashRepo.GetFilesInTrashOrDeleted(ctx, userID, fileIDs)
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to check trash state")
-	}
-	if len(trashedOrDeletedFileIDs) > 0 {
-		log.WithFields(log.Fields{
-			"user_id":                     userID,
-			"collection_id":               cID,
-			"trashed_or_deleted_file_ids": trashedOrDeletedFileIDs,
-		}).Warn("attempt to add trashed or deleted files to collection")
-		return stacktrace.Propagate(&ente.ErrFileInTrash, "")
-	}
-
-	err = c.CollectionRepo.AddFiles(cID, collectionOwnerID, files, filesOwnerID)
+	err = c.CollectionRepo.AddFiles(ctx.Request.Context(), cID, collectionOwnerID, files, filesOwnerID)
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
@@ -87,7 +74,7 @@ func (c *CollectionController) RestoreFiles(ctx *gin.Context, userID int64, cID 
 			return stacktrace.Propagate(ente.ErrPermissionDenied, "")
 		}
 	}
-	err = c.CollectionRepo.RestoreFiles(ctx, userID, cID, files)
+	err = c.CollectionRepo.RestoreFiles(ctx.Request.Context(), userID, cID, files)
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
@@ -95,6 +82,9 @@ func (c *CollectionController) RestoreFiles(ctx *gin.Context, userID int64, cID 
 }
 
 func (c *CollectionController) MoveFiles(ctx *gin.Context, req ente.MoveFilesRequest) error {
+	if req.FromCollectionID == req.ToCollectionID {
+		return ente.NewBadRequestWithMessage("source and destination collections must differ")
+	}
 	userID := auth.GetUserID(ctx.Request.Header)
 	r1, err := c.AccessCtrl.GetCollection(ctx, &access.GetCollectionParams{
 		CollectionID:   req.FromCollectionID,
@@ -132,33 +122,10 @@ func (c *CollectionController) MoveFiles(ctx *gin.Context, req ente.MoveFilesReq
 		return stacktrace.Propagate(err, "Failed to verify fileOwnership")
 	}
 
-	trashedOrDeletedFileIDs, err := c.TrashRepo.GetFilesInTrashOrDeleted(ctx, userID, fileIDs)
-	if err != nil {
-		return stacktrace.Propagate(err, "failed to check trash state")
-	}
-	if len(trashedOrDeletedFileIDs) > 0 {
-		log.WithFields(log.Fields{
-			"user_id":                     userID,
-			"from_collection_id":          req.FromCollectionID,
-			"to_collection_id":            req.ToCollectionID,
-			"trashed_or_deleted_file_ids": trashedOrDeletedFileIDs,
-		}).Warn("attempt to move trashed or deleted files between collections")
-		return stacktrace.Propagate(&ente.ErrFileInTrash, "")
-	}
-
-	err = c.CollectionRepo.MoveFiles(ctx, req.ToCollectionID, req.FromCollectionID, req.Files, userID, userID)
+	err = c.CollectionRepo.MoveFiles(ctx.Request.Context(), req.ToCollectionID, req.FromCollectionID, req.Files, userID, userID)
 	return stacktrace.Propagate(err, "")
 }
 
-// RemoveFilesV3 enforces all removal rules for shared collections:
-//  1. accessCtrl must confirm the actor participates in the collection;
-//  2. collaborators/viewers may only remove the files they added themselves;
-//  3. the collection owner may remove files added by others but never their own;
-//  4. admins can remove anyone's files, but a collection owner's files are only
-//     queued for removal (REMOVE action + pending collection_action entry) so
-//     the owner can act on them;
-//  5. once the validations pass, non-owner files are deleted immediately via
-//     CollectionRepo.RemoveFilesV3.
 func (c *CollectionController) RemoveFilesV3(ctx *gin.Context, actorUserID int64, req ente.RemoveFilesV3Request) error {
 	accessResp, err := c.AccessCtrl.GetCollection(ctx, &access.GetCollectionParams{
 		CollectionID: req.CollectionID,
@@ -221,14 +188,6 @@ func (c *CollectionController) RemoveFilesV3(ctx *gin.Context, actorUserID int64
 	return nil
 }
 
-// SuggestDeleteInSharedCollection allows collection owners/admins to nudge other
-// participants to delete their files:
-//  1. only OWNER/ADMIN roles pass the access check;
-//  2. every file ID must belong to the collection and none may belong to the acting user;
-//  3. the method internally reuses RemoveFilesV3 to enforce role-based rules and
-//     to actually detach the files from the collection;
-//  4. each remote owner then receives DELETE_SUGGESTED actions so their clients
-//     can surface the pending delete request.
 func (c *CollectionController) SuggestDeleteInSharedCollection(ctx *gin.Context, req ente.SuggestDeleteRequest) error {
 	actorUserID := auth.GetUserID(ctx.Request.Header)
 	accessResp, err := c.AccessCtrl.GetCollection(ctx, &access.GetCollectionParams{

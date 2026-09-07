@@ -1,15 +1,13 @@
-use super::{
-    AccountSpaceCtx, decrypt_post_object_metadata, ensure_post_objects_are_photos,
-    post_response_from_feed_item,
-};
+use super::{AccountSpaceCtx, decrypt_post_object_metadata, ensure_post_objects_are_photos};
 use crate::crypto::{decrypt_secretbox_payload, encrypt_secretbox_payload, generate_key};
-use crate::error::{Result, SpaceError};
-use crate::models::{DecryptedPost, FeedItem, FeedPage, HydratedKeys, PostObjectMetadata};
+use crate::error::{Error, Result};
+use crate::models::{DecryptedPost, HydratedKeys, PostObjectMetadata};
 use crate::transport::{
-    CreatePostRequest, CreatePostResponse, LikePostResponse, PostObjectPayload, PostPage,
-    PostResponse, SpaceActorResponse, SpaceUnreadStatusResponse, UpdatePostCaptionRequest,
+    CreatePostRequest, CreatePostResponse, HomePostPage, LikePostResponse, PostObjectPayload,
+    PostPage, PostResponse, SpaceActorResponse, SpaceUnreadStatusResponse,
+    UpdatePostCaptionRequest,
 };
-use ente_core::b64;
+use ente_core::{b64, http};
 
 impl AccountSpaceCtx {
     pub fn generate_post_key(&self) -> Vec<u8> {
@@ -29,7 +27,7 @@ impl AccountSpaceCtx {
             .resolve_owned_space_access(space_id)
             .await?
             .ok_or_else(|| {
-                SpaceError::InvalidInput(format!("space {space_id} is not owned by the account"))
+                Error::InvalidInput(format!("space {space_id} is not owned by the account"))
             })?;
         let caption_cipher = match caption_plaintext {
             Some(value) => Some(b64::encode(&encrypt_secretbox_payload(
@@ -54,7 +52,12 @@ impl AccountSpaceCtx {
             .json(&request)
             .send()
             .await?
-            .error_for_status()?
+            .error_for_code()
+            .await
+            .map_err(|error| match &error {
+                http::Error::Api { code, .. } if code == "CONFLICT" => Error::PostLimitReached,
+                _ => error.into(),
+            })?
             .json::<CreatePostResponse>()
             .await?;
         Ok((response.post_id, post_key_bytes))
@@ -89,21 +92,25 @@ impl AccountSpaceCtx {
             .await?)
     }
 
-    pub async fn list_feed(
+    pub async fn list_home_posts(
         &self,
         space_id: &str,
+        after: Option<String>,
         cursor: Option<String>,
         limit: Option<i32>,
-    ) -> Result<FeedPage> {
+    ) -> Result<HomePostPage> {
         let mut query = Vec::new();
+        if let Some(value) = after.filter(|value| !value.trim().is_empty()) {
+            query.push(("after", value));
+        }
         if let Some(value) = cursor.filter(|value| !value.trim().is_empty()) {
             query.push(("cursor", value));
         }
         if let Some(value) = limit {
             query.push(("limit", value.to_string()));
         }
-        let path = format!("/spaces/{space_id}/feed");
-        let fetch_feed = async {
+        let path = format!("/spaces/{space_id}/home-posts");
+        let fetch_home_posts = async {
             Ok(self
                 .api()
                 .get(&path)
@@ -115,7 +122,7 @@ impl AccountSpaceCtx {
                 .await?)
         };
         let (page, _) = futures_util::try_join!(
-            fetch_feed,
+            fetch_home_posts,
             self.list_decrypted_friend_shares_cached(space_id)
         )?;
         Ok(page)
@@ -141,12 +148,10 @@ impl AccountSpaceCtx {
         let space_id = space_id.into();
         let friend_space_id = friend_space_id.into();
         if space_id.trim().is_empty() {
-            return Err(SpaceError::InvalidInput("space id is required".into()));
+            return Err(Error::InvalidInput("space id is required".into()));
         }
         if friend_space_id.trim().is_empty() {
-            return Err(SpaceError::InvalidInput(
-                "friend space id is required".into(),
-            ));
+            return Err(Error::InvalidInput("friend space id is required".into()));
         }
         let path = format!("/spaces/{space_id}/friends/{friend_space_id}/read");
         Ok(self
@@ -266,7 +271,7 @@ impl AccountSpaceCtx {
         let space_key = self
             .resolve_space_key_for_version_for_viewer(space_id, viewer_space_id, Some(key_version))
             .await?
-            .ok_or_else(|| SpaceError::InvalidInput("missing space key for post".into()))?;
+            .ok_or_else(|| Error::InvalidInput("missing space key for post".into()))?;
         let packed = b64::decode(encrypted_post_key)?;
         decrypt_secretbox_payload(&space_key, &packed)
     }
@@ -315,10 +320,7 @@ impl AccountSpaceCtx {
             )
             .await?
             .ok_or_else(|| {
-                SpaceError::InvalidInput(format!(
-                    "no space key available for post {}",
-                    post.post_id
-                ))
+                Error::InvalidInput(format!("no space key available for post {}", post.post_id))
             })?;
         self.decrypt_post(&space_key, post)
     }
@@ -343,11 +345,6 @@ impl AccountSpaceCtx {
             &space_key,
             &b64::decode(&actor.encrypted_profile)?,
         )?))
-    }
-
-    pub async fn decrypt_feed_item(&self, item: &FeedItem) -> Result<DecryptedPost> {
-        let post = post_response_from_feed_item(item);
-        self.decrypt_post_for_space(&item.space_id, &post).await
     }
 
     pub async fn update_post_caption(

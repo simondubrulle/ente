@@ -62,8 +62,6 @@ Rect _sharePosOrigin(BuildContext? context, GlobalKey? key) {
   return rect;
 }
 
-/// Returns the rect of button if context and key are not null
-/// If key is null, returned rect will be at the center of the screen
 Rect shareButtonRect(BuildContext context, GlobalKey? shareButtonKey) {
   Size size = MediaQuery.sizeOf(context);
   final RenderObject? renderObject = shareButtonKey?.currentContext
@@ -91,7 +89,7 @@ Future<ShareResult> shareText(
 }) async {
   try {
     final sharePosOrigin = _sharePosOrigin(context, key);
-    return SharePlus.instance.share(
+    return await SharePlus.instance.share(
       ShareParams(text: text, sharePositionOrigin: sharePosOrigin),
     );
   } catch (e, s) {

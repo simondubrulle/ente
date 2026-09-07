@@ -106,7 +106,7 @@ Ente offers **10 GB of storage for free, forever**. The free plan includes:
 - ✅ Map view and location tags
 - ✅ Background sync
 - ✅ Creating /receiving shared albums
-- ✅ Public links ([device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 5)
+- ✅ Public links ([device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 10)
 
 **Free plan limitations:**
 
@@ -248,7 +248,8 @@ Learn more in the [Storage optimization guide](/photos/features/albums-and-organ
 Earn free storage by inviting friends:
 
 - Share your referral code from `Settings > Referrals`
-- When friends upgrade to a paid plan, both of you get **10 GB free**
+- New users get an extra 10 GB immediately after applying your code
+- You get an extra 10 GB when they upgrade to a paid plan
 - Maximum earned storage equals your plan size (double your storage)
 - Earned storage lasts as long as your subscription is active
 

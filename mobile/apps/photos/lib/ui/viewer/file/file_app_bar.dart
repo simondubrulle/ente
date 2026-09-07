@@ -18,7 +18,6 @@ import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/extensions/file_props.dart";
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
-import "package:photos/models/file/trash_file.dart";
 import "package:photos/models/gallery_type.dart";
 import "package:photos/models/metadata/common_keys.dart";
 import 'package:photos/models/selected_files.dart';
@@ -33,14 +32,20 @@ import "package:photos/theme/colors.dart";
 import "package:photos/ui/actions/collection/collection_sharing_actions.dart";
 import "package:photos/ui/actions/file/file_actions.dart";
 import 'package:photos/ui/collections/collection_action_sheet.dart';
+import "package:photos/ui/common/photo_library_add_permission.dart";
 import 'package:photos/ui/notification/toast.dart';
 import 'package:photos/ui/viewer/actions/suggest_delete_sheet.dart';
 import "package:photos/ui/viewer/file/detail_page.dart";
+import "package:photos/ui/viewer/file/video_control/video_speed_bottom_sheet.dart";
 import "package:photos/ui/viewer/file_details/favorite_widget.dart";
 import "package:photos/ui/viewer/file_details/upload_icon_widget.dart";
 import 'package:photos/utils/dialog_util.dart';
 import "package:photos/utils/magic_util.dart";
 import "package:photos/utils/share_util.dart";
+
+String _formatPlaybackSpeed(double speed) {
+  return speed == 1.0 ? "1x" : "${speed}x";
+}
 
 class FileAppBar extends StatefulWidget {
   final EnteFile file;
@@ -51,6 +56,7 @@ class FileAppBar extends StatefulWidget {
   final DetailPageMode mode;
   final bool showEditAction;
   final FutureOr<void> Function(BuildContext context)? onBackPressed;
+  final ValueNotifier<double> playbackSpeed;
 
   const FileAppBar(
     this.file,
@@ -61,6 +67,7 @@ class FileAppBar extends StatefulWidget {
     this.mode = DetailPageMode.full,
     this.showEditAction = true,
     this.onBackPressed,
+    required this.playbackSpeed,
     super.key,
   });
 
@@ -138,8 +145,7 @@ class FileAppBarState extends State<FileAppBar> {
   Widget build(BuildContext context) {
     _logger.info("building app bar ${widget.file.generatedID?.toString()}");
 
-    //When the widget is initialized, the actions are not available.
-    //Cannot call _getActions() in initState.
+    // _getActions reads inherited state, so it cannot run in initState.
     if (_actions.isEmpty || _reloadActions) {
       _getActions();
       _reloadActions = false;
@@ -180,9 +186,7 @@ class FileAppBarState extends State<FileAppBar> {
               child: AppBar(
                 clipBehavior: Clip.none,
                 key: ValueKey(isGuestView),
-                iconTheme: const IconThemeData(
-                  color: Colors.white,
-                ), //same for both themes
+                iconTheme: const IconThemeData(color: Colors.white),
                 leading: IconButton(
                   icon: const Icon(Icons.arrow_back),
                   onPressed: () {
@@ -218,7 +222,6 @@ class FileAppBarState extends State<FileAppBar> {
   List<Widget> _getActions() {
     _actions.clear();
 
-    // Show info icon when thumbnail fallback is active for THIS file
     final fallbackFileId = InheritedDetailPageState.maybeOf(
       context,
     )?.showingThumbnailFallbackNotifier.value;
@@ -286,14 +289,15 @@ class FileAppBarState extends State<FileAppBar> {
         ),
       );
     }
-    if (!isFileHidden && isFileUploaded && widget.file is! TrashFile) {
+    if (!isFileHidden && isFileUploaded && !widget.file.isTrash) {
       _actions.add(
         Center(
           child: FavoriteWidget(widget.file, iconSize: 24, tapTargetSize: 48),
         ),
       );
     }
-    if (!isFileUploaded && !isLocalGalleryMode) {
+
+    if (!isFileUploaded && !widget.file.isTrash && !isLocalGalleryMode) {
       _actions.add(
         UploadIconWidget(file: widget.file, key: ValueKey(widget.file.tag)),
       );
@@ -301,7 +305,7 @@ class FileAppBarState extends State<FileAppBar> {
 
     final List<EntePopupMenuOption<int>> items = [];
     final bool restrictFileActions =
-        widget.mode == DetailPageMode.minimalistic || widget.file is TrashFile;
+        widget.mode == DetailPageMode.minimalistic || widget.file.isTrash;
 
     if (restrictFileActions) {
       items.add(
@@ -330,7 +334,6 @@ class FileAppBarState extends State<FileAppBar> {
           );
         }
       }
-      // Edit option for images, live photos, and videos
       if (widget.showEditAction &&
           (widget.file.fileType == FileType.image ||
               widget.file.fileType == FileType.livePhoto ||
@@ -343,7 +346,6 @@ class FileAppBarState extends State<FileAppBar> {
           ),
         );
       }
-      // options for files owned by the user
       if (isOwnedByUser && !isFileHidden && isFileUploaded) {
         final bool isArchived =
             widget.file.magicMetadata.visibility == archiveVisibility;
@@ -417,7 +419,19 @@ class FileAppBarState extends State<FileAppBar> {
     }
 
     if (widget.file.isVideo && !restrictFileActions) {
-      // Video streaming options
+      items.add(
+        _fileMenuOption(
+          context.strings.playbackSpeed,
+          value: 10,
+          hugeIcon: HugeIcons.strokeRoundedDashboardSpeed02,
+          trailing: ValueListenableBuilder<double>(
+            valueListenable: widget.playbackSpeed,
+            builder: (context, speed, _) =>
+                Text(_formatPlaybackSpeed(speed), style: TextStyles.tiny),
+          ),
+        ),
+      );
+
       if (_shouldShowCreateStreamOption()) {
         items.add(
           _fileMenuOption(
@@ -484,6 +498,7 @@ class FileAppBarState extends State<FileAppBar> {
     String label, {
     required int value,
     required List<List<dynamic>> hugeIcon,
+    Widget? trailing,
   }) {
     return EntePopupMenuOption<int>(
       value: value,
@@ -493,6 +508,7 @@ class FileAppBarState extends State<FileAppBar> {
         size: IconSizes.small,
         color: context.componentColors.textLight,
       ),
+      trailingWidget: trailing,
     );
   }
 
@@ -531,6 +547,12 @@ class FileAppBarState extends State<FileAppBar> {
       await _handleVideoStream('create');
     } else if (value == 9) {
       await _handleVideoStream('recreate');
+    } else if (value == 10) {
+      await showVideoSpeedBottomSheet(
+        context,
+        currentSpeed: widget.playbackSpeed.value,
+        onSpeedSelected: (speed) => widget.playbackSpeed.value = speed,
+      );
     } else if (value == 11) {
       widget.onEditRequested(widget.file);
     } else if (value == 12) {
@@ -621,6 +643,10 @@ class FileAppBarState extends State<FileAppBar> {
       }
       return;
     }
+
+    if (!mounted) return;
+    if (!await ensurePhotoLibraryAddPermission(context)) return;
+    if (!mounted) return;
 
     final fileToDownload = !file.isRemoteOnlyFile
         ? (file.copyWith()..localID = null)
@@ -759,13 +785,11 @@ class FileAppBarState extends State<FileAppBar> {
   }
 
   bool _shouldShowCreateStreamOption() {
-    // Show "Create Stream" option for uploaded video files without streams
     return _ensureBasicRequirements() &&
         !fileDataService.previewIds.containsKey(widget.file.uploadedFileID!);
   }
 
   bool _shouldShowRecreateStreamOption() {
-    // Show "Recreate Stream" option for uploaded video files with existing streams
     return _ensureBasicRequirements() &&
         fileDataService.previewIds.containsKey(widget.file.uploadedFileID!);
   }
@@ -789,7 +813,6 @@ class FileAppBarState extends State<FileAppBar> {
       );
 
       if (!wasAdded) {
-        // File was already in queue
         if (!mounted) return;
         showToast(context, context.strings.videoAlreadyInQueue);
         return;

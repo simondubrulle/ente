@@ -8,30 +8,18 @@ import (
 
 	"github.com/ente/museum/ente"
 	"github.com/ente/stacktrace"
-	log "github.com/sirupsen/logrus"
 )
 
 type ObjectCopiesRepository struct {
 	DB *sql.DB
 }
 
-// GetAndLockUnreplicatedObject gets an object which is not yet replicated to
-// all the replicas. It also registers a replication to keep the row corresponding
-// to that object to be blocked for 24h before next replication attemp.
-//
-// ObjectCopies is guaranteed to be nil if error is not nil.
 func (repo *ObjectCopiesRepository) GetAndLockUnreplicatedObject(ctx context.Context) (*ente.ObjectCopies, error) {
 	tx, err := repo.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return nil, stacktrace.Propagate(err, "")
 	}
-
-	rollback := func() {
-		rerr := tx.Rollback()
-		if rerr != nil {
-			log.Errorf("Ignoring error when rolling back transaction: %s", rerr)
-		}
-	}
+	defer tx.Rollback()
 
 	row := tx.QueryRowContext(ctx, `
 	SELECT object_key, want_b2, b2, want_wasabi, wasabi, want_scw, scw
@@ -51,7 +39,6 @@ func (repo *ObjectCopiesRepository) GetAndLockUnreplicatedObject(ctx context.Con
 		&r.WantSCW, &r.SCW)
 
 	if err != nil {
-		rollback()
 		if errors.Is(err, sql.ErrNoRows) {
 			return nil, err
 		}
@@ -60,7 +47,6 @@ func (repo *ObjectCopiesRepository) GetAndLockUnreplicatedObject(ctx context.Con
 
 	err = repo.RegisterReplicationAttempt(tx, ctx, r.ObjectKey)
 	if err != nil {
-		rollback()
 		return nil, stacktrace.Propagate(err, "failed to register replication attempt")
 	}
 
@@ -71,13 +57,6 @@ func (repo *ObjectCopiesRepository) GetAndLockUnreplicatedObject(ctx context.Con
 	return &r, nil
 }
 
-// CreateNewB2Object creates a new entry for objectKey and marks it as having
-// being replicated to B2. It then sets provided flags to mark this object as
-// requiring replication where needed.
-//
-// This operation runs within the context of a transaction that creates the
-// initial entry for the file in the database; thus, it gets passed ctx and tx
-// which it uses to scope its own DB changes.
 func (repo *ObjectCopiesRepository) CreateNewB2Object(ctx context.Context, tx *sql.Tx, objectKey string, wantWasabi bool, wantScaleway bool) error {
 	_, err := tx.ExecContext(ctx, `
 	INSERT INTO object_copies (object_key, want_b2, b2, want_wasabi, want_scw)
@@ -86,10 +65,6 @@ func (repo *ObjectCopiesRepository) CreateNewB2Object(ctx context.Context, tx *s
 	return stacktrace.Propagate(err, "")
 }
 
-// CreateNewWasabiObject creates a new entry for objectKey and marks it as having
-// being replicated to Wasabi.
-//
-// See CreateNewB2Object for details.
 func (repo *ObjectCopiesRepository) CreateNewWasabiObject(ctx context.Context, tx *sql.Tx, objectKey string, wantB2 bool, wantScaleway bool) error {
 	_, err := tx.ExecContext(ctx, `
 	INSERT INTO object_copies (object_key, want_wasabi, wasabi, want_b2, want_scw)
@@ -98,8 +73,6 @@ func (repo *ObjectCopiesRepository) CreateNewWasabiObject(ctx context.Context, t
 	return stacktrace.Propagate(err, "")
 }
 
-// RegisterReplicationAttempt sets the last_attempt timestamp so that this row can
-// be skipped over for the next day in case the replication was not succesful.
 func (repo *ObjectCopiesRepository) RegisterReplicationAttempt(tx *sql.Tx, ctx context.Context, objectKey string) error {
 	_, err := tx.ExecContext(ctx, `
 	UPDATE object_copies

@@ -382,23 +382,26 @@ class _PeopleSelectionActionWidgetState
   }
 
   Future<void> _updateHideFromMemoriesState(bool shouldHide) async {
+    final updatedPersons = <PersonEntity>[];
     try {
       final personMap = await personEntitiesMapFuture;
       final selectedPersonIds = _getSelectedPersonIds(personMap);
-      if (selectedPersonIds.isEmpty) return;
       for (final personID in selectedPersonIds) {
         final person = personMap[personID];
         if (person == null || person.data.name.isEmpty) continue;
         if (person.data.hideFromMemories == shouldHide) continue;
-        await PersonService.instance.updateAttributes(
+        final updatedPerson = await PersonService.instance.updateAttributes(
           person.remoteID,
           hideFromMemories: shouldHide,
         );
+        updatedPersons.add(updatedPerson);
       }
-      Bus.instance.fire(PeopleChangedEvent());
     } catch (e, s) {
       _logger.severe('Failed to update hide from memories state', e, s);
     } finally {
+      if (updatedPersons.isNotEmpty) {
+        Bus.instance.fire(PeopleChangedEvent(persons: updatedPersons));
+      }
       widget.selectedPeople.clearAll();
     }
   }
@@ -488,21 +491,19 @@ class _PeopleSelectionActionWidgetState
       await dialog.show();
     }
     var completed = 0;
-    var hasUpdates = false;
+    var hasPersonUpdates = false;
     var completedAll = false;
 
     try {
-      for (final clusterID in selectedClusterIds) {
-        await ClusterFeedbackService.instance.ignoreCluster(
-          clusterID,
-          firePeopleChangedEvent: false,
-        );
-        completed++;
-        hasUpdates = true;
-        dialog?.update(
-          message: _bulkIgnoreProgressMessage(l10n, completed, total),
-        );
-      }
+      await ClusterFeedbackService.instance.ignoreClusters(
+        selectedClusterIds,
+        onProgress: (ignoredClusters, _) {
+          completed = ignoredClusters;
+          dialog?.update(
+            message: _bulkIgnoreProgressMessage(l10n, completed, total),
+          );
+        },
+      );
 
       for (final personID in personIdsToIgnore) {
         final person = personMap[personID];
@@ -512,7 +513,7 @@ class _PeopleSelectionActionWidgetState
         );
         await PersonService.instance.updatePerson(ignoredPerson);
         completed++;
-        hasUpdates = true;
+        hasPersonUpdates = true;
         dialog?.update(
           message: _bulkIgnoreProgressMessage(l10n, completed, total),
         );
@@ -523,7 +524,7 @@ class _PeopleSelectionActionWidgetState
       if (completedAll) {
         widget.selectedPeople.clearAll();
       }
-      if (hasUpdates) {
+      if (hasPersonUpdates) {
         Bus.instance.fire(PeopleChangedEvent());
       }
       if (dialog != null) {

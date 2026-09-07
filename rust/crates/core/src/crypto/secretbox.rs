@@ -1,6 +1,6 @@
-use xsalsa20poly1305::XSalsa20Poly1305;
-use xsalsa20poly1305::aead::generic_array::GenericArray;
-use xsalsa20poly1305::aead::{Aead, KeyInit};
+use crypto_secretbox::XSalsa20Poly1305;
+use crypto_secretbox::aead::generic_array::GenericArray;
+use crypto_secretbox::aead::{Aead, KeyInit};
 
 use crate::crypto::{Error, Key, Nonce, Result};
 
@@ -88,29 +88,26 @@ mod tests {
     use super::*;
 
     #[test]
-    fn test_encrypt_decrypt() {
-        let key = Key::generate();
-        let plaintext = b"Hello, World!";
+    fn test_nacl_vector() {
+        // NaCl's tests/secretbox.c vector.
+        let key = Key::try_from_slice(
+            &crate::b64::decode("GydVZHPphdRizVEZeppGx2AJVJ6sZHTyBsTuCET2g4k=").unwrap(),
+        )
+        .unwrap();
+        let nonce =
+            Nonce::try_from_slice(&crate::b64::decode("aWlu6VW2K3PNYr2odfxz1oIZ4ANregs3").unwrap())
+                .unwrap();
+        let plaintext = crate::b64::decode(
+            "vgdfxTyB8tXPFBMW6+sMe1IoxSpMYsvUS2aEm2QkT/zl7LqvM711GhrHKNRebGEpbNw8ASM1YfQdtmzOMUrbMQ476CUMRvBtzuo6f6E0gFfi9lVq1rExigJKg48hrx/eBIl360j1n/1JJMocYJAuUvCgibx2iXBA4IL5N3Y4SGReBwU=",
+        )
+        .unwrap();
+        let ciphertext = crate::b64::decode(
+            "8//HcD+UAOUqfftLPTMF2Y6ZO59IaBJzwpZQujL8ds5IMy6nFk2WpEdvuMUxoRhqwN/BfJjc6HtNp/AR7EjJcnHSwg+bko/iJw1vuGPVFzi0ju7jFKfMirkyFkVI5SaukCJDaFF6z+q9a7NzK8Dp2pmDK2HKAbbeViRKnojV+bN5c/YipD0UplmbH2VMtFp041Wl",
+        )
+        .unwrap();
 
-        let encrypted = encrypt(plaintext, &key);
-        assert_eq!(encrypted.encrypted_data.len(), MAC_BYTES + plaintext.len());
-
-        let decrypted = encrypted.decrypt(&key).unwrap();
-        assert_eq!(decrypted, plaintext);
-    }
-
-    #[test]
-    fn test_encrypt_with_nonce_is_deterministic() {
-        let key = Key::generate();
-        let nonce = Nonce::generate();
-        let plaintext = b"Deterministic test";
-
-        let encrypted1 = encrypt_with_nonce(plaintext, &nonce, &key);
-        let encrypted2 = encrypt_with_nonce(plaintext, &nonce, &key);
-        assert_eq!(encrypted1, encrypted2);
-
-        let decrypted = decrypt(&encrypted1, &nonce, &key).unwrap();
-        assert_eq!(decrypted, plaintext);
+        assert_eq!(encrypt_with_nonce(&plaintext, &nonce, &key), ciphertext);
+        assert_eq!(decrypt(&ciphertext, &nonce, &key).unwrap(), plaintext);
     }
 
     #[test]
@@ -198,14 +195,5 @@ mod tests {
 
         let combined = encrypt_combined(b"", &key);
         assert_eq!(decrypt_combined(&combined, &key).unwrap(), b"");
-    }
-
-    #[test]
-    fn test_large_plaintext() {
-        let key = Key::generate();
-        let plaintext = vec![0x42u8; 1024 * 1024];
-
-        let encrypted = encrypt(&plaintext, &key);
-        assert_eq!(encrypted.decrypt(&key).unwrap(), plaintext);
     }
 }

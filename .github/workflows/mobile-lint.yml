@@ -5,7 +5,6 @@ on:
         paths:
             - ".github/workflows/mobile-lint.yml"
             - "mobile/**"
-            - "!mobile/native/**"
             - "rust/apps/codegen/**"
             - "rust/bindings/frb/**"
             - "rust/Cargo.lock"
@@ -14,6 +13,7 @@ on:
             - "rust/crates/contacts/**"
             - "rust/crates/core/**"
             - "rust/crates/image/**"
+            - "rust/crates/ml/**"
             - "rust/crates/photos/**"
     workflow_dispatch:
 
@@ -33,10 +33,10 @@ jobs:
                   submodules: recursive
 
             - name: Verify frozen mobile pubspecs
-              run: ruby mobile/scripts/check_frozen_pubspecs.rb mobile
+              run: ruby mobile/checks/frozen-pubspecs/check.rb mobile
 
             - name: Verify source ARB plurals
-              run: ruby mobile/scripts/check_source_arb_plurals.rb
+              run: ruby mobile/checks/source-arb-plurals/check.rb
 
             - name: Verify auth custom icons
               run: |
@@ -81,10 +81,10 @@ jobs:
             - run: cargo codegen frb
               working-directory: rust
 
-            - run: cargo clippy -p ente_photos_rust --features flutter --all-targets --locked
+            - run: cargo clippy -p ente-photos-frb --features flutter --all-targets --locked
               working-directory: rust
 
-            - run: cargo clippy -p ente_rust --features flutter --all-targets --locked
+            - run: cargo clippy -p ente-locker-frb --features flutter --all-targets --locked
               working-directory: rust
 
             - run: flutter pub get --enforce-lockfile

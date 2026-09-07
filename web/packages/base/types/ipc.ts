@@ -1,4 +1,6 @@
 // Keep this bridge in sync with desktop/src/types/ipc.ts and desktop/src/preload.ts.
+export type ThemeMode = "light" | "dark" | "system";
+
 export type NativeDeviceLockProvider = "touchid" | "none";
 
 export type NativeDeviceLockUnavailableReason =
@@ -39,6 +41,10 @@ export interface Electron {
     clearAppLockConfigFromSafeStorage: () => Promise<void>;
     onMainWindowFocus: (cb: (() => void) | undefined) => void;
     onMainWindowBlur: (cb: (() => void) | undefined) => void;
+    setTitleBarOverlay: (
+        themeMode: ThemeMode,
+        isFileViewerOpen: boolean,
+    ) => void;
     onOpenEnteURL: (cb: ((url: string) => void) | undefined) => void;
     lastShownChangelogVersion: () => Promise<number | undefined>;
     setLastShownChangelogVersion: (version: number) => Promise<void>;
@@ -131,7 +137,7 @@ export interface ElectronMLWorker {
     fsStatMtime: (path: string) => Promise<number>;
     analyzeImage: (
         request: MLWorkerAnalyzeImageRequest,
-    ) => Promise<MLWorkerAnalyzeImageResponse>;
+    ) => Promise<MLWorkerAnalyzeImageResult>;
     releaseMLRuntime: () => Promise<void>;
     computeCLIPTextEmbeddingIfAvailable: (
         text: string,
@@ -146,17 +152,6 @@ export interface MLWorkerAnalyzeImageRequest {
     runPets: boolean;
     generateFaceCrops: boolean;
 }
-
-export type MLWorkerAnalyzeImageErrorKind = "init" | "ort" | "image" | "misc";
-
-export interface MLWorkerAnalyzeImageError {
-    kind: MLWorkerAnalyzeImageErrorKind;
-    message: string;
-}
-
-export type MLWorkerAnalyzeImageResponse =
-    | { ok: true; result: MLWorkerAnalyzeImageResult }
-    | { ok: false; error: MLWorkerAnalyzeImageError };
 
 export interface MLWorkerFaceResult {
     faceId: string;

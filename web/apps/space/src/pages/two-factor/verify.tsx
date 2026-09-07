@@ -1,18 +1,17 @@
-import { SpacePageMeta } from "components/SpacePageMeta";
-import { SpaceRouteFallback } from "components/SpaceRouteFallback";
-import { savedPartialLocalUser } from "ente-accounts-rs/services/accounts-db";
+import { SpacePageMeta } from "components/PageMeta";
+import { SpaceRouteFallback } from "components/RouteFallback";
+import { savedPartialLocalUser } from "ente-accounts/services/accounts-db";
 import { isHTTPErrorWithStatus } from "ente-base/http";
 import log from "ente-base/log";
 import React, { useEffect, useState } from "react";
-import {
-    VerifyTwoFactorScreen,
-    verifyTwoFactorBackground,
-} from "screens/VerifyTwoFactorScreen";
-import { completeSpaceLoginSecondFactor } from "services/spaceLogin";
-import { useSpaceAppState } from "state/spaceAppState";
-import { routeAfterCompletedLogin } from "utils/spaceLoginNavigation";
-import { spaceRoutes } from "utils/spaceRoutes";
-import { useSpaceRouter } from "utils/spaceRouteTransitions";
+import { VerifyTwoFactorScreen } from "screens/VerifyTwoFactorScreen";
+import { spaceAuthErrorMessage } from "services/auth-error";
+import { completeSpaceLoginSecondFactor } from "services/login";
+import { useSpaceAppState } from "state/app-state";
+import { spaceAppBackgroundColor } from "styles/colors";
+import { routeAfterCompletedLogin } from "utils/login-navigation";
+import { useSpaceRouter } from "utils/route-transitions";
+import { spaceRoutes } from "utils/routes";
 
 const twoFactorErrorMessage = (error: unknown) => {
     if (isHTTPErrorWithStatus(error, 401)) {
@@ -21,9 +20,10 @@ const twoFactorErrorMessage = (error: unknown) => {
     if (isHTTPErrorWithStatus(error, 404)) {
         return "Login session expired. Please sign in again.";
     }
-    return error instanceof Error
-        ? error.message
-        : "Couldn't verify this code. Please try again.";
+    return spaceAuthErrorMessage(
+        error,
+        "Couldn't verify this code. Please try again.",
+    );
 };
 
 const isExpectedTwoFactorError = (error: unknown) =>
@@ -68,12 +68,12 @@ const Page: React.FC = () => {
     };
 
     if (!twoFactorSessionID) {
-        return <SpaceRouteFallback background={verifyTwoFactorBackground} />;
+        return <SpaceRouteFallback background={spaceAppBackgroundColor} />;
     }
 
     return (
         <>
-            <SpacePageMeta themeColor={verifyTwoFactorBackground} />
+            <SpacePageMeta themeColor={spaceAppBackgroundColor} />
             <VerifyTwoFactorScreen
                 codeResetKey={codeResetKey}
                 errorMessage={errorMessage}

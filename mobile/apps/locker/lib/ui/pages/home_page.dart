@@ -20,6 +20,7 @@ import 'package:locker/models/selected_files.dart';
 import 'package:locker/services/collections/collections_service.dart';
 import 'package:locker/services/collections/models/collection.dart';
 import 'package:locker/services/configuration.dart';
+import 'package:locker/services/feature_flag_service.dart';
 import 'package:locker/services/files/sync/models/file.dart';
 import 'package:locker/services/local_settings.dart';
 import "package:locker/states/user_details_state.dart";
@@ -238,10 +239,8 @@ class _HomePageState extends UploaderPageState<HomePage>
 
     _loadCollections();
 
-    // Initialize sharing functionality to handle shared files
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
-        // Add a small delay to ensure the app is fully loaded
         Future.delayed(const Duration(milliseconds: 1000), () {
           if (mounted) {
             initializeSharing();
@@ -252,11 +251,9 @@ class _HomePageState extends UploaderPageState<HomePage>
 
     _initDeepLinks();
 
-    // Activate search if initial query is provided (after collections are loaded)
     if (widget.initialSearchQuery != null &&
         widget.initialSearchQuery!.isNotEmpty) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Wait a bit more to ensure collections are loaded
         Future.delayed(const Duration(milliseconds: 100), () {
           if (mounted) {
             activateSearchWithQuery(widget.initialSearchQuery!);
@@ -485,16 +482,12 @@ class _HomePageState extends UploaderPageState<HomePage>
       var collections = await CollectionService.instance.getCollections();
       await _loadRecentFiles(collections);
 
-      // If collections are empty and first sync is complete, ensure default
-      // collections are created. This handles the case where default collections
-      // setup was skipped during initialization due to the master key not being
-      // available yet.
+      // Create defaults if initialization ran before the master key was ready.
       final hasCompletedFirstSync = CollectionService.instance
           .hasCompletedFirstSync();
       if (collections.isEmpty && hasCompletedFirstSync) {
         _logger.info("No collections found after sync, setting up defaults");
         await CollectionService.instance.ensureDefaultCollections();
-        // Reload collections after setup
         collections = await CollectionService.instance.getCollections();
         await _loadRecentFiles(collections);
       }
@@ -571,7 +564,6 @@ class _HomePageState extends UploaderPageState<HomePage>
   }
 
   void _handleClearSearch() {
-    // Clear text and unfocus before dismissing search
     searchController.clear();
     searchFocusNode.unfocus();
 
@@ -663,16 +655,29 @@ class _HomePageState extends UploaderPageState<HomePage>
                           if (_selectedFiles.files.isNotEmpty) {
                             return const SizedBox.shrink();
                           }
-                          return FloatingActionButton(
-                            tooltip: 'Add item',
-                            onPressed: _openSavePage,
-                            shape: const CircleBorder(),
-                            backgroundColor: colors.primary,
-                            elevation: 0,
-                            child: HugeIcon(
-                              icon: HugeIcons.strokeRoundedPlusSign,
-                              color: colors.specialWhite,
-                            ),
+                          return Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.end,
+                            children: [
+                              if (FeatureFlagService
+                                  .instance
+                                  .documentScanner) ...[
+                                _buildScannerFab(colors),
+                                const SizedBox(height: 14),
+                              ],
+                              FloatingActionButton(
+                                tooltip: 'Add item',
+                                onPressed: () =>
+                                    _openSavePage(includeScanner: false),
+                                shape: const CircleBorder(),
+                                backgroundColor: colors.primary,
+                                elevation: 0,
+                                child: HugeIcon(
+                                  icon: HugeIcons.strokeRoundedPlusSign,
+                                  color: colors.specialWhite,
+                                ),
+                              ),
+                            ],
                           );
                         },
                       ),
@@ -762,7 +767,10 @@ class _HomePageState extends UploaderPageState<HomePage>
           right: Spacing.xl,
           bottom: scrollBottomPadding,
         ),
-        child: SaveToLockerEmptyStateWidget(onUploadDocument: addFile),
+        child: SaveToLockerEmptyStateWidget(
+          onUploadDocument: addFile,
+          onUploadFiles: uploadFiles,
+        ),
       );
     }
     return SizedBox.expand(
@@ -772,7 +780,7 @@ class _HomePageState extends UploaderPageState<HomePage>
           child: HomeEmptyStateWidget(
             isLoading: _isSyncing,
             onSetupLegacy: () => openLegacyFromHome(context),
-            onSaveToLocker: _openSavePage,
+            onSaveToLocker: () => _openSavePage(includeScanner: true),
           ),
         ),
       ),
@@ -839,7 +847,42 @@ class _HomePageState extends UploaderPageState<HomePage>
     );
   }
 
-  void _openSavePage() {
-    showSaveBottomSheet(context, onUploadDocument: addFile);
+  void _openSavePage({required bool includeScanner}) {
+    showSaveBottomSheet(
+      context,
+      onUploadDocument: addFile,
+      onUploadFiles: uploadFiles,
+      includeScanner: includeScanner,
+    );
+  }
+
+  Widget _buildScannerFab(ColorTokens colors) {
+    return SizedBox(
+      width: 56,
+      child: Center(
+        child: Semantics(
+          button: true,
+          label: context.strings.scanDocumentTitle,
+          child: FABComponent(
+            variant: FABComponentVariant.secondary,
+            icon: HugeIcon(
+              icon: HugeIcons.strokeRoundedCamera01,
+              color: colors.primary,
+              size: 24,
+            ),
+            onTap: _openScanner,
+          ),
+        ),
+      ),
+    );
+  }
+
+  void _openScanner() {
+    handleSaveOption(
+      context,
+      SaveOptionType.scanDocument,
+      onUploadDocument: addFile,
+      onUploadFiles: uploadFiles,
+    );
   }
 }

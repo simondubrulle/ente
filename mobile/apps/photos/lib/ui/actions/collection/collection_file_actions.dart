@@ -13,7 +13,6 @@ import 'package:photos/models/selected_files.dart';
 import "package:photos/module/upload/service/file_uploader.dart";
 import "package:photos/services/collections_service.dart";
 import 'package:photos/services/favorites_service.dart';
-import "package:photos/services/hidden_service.dart";
 import "package:photos/services/ignored_files_service.dart";
 import "package:photos/services/sync/remote_sync_service.dart";
 import 'package:photos/ui/actions/collection/collection_sharing_actions.dart';
@@ -110,9 +109,7 @@ extension CollectionFileActions on CollectionActions {
           if (file.uploadedFileID != null) {
             currentFile = file.copyWith();
           } else if (file.generatedID != null) {
-            // when file is not uploaded, refresh the state from the db to
-            // ensure we have latest upload status for given file before
-            // queueing it up as pending upload
+            // Refresh before queuing in case the upload state has changed.
             currentFile = await (FilesDB.instance.getFile(file.generatedID!));
           } else if (file.generatedID == null) {
             logger.severe("generated id should not be null");
@@ -134,7 +131,7 @@ extension CollectionFileActions on CollectionActions {
           }
         }
         if (filesPendingUpload.isNotEmpty) {
-          // Newly created collection might not be cached
+          // A newly created collection might not be cached yet.
           final Collection? c = CollectionsService.instance.getCollectionByID(
             collection.id,
           );
@@ -181,8 +178,7 @@ extension CollectionFileActions on CollectionActions {
         await showGenericErrorDialog(context: context, error: e);
         return false;
       } finally {
-        // Syncing since successful addition to collection could have
-        // happened before a failure
+        // Earlier collections may have succeeded before a later one failed.
         unawaited(RemoteSyncService.instance.sync(silently: true));
       }
     }
@@ -225,9 +221,7 @@ extension CollectionFileActions on CollectionActions {
           if (file.uploadedFileID != null) {
             currentFile = file.copyWith();
           } else if (file.generatedID != null) {
-            // when file is not uploaded, refresh the state from the db to
-            // ensure we have latest upload status for given file before
-            // queueing it up as pending upload
+            // Refresh before queuing in case the upload state has changed.
             currentFile = await (FilesDB.instance.getFile(file.generatedID!));
           } else if (file.generatedID == null) {
             logger.severe("generated id should not be null");
@@ -245,7 +239,7 @@ extension CollectionFileActions on CollectionActions {
         }
       }
       if (filesPendingUpload.isNotEmpty) {
-        // Newly created collection might not be cached
+        // A newly created collection might not be cached yet.
         final Collection? c = CollectionsService.instance.getCollectionByID(
           collectionID,
         );

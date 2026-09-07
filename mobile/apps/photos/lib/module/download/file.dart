@@ -34,13 +34,15 @@ Future<File?> getFile(
   bool liveVideo = false,
   bool isOrigin = false,
   bool forGalleryDownload = false, // only relevant for live photos
+  bool throwOnDecryptionFailure = false,
 }) async {
   try {
     if (file.isRemoteOnlyFile) {
-      return getFileFromServer(
+      return await getFileFromServer(
         file,
         liveVideo: liveVideo,
         forGalleryDownload: forGalleryDownload,
+        throwOnDecryptionFailure: throwOnDecryptionFailure,
       );
     } else {
       final String key = file.tag + liveVideo.toString() + isOrigin.toString();
@@ -62,7 +64,8 @@ Future<File?> getFile(
     }
   } catch (e, s) {
     _logger.warning("Failed to get file", e, s);
-    if (forGalleryDownload) {
+    if (forGalleryDownload ||
+        (throwOnDecryptionFailure && e is DownloadDecryptionError)) {
       rethrow;
     }
     return null;
@@ -77,22 +80,27 @@ Future<File?> _getLocalDiskFile(
   EnteFile file, {
   bool liveVideo = false,
   bool isOrigin = false,
-}) {
-  if (file.isSharedMediaToAppSandbox) {
-    final localFile = File(getSharedMediaFilePath(file));
-    return localFile.exists().then((exist) {
-      return exist ? localFile : null;
-    });
-  } else if (file.fileType == FileType.livePhoto && liveVideo) {
-    return Motionphoto.getLivePhotoFile(file.localID!);
-  } else {
-    return file.getAsset.then((asset) async {
-      if (asset == null || !(await asset.exists)) {
-        return null;
-      }
-      return isOrigin ? asset.originFile : asset.file;
-    });
+}) async {
+  // Return null because reading a device trash file by its file system path
+  // fails with a permission-denied error.
+  if (file.isDeviceTrash) {
+    return null;
   }
+
+  if (file.isSharedMediaToAppSandbox) {
+    final localFile = File(getSharedMediaPathFromLocalID(file.localID!));
+    return await localFile.exists() ? localFile : null;
+  }
+
+  if (file.fileType == FileType.livePhoto && liveVideo) {
+    return await Motionphoto.getLivePhotoFile(file.localID!);
+  }
+
+  final asset = await file.getAsset;
+  if (asset == null || !(await asset.exists)) {
+    return null;
+  }
+  return isOrigin ? await asset.originFile : await asset.file;
 }
 
 String getSharedMediaFilePath(EnteFile file) {
@@ -155,6 +163,7 @@ Future<File?> getFileFromServer(
   ProgressCallback? progressCallback,
   bool liveVideo = false, // only needed in case of live photos
   bool forGalleryDownload = false,
+  bool throwOnDecryptionFailure = false,
 }) async {
   final cacheManager = (file.fileType == FileType.video || liveVideo)
       ? VideoCacheManager.instance
@@ -169,33 +178,32 @@ Future<File?> getFileFromServer(
     _progressCallbacks[downloadID] = progressCallback;
   }
 
-  return _runOncePerKey(
-    _fileDownloadsInProgress,
-    downloadID,
-    () {
-      Future<File?> downloadFuture;
-      if (file.fileType == FileType.livePhoto) {
-        downloadFuture = _getLivePhotoFromServer(
-          file,
-          progressCallback: (count, total) {
-            _progressCallbacks[downloadID]?.call(count, total);
-          },
-          needLiveVideo: liveVideo,
-          forGalleryDownload: forGalleryDownload,
-        );
-      } else {
-        downloadFuture = _downloadAndCache(
-          file,
-          cacheManager,
-          progressCallback: (count, total) {
-            _progressCallbacks[downloadID]?.call(count, total);
-          },
-          forGalleryDownload: forGalleryDownload,
-        );
-      }
-      return downloadFuture;
-    },
-    onComplete: () => _progressCallbacks.remove(downloadID),
+  final download = _runOncePerKey(_fileDownloadsInProgress, downloadID, () {
+    Future<File?> downloadFuture;
+    if (file.fileType == FileType.livePhoto) {
+      downloadFuture = _getLivePhotoFromServer(
+        file,
+        progressCallback: (count, total) {
+          _progressCallbacks[downloadID]?.call(count, total);
+        },
+        needLiveVideo: liveVideo,
+        forGalleryDownload: forGalleryDownload,
+      );
+    } else {
+      downloadFuture = _downloadAndCache(
+        file,
+        cacheManager,
+        progressCallback: (count, total) {
+          _progressCallbacks[downloadID]?.call(count, total);
+        },
+        forGalleryDownload: forGalleryDownload,
+      );
+    }
+    return downloadFuture;
+  }, onComplete: () => _progressCallbacks.remove(downloadID));
+  return handleDownloadDecryptionFailureForCaller(
+    download,
+    rethrowDecryptionFailure: forGalleryDownload || throwOnDecryptionFailure,
   );
 }
 
@@ -233,7 +241,7 @@ Future<File?> _getLivePhotoFromServer(
     return needLiveVideo ? livePhoto.video : livePhoto.image;
   } catch (e, s) {
     _logger.warning("live photo get failed", e, s);
-    if (forGalleryDownload) {
+    if (forGalleryDownload || e is DownloadDecryptionError) {
       rethrow;
     }
     return null;
@@ -257,7 +265,7 @@ Future<File?> _downloadAndCache(
           return null;
         }
         final decryptedFilePath = decryptedFile.path;
-        final String fileExtension = getExtension(file.title ?? '');
+        String fileExtension = getExtension(file.title ?? '');
         File outputFile = decryptedFile;
         if ((fileExtension == "unknown" && file.fileType == FileType.image)) {
           final compressResult = await FlutterImageCompress.compressAndGetFile(
@@ -269,6 +277,7 @@ Future<File?> _downloadAndCache(
             throw Exception("Failed to convert heic to jpg");
           } else {
             outputFile = File(compressResult.path);
+            fileExtension = "jpg";
           }
           await decryptedFile.delete();
         }

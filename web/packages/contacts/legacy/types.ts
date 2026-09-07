@@ -1,12 +1,8 @@
 export type {
     LegacyContactRecord,
-    LegacyContactState,
     LegacyInfo,
-    LegacyRecoveryBundle,
     LegacyRecoverySession,
-    LegacyRecoveryStatus,
-    LegacyUser,
-} from "../types";
+} from "ente-legacy-wasm/authenticated";
 
 export interface LegacySuggestedUser {
     id?: number;

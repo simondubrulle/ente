@@ -6,6 +6,7 @@ import "package:flutter/foundation.dart";
 import 'package:flutter/material.dart';
 import "package:flutter/services.dart";
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:photos/core/constants.dart';
 import 'package:photos/models/button_result.dart';
 import 'package:photos/models/typedefs.dart';
 import "package:photos/module/download/manager.dart";
@@ -19,7 +20,6 @@ import 'package:photos/ui/components/dialog_widget.dart';
 import 'package:photos/ui/components/models/button_type.dart';
 import "package:photos/utils/email_util.dart";
 
-/// Legacy info-dialog helper backed by [showDialogWidget].
 Future<ButtonResult?> showInfoDialog(
   BuildContext context, {
   String title = "",
@@ -44,7 +44,6 @@ Future<ButtonResult?> showInfoDialog(
   );
 }
 
-/// Legacy error-dialog helper backed by [showDialogWidget].
 Future<ButtonResult?> showErrorDialog(
   BuildContext context,
   String title,
@@ -69,7 +68,6 @@ Future<ButtonResult?> showErrorDialog(
   );
 }
 
-/// Legacy exception-dialog helper backed by [showDialogWidget].
 Future<ButtonResult?> showErrorDialogForException({
   required BuildContext context,
   required Exception exception,
@@ -139,7 +137,6 @@ String parseErrorForUI(
     }
   }
 
-  // return generic error if the user is not internal and the error is not in debug mode
   if (!(flagService.internalUser && kDebugMode)) {
     return genericError;
   }
@@ -170,7 +167,6 @@ String parseErrorForUI(
   return genericError;
 }
 
-/// Legacy parsed-error dialog helper backed by [showDialogWidget].
 Future<ButtonResult?> showGenericErrorDialog({
   required BuildContext context,
   bool isDismissible = true,
@@ -213,6 +209,35 @@ Future<ButtonResult?> showGenericErrorDialog({
   return result;
 }
 
+Future<ButtonResult?> showDownloadDecryptionFailedDialog({
+  required BuildContext context,
+}) async {
+  final title = context.strings.downloadFailed;
+  return showDialogWidget(
+    context: context,
+    title: title,
+    icon: Icons.error_outline_outlined,
+    body: context.strings.downloadDecryptionFailedMessage,
+    buttons: [
+      ButtonWidget(
+        buttonType: ButtonType.primary,
+        labelText: context.strings.contactUs,
+        buttonAction: ButtonAction.first,
+        isInAlert: true,
+        onTap: () async {
+          await sendLogs(
+            context,
+            title,
+            supportEmail,
+            subject: title,
+            postShare: () {},
+          );
+        },
+      ),
+    ],
+  );
+}
+
 Future<void> showGenericErrorBottomSheet({
   required BuildContext context,
   required Object? error,
@@ -244,7 +269,6 @@ Future<void> showGenericErrorBottomSheet({
   );
 }
 
-/// Legacy two-choice dialog helper backed by [showDialogWidget].
 Future<ButtonResult?> showChoiceDialog(
   BuildContext context, {
   required String title,
@@ -287,11 +311,7 @@ Future<ButtonResult?> showChoiceDialog(
   );
 }
 
-/// Compatibility adapter for legacy Photos choice sheets.
-///
-/// Preserves existing two-choice [ButtonResult] behavior while rendering
-/// through [BottomSheetComponent]. Prefer [BottomSheetComponent] directly for
-/// new sheets.
+// Legacy; use BottomSheetComponent for new sheets.
 Future<ButtonResult?> showChoiceActionSheet(
   BuildContext context, {
   required String title,
@@ -359,10 +379,8 @@ ProgressDialog createProgressDialog(
   return dialog;
 }
 
-/// Compatibility adapter for legacy Photos text-input dialogs.
-///
-/// Returns null on successful submit, [ButtonResult] on cancel, and [Exception]
-/// on submit failure. Prefer [BottomSheetComponent] directly for new sheets.
+// Returns null after submit, ButtonResult on cancel, and Exception on failure.
+// Use BottomSheetComponent for new dialogs.
 Future<dynamic> showTextInputDialog(
   BuildContext context, {
   required String title,

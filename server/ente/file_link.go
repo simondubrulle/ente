@@ -16,6 +16,10 @@ type CreateFileUrl struct {
 	EncryptedShareKey     *string `json:"encryptedShareKey,omitempty"`
 }
 
+func (r *CreateFileUrl) Validate() error {
+	return validatePublicLinkKDFParams(r.KdfMemLimit, r.KdfOpsLimit)
+}
+
 type UpdateFileUrl struct {
 	LinkID          string `json:"linkID" binding:"required"`
 	FileID          int64  `json:"fileID" binding:"required"`
@@ -49,6 +53,9 @@ func (ut *UpdateFileUrl) Validate() error {
 	if !(allPassParamsMissing || allPassParamsPresent) {
 		return NewBadRequestWithMessage("all password params should be either present or missing")
 	}
+	if err := validatePublicLinkKDFParams(ut.MemLimit, ut.OpsLimit); err != nil {
+		return err
+	}
 
 	if allPassParamsPresent && ut.DisablePassword != nil && *ut.DisablePassword {
 		return NewBadRequestWithMessage("can not set and disable password in same request")
@@ -80,15 +87,14 @@ type FileLinkRow struct {
 }
 
 type FileUrl struct {
-	LinkID          string `json:"linkID" binding:"required"`
-	URL             string `json:"url" binding:"required"`
-	OwnerID         int64  `json:"ownerID" binding:"required"`
-	FileID          int64  `json:"fileID" binding:"required"`
-	IsDisabled      bool   `json:"isDisabled"`
-	ValidTill       int64  `json:"validTill"`
-	DeviceLimit     int    `json:"deviceLimit"`
-	PasswordEnabled bool   `json:"passwordEnabled"`
-	// Nonce contains the nonce value for the password if the link is password protected.
+	LinkID                string  `json:"linkID" binding:"required"`
+	URL                   string  `json:"url" binding:"required"`
+	OwnerID               int64   `json:"ownerID" binding:"required"`
+	FileID                int64   `json:"fileID" binding:"required"`
+	IsDisabled            bool    `json:"isDisabled"`
+	ValidTill             int64   `json:"validTill"`
+	DeviceLimit           int     `json:"deviceLimit"`
+	PasswordEnabled       bool    `json:"passwordEnabled"`
 	Nonce                 *string `json:"nonce,omitempty"`
 	MemLimit              *int64  `json:"memLimit,omitempty"`
 	OpsLimit              *int64  `json:"opsLimit,omitempty"`

@@ -7,30 +7,54 @@ import {
     UserRemove01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Box, Menu, MenuItem, Skeleton } from "@mui/material";
-import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
+import {
+    Box,
+    Dialog,
+    Menu,
+    MenuItem,
+    Skeleton,
+    useMediaQuery,
+} from "@mui/material";
 import {
     SpaceActionFeedbackIcon,
     spaceActionDoneDurationMs,
     type SpaceActionPhase,
-} from "components/SpaceActionFeedback";
-import { SpaceAvatarImage } from "components/SpaceAvatarImage";
-import { SpaceLoadingSpinner } from "components/SpaceRouteFallback";
-import { SpaceShareInviteButton } from "components/SpaceShareInviteButton";
+} from "components/ActionFeedback";
+import { SpaceAvatarImage } from "components/AvatarImage";
+import { SpaceBottomSheetTransition } from "components/BottomSheetTransition";
+import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
+import { SpaceLoadingSpinner } from "components/RouteFallback";
+import { SpaceShareInviteButton } from "components/ShareInviteButton";
 import type { FriendProfile } from "data/friends";
 import log from "ente-base/log";
 import React, { useState } from "react";
-import type { SpaceFriendRequest } from "services/space";
-import { openSpaceShareLinkDialog } from "services/spaceShareLink";
-import { spaceTouchTargetSize } from "styles/touchTargets";
-
-export const friendsBackground = "#FFFFFF";
+import {
+    normalizeSpaceUsername,
+    spaceUsernameValidationError,
+} from "services/profile";
+import {
+    isSpaceFriendLimitError,
+    type SpaceFriendRequest,
+} from "services/space";
+import {
+    spaceAppBackground,
+    spaceDialogBackground,
+    spaceSurface,
+    spaceSurfaceHover,
+    spaceText,
+    spaceTextMuted,
+} from "styles/colors";
+import { spaceTouchTargetSize } from "styles/touch-targets";
+import {
+    maximumSpaceFriendCount,
+    spaceFriendLimitMessage,
+} from "utils/friend-limits";
 
 const green = "#08C225";
-const avatarSkeletonBackground = "#E6E6E6";
-const textBase = "#000";
-const textStrong = "#303030";
-const textSoft = "#777777";
+const avatarSkeletonBackground = spaceSurface;
+const textBase = spaceText;
+const textStrong = spaceText;
+const textSoft = spaceTextMuted;
 const dangerColor = "#F63A3A";
 const friendAvatarLoadRootMargin = "800px 0px";
 
@@ -51,9 +75,11 @@ interface FriendsScreenProps {
     onDeleteFriendRequest: (requestID: number) => Promise<void>;
     onLoadFriendAvatar?: (friend: FriendProfile) => Promise<string | null>;
     onBack?: () => void;
+    onAddFriend: (username: string) => Promise<"friend" | "requested">;
     onMessage?: (friendID: string) => void;
     onOpenFriend?: (friendID: string) => void;
     profileLink?: string;
+    username: string;
     onUnfriend?: (friendID: string) => Promise<void> | void;
 }
 
@@ -315,6 +341,7 @@ const FriendRow: React.FC<FriendRowProps> = ({
                 slotProps={{
                     paper: {
                         sx: {
+                            bgcolor: spaceDialogBackground,
                             borderRadius: "14px",
                             boxShadow: "0 14px 40px rgba(0, 0, 0, 0.16)",
                             mt: "6px",
@@ -428,10 +455,11 @@ const FriendRequestRow: React.FC<FriendRequestRowProps> = ({
     ) => {
         if (isBusy) return;
         setAction(nextAction);
-        void handler(request.requestId).catch((error: unknown) => {
-            log.error("Failed to update friend request", error);
-            setAction(null);
-        });
+        void handler(request.requestId)
+            .catch((error: unknown) =>
+                log.error("Failed to update friend request", error),
+            )
+            .finally(() => setAction(null));
     };
 
     return (
@@ -532,7 +560,7 @@ const FriendRequestRow: React.FC<FriendRequestRowProps> = ({
                                 },
                                 "&:hover": isBusy
                                     ? undefined
-                                    : { bgcolor: "#F1F1F1" },
+                                    : { bgcolor: spaceSurfaceHover },
                             }}
                         >
                             {action == "delete" ? (
@@ -558,7 +586,7 @@ const FriendRequestRow: React.FC<FriendRequestRowProps> = ({
                         onClick={() => runAction("delete", onDelete)}
                         sx={{
                             alignItems: "center",
-                            bgcolor: "#F2F2F2",
+                            bgcolor: spaceSurface,
                             border: 0,
                             borderRadius: "12px",
                             color: textBase,
@@ -578,7 +606,7 @@ const FriendRequestRow: React.FC<FriendRequestRowProps> = ({
                             },
                             "&:hover": isBusy
                                 ? undefined
-                                : { bgcolor: "#E8E8E8" },
+                                : { bgcolor: spaceSurfaceHover },
                         }}
                     >
                         {action == "delete" ? (
@@ -593,19 +621,361 @@ const FriendRequestRow: React.FC<FriendRequestRowProps> = ({
     );
 };
 
+interface AddFriendSheetProps {
+    friendRequests: SpaceFriendRequest[];
+    friends: FriendProfile[];
+    onAddFriend: FriendsScreenProps["onAddFriend"];
+    onClose: () => void;
+    open: boolean;
+    username: string;
+}
+
+const friendRequestErrorMessage = (error: unknown, username: string) => {
+    if (isSpaceFriendLimitError(error)) return spaceFriendLimitMessage;
+    if (!error || typeof error != "object") {
+        return "Couldn't send the friend request. Please try again.";
+    }
+
+    const { message, status } = error as {
+        message?: unknown;
+        status?: unknown;
+    };
+    if (status == 404) return `No Space profile found for @${username}.`;
+    if (
+        status == 400 &&
+        typeof message == "string" &&
+        message.includes("cannot add yourself")
+    ) {
+        return "You can't add yourself as a friend.";
+    }
+    if (status == 409) {
+        return `@${username} can't receive more friend requests right now.`;
+    }
+    return "Couldn't send the friend request. Please try again.";
+};
+
+const AddFriendSheet: React.FC<AddFriendSheetProps> = ({
+    friendRequests,
+    friends,
+    onAddFriend,
+    onClose,
+    open,
+    username: currentUsername,
+}) => {
+    const titleID = React.useId();
+    const isBottomSheet = useMediaQuery("(max-width: 599px)");
+    const [username, setUsername] = React.useState("");
+    const [isSubmitting, setIsSubmitting] = React.useState(false);
+    const [isSent, setIsSent] = React.useState(false);
+    const [errorMessage, setErrorMessage] = React.useState<string>();
+
+    const submit = () => {
+        if (isSubmitting || isSent) return;
+
+        const normalizedUsername = normalizeSpaceUsername(username);
+        const validationError = normalizedUsername
+            ? spaceUsernameValidationError(normalizedUsername)
+            : "Enter a username.";
+        if (validationError) {
+            setErrorMessage(validationError);
+            return;
+        }
+        if (normalizedUsername == normalizeSpaceUsername(currentUsername)) {
+            setErrorMessage("You can't add yourself as a friend.");
+            return;
+        }
+        if (
+            friends.some(
+                (friend) =>
+                    normalizeSpaceUsername(friend.username) ==
+                    normalizedUsername,
+            )
+        ) {
+            setErrorMessage(
+                `You're already friends with @${normalizedUsername}.`,
+            );
+            return;
+        }
+        if (
+            friendRequests.some(
+                (request) =>
+                    request.direction == "sent" &&
+                    normalizeSpaceUsername(request.friend.username) ==
+                        normalizedUsername,
+            )
+        ) {
+            setErrorMessage(
+                `Friend request already sent to @${normalizedUsername}.`,
+            );
+            return;
+        }
+        const sentRequestCount = friendRequests.filter(
+            (request) => request.direction == "sent",
+        ).length;
+        if (friends.length + sentRequestCount >= maximumSpaceFriendCount) {
+            setErrorMessage(spaceFriendLimitMessage);
+            return;
+        }
+
+        setErrorMessage(undefined);
+        setIsSubmitting(true);
+        void onAddFriend(normalizedUsername)
+            .then(() => setIsSent(true))
+            .catch((error: unknown) => {
+                if (!isSpaceFriendLimitError(error)) {
+                    log.error("Failed to send space friend request", error);
+                }
+                setErrorMessage(
+                    friendRequestErrorMessage(error, normalizedUsername),
+                );
+            })
+            .finally(() => setIsSubmitting(false));
+    };
+
+    React.useEffect(() => {
+        if (!open || !isSent) return;
+
+        const timeoutID = window.setTimeout(onClose, spaceActionDoneDurationMs);
+        return () => window.clearTimeout(timeoutID);
+    }, [isSent, onClose, open]);
+
+    return (
+        <Dialog
+            open={open}
+            onClose={isSubmitting ? undefined : onClose}
+            maxWidth={false}
+            aria-labelledby={titleID}
+            slots={
+                isBottomSheet
+                    ? { transition: SpaceBottomSheetTransition }
+                    : undefined
+            }
+            slotProps={{
+                paper: {
+                    sx: {
+                        borderRadius: "28px 28px 0 0",
+                        bottom: 0,
+                        boxShadow: "none",
+                        boxSizing: "border-box",
+                        left: 0,
+                        m: 0,
+                        maxWidth: "none",
+                        p: "26px 20px 24px",
+                        position: "fixed",
+                        width: "100vw",
+                        "@media (min-width: 600px)": {
+                            borderRadius: "20px",
+                            bottom: "auto",
+                            left: "50%",
+                            maxWidth: 363,
+                            top: "50%",
+                            transform: "translate(-50%, -50%)",
+                            width: 363,
+                        },
+                    },
+                },
+                transition: {
+                    onExited: () => {
+                        setUsername("");
+                        setIsSent(false);
+                        setErrorMessage(undefined);
+                    },
+                },
+            }}
+        >
+            <Box
+                component="form"
+                noValidate
+                onSubmit={(event) => {
+                    event.preventDefault();
+                    submit();
+                }}
+                sx={{
+                    maxWidth: 320,
+                    mx: "auto",
+                    width: "100%",
+                    "@media (min-width: 600px)": { maxWidth: "none" },
+                }}
+            >
+                <Box
+                    component="h2"
+                    id={titleID}
+                    sx={{
+                        color: textBase,
+                        fontFamily: '"Inter Variable", Inter, sans-serif',
+                        fontSize: 15,
+                        fontWeight: 600,
+                        lineHeight: "20px",
+                        m: 0,
+                        px: "20px",
+                        textAlign: "center",
+                    }}
+                >
+                    Add a friend
+                </Box>
+                <Box
+                    sx={{
+                        color: textSoft,
+                        fontFamily: '"Inter Variable", Inter, sans-serif',
+                        fontSize: 13,
+                        lineHeight: "18px",
+                        mt: "8px",
+                        textAlign: "center",
+                    }}
+                >
+                    Enter your friend&apos;s username to add them on Space
+                </Box>
+                <Box
+                    component="label"
+                    sx={{ display: "block", mt: "20px", width: "100%" }}
+                >
+                    <Box
+                        sx={{
+                            alignItems: "center",
+                            bgcolor: spaceSurface,
+                            border: `1px solid ${errorMessage ? dangerColor : "transparent"}`,
+                            borderRadius: "14px",
+                            display: "flex",
+                            height: 48,
+                            px: "14px",
+                            width: "100%",
+                            "&:focus-within": {
+                                borderColor: green,
+                                boxShadow: `0 0 0 1px ${green}`,
+                            },
+                        }}
+                    >
+                        <Box
+                            component="span"
+                            aria-hidden
+                            sx={{
+                                color: textSoft,
+                                flexShrink: 0,
+                                fontFamily:
+                                    '"Inter Variable", Inter, sans-serif',
+                                fontSize: 14,
+                                fontWeight: 600,
+                            }}
+                        >
+                            @
+                        </Box>
+                        <Box
+                            component="input"
+                            autoCapitalize="none"
+                            autoComplete="off"
+                            autoCorrect="off"
+                            autoFocus
+                            aria-invalid={Boolean(errorMessage) || undefined}
+                            disabled={isSubmitting || isSent}
+                            onChange={(
+                                event: React.ChangeEvent<HTMLInputElement>,
+                            ) => {
+                                const value = event.target.value;
+                                setUsername(
+                                    value.startsWith("@")
+                                        ? value.slice(1)
+                                        : value,
+                                );
+                                setErrorMessage(undefined);
+                            }}
+                            placeholder="username"
+                            spellCheck={false}
+                            value={username}
+                            sx={{
+                                bgcolor: "transparent",
+                                border: 0,
+                                color: textBase,
+                                flex: 1,
+                                fontFamily:
+                                    '"Inter Variable", Inter, sans-serif',
+                                fontSize: 14,
+                                fontWeight: 500,
+                                height: "100%",
+                                minWidth: 0,
+                                outline: 0,
+                                p: 0,
+                                "&::placeholder": {
+                                    color: textSoft,
+                                    opacity: 1,
+                                },
+                            }}
+                        />
+                    </Box>
+                </Box>
+                {errorMessage && (
+                    <Box
+                        role="alert"
+                        sx={{
+                            color: dangerColor,
+                            fontFamily: '"Inter Variable", Inter, sans-serif',
+                            fontSize: 13,
+                            fontWeight: 600,
+                            lineHeight: "18px",
+                            mt: "8px",
+                            textAlign: "center",
+                        }}
+                    >
+                        {errorMessage}
+                    </Box>
+                )}
+                <Box
+                    className="green-bg"
+                    component="button"
+                    type="submit"
+                    disabled={isSubmitting || isSent}
+                    sx={{
+                        alignItems: "center",
+                        bgcolor: green,
+                        border: 0,
+                        borderRadius: "20px",
+                        color: "#FFFFFF",
+                        cursor: isSubmitting || isSent ? "default" : "pointer",
+                        display: "flex",
+                        fontFamily: '"Inter Variable", Inter, sans-serif',
+                        fontSize: 14,
+                        fontWeight: 600,
+                        height: 48,
+                        justifyContent: "center",
+                        lineHeight: "20px",
+                        mt: "20px",
+                        px: "24px",
+                        width: "100%",
+                        "&:disabled": { opacity: isSent ? 1 : 0.6 },
+                        "&:focus-visible": {
+                            outline: `2px solid ${green}`,
+                            outlineOffset: 2,
+                        },
+                    }}
+                >
+                    {isSubmitting ? (
+                        <SpaceActionFeedbackIcon phase="busy" />
+                    ) : isSent ? (
+                        <SpaceActionFeedbackIcon phase="done" />
+                    ) : (
+                        "Send request"
+                    )}
+                </Box>
+            </Box>
+        </Dialog>
+    );
+};
+
 export const FriendsScreen: React.FC<FriendsScreenProps> = ({
     friendRequests,
     friends,
     isLoading,
     onAcceptFriendRequest,
+    onAddFriend,
     onDeleteFriendRequest,
     onLoadFriendAvatar,
     onBack,
     onMessage,
     onOpenFriend,
     profileLink,
+    username,
     onUnfriend,
 }) => {
+    const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
     const [friendToUnfriend, setFriendToUnfriend] =
         React.useState<FriendProfile | null>(null);
     const [unfriendActionPhase, setUnfriendActionPhase] =
@@ -706,7 +1076,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
         <Box
             component="main"
             sx={{
-                bgcolor: friendsBackground,
+                background: spaceAppBackground,
                 color: textBase,
                 display: "grid",
                 boxSizing: "border-box",
@@ -717,7 +1087,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
         >
             <Box
                 sx={{
-                    bgcolor: friendsBackground,
+                    bgcolor: "transparent",
                     boxSizing: "border-box",
                     minHeight: "100svh",
                     mx: "auto",
@@ -784,15 +1154,16 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Invite friends"
-                        disabled={!profileLink}
-                        onClick={() => openSpaceShareLinkDialog("invite")}
+                        aria-expanded={isAddFriendOpen}
+                        aria-label="Add friend"
+                        disabled={isLoading}
+                        onClick={() => setIsAddFriendOpen(true)}
                         sx={{
                             alignItems: "center",
                             bgcolor: "transparent",
                             border: 0,
                             color: textBase,
-                            cursor: profileLink ? "pointer" : "default",
+                            cursor: isLoading ? "default" : "pointer",
                             display: "flex",
                             height: spaceTouchTargetSize,
                             justifyContent: "flex-end",
@@ -813,6 +1184,15 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                         />
                     </Box>
                 </Box>
+
+                <AddFriendSheet
+                    friendRequests={friendRequests}
+                    friends={friends}
+                    onAddFriend={onAddFriend}
+                    onClose={() => setIsAddFriendOpen(false)}
+                    open={isAddFriendOpen}
+                    username={username}
+                />
 
                 {isLoading ? (
                     <Box
@@ -869,11 +1249,12 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                             color: textSoft,
                             display: "flex",
                             flexDirection: "column",
+                            gap: "22px",
                             inset: 0,
                             justifyContent: "center",
                             fontFamily: '"Inter Variable", Inter, sans-serif',
                             fontSize: 14,
-                            fontWeight: 600,
+                            fontWeight: 500,
                             lineHeight: "20px",
                             pointerEvents: "none",
                             position: "absolute",
@@ -881,48 +1262,20 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                             textAlign: "center",
                         }}
                     >
-                        No friends yet
+                        <Box component="p" sx={{ m: 0, maxWidth: 260 }}>
+                            Invite your close friends and family. Share everyday
+                            photos and keep up with each other.
+                        </Box>
                         <SpaceShareInviteButton
-                            label="Invite friends"
                             profileLink={profileLink}
                             sharing={isInviteSharing}
                             onShareError={(error) =>
-                                log.error("Failed to share space invite", error)
+                                log.error(
+                                    "Failed to share Space invite link",
+                                    error,
+                                )
                             }
                             onSharingChange={setIsInviteSharing}
-                            sx={{
-                                alignItems: "center",
-                                bgcolor: "#E8E8E8",
-                                border: 0,
-                                borderRadius: "18px",
-                                color: textBase,
-                                cursor:
-                                    profileLink && !isInviteSharing
-                                        ? "pointer"
-                                        : "default",
-                                display: "inline-flex",
-                                fontFamily:
-                                    '"Inter Variable", Inter, sans-serif',
-                                fontSize: 13,
-                                fontWeight: 600,
-                                gap: "6px",
-                                height: spaceTouchTargetSize,
-                                justifyContent: "center",
-                                lineHeight: "18px",
-                                mt: "22px",
-                                pointerEvents: "auto",
-                                px: "14px",
-                                whiteSpace: "nowrap",
-                                "&:disabled": { opacity: 0.45 },
-                                "&:focus-visible": {
-                                    outline: `2px solid ${green}`,
-                                    outlineOffset: 2,
-                                },
-                                "&:hover":
-                                    profileLink && !isInviteSharing
-                                        ? { bgcolor: "#DEDEDE" }
-                                        : undefined,
-                            }}
                         />
                     </Box>
                 )}

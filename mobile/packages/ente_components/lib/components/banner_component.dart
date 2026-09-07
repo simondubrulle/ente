@@ -8,11 +8,8 @@ import 'package:hugeicons/hugeicons.dart';
 
 enum BannerComponentState { failure, informative, success, warning, neutral }
 
-/// Layout Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=14590-125265&m=dev
-/// State Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=7255-38447&m=dev
-/// Section: Home gallery banners / Snack bar states
-/// Specs: 351px wide, 66px min height, 20px radius, 24px leading icon,
-/// body/mini text, and an optional trailing action.
+// Layout Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=14590-125265&m=dev
+// State Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=7255-38447&m=dev
 class BannerComponent extends StatelessWidget {
   const BannerComponent({
     required this.title,
@@ -135,28 +132,23 @@ class BannerComponent extends StatelessWidget {
                               ],
                             ),
                     ),
-                    const SizedBox(width: Spacing.md),
-                    trailingWidget == null
-                        ? _BannerActionButton(
-                            iconColor: colors.textBase,
-                            onTap: onTap,
-                          )
-                        : SizedBox(
-                            key: const ValueKey(
-                              'banner-component-trailing-slot',
+                    if (trailingWidget != null) ...[
+                      const SizedBox(width: Spacing.md),
+                      SizedBox(
+                        key: const ValueKey('banner-component-trailing-slot'),
+                        width: actionSize,
+                        height: actionSize,
+                        child: Center(
+                          child: IconTheme.merge(
+                            data: IconThemeData(
+                              color: colors.textBase,
+                              size: _actionIconSize,
                             ),
-                            width: actionSize,
-                            height: actionSize,
-                            child: Center(
-                              child: IconTheme.merge(
-                                data: IconThemeData(
-                                  color: colors.textBase,
-                                  size: _actionIconSize,
-                                ),
-                                child: trailingWidget,
-                              ),
-                            ),
+                            child: trailingWidget,
                           ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
@@ -175,31 +167,5 @@ class BannerComponent extends StatelessWidget {
       BannerComponentState.warning => HugeIcons.strokeRoundedAlert02,
       BannerComponentState.neutral => HugeIcons.strokeRoundedLoading03,
     };
-  }
-}
-
-class _BannerActionButton extends StatelessWidget {
-  const _BannerActionButton({required this.iconColor, required this.onTap});
-
-  final Color iconColor;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: onTap,
-      child: SizedBox(
-        width: BannerComponent.actionSize,
-        height: BannerComponent.actionSize,
-        child: Center(
-          child: Icon(
-            Icons.arrow_forward,
-            size: BannerComponent._actionIconSize,
-            color: iconColor,
-          ),
-        ),
-      ),
-    );
   }
 }

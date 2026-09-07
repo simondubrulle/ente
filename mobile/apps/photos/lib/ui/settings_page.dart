@@ -9,7 +9,6 @@ import "package:ente_ui/pages/settings_search_page.dart";
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:hugeicons/hugeicons.dart";
-import "package:log_viewer/log_viewer.dart";
 import "package:photos/core/configuration.dart";
 import "package:photos/emergency/emergency_page.dart";
 import "package:photos/models/user_details.dart";
@@ -101,7 +100,6 @@ class _SettingsBody extends StatelessWidget {
               const SizedBox(height: 8),
             ],
             if (hasLoggedIn && !isLocalGalleryMode) ...[
-              // Account section
               const StorageCardWidget(),
               const SizedBox(height: 16),
               _buildMenuItem(
@@ -121,7 +119,6 @@ class _SettingsBody extends StatelessWidget {
               ),
               const SizedBox(height: 8),
             ],
-            // Privacy and personalization section
             _buildMenuItem(
               title: context.strings.security,
               icon: HugeIcons.strokeRoundedSecurityCheck,
@@ -139,21 +136,17 @@ class _SettingsBody extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (isLocalGalleryMode) ...[
-              // Local gallery section
               _buildOfflineFeaturesCard(context),
               const SizedBox(height: 8),
             ],
             if (hasLoggedIn && !isLocalGalleryMode) ...[
-              // Product features section
               _buildPersonalFeaturesCard(context),
               const SizedBox(height: 8),
               _buildFeaturesAndPlansCard(context),
               const SizedBox(height: 8),
             ],
-            // Engagement section
             AppEngagementSection(reviewUrl: ReviewService.url),
             const SizedBox(height: 8),
-            // Support section
             _buildMenuItem(
               title: context.strings.helpAndSupport,
               icon: HugeIcons.strokeRoundedHelpCircle,
@@ -171,7 +164,6 @@ class _SettingsBody extends StatelessWidget {
             ),
             const SizedBox(height: 8),
             if (hasLoggedIn && !isLocalGalleryMode) ...[
-              // Account actions section
               _buildLogoutCard(context),
             ],
             const Padding(
@@ -182,7 +174,6 @@ class _SettingsBody extends StatelessWidget {
             if (hasLoggedIn &&
                 !isLocalGalleryMode &&
                 (flagService.flags.internalUser || kDebugMode)) ...[
-              // Debug section
               _buildMenuItem(
                 title: "Debug",
                 icon: HugeIcons.strokeRoundedBug02,
@@ -228,18 +219,6 @@ class _SettingsBody extends StatelessWidget {
           );
         },
       ),
-      if (localSettings.enableDatabaseLogging) ...[
-        IconButtonComponent(
-          variant: IconButtonComponentVariant.primary,
-          shouldSurfaceExecutionStates: false,
-          icon: const HugeIcon(icon: HugeIcons.strokeRoundedBug02),
-          onTap: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(builder: (context) => const LogViewerPage()),
-            );
-          },
-        ),
-      ],
     ];
   }
 

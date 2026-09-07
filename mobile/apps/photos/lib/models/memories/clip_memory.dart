@@ -366,6 +366,7 @@ class ClipMemory extends SmartMemory {
     int firstDateToShow,
     int lastDateToShow,
     this.clipMemoryType, {
+    super.id,
     super.firstCreationTime,
     super.lastCreationTime,
   }) : super(memories, MemoryType.clip, '', firstDateToShow, lastDateToShow);

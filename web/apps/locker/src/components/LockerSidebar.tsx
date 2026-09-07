@@ -18,7 +18,7 @@ import { useBaseContext } from "ente-base/context";
 import {
     mergeLegacySuggestedUsers,
     type LegacySuggestedUser,
-} from "ente-contacts-web/legacy";
+} from "ente-contacts/legacy";
 import { t } from "i18next";
 import dynamic from "next/dynamic";
 import React, { useEffect, useMemo, useState } from "react";
@@ -139,9 +139,9 @@ export const LockerSidebar: React.FC<LockerSidebarProps> = ({
                     sx={{
                         height: "calc(100dvh - env(titlebar-area-height, 0px) - 16px)",
                         minHeight: 0,
-                        backgroundColor: "background.default",
+                        backgroundColor: "#f4f4f4",
                         ...theme.applyStyles("dark", {
-                            backgroundColor: "background.paper",
+                            backgroundColor: "#161616",
                         }),
                     }}
                 >
@@ -174,7 +174,11 @@ export const LockerSidebar: React.FC<LockerSidebarProps> = ({
                                 >
                                     <EnteLogo height={18} />
                                 </Box>
-                                <IconButton onClick={onClose} color="secondary">
+                                <IconButton
+                                    onClick={onClose}
+                                    color="secondary"
+                                    sx={{ mr: 0.75 }}
+                                >
                                     <CloseIcon />
                                 </IconButton>
                             </Stack>
@@ -364,15 +368,6 @@ export const LockerSidebar: React.FC<LockerSidebarProps> = ({
                                 />
                             </Stack>
                         </Box>
-                        <Box
-                            sx={{
-                                mx: 1.5,
-                                mt: 2,
-                                borderTop: 1,
-                                borderColor: "divider",
-                            }}
-                        />
-
                         <Box sx={{ px: 0.5, mt: 2, pb: 1 }}>
                             <Stack sx={{ gap: 1 }}>
                                 <LockerSidebarCardButton
@@ -403,14 +398,6 @@ export const LockerSidebar: React.FC<LockerSidebarProps> = ({
                                 />
                             </Stack>
                         </Box>
-                        <Box
-                            sx={{
-                                mx: 1.5,
-                                mt: 1,
-                                borderTop: 1,
-                                borderColor: "divider",
-                            }}
-                        />
                         <Box sx={{ px: 0.5, mt: 2, pb: 1 }}>
                             <Stack sx={{ gap: 1 }}>
                                 <LockerSidebarCardButton

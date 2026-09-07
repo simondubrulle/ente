@@ -15,6 +15,7 @@ import {
 } from "@mui/material";
 import { useColorScheme } from "@mui/material/styles";
 import { sessionExpiredDialogAttributes } from "ente-accounts/components/utils/dialog";
+import { masterKeyFromSession } from "ente-accounts/services/prelogin-session";
 import { stashRedirect } from "ente-accounts/services/redirect";
 import { EnteLogo } from "ente-base/components/EnteLogo";
 import { LoadingIndicator } from "ente-base/components/loaders";
@@ -27,7 +28,6 @@ import {
 import { useBaseContext } from "ente-base/context";
 import { isHTTP401Error } from "ente-base/http";
 import log from "ente-base/log";
-import { masterKeyFromSession } from "ente-base/session";
 import { t } from "i18next";
 import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useState } from "react";

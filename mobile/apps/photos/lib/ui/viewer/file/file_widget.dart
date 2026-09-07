@@ -1,5 +1,6 @@
 import "dart:io";
 
+import "package:flutter/foundation.dart";
 import 'package:flutter/material.dart';
 import 'package:logging/logging.dart';
 import 'package:photos/models/file/file.dart';
@@ -17,6 +18,11 @@ class FileWidget extends StatelessWidget {
   final BoxDecoration? backgroundDecoration;
   final bool? autoPlay;
   final bool? isFromMemories;
+  final bool isActive;
+  final int? itemIndex;
+  final ValueListenable<int>? activeItemIndexListenable;
+  final bool? isAudioMutedOverride;
+  final ValueNotifier<double>? playbackSpeed;
   final Function({required int memoryDuration})? onFinalFileLoad;
   final ValueChanged<File>? onFinalImageLoaded;
   final ValueNotifier<QrCodeDetectionResult?>? qrDetectionsNotifier;
@@ -30,6 +36,11 @@ class FileWidget extends StatelessWidget {
     required this.tagPrefix,
     this.backgroundDecoration,
     this.isFromMemories = false,
+    this.isActive = true,
+    this.itemIndex,
+    this.activeItemIndexListenable,
+    this.isAudioMutedOverride,
+    this.playbackSpeed,
     this.onFinalFileLoad,
     this.onFinalImageLoaded,
     this.qrDetectionsNotifier,
@@ -39,9 +50,7 @@ class FileWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Specify key to ensure that the widget is rebuilt when the file changes
-    // Before changing this, ensure that file deletes are handled properly
-
+    // Deleting a file can change the file at this index. Key by file identity.
     final String fileKey = _fileWidgetKey(file);
     if (file.fileType == FileType.livePhoto ||
         file.fileType == FileType.image) {
@@ -75,6 +84,11 @@ class FileWidget extends StatelessWidget {
         shouldDisableScroll: shouldDisableScroll,
         onFinalFileLoad: onFinalFileLoad,
         isFromMemories: isFromMemories ?? false,
+        isActive: isActive,
+        itemIndex: itemIndex,
+        activeItemIndexListenable: activeItemIndexListenable,
+        isAudioMutedOverride: isAudioMutedOverride,
+        playbackSpeed: playbackSpeed,
         key: key ?? ValueKey(fileKey),
       );
     } else {

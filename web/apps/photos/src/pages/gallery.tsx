@@ -9,8 +9,11 @@ import {
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
 import { CollectionMapDialog } from "@/components/Collections/CollectionMapDialog";
+import {
+    EditAlbumDetailsDialog,
+    type AlbumDetails,
+} from "@/components/Collections/EditAlbumDetailsDialog";
 import { GalleryBarAndListHeader } from "@/components/Collections/GalleryBarAndListHeader";
-import { PickCoverPhotoDialog } from "@/components/Collections/PickCoverPhotoDialog";
 import { Export } from "@/components/Export";
 import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
@@ -34,7 +37,7 @@ import {
     type RemotePullOpts,
 } from "@/components/gallery";
 import {
-    findCollectionCreatingUncategorizedIfNeeded,
+    findCollectionCreatingIfNeeded,
     performCollectionOp,
     validateKey,
 } from "@/components/gallery/helpers";
@@ -49,6 +52,7 @@ import {
 import { useIsOffline } from "@/components/utils/use-is-offline";
 import { shouldShowWhatsNew } from "@/services/changelog";
 import exportService from "@/services/export";
+import { processPendingAlbumJoin } from "@/services/join-album";
 import { Upload01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
@@ -58,9 +62,8 @@ import { IconButton, Link, Stack, Typography } from "@mui/material";
 import { sessionExpiredDialogAttributes } from "ente-accounts/components/utils/dialog";
 import {
     getAndClearIsFirstLogin,
-    getAndClearJustSignedUp,
+    savedJustSignedUp,
 } from "ente-accounts/services/accounts-db";
-import { processPendingAlbumJoin } from "ente-accounts/services/join-album";
 import { stashRedirect } from "ente-accounts/services/redirect";
 import { isSessionInvalid } from "ente-accounts/services/session";
 import { ensureLocalUser } from "ente-accounts/services/user";
@@ -86,13 +89,13 @@ import {
 } from "ente-base/session";
 import { savedAuthToken } from "ente-base/token";
 import type { Location } from "ente-base/types";
-import { ensureContactsReady } from "ente-contacts-web";
+import { ensureContactsReady } from "ente-contacts";
 import { DownloadStatusNotifications } from "ente-gallery/components/DownloadStatusNotifications";
 import { FullScreenDropZone } from "ente-gallery/components/FullScreenDropZone";
 import type { UploadTypeSelectorIntent } from "ente-gallery/components/Upload";
 import { useSaveGroups } from "ente-gallery/components/utils/save-groups";
 import type { FileViewerInitialSidebar } from "ente-gallery/components/viewer/FileViewer";
-import { CollectionSubType, type Collection } from "ente-media/collection";
+import type { Collection } from "ente-media/collection";
 import type { EnteFile } from "ente-media/file";
 import { ItemVisibility, metadataHash } from "ente-media/file-metadata";
 import { AssignPersonDialog } from "ente-new/photos/components/AssignPersonDialog";
@@ -108,11 +111,13 @@ import {
     addToFavoritesCollection,
     canAddFilesToCollection,
     createAlbum,
+    createHiddenAlbum,
     createPublicURL,
     createQuickLinkCollection,
     removeFromCollection,
     removeFromFavoritesCollection,
-    updateCollectionCover,
+    renameCollection,
+    updateCollectionDetails,
 } from "ente-new/photos/services/collection";
 import {
     haveOnlySystemCollections,
@@ -126,7 +131,9 @@ import {
     addManualFileAssignmentsToPerson,
     isMLEnabled,
 } from "ente-new/photos/services/ml";
+import { contactsGetDiff, contactsGetProfilePicture } from "ente-photos-wasm";
 
+import { ensureAuthenticatedSession } from "@/services/authenticated-session";
 import { postPullFiles, prePullFiles, pullFiles } from "@/services/pull";
 import { uploadManager } from "@/services/upload-manager";
 import watcher from "@/services/watch";
@@ -253,6 +260,7 @@ const Page: React.FC = () => {
     const [, setPostCreateAlbumOp] = useState<CollectionOp | undefined>(
         undefined,
     );
+    const postCreateAlbumHidden = useRef(false);
     const [pendingSidebarAction, setPendingSidebarAction] = useState<
         SidebarActionID | undefined
     >(undefined);
@@ -282,8 +290,8 @@ const Page: React.FC = () => {
     const { show: showEditLocation, props: editLocationVisibilityProps } =
         useModalVisibility();
     const {
-        show: showPickCoverPhotoDialog,
-        props: pickCoverPhotoDialogVisibilityProps,
+        show: showEditAlbumDetails,
+        props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
     const { show: showCollectionMap, props: collectionMapVisibilityProps } =
         useModalVisibility();
@@ -314,16 +322,14 @@ const Page: React.FC = () => {
         url?: string;
     }>({ open: false });
 
-    const onAuthenticateCallback = useRef<(() => void) | undefined>(undefined);
-    const onAuthenticateCancelCallback = useRef<(() => void) | undefined>(
-        undefined,
-    );
+    const onAuthenticateCallback = useRef<
+        ((didAuthenticate: boolean) => void) | undefined
+    >(undefined);
 
     const authenticateUserWithPasswordModal = useCallback(
         () =>
-            new Promise<void>((resolve, reject) => {
+            new Promise<boolean>((resolve) => {
                 onAuthenticateCallback.current = resolve;
-                onAuthenticateCancelCallback.current = reject;
                 showAuthenticateUser();
             }),
         [],
@@ -333,27 +339,23 @@ const Page: React.FC = () => {
         if (!isDesktop) return authenticateUserWithPasswordModal();
 
         const reauthResult = await reauthenticateWithAppLock();
-        if (reauthResult === "authenticated") return;
-        if (reauthResult === "cancelled") {
-            throw new Error("app_lock_reauthentication_cancelled");
-        }
+        if (reauthResult === "authenticated") return true;
+        if (reauthResult === "cancelled") return false;
 
         return authenticateUserWithPasswordModal();
     }, [authenticateUserWithPasswordModal]);
 
     const handleCloseAuthenticateUser = useCallback(() => {
         authenticateUserVisibilityProps.onClose();
-        // Reject the suspended caller when the modal is dismissed.
-        if (onAuthenticateCancelCallback.current) {
-            onAuthenticateCancelCallback.current();
-            onAuthenticateCancelCallback.current = undefined;
+        if (onAuthenticateCallback.current) {
+            onAuthenticateCallback.current(false);
+            onAuthenticateCallback.current = undefined;
         }
     }, [authenticateUserVisibilityProps.onClose]);
 
     const handleAuthenticate = useCallback(() => {
-        onAuthenticateCancelCallback.current = undefined;
         if (onAuthenticateCallback.current) {
-            onAuthenticateCallback.current();
+            onAuthenticateCallback.current(true);
             onAuthenticateCallback.current = undefined;
         }
     }, []);
@@ -384,6 +386,10 @@ const Page: React.FC = () => {
     } = state;
 
     const barMode = state.view?.type ?? "albums";
+    const quickLinkVisibility =
+        barMode == "hidden-albums"
+            ? ItemVisibility.hidden
+            : ItemVisibility.visible;
     const activeCollectionID =
         state.view?.type == "people"
             ? undefined
@@ -412,29 +418,6 @@ const Page: React.FC = () => {
             }, new Map<number, number[]>()),
         [state.collectionFiles],
     );
-
-    const isOwnedAlbumEligibleForCover = useMemo(() => {
-        if (
-            isInSearchMode ||
-            !activeCollection ||
-            !activeCollectionSummary ||
-            !user
-        )
-            return false;
-
-        if (activeCollection.owner.id != user.id) return false;
-        if (
-            activeCollection.magicMetadata?.data.subType ==
-            CollectionSubType.quicklink
-        ) {
-            return false;
-        }
-
-        return (
-            activeCollectionSummary.attributes.has("album") ||
-            activeCollectionSummary.attributes.has("folder")
-        );
-    }, [isInSearchMode, activeCollection, activeCollectionSummary, user]);
 
     const activeCollectionFiles = useMemo(() => {
         if (!activeCollection) return [];
@@ -506,9 +489,15 @@ const Page: React.FC = () => {
         let unsubscribeMainWindowFocus: (() => void) | undefined;
 
         void (async () => {
-            if (!haveMasterKeyInSession() || !(await savedAuthToken())) {
+            const authToken = await savedAuthToken();
+            if (!haveMasterKeyInSession() || !authToken) {
                 stashRedirect("/gallery");
                 void router.push("/");
+                return;
+            }
+
+            if (savedJustSignedUp()) {
+                void router.replace("/plan");
                 return;
             }
 
@@ -525,23 +514,22 @@ const Page: React.FC = () => {
 
             setIsFirstLoad(getAndClearIsFirstLogin());
 
-            if (getAndClearJustSignedUp()) {
-                showPlanSelector();
-            }
-
             const user = ensureLocalUser();
-            const masterKey = await masterKeyFromSession();
-            if (masterKey) {
-                void ensureContactsReady({
-                    userID: user.id,
-                    masterKeyB64: masterKey,
-                }).catch((error: unknown) => {
+            void ensureAuthenticatedSession()
+                .then((session) =>
+                    ensureContactsReady(
+                        user.id,
+                        session,
+                        contactsGetDiff,
+                        contactsGetProfilePicture,
+                    ),
+                )
+                .catch((error: unknown) => {
                     log.warn(
                         "[gallery] Failed to warm contacts display cache",
                         error,
                     );
                 });
-            }
             const userDetails = await savedUserDetailsOrTriggerPull();
             dispatch({
                 type: "mount",
@@ -714,7 +702,7 @@ const Page: React.FC = () => {
             exportVisibilityProps.open ||
             authenticateUserVisibilityProps.open ||
             albumNameInputVisibilityProps.open ||
-            pickCoverPhotoDialogVisibilityProps.open ||
+            editAlbumDetailsVisibilityProps.open ||
             isFileViewerOpen
         ) {
             return;
@@ -1000,15 +988,19 @@ const Page: React.FC = () => {
     const createOnCreateForCollectionOp = useCallback(
         (op: CollectionOp) => {
             setPostCreateAlbumOp(op);
+            postCreateAlbumHidden.current =
+                (op == "add" || op == "move") && barMode == "hidden-albums";
             return showAlbumNameInput;
         },
-        [showAlbumNameInput],
+        [showAlbumNameInput, barMode],
     );
 
     const handleAlbumNameSubmit = useCallback(
         async (name: string) => {
             try {
-                const collection = await createAlbum(name);
+                const collection = postCreateAlbumHidden.current
+                    ? await createHiddenAlbum(name)
+                    : await createAlbum(name);
 
                 if (pendingSingleFileAdd.current) {
                     await performCollectionOp(
@@ -1030,6 +1022,7 @@ const Page: React.FC = () => {
                     });
                     setOpenCollectionSelector(false);
                     setPostCreateAlbumOp(undefined);
+                    postCreateAlbumHidden.current = false;
                     return;
                 }
 
@@ -1039,6 +1032,7 @@ const Page: React.FC = () => {
                     );
                     return undefined;
                 });
+                postCreateAlbumHidden.current = false;
             } finally {
                 pendingSingleFileAdd.current = undefined;
             }
@@ -1128,6 +1122,7 @@ const Page: React.FC = () => {
                         const quickLinkCollection =
                             await createQuickLinkCollection(
                                 quickLinkNameForFiles(ownedSelectedFiles),
+                                quickLinkVisibility,
                             );
                         await addToCollection(
                             quickLinkCollection,
@@ -1348,7 +1343,7 @@ const Page: React.FC = () => {
                 Date.now() - lastAuthAt > 5 * 60 * 1e3
             ) {
                 try {
-                    await authenticateUser();
+                    if (!(await authenticateUser())) return;
                     lastAuthenticationForHiddenTimestamp.current = Date.now();
                 } catch {
                     return;
@@ -1439,6 +1434,7 @@ const Page: React.FC = () => {
             try {
                 const quickLinkCollection = await createQuickLinkCollection(
                     quickLinkNameForFiles([file]),
+                    quickLinkVisibility,
                 );
                 await addToCollection(quickLinkCollection, [file]);
                 const publicURL = await createPublicURL(
@@ -1463,6 +1459,7 @@ const Page: React.FC = () => {
             showLoadingBar,
             hideLoadingBar,
             customDomain,
+            quickLinkVisibility,
             remotePull,
             onGenericError,
         ],
@@ -1507,34 +1504,39 @@ const Page: React.FC = () => {
         [favoriteFileIDs, selected],
     );
 
-    const handleUpdateCollectionCover = useCallback(
-        async (coverID: number) => {
-            if (!activeCollection || !isOwnedAlbumEligibleForCover)
-                return false;
+    const handleEditAlbumDetails = useCallback(
+        async ({ name, description, coverID }: AlbumDetails) => {
+            if (!activeCollection) return;
 
-            showLoadingBar();
+            let didAttemptWrite = false;
             try {
-                await updateCollectionCover(activeCollection, coverID);
-                await remotePull({
-                    silent: true,
-                    source: "update-collection-cover",
-                });
-                return true;
-            } catch (e) {
-                onGenericError(e);
-                return false;
+                if (activeCollection.name != name) {
+                    didAttemptWrite = true;
+                    await renameCollection(activeCollection, name);
+                }
+                const descriptionChanged =
+                    (
+                        activeCollection.pubMagicMetadata?.data.caption ?? ""
+                    ).trim() != description;
+                if (descriptionChanged || coverID !== undefined) {
+                    didAttemptWrite = true;
+                    await updateCollectionDetails(activeCollection, {
+                        description: descriptionChanged
+                            ? description
+                            : undefined,
+                        coverID,
+                    });
+                }
             } finally {
-                hideLoadingBar();
+                if (didAttemptWrite) {
+                    await remotePull({
+                        silent: true,
+                        source: "update-album-details",
+                    });
+                }
             }
         },
-        [
-            activeCollection,
-            isOwnedAlbumEligibleForCover,
-            showLoadingBar,
-            remotePull,
-            onGenericError,
-            hideLoadingBar,
-        ],
+        [activeCollection, remotePull],
     );
 
     const handleContextMenuAction = useCallback(
@@ -1612,6 +1614,7 @@ const Page: React.FC = () => {
                     handleOpenCollectionSelector({
                         action: "add",
                         sourceCollectionSummaryID: activeCollectionSummary?.id,
+                        showHiddenCollections: barMode == "hidden-albums",
                         onCreateCollection:
                             createOnCreateForCollectionOp("add"),
                         onSelectCollection:
@@ -1622,6 +1625,7 @@ const Page: React.FC = () => {
                     handleOpenCollectionSelector({
                         action: "move",
                         sourceCollectionSummaryID: activeCollectionSummary?.id,
+                        showHiddenCollections: barMode == "hidden-albums",
                         onCreateCollection:
                             createOnCreateForCollectionOp("move"),
                         onSelectCollection:
@@ -1715,24 +1719,10 @@ const Page: React.FC = () => {
             showEditLocation,
             activeCollectionSummary,
             activeCollection,
+            barMode,
             selectedCount,
             selectedOwnCount,
         ],
-    );
-
-    const handleOpenPickCoverPhotoDialog = useCallback(() => {
-        if (!isOwnedAlbumEligibleForCover) return;
-        showPickCoverPhotoDialog();
-    }, [isOwnedAlbumEligibleForCover, showPickCoverPhotoDialog]);
-
-    const handleUseSelectedCoverPhoto = useCallback(
-        async (file: EnteFile) => handleUpdateCollectionCover(file.id),
-        [handleUpdateCollectionCover],
-    );
-
-    const handleResetCollectionCover = useCallback(
-        async () => handleUpdateCollectionCover(0),
-        [handleUpdateCollectionCover],
     );
 
     const handleCloseCollectionSelector = useCallback(
@@ -1778,6 +1768,7 @@ const Page: React.FC = () => {
 
             const handleCreate = () => {
                 setPostCreateAlbumOp("add");
+                postCreateAlbumHidden.current = false;
                 showAlbumNameInput();
             };
 
@@ -1844,10 +1835,7 @@ const Page: React.FC = () => {
                         : normalCollectionSummaries
                 }
                 collectionForCollectionSummaryID={(id) =>
-                    findCollectionCreatingUncategorizedIfNeeded(
-                        state.collections,
-                        id,
-                    )
+                    findCollectionCreatingIfNeeded(state.collections, id)
                 }
             />
             <DownloadStatusNotifications
@@ -1942,8 +1930,7 @@ const Page: React.FC = () => {
                     saveGroups,
                     canCreateAlbum: !isInArchiveSection,
                     onAddSaveGroup,
-                    canSetAlbumCover: isOwnedAlbumEligibleForCover,
-                    onSetAlbumCover: handleOpenPickCoverPhotoDialog,
+                    onEditAlbumDetails: showEditAlbumDetails,
                     onShowMap: handleShowCollectionMap,
                 }}
                 mode={barMode}
@@ -2110,18 +2097,15 @@ const Page: React.FC = () => {
                     onSelectPerson={handleSelectPerson}
                 />
             )}
-            {activeCollection && (
-                <PickCoverPhotoDialog
-                    {...pickCoverPhotoDialogVisibilityProps}
+            {activeCollection && editAlbumDetailsVisibilityProps.open && (
+                <EditAlbumDetailsDialog
+                    key={activeCollection.id}
+                    {...editAlbumDetailsVisibilityProps}
                     collection={activeCollection}
                     files={activeCollectionFiles}
+                    initialCoverFile={activeCollectionSummary?.coverFile}
                     user={user}
-                    canResetToDefault={
-                        (activeCollection.pubMagicMetadata?.data.coverID ?? 0) >
-                        0
-                    }
-                    onUseSelectedPhoto={handleUseSelectedCoverPhoto}
-                    onResetToDefault={handleResetCollectionCover}
+                    onSubmit={handleEditAlbumDetails}
                 />
             )}
             <Export {...exportVisibilityProps} {...{ collectionNameByID }} />
@@ -2139,6 +2123,7 @@ const Page: React.FC = () => {
                 onClose={() => {
                     // Do not leak a cancelled add into the next album creation.
                     pendingSingleFileAdd.current = undefined;
+                    postCreateAlbumHidden.current = false;
                     albumNameInputVisibilityProps.onClose();
                 }}
                 onSubmit={handleAlbumNameSubmit}

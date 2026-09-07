@@ -1,11 +1,14 @@
+import type { GroundedSource } from "@/services/knowledge";
 import { isTauriRuntime } from "@/services/tauri-runtime";
 import { getKV, removeKV, setKV } from "ente-base/kv";
 import log from "ente-base/log";
+import { ensureArrayBufferBacked } from "ente-utils/bytes";
 import { openDB, type DBSchema, type IDBPDatabase } from "idb";
-import { decryptAttachmentBytes, encryptAttachmentBytes } from "./attachments";
 import {
+    decryptAttachmentBytes,
     decryptChatField,
     decryptChatPayload,
+    encryptAttachmentBytes,
     encryptChatField,
     encryptChatPayload,
 } from "./crypto";
@@ -112,6 +115,7 @@ export interface ChatMessage {
     text: string;
     createdAt: number;
     attachments?: ChatAttachment[];
+    sources?: GroundedSource[];
     isSynthetic?: boolean;
 }
 
@@ -138,6 +142,7 @@ interface NativeMessage {
     text: string;
     createdAt: number;
     attachments?: NativeAttachment[];
+    sources?: GroundedSource[];
 }
 
 const nowMicros = () => Date.now() * 1000;
@@ -422,6 +427,7 @@ const listMessagesNative = async (
             name: attachment.name,
             size: attachment.size,
         })),
+        sources: message.sources,
     }));
 };
 
@@ -442,6 +448,7 @@ const addMessageNative = async (
     text: string,
     parentMessageUuid?: string,
     attachments: ChatAttachment[] = [],
+    sources: GroundedSource[] = [],
 ): Promise<ChatMessage> => {
     const message = await invokeChat<NativeMessage>("chat_db_insert_message", {
         input: {
@@ -449,6 +456,7 @@ const addMessageNative = async (
             sender,
             text,
             parentMessageUuid,
+            sources,
             attachments: attachments.map((attachment) => ({
                 id: attachment.id,
                 kind: attachment.kind,
@@ -489,6 +497,7 @@ const addMessageNative = async (
             name: attachment.name,
             size: attachment.size,
         })),
+        sources: message.sources,
     };
 };
 
@@ -635,6 +644,7 @@ export const addMessage = async (
     chatKey: string,
     parentMessageUuid?: string,
     attachments: ChatAttachment[] = [],
+    sources: GroundedSource[] = [],
 ): Promise<ChatMessage> => {
     if (isTauriRuntime()) {
         return addMessageNative(
@@ -643,6 +653,7 @@ export const addMessage = async (
             text,
             parentMessageUuid,
             attachments,
+            sources,
         );
     }
 
@@ -843,10 +854,7 @@ const attachmentPath = async (id: string) => {
     return join(dir, id);
 };
 
-export const writeAttachmentBytes = async (
-    id: string,
-    data: Uint8Array<ArrayBuffer>,
-) => {
+export const writeAttachmentBytes = async (id: string, data: Uint8Array) => {
     if (isTauriRuntime()) {
         const { writeFile } = await import("@tauri-apps/plugin-fs");
         await writeFile(await attachmentPath(id), data);
@@ -854,7 +862,10 @@ export const writeAttachmentBytes = async (
     }
 
     const db = await chatDb();
-    await db.put("attachmentBytes", { id, data });
+    await db.put("attachmentBytes", {
+        id,
+        data: ensureArrayBufferBacked(data),
+    });
 };
 
 export const deleteAttachmentBytes = async (id: string) => {
@@ -904,7 +915,7 @@ export const readDecryptedAttachmentBytes = async (
     id: string,
     chatKey: string,
     sessionUuid: string,
-): Promise<Uint8Array<ArrayBuffer>> => {
+): Promise<Uint8Array> => {
     const encrypted = await readAttachmentBytes(id);
     return decryptAttachmentBytes(encrypted, chatKey, sessionUuid);
 };

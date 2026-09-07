@@ -37,6 +37,7 @@ import "package:photos/services/sync/local_sync_service.dart";
 import "package:photos/theme/colors.dart";
 import "package:photos/ui/home/memories/all_memories_page.dart";
 import "package:photos/ui/home/memories/full_screen_memory.dart";
+import "package:photos/ui/home/memories/memory_music_session.dart";
 import "package:photos/ui/viewer/file/detail_page.dart";
 import "package:photos/ui/viewer/people/people_page.dart";
 import "package:photos/utils/cache_util.dart";
@@ -49,8 +50,7 @@ class MemoriesCacheService {
   static const _shouldUpdateCacheKey = "memories.shouldUpdateCache";
   static const _tripMemoryCarryForwardLimit = kTripSurfaceSlots;
 
-  /// Delay is for cache update to be done not during app init, during which a
-  /// lot of other things are happening.
+  // Avoid competing with other startup work.
   static const _kCacheUpdateDelay = Duration(seconds: 20);
 
   final SharedPreferences _prefs;
@@ -77,11 +77,7 @@ class MemoriesCacheService {
 
     Future.delayed(_kCacheUpdateDelay, () {
       _checkIfTimeToUpdateCache();
-      // Self-schedule cache updates independently of runAllML, so that users
-      // with ML disabled still get their memories cache refreshed on the
-      // configured cadence. Safe to call unconditionally: updateCache() is a
-      // no-op when neither _shouldUpdate nor forced is true, and the lock
-      // serialises against concurrent invocations from runAllML.
+      // Schedule independently of ML so non-ML memories also refresh.
       unawaited(updateCache());
       _memoriesDB.clearMemoriesSeenBeforeTime(
         DateTime.now()
@@ -858,7 +854,6 @@ class MemoriesCacheService {
         w?.log("gotten old cache");
         final MemoriesCache newCache = _processOldCache(oldCache);
         w?.log("processed old cache");
-        // calculate memories for this period and for the next period
         final now = DateTime.now();
         final next = now.add(kMemoriesUpdateFrequency);
         final mlReady = await _isMlReady();
@@ -896,9 +891,8 @@ class MemoriesCacheService {
         final nowEntries = nowResult.memories
             .map((memory) => _toCacheMemory(memory, now, localIdToIntId))
             .toList();
-        // Splice carried-forward trip entries into the natural trip slot so
-        // the UI keeps showing trips in their usual position (after
-        // onThisDay/people) instead of jumping to the front of the row.
+        // Keep carried trips with other trips instead of moving them to the
+        // front.
         int tripInsertIdx = nowEntries.indexWhere(
           (e) => e.type == MemoryType.trips,
         );
@@ -1103,8 +1097,7 @@ class MemoriesCacheService {
     if (memory.type != MemoryType.trips) {
       return false;
     }
-    // Drop legacy keyless trips during migration so they cannot coexist with
-    // newly recomputed keyed trips for the same trip.
+    // Drop old trips without keys to avoid duplicates after migration.
     final tripKey = memory.tripKey;
     return tripKey != null && tripKey.isNotEmpty;
   }
@@ -1129,17 +1122,13 @@ class MemoriesCacheService {
     Bus.instance.fire(MemoriesChangedEvent());
   }
 
-  /// WARNING: Use for testing only, TODO: lau: remove later
+  // WARNING: Use for testing only, TODO: lau: remove later
   Future<MemoriesCache> debugCacheForTesting() async {
     final oldCache = await _readCacheFromDisk();
     final MemoriesCache newCache = _processOldCache(oldCache);
     return newCache;
   }
 
-  /// WARNING: Use for testing only.
-  ///
-  /// Computes the full smart memories set with debug surfacing enabled without
-  /// mutating the persisted memories cache.
   Future<List<SmartMemory>> debugGetAllMemories({DateTime? calcTime}) async {
     return _memoriesUpdateLock.synchronized(() async {
       final mlReady = await _isMlReady();
@@ -1318,7 +1307,7 @@ class MemoriesCacheService {
     bool found = false;
     memoryLoop:
     for (final memory in allMemories) {
-      if (memory.type == MemoryType.onThisDay) {
+      if (memory.type == MemoryType.onThisDay && memory.memories.isNotEmpty) {
         found = true;
         break memoryLoop;
       }
@@ -1351,7 +1340,8 @@ class MemoriesCacheService {
     for (final memory in allMemories) {
       if (memory is PeopleMemory &&
           (memory.isBirthday ?? false) &&
-          memory.personID == personID) {
+          memory.personID == personID &&
+          memory.memories.isNotEmpty) {
         personMemories.add(memory);
       }
     }
@@ -1389,17 +1379,23 @@ class MemoriesCacheService {
       return;
     }
     if (context != null && !context.mounted) return;
-    await _routeToPage(
-      FullScreenMemoryDataUpdater(
-        initialIndex: 0,
-        memories: personMemory.memories,
-        child: Container(
-          color: backgroundColorDark,
-          width: double.infinity,
-          height: double.infinity,
-          child: FullScreenMemory(personMemory.title, 0),
+    final page = FullScreenMemoryDataUpdater(
+      initialIndex: 0,
+      memories: personMemory.memories,
+      child: Container(
+        color: backgroundColorDark,
+        width: double.infinity,
+        height: double.infinity,
+        child: FullScreenMemory(
+          personMemory.title,
+          0,
+          memoryID: personMemory.id,
+          isActive: true,
         ),
       ),
+    );
+    await _routeToPage(
+      MemoryMusicSession(memoryIDs: <String>[personMemory.id], child: page),
       context: context,
       forceCustomPageRoute: true,
     );

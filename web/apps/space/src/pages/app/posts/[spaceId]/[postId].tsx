@@ -1,18 +1,22 @@
-import { SpaceFileViewer } from "components/SpaceFileViewer";
-import { SpacePageMeta } from "components/SpacePageMeta";
-import { SpaceRouteFallback } from "components/SpaceRouteFallback";
+import { SpaceFileViewer } from "components/FileViewer";
+import { SpacePageMeta } from "components/PageMeta";
+import { SpaceRouteFallback } from "components/RouteFallback";
 import log from "ente-base/log";
 import React from "react";
+import {
+    markSpaceHomePostRead,
+    patchCachedSpaceHomePost,
+} from "services/home-posts";
 import {
     loadCurrentSpacePost,
     replyToCurrentPost,
     setCurrentPostLiked,
     type SpacePost,
 } from "services/space";
-import { patchCachedSpaceFeedPost } from "services/spaceFeedCache";
-import { useSpaceAppState } from "state/spaceAppState";
-import { spaceRoutes } from "utils/spaceRoutes";
-import { useSpaceRouter } from "utils/spaceRouteTransitions";
+import { useSpaceAppState } from "state/app-state";
+import { spaceAppBackgroundColor } from "styles/colors";
+import { useSpaceRouter } from "utils/route-transitions";
+import { spaceRoutes } from "utils/routes";
 
 const postBackground = "#000000";
 
@@ -89,12 +93,13 @@ const Page: React.FC = () => {
             return;
         }
 
+        const viewerSpaceId = profile.spaceId;
         let cancelled = false;
         setPost(null);
         setPostLoadError(undefined);
         setIsPostLoading(true);
 
-        void loadCurrentSpacePost(spaceId, postId, profile.spaceId)
+        void loadCurrentSpacePost(spaceId, postId, viewerSpaceId)
             .then((nextPost) => {
                 if (cancelled) return;
                 if (!nextPost) {
@@ -102,6 +107,15 @@ const Page: React.FC = () => {
                     return;
                 }
                 setPost(nextPost);
+                if (nextPost.spaceId != viewerSpaceId) {
+                    void markSpaceHomePostRead(viewerSpaceId, nextPost).catch(
+                        (error: unknown) =>
+                            log.warn(
+                                "Failed to mark Space post as read",
+                                error,
+                            ),
+                    );
+                }
             })
             .catch((error: unknown) => {
                 log.error("Failed to load space post", error);
@@ -149,7 +163,7 @@ const Page: React.FC = () => {
     ) {
         return (
             <SpaceRouteFallback
-                background="#FFFFFF"
+                background={spaceAppBackgroundColor}
                 message={postLoadError || profileLoadError}
             />
         );
@@ -158,7 +172,7 @@ const Page: React.FC = () => {
     if (!actorSpaceId) {
         return (
             <SpaceRouteFallback
-                background="#FFFFFF"
+                background={spaceAppBackgroundColor}
                 message={postLoadError || profileLoadError}
             />
         );
@@ -185,7 +199,7 @@ const Page: React.FC = () => {
                 }
                 onSetPostLiked={async (nextPostId, liked) => {
                     await setCurrentPostLiked(actorSpaceId, nextPostId, liked);
-                    void patchCachedSpaceFeedPost(actorSpaceId, nextPostId, {
+                    void patchCachedSpaceHomePost(actorSpaceId, nextPostId, {
                         viewerLiked: liked,
                     });
                 }}

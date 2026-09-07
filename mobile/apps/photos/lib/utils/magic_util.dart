@@ -92,21 +92,20 @@ Future<void> changeCollectionVisibility(
     final Map<String, dynamic> update = {magicKeyVisibility: newVisibility};
     if (isOwner) {
       await CollectionsService.instance.updateMagicMetadata(collection, update);
-      Bus.instance.fire(
-        CollectionUpdatedEvent(
-          collection.id,
-          const <EnteFile>[],
-          'collection_visibility_changed',
-        ),
-      );
     } else {
       await CollectionsService.instance.updateShareeMagicMetadata(
         collection,
         update,
       );
     }
-    // Force reload home gallery to pull in/remove the now visibility changed
-    // files
+    Bus.instance.fire(
+      CollectionUpdatedEvent(
+        collection.id,
+        const <EnteFile>[],
+        'collection_visibility_changed',
+      ),
+    );
+    // Reload so the home gallery adds or removes the collection's files.
     Bus.instance.fire(
       ForceReloadHomeGalleryEvent(
         "CollectionVisibilityChange: $visibilityAction",
@@ -246,8 +245,7 @@ Future<void> updateShareeOrder(
   }
 }
 
-// changeCoverPhoto is used to change cover photo for a collection. To reset to
-// default cover photo, pass uploadedFileID as 0
+// Pass 0 to restore the default cover.
 Future<void> changeCoverPhoto(
   BuildContext context,
   Collection collection,

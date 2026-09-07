@@ -12,7 +12,7 @@ use super::{
 };
 use crate::{
     crypto::{decrypt_asset_payload, decrypt_secretbox_payload, encrypt_secretbox_payload},
-    error::{Result, SpaceError},
+    error::{Error, Result},
     models::{CreatedSpaceLink, DecryptedPost, DecryptedSpaceProfile, OpenSpaceLinkCtxInput},
     transport::{
         AssetDownloadResponse, PostPage, PostResponse, SpaceKeyVersionResponse,
@@ -25,7 +25,7 @@ use crate::{
 const ACCESS_KEY_LENGTH: usize = 12;
 const ACCESS_KEY_ALPHABET: &[u8] =
     b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
-const AUTH_HEADER: &str = "X-Ente-Space-Link-Auth";
+const AUTH_HEADER: &str = "X-Space-Link-Auth";
 const AUTH_CONTEXT: &[u8; 8] = b"spacauth";
 const WRAP_CONTEXT: &[u8; 8] = b"spacwrap";
 
@@ -81,7 +81,7 @@ impl AccountSpaceCtx {
             });
         }
         if status.link_id <= 0 {
-            return Err(SpaceError::InvalidInput(
+            return Err(Error::InvalidInput(
                 "active space link is missing its ID".into(),
             ));
         }
@@ -103,14 +103,16 @@ impl AccountSpaceCtx {
 
     async fn get_space_link_status(&self, space_id: &str) -> Result<SpaceLinkStatusResponse> {
         let path = format!("/spaces/{space_id}/link");
-        Ok(self
+        let status = self
             .api()
             .get(&path)
             .send()
             .await?
             .error_for_status()?
             .json()
-            .await?)
+            .await?;
+        validate_link_status_space(&status, space_id)?;
+        Ok(status)
     }
 
     async fn write_space_link(&self, space_id: &str, rotate: bool) -> Result<CreatedSpaceLink> {
@@ -118,7 +120,7 @@ impl AccountSpaceCtx {
             .resolve_owned_space_access(space_id)
             .await?
             .ok_or_else(|| {
-                SpaceError::InvalidInput(format!("space {space_id} is not owned by the account"))
+                Error::InvalidInput(format!("space {space_id} is not owned by the account"))
             })?;
         let access_key = generate_access_key();
         let salt = Salt::generate();
@@ -152,6 +154,7 @@ impl AccountSpaceCtx {
             .error_for_status()?
             .json()
             .await?;
+        validate_link_status_space(&status, space_id)?;
         if status.encrypted_access_key == request.encrypted_access_key {
             Ok(CreatedSpaceLink {
                 space_id: status.space_id,
@@ -178,12 +181,20 @@ impl AccountSpaceCtx {
     fn decrypt_link_access_key(&self, status: &SpaceLinkStatusResponse) -> Result<String> {
         let encrypted = b64::decode(&status.encrypted_access_key)?;
         let plaintext = decrypt_secretbox_payload(self.space_root_key(), &encrypted)?;
-        let access_key = String::from_utf8(plaintext).map_err(|error| {
-            SpaceError::InvalidInput(format!("invalid link access key: {error}"))
-        })?;
+        let access_key = String::from_utf8(plaintext)
+            .map_err(|error| Error::InvalidInput(format!("invalid link access key: {error}")))?;
         validate_access_key(&access_key)?;
         Ok(access_key)
     }
+}
+
+fn validate_link_status_space(status: &SpaceLinkStatusResponse, space_id: &str) -> Result<()> {
+    if status.space_id != space_id {
+        return Err(Error::InvalidInput(
+            "space link response does not match the requested space".into(),
+        ));
+    }
+    Ok(())
 }
 
 impl SpaceLinkCtx {
@@ -191,9 +202,7 @@ impl SpaceLinkCtx {
         validate_access_key(&input.access_key)?;
         let space_slug = input.space_slug.trim().to_lowercase();
         if space_slug.is_empty() {
-            return Err(SpaceError::InvalidInput(
-                "space username is required".into(),
-            ));
+            return Err(Error::InvalidInput("space username is required".into()));
         }
         let api = build_api(
             &input.base_url,
@@ -254,7 +263,7 @@ impl SpaceLinkCtx {
             *cache_lock(&self.key_history, "space link key history")? = snapshot.key_history;
         }
         if !self.has_keys_for_posts(&page)? {
-            return Err(SpaceError::InvalidInput(
+            return Err(Error::InvalidInput(
                 "space link changed while posts were being loaded".into(),
             ));
         }
@@ -380,7 +389,7 @@ impl SpaceLinkCtx {
         cache_lock(&self.key_history, "space link key history")?
             .get(&key_version)
             .cloned()
-            .ok_or_else(|| SpaceError::InvalidInput(format!("missing space key for {subject}")))
+            .ok_or_else(|| Error::InvalidInput(format!("missing space key for {subject}")))
     }
 }
 
@@ -392,7 +401,7 @@ async fn fetch_link_snapshot(
 ) -> Result<SpaceLinkSnapshot> {
     for _ in 0..2 {
         let fetch_profile = async {
-            Ok::<SpaceLinkProfileResponse, SpaceError>(
+            Ok::<SpaceLinkProfileResponse, Error>(
                 api.get(&format!("{prefix}/profile"))
                     .header(AUTH_HEADER, auth_key)
                     .send()
@@ -403,7 +412,7 @@ async fn fetch_link_snapshot(
             )
         };
         let fetch_versions = async {
-            Ok::<Vec<SpaceKeyVersionResponse>, SpaceError>(
+            Ok::<Vec<SpaceKeyVersionResponse>, Error>(
                 api.get(&format!("{prefix}/versions"))
                     .header(AUTH_HEADER, auth_key)
                     .send()
@@ -440,7 +449,7 @@ async fn fetch_link_snapshot(
             key_history,
         });
     }
-    Err(SpaceError::InvalidInput(
+    Err(Error::InvalidInput(
         "space link changed while it was being opened".into(),
     ))
 }
@@ -451,7 +460,7 @@ fn validate_access_key(access_key: &str) -> Result<()> {
     {
         Ok(())
     } else {
-        Err(SpaceError::InvalidInput(
+        Err(Error::InvalidInput(
             "space link access key must be 12 alphanumeric characters".into(),
         ))
     }
@@ -486,7 +495,7 @@ fn derive_link_keys(
     if mem_limit != argon::Params::INTERACTIVE.mem_limit
         || ops_limit != argon::Params::INTERACTIVE.ops_limit
     {
-        return Err(SpaceError::InvalidInput(
+        return Err(Error::InvalidInput(
             "unsupported space link KDF parameters".into(),
         ));
     }
@@ -546,6 +555,39 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn account_link_rejects_status_for_different_space() {
+        let mut server = Server::new_async().await;
+        let status = server
+            .mock("GET", "/spaces/space-a/link")
+            .match_header("x-space-session-token", "space-session-token")
+            .with_status(200)
+            .with_body(
+                json!({
+                    "spaceId": "space-b",
+                    "spaceSlug": "bob",
+                    "active": true,
+                    "encryptedAccessKey": "not-base64"
+                })
+                .to_string(),
+            )
+            .create_async()
+            .await;
+        let ctx = crate::client::test_support::test_account_ctx(&server.url());
+
+        let error = ctx
+            .get_or_create_space_link("space-a")
+            .await
+            .expect_err("mismatched space status should fail");
+
+        assert!(matches!(
+            error,
+            Error::InvalidInput(message)
+                if message == "space link response does not match the requested space"
+        ));
+        status.assert_async().await;
+    }
+
+    #[tokio::test]
     async fn public_link_opens_with_derived_auth_and_decrypts_profile() {
         let mut server = Server::new_async().await;
         let access_key = "5d2a9WhmD2NU";
@@ -576,7 +618,7 @@ mod tests {
             .await;
         let profile_request = server
             .mock("GET", format!("{prefix}/profile").as_str())
-            .match_header("x-ente-space-link-auth", auth.as_str())
+            .match_header("x-space-link-auth", auth.as_str())
             .with_status(200)
             .with_body(
                 json!({
@@ -598,7 +640,7 @@ mod tests {
             .await;
         let versions = server
             .mock("GET", format!("{prefix}/versions").as_str())
-            .match_header("x-ente-space-link-auth", auth.as_str())
+            .match_header("x-space-link-auth", auth.as_str())
             .with_status(200)
             .with_body(
                 json!([{
@@ -635,7 +677,7 @@ mod tests {
         let link_auth = "link-auth";
         let subscribe = server
             .mock("PUT", format!("{prefix}/push/subscription").as_str())
-            .match_header("x-ente-space-link-auth", link_auth)
+            .match_header("x-space-link-auth", link_auth)
             .match_body(Matcher::Json(json!({
                 "endpoint": WEB_PUSH_ENDPOINT,
                 "keys": {
@@ -649,7 +691,7 @@ mod tests {
             .await;
         let unsubscribe = server
             .mock("DELETE", format!("{prefix}/push/subscription").as_str())
-            .match_header("x-ente-space-link-auth", link_auth)
+            .match_header("x-space-link-auth", link_auth)
             .match_body(Matcher::Json(json!({
                 "endpoint": WEB_PUSH_ENDPOINT
             })))

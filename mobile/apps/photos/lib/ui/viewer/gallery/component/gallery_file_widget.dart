@@ -31,6 +31,7 @@ class GalleryFileWidget extends StatefulWidget {
   final bool limitSelectionToOne;
   final String tag;
   final int photoGridSize;
+  final int? thumbnailSize;
   final int? currentUserID;
   const GalleryFileWidget({
     required this.file,
@@ -38,6 +39,7 @@ class GalleryFileWidget extends StatefulWidget {
     required this.limitSelectionToOne,
     required this.tag,
     required this.photoGridSize,
+    this.thumbnailSize,
     required this.currentUserID,
     super.key,
   });
@@ -113,15 +115,21 @@ class _GalleryFileWidgetState extends State<GalleryFileWidget> {
       selectionColor = getUserAvatarColor(context, owner);
     }
     final String heroTag = widget.tag + widget.file.tag;
+    final effectiveThumbnailSize =
+        widget.thumbnailSize ??
+        (widget.photoGridSize < photoGridSizeDefault
+            ? thumbnailLargeSize
+            : thumbnailSmallSize);
     final Widget thumbnailWidget = ThumbnailWidget(
       widget.file,
       diskLoadDeferDuration: galleryThumbnailDiskLoadDeferDuration,
       serverLoadDeferDuration: galleryThumbnailServerLoadDeferDuration,
       shouldShowLivePhotoOverlay: true,
-      key: Key(heroTag),
-      thumbnailSize: widget.photoGridSize < photoGridSizeDefault
-          ? thumbnailLargeSize
-          : thumbnailSmallSize,
+      // Recreate the loader when the effective tier changes, such as when
+      // switching between Grid and Justified layouts.
+      key: ValueKey((heroTag, effectiveThumbnailSize)),
+      thumbnailSize: effectiveThumbnailSize,
+      useRequestedThumbnailSizeForLocalCache: widget.thumbnailSize != null,
       shouldShowOwnerAvatar: !_isFileSelected,
       ownerAvatarType: widget.photoGridSize < photoGridSizeMax
           ? AvatarType.small
@@ -175,7 +183,7 @@ class _GalleryFileWidgetState extends State<GalleryFileWidget> {
                   child: SelectAllStatusIcon(
                     isSelected: true,
                     size: 16,
-                    selectedFillColor: selectionColor, //same for both themes
+                    selectedFillColor: selectionColor,
                     selectedTickCutsOut: true,
                   ),
                 ),
@@ -256,13 +264,11 @@ class _GalleryFileWidgetState extends State<GalleryFileWidget> {
       _routeToDetailPage(file, context);
     } else {
       _toggleFileSelection(file);
-      // Notify SwipeSelectableFileWidget if it exists
       _handleLongPressForSwipe();
     }
   }
 
   void _handleLongPressForSwipe() {
-    // Use local state to determine if swipe should start
     final swipeHelper = GallerySwipeHelper.of(context);
     if (_currentPointerId != null &&
         _isPointerInside &&

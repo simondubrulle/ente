@@ -4,15 +4,24 @@ publish_to: none
 environment:
   sdk: ">=3.10.0 <4.0.0"
 
+flutter:
+  # Temporary Flutter 3.47 rollout guards: preserve CocoaPods and existing
+  # app lifecycle wiring. Remove after CI and Xcode support SwiftPM and each
+  # app has deliberately migrated to UIScene.
+  config:
+    enable-swift-package-manager: false
+    enable-uiscene-migration: false
+
 workspace:
   - apps/auth
   - apps/locker
   - apps/photos
   - apps/photos/plugins/ente_cast
   - apps/photos/plugins/ente_crypto
-  - apps/photos/plugins/ente_feature_flag
   - apps/photos/plugins/ente_panorama_viewer
   - apps/photos/plugins/ente_photos_platform
+  - apps/photos/plugins/ente_vision
+  - apps/photos/plugins/media_extension
   - packages/accounts
   - packages/account_deletion
   - packages/backup_exclusion
@@ -30,16 +39,16 @@ workspace:
   - packages/ente_qr_scanner
   - packages/ente_screen_brightness
   - packages/events
+  - packages/feature_flag
+  - packages/frb
   - packages/legacy
   - packages/local_auth_linux
   - packages/lock_screen
-  - packages/log_viewer
   - packages/logging
   - packages/mail
   - packages/native_video_editor
   - packages/network
   - packages/qr
-  - packages/rust
   - packages/scoped_dir_access
   - packages/screen_cover
   - packages/sharing

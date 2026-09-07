@@ -83,13 +83,13 @@ Yes! Ente's custom domains feature lets you serve your public album links using 
 For example, instead of:
 
 ```
-https://albums.ente.com/...#...
+https://albums.ente.com/?t=...#...
 ```
 
 You can use:
 
 ```
-https://pics.example.org/...#...
+https://pics.example.org/?t=...#...
 ```
 
 **Requirements:**
@@ -117,15 +117,17 @@ Learn more in the [Custom domains guide](/photos/features/sharing-and-collaborat
 
 ### How can my partner and I automatically share all photos we take with each other? {#auto-share-partners}
 
-You can do this by adding your partner as a viewer or collaborator to your camera folder, and asking them to do the same for you. On Android this is the **Camera** folder, and on iOS this is **Recents** (or equivalent).
+To share your current and future albums, each partner can enable [library sharing](/photos/features/sharing-and-collaboration/library-sharing) for the other.
+
+To share only new photos from your phone's camera, add your partner as a viewer or collaborator to your camera folder, and ask them to do the same for you. On Android this is the **Camera** folder, and on iOS this is **Recents** (or equivalent).
 
 Any new photos backed up to these folders will automatically be shared and synced to the other person's device. This results in two separate albums - one for your photos and one for your partner's - where both of you can view and add photos.
 
 ### Does Ente have a shared library feature where all photos are shared with another account (similar to Google Photos Partner Sharing/iCloud Shared Photo Library)? {#shared-library}
 
-Ente has shared albums but does not support sharing your entire library in one click. However, you can share all albums by selecting one album, choosing the "all" option on the bottom right, which selects all albums and then you can share in one go with a partner (they can be [viewer/collaborator/admin](/photos/features/sharing-and-collaboration/collaboration#collaborating-with-ente-users)).
+Yes. On iOS or Android, open `Settings > Family`, select a family member, and tap **Share albums**. You can share all the albums you own and enable library sharing to automatically share new albums as you create them.
 
-[Smart albums](/photos/features/albums-and-organization/auto-add-people#auto-add-people-to-albums-smart-albums) let you auto-add specific people to albums as well.
+Hidden albums, albums you previously stopped sharing, and albums shared with you by someone else are not shared automatically. See the [library sharing guide](/photos/features/sharing-and-collaboration/library-sharing) for details.
 
 ## Collaboration
 
@@ -571,13 +573,13 @@ Deduplication and the similar-images tool only work within albums you own, not a
 
 ### Who can create collaborative albums or public links? {#who-can-share}
 
-Album sharing and public links are now available on every plan, including the free tier. Free plan users can create public links with a [device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 5. This limitation helps safeguard against potential platform abuse.
+Album sharing and public links are now available on every plan, including the free tier. Free plan users can create public links with a [device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 10. This limitation helps safeguard against potential platform abuse.
 
 Free users can:
 
 - Create and receive shared albums
 - Share albums directly with other Ente users
-- Create public links ([device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 5)
+- Create public links ([device limit](https://ente.com/help/photos/features/sharing-and-collaboration/public-links#device-limits) of 10)
 - View public links shared with them
 - Add photos to collect links that allow uploads
 
@@ -650,7 +652,7 @@ Create a public link for your album, then add an iframe to your HTML with the UR
 
 ```html
 <iframe
-    src="https://embed.ente.com/...#..."
+    src="https://embed.ente.com/?t=...#..."
     width="800"
     height="600"
     frameborder="0"
@@ -670,7 +672,7 @@ If you're using the easy method (copy embed HTML button), the app automatically 
 If you're creating the embed code manually and have a custom domain configured:
 
 - Replace your custom domain with `embed.ente.com` in the iframe src
-- For example: `https://embed.ente.com/...#...` (not `https://pics.example.org/...#...`)
+- For example: `https://embed.ente.com/?t=...#...` (not `https://pics.example.org/?t=...#...`)
 
 The embed will still work perfectly - it's just served from the embed subdomain instead of your custom domain.
 
@@ -716,32 +718,15 @@ See the [Embed feature guide](/photos/features/sharing-and-collaboration/embed) 
 
 ### Can I share my entire library with my partner like Google Photos Partner Sharing? {#partner-sharing}
 
-Not in a single click, but two steps give you the same outcome.
+Yes. Add your partner to your family plan, then open `Settings > Family`, select them, and tap **Share albums**. You can share all the albums you own and automatically share new albums as you create them.
 
-**Step 1: Auto-share every new photo**
-
-Each of you shares your phone's camera folder with the other as admin or collaborator:
-
-1. Open Ente → Recents (or Camera on Android).
-2. Tap share → add your partner's Ente email as admin or collaborator.
-3. Have your partner do the same in reverse.
-
-From then on, every new photo either of you takes appears in both libraries automatically.
-
-**Step 2: Share past photos**
-
-1. Open Ente → Albums.
-2. Long-press an album to enter selection mode.
-3. Tap **All** at the bottom right to select every album.
-4. Tap share → add your partner's email as admin or collaborator.
-
-If you've both done a Google Takeout, only one of you should upload it to avoid duplicates.
-
-You can also use a single shared account if you prefer, where both phones upload to the same login. This means sharing one password and one recovery key.
+To share in both directions, each partner enables library sharing for the other. See the [library sharing guide](/photos/features/sharing-and-collaboration/library-sharing) for setup and exclusions.
 
 ### Does a family plan share photos automatically between members? {#family-plan-photo-sharing}
 
-No. Family plans share storage only. Each member gets their own private space and cannot see other members' photos unless they explicitly share albums using Ente's sharing features. Tags, face labels, and ML learnings are not shared between members, and you cannot deduplicate across family accounts.
+Not by default. Family members have private libraries and share only the storage allowance. A member can use [library sharing](/photos/features/sharing-and-collaboration/library-sharing) to share current and future albums with another family member.
+
+Tags, face labels, and machine-learning data are not shared, and Ente does not deduplicate photos across family accounts.
 
 ### Can I change the initial shown on shared photos? {#shared-photo-initial}
 

@@ -1,23 +1,23 @@
 import { ArrowLeft02Icon, Cancel01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Skeleton } from "@mui/material";
-import { spaceAppAvatarCropSize } from "components/SpaceAvatarCropPage";
-import { SpaceAvatarImage } from "components/SpaceAvatarImage";
+import { spaceAppAvatarCropSize } from "components/AvatarCropPage";
+import { SpaceAvatarImage } from "components/AvatarImage";
 import React, { useEffect, useRef } from "react";
 import type { SetupProfile } from "screens/SetupProfileScreen";
-import { spaceTouchTargetSize } from "styles/touchTargets";
+import { spaceAppBackground, spaceSurface, spaceText } from "styles/colors";
+import { spaceTouchTargetSize } from "styles/touch-targets";
 import {
     spaceAvatarImageInputAccept,
     spaceCoverImageInputAccept,
     spaceDefaultCoverImagePath,
     spaceProfileCoverAspectRatio,
-} from "utils/spacePostImage";
+} from "utils/post-image";
 
 const green = "#08C225";
-const textBase = "#000";
-const profileBackground = "#FFFFFF";
+const textBase = spaceText;
 const profileCoverBackground = "#1F1F1F";
-const profileAvatarSkeletonBackground = "#E6E6E6";
+const profileAvatarSkeletonBackground = spaceSurface;
 export const friendProfileImageViewerBackground = "#000000";
 
 interface FriendProfileImageViewerScreenProps {
@@ -162,7 +162,7 @@ export const ProfileImageViewerScreen: React.FC<
         <Box
             component="main"
             sx={{
-                bgcolor: profileBackground,
+                background: spaceAppBackground,
                 color: textBase,
                 display: "grid",
                 minHeight: "100svh",
@@ -172,7 +172,7 @@ export const ProfileImageViewerScreen: React.FC<
         >
             <Box
                 sx={{
-                    bgcolor: profileBackground,
+                    bgcolor: "transparent",
                     boxSizing: "border-box",
                     display: "grid",
                     gridTemplateRows: "56px minmax(0, 1fr) auto",

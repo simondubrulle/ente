@@ -4,13 +4,13 @@ on:
     pull_request:
         paths:
             - "web/**"
-            - "rust/bindings/wasm/cast/**"
-            - "rust/bindings/wasm/ente-wasm/**"
-            - "rust/bindings/wasm/space/**"
+            - "rust/bindings/wasm/**"
             - "rust/crates/cast/**"
-            - "rust/crates/space/**"
+            - "rust/crates/collections/**"
             - "rust/crates/contacts/**"
             - "rust/crates/core/**"
+            - "rust/crates/paste/**"
+            - "rust/crates/space/**"
             - "rust/Cargo.lock"
             - "rust/Cargo.toml"
             - ".github/workflows/web-lint.yml"
@@ -51,11 +51,9 @@ jobs:
 
             - run: npm audit --audit-level critical
 
+            - run: _ENTE_IS_DESKTOP=1 npm run build:photos
+
             - run: npm run build:wasm
-
-            - run: npm run build:cast-wasm
-
-            - run: npm run build:space-wasm
 
             - run: npm run lint
 

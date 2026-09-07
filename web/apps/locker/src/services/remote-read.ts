@@ -3,15 +3,11 @@ import type {
     LockerCollectionParticipant,
     LockerItem,
 } from "@/types";
-import {
-    ensureLocalUser,
-    ensureUserKeyPair,
-} from "ente-accounts-rs/services/user";
+import { ensureLocalUser } from "ente-accounts/services/user";
 import { fetchFile } from "ente-base/file-download";
 import { authenticatedRequestHeaders, ensureOk } from "ente-base/http";
 import log from "ente-base/log";
 import { apiURL, customAPIOrigin } from "ente-base/origins";
-import { z } from "zod";
 import {
     boxSealOpen,
     createStreamDecryptor,
@@ -20,7 +16,9 @@ import {
     decryptMetadataJSON,
     encryptBox,
     stringToB64,
-} from "./crypto";
+} from "ente-locker-wasm";
+import { z } from "zod";
+import { ensureUserKeyPair } from "./account-keys";
 import { fromInfoTypeWireValue } from "./info-type-wire";
 import {
     type StoredTrashFileRecord,
@@ -166,20 +164,8 @@ const COLLECTION_PAYLOAD_VERSION = 1;
 const collectionTextDecoder = new TextDecoder();
 const DOWNLOAD_URL_REVOKE_DELAY_MS = 30_000;
 
-const describeCryptoError = (error: unknown): string => {
-    if (typeof error === "object" && error && "code" in error) {
-        const code = typeof error.code === "string" ? error.code : "unknown";
-        const message =
-            "message" in error && typeof error.message === "string"
-                ? error.message
-                : "unknown";
-        return `code=${code}, msg=${message}`;
-    }
-    if (error instanceof Error) {
-        return error.message;
-    }
-    return String(error);
-};
+const describeCryptoError = (error: unknown) =>
+    error instanceof Error ? error.message : String(error);
 
 const toEpochMicroseconds = (timestamp: unknown) => {
     if (typeof timestamp !== "number") {
@@ -1107,13 +1093,9 @@ export const downloadLockerFile = async (
                     }
 
                     while (data.length >= streamDecryptor.decryptionChunkSize) {
-                        const decryptedChunk =
-                            await streamDecryptor.decryptChunk(
-                                data.slice(
-                                    0,
-                                    streamDecryptor.decryptionChunkSize,
-                                ),
-                            );
+                        const decryptedChunk = streamDecryptor.decryptChunk(
+                            data.slice(0, streamDecryptor.decryptionChunkSize),
+                        );
                         controller.enqueue(decryptedChunk);
                         didEnqueue = true;
                         data = data.slice(streamDecryptor.decryptionChunkSize);
@@ -1122,7 +1104,7 @@ export const downloadLockerFile = async (
                     if (done) {
                         if (data.length > 0) {
                             const decryptedChunk =
-                                await streamDecryptor.decryptChunk(data);
+                                streamDecryptor.decryptChunk(data);
                             controller.enqueue(decryptedChunk);
                         }
                         if (!streamDecryptor.isFinalized()) {

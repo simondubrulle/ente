@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"errors"
@@ -117,42 +118,6 @@ func TestErrorLogsWarnForInvalidJSON(t *testing.T) {
 	require.Equal(t, "Request failed", entry.Message)
 }
 
-func TestErrorLogsWarnForDirectBindJSONError(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	recorder, ctx := invalidJSONContext()
-
-	var payload map[string]string
-	err := BindJSON(ctx, &payload)
-	require.Error(t, err)
-
-	hook := testLogHook(t)
-
-	Error(ctx, err)
-
-	require.Equal(t, http.StatusBadRequest, recorder.Code)
-	entry := hook.LastEntry()
-	require.NotNil(t, entry)
-	require.Equal(t, log.WarnLevel, entry.Level)
-	require.Equal(t, "Request failed", entry.Message)
-}
-
-func TestBindJSONPreservesErrorMessage(t *testing.T) {
-	gin.SetMode(gin.TestMode)
-
-	_, rawCtx := invalidJSONContext()
-	var rawPayload map[string]string
-	rawErr := rawCtx.ShouldBindJSON(&rawPayload)
-	require.Error(t, rawErr)
-
-	_, wrappedCtx := invalidJSONContext()
-	var wrappedPayload map[string]string
-	wrappedErr := BindJSON(wrappedCtx, &wrappedPayload)
-	require.Error(t, wrappedErr)
-
-	require.Equal(t, rawErr.Error(), wrappedErr.Error())
-}
-
 func TestErrorLogsUnexpectedErrors(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -166,6 +131,21 @@ func TestErrorLogsUnexpectedErrors(t *testing.T) {
 	require.NotNil(t, entry)
 	require.Equal(t, log.ErrorLevel, entry.Level)
 	require.Equal(t, "Request failed", entry.Message)
+}
+
+func TestErrorDoesNotReportCanceledRequestAsServerFailure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	recorder, ctx := testContext()
+	requestContext, cancel := context.WithCancel(ctx.Request.Context())
+	ctx.Request = ctx.Request.WithContext(requestContext)
+	cancel()
+	hook := testLogHook(t)
+
+	Error(ctx, errors.New("database query canceled"))
+
+	require.Equal(t, statusClientClosedRequest, recorder.Code)
+	require.Empty(t, hook.AllEntries())
 }
 
 func TestErrorPreservesNotFoundAPIErrorResponse(t *testing.T) {

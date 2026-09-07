@@ -1,4 +1,4 @@
-pub mod ml;
+pub mod location;
 pub mod motion_photo;
 
 pub use motion_photo::{

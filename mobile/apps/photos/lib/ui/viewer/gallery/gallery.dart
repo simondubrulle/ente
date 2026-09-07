@@ -12,15 +12,18 @@ import 'package:photos/core/constants.dart';
 import 'package:photos/core/event_bus.dart';
 import 'package:photos/events/event.dart';
 import 'package:photos/events/files_updated_event.dart';
+import "package:photos/events/gallery_layout_changed_event.dart";
 import "package:photos/events/homepage_swipe_to_select_in_progress_event.dart";
 import 'package:photos/events/local_photos_updated_event.dart';
 import 'package:photos/events/tab_changed_event.dart';
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file_load_result.dart';
 import "package:photos/models/gallery/gallery_groups.dart";
+import "package:photos/models/gallery/gallery_layout_config.dart";
 import "package:photos/models/gallery_type.dart";
 import 'package:photos/models/selected_files.dart';
 import "package:photos/service_locator.dart" show localSettings;
+import "package:photos/settings/local_settings.dart" show GalleryLayoutType;
 import "package:photos/ui/viewer/actions/file_selection_overlay_bar.dart";
 import "package:photos/ui/viewer/gallery/component/gallery_file_widget.dart";
 import "package:photos/ui/viewer/gallery/component/group/group_header_widget.dart";
@@ -49,7 +52,12 @@ typedef GalleryLoader =
       bool? asc,
     });
 
+typedef _LayoutScrollAnchor = ({EnteFile file, bool inHeader, double progress});
+
 typedef SortAscFn = bool Function();
+
+typedef NewLocalFilesResolver =
+    Future<List<EnteFile>?> Function(LocalPhotosAddedEvent event);
 
 class Gallery extends StatefulWidget {
   final GalleryLoader asyncLoader;
@@ -72,30 +80,26 @@ class Gallery extends StatefulWidget {
   final Duration priorityReloadDebounceTime;
   final GalleryType? galleryType;
   final bool showGallerySettingsCTA;
+  final GalleryLayoutType? layoutTypeOverride;
 
-  /// When true, selection will be limited to one item. Tapping on any item
-  /// will select even when no other item is selected.
+  // Return null to force a full reload.
+  final NewLocalFilesResolver? newLocalFilesResolver;
+
+  // Single-selection mode also selects on the first tap.
   final bool limitSelectionToOne;
 
   final bool addHeaderOrFooterEmptyState;
 
-  /// When true, the gallery will be in selection mode. Tapping on any item
-  /// will select it even when no other item is selected. This is only used to
-  /// make selection possible without long pressing. If a gallery has selected
-  /// files, it's not necessary that this will be true.
+  // Enables tap-to-select; it does not indicate whether files are selected.
   final bool inSelectionMode;
   final bool showSelectAll;
 
-  // add a Function variable to get sort value in bool
   final SortAscFn? sortAsyncFn;
 
-  /// Pass value to override default group type.
   final GroupType? groupType;
   final bool disablePinnedGroupHeader;
   final bool disableVerticalPaddingForScrollbar;
 
-  /// File to jump to when gallery is loaded. The gallery will scroll to the
-  /// group containing this file.
   final EnteFile? fileToJumpTo;
 
   const Gallery({
@@ -127,7 +131,9 @@ class Gallery extends StatefulWidget {
     this.galleryType,
     this.disableVerticalPaddingForScrollbar = false,
     this.showGallerySettingsCTA = false,
+    this.layoutTypeOverride,
     this.fileToJumpTo,
+    this.newLocalFilesResolver,
     super.key,
   });
 
@@ -151,10 +157,13 @@ class GalleryState extends State<Gallery> {
   bool _allFilesLoaded = false;
   bool _completedJumpToDate = false;
   StreamSubscription<FilesUpdatedEvent>? _reloadEventSubscription;
+  StreamSubscription<GalleryLayoutChangedEvent>? _layoutChangeSubscription;
   StreamSubscription<TabDoubleTapEvent>? _tabDoubleTapEvent;
   final _forceReloadEventSubscriptions = <StreamSubscription<Event>>[];
   late String _logTag;
   bool _sortOrderAsc = false;
+  int _layoutChangeGeneration = 0;
+  int _activeFileLoads = 0;
   List<EnteFile> _allGalleryFiles = [];
   final _scrollController = ScrollController();
   final _headerKey = GlobalKey();
@@ -177,7 +186,7 @@ class GalleryState extends State<Gallery> {
     _automationScrollIdentifier = _buildAutomationScrollIdentifier(
       widget.tagPrefix,
     );
-    // end the tag with x to avoid `.` in the end if logger name
+    // Keep the logger name from ending in a dot.
     _logTag =
         "Gallery_${widget.tagPrefix}${kDebugMode ? "_" + widget.albumName! : ""}_x";
     _logger = Logger(_logTag);
@@ -197,6 +206,19 @@ class GalleryState extends State<Gallery> {
       widget.priorityReloadDebounceTime,
       leading: true,
     );
+    _layoutChangeSubscription = Bus.instance
+        .on<GalleryLayoutChangedEvent>()
+        .listen((_) async {
+          if (!mounted) return;
+          final generation = ++_layoutChangeGeneration;
+          final scrollAnchor = _captureLayoutScrollAnchor();
+          _setGroupType();
+          final measuredHeaderExtent = await _measureGroupHeaderExtent();
+          if (!mounted || generation != _layoutChangeGeneration) return;
+          groupHeaderExtent = measuredHeaderExtent;
+          _updateGalleryGroups();
+          _restoreLayoutScrollAnchor(scrollAnchor, generation);
+        });
     _sortOrderAsc = widget.sortAsyncFn != null ? widget.sortAsyncFn!() : false;
     if (widget.reloadEvent != null) {
       _reloadEventSubscription = widget.reloadEvent!.listen((event) async {
@@ -214,6 +236,11 @@ class GalleryState extends State<Gallery> {
           return;
         }
 
+        if (event is LocalPhotosAddedEvent &&
+            await _tryAddNewLocalFiles(event)) {
+          return;
+        }
+
         final isPriorityEvent =
             event is LocalPhotosUpdatedEvent &&
             event.hasRecentNewLocalDiscovery;
@@ -223,8 +250,6 @@ class GalleryState extends State<Gallery> {
             : _debouncer;
 
         targetDebouncer.run(() async {
-          // In soft refresh, setState is called for entire gallery only when
-          // number of child change
           _logger.info(
             "${isPriorityEvent ? 'Priority' : 'Soft'} refresh on ${event.reason}",
           );
@@ -273,7 +298,6 @@ class GalleryState extends State<Gallery> {
       _onFilesLoaded(widget.initialFiles!);
     }
 
-    // First load
     _loadFiles(limit: kInitialLoadLimit).then((result) async {
       _setFilesAndReload(result.files);
       if (result.hasMore) {
@@ -286,19 +310,11 @@ class GalleryState extends State<Gallery> {
     });
 
     if (_groupType.showGroupHeader()) {
-      getIntrinsicSizeOfWidget(
-        GroupHeaderWidget(
-          title: "Dummy title",
-          gridSize: localSettings.getPhotoGridSize(),
-          filesInGroup: const [],
-          selectedFiles: null,
-          showSelectAll: false,
-        ),
-        context,
-      ).then((size) {
-        if (!mounted) return;
+      final generation = _layoutChangeGeneration;
+      _measureGroupHeaderExtent().then((extent) {
+        if (!mounted || generation != _layoutChangeGeneration) return;
         setState(() {
-          groupHeaderExtent = size.height;
+          groupHeaderExtent = extent;
           _updateGalleryGroups(callSetState: false);
         });
       });
@@ -312,7 +328,6 @@ class GalleryState extends State<Gallery> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
-      // To set the initial value of scrollbar bottom padding
       _selectedFilesListener();
       try {
         final headerRenderBox = await miscUtil
@@ -379,13 +394,13 @@ class GalleryState extends State<Gallery> {
       showSelectAll: widget.showSelectAll,
       limitSelectionToOne: widget.limitSelectionToOne,
       showGallerySettingsCTA: widget.showGallerySettingsCTA,
+      layoutTypeOverride: widget.layoutTypeOverride,
+      justifiedLayoutAvailable: isJustifiedLayoutAvailable,
     );
     galleryGroups = groups;
 
-    // Cache the list with dummies
+    // Keep dummy cells in the swipe index so it matches the rendered grid.
     _allFilesWithDummies = groups.allFilesWithDummies;
-
-    // Always update SwipeHelper when cache is updated
     _updateSwipeHelper();
 
     if (callSetState) {
@@ -393,22 +408,90 @@ class GalleryState extends State<Gallery> {
     }
   }
 
-  // void _setScrollController({required bool allFilesLoaded}) {
-  //   if (widget.fileToJumpScrollTo != null && allFilesLoaded) {
-  //     final fileOffset =
-  //         galleryGroups.getOffsetOfFile(widget.fileToJumpScrollTo!);
-  //     if (fileOffset == null) {
-  //       _logger.warning(
-  //         "File offset is null, cannot set initial scroll controller",
-  //       );
-  //     }
+  _LayoutScrollAnchor? _captureLayoutScrollAnchor() {
+    final groups = galleryGroups;
+    if (groups == null || _scrollController.positions.length != 1) return null;
+    final appBarCollapseExtent =
+        widget.appBar?.resolveGeometry(context).collapseExtent ?? 0;
+    final sectionScrollOffset =
+        _scrollController.offset - appBarCollapseExtent - _headerHeight;
+    if (sectionScrollOffset < 0) return null;
+    final anchorSectionOffset =
+        sectionScrollOffset + _pinnedGroupHeaderExtent(groups);
+    final file = groups.getFileAtScrollOffset(anchorSectionOffset);
+    if (file == null) return null;
+    final geometry = groups.getGeometryOfFile(file);
+    if (geometry == null) return null;
 
-  //     _scrollController?.jumpTo(fileOffset ?? 0);
-  //   } else {
-  //     _scrollController = ScrollController();
-  //   }
-  //   setState(() {});
-  // }
+    final inHeader = anchorSectionOffset < geometry.rowOffset;
+    final offset = inHeader
+        ? geometry.rowOffset - anchorSectionOffset
+        : anchorSectionOffset - geometry.rowOffset;
+    final extent = inHeader ? geometry.headerExtent : geometry.rowExtent;
+    final progress = extent > 0 && extent.isFinite
+        ? (offset / extent).clamp(0.0, 1.0).toDouble()
+        : 0.0;
+    return (file: file, inHeader: inHeader, progress: progress);
+  }
+
+  void _restoreLayoutScrollAnchor(_LayoutScrollAnchor? anchor, int generation) {
+    if (anchor == null) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted ||
+          generation != _layoutChangeGeneration ||
+          _scrollController.positions.length != 1) {
+        return;
+      }
+      final groups = galleryGroups;
+      if (groups == null) return;
+      final geometry = groups.getGeometryOfFile(anchor.file);
+      if (geometry == null) return;
+      final appBarCollapseExtent =
+          widget.appBar?.resolveGeometry(context).collapseExtent ?? 0;
+      final maxRowPenetration = geometry.rowExtent > precisionErrorTolerance
+          ? geometry.rowExtent - precisionErrorTolerance
+          : 0.0;
+      final rowPenetration = (geometry.rowExtent * anchor.progress)
+          .clamp(0.0, maxRowPenetration)
+          .toDouble();
+      final anchorSectionOffset = anchor.inHeader
+          ? geometry.rowOffset - geometry.headerExtent * anchor.progress
+          : geometry.rowOffset + rowPenetration;
+      final sectionOffset =
+          anchorSectionOffset - _pinnedGroupHeaderExtent(groups);
+      final targetOffset =
+          _scrollOffsetForSectionOffset(
+            sectionOffset,
+            appBarCollapseExtent,
+          ).clamp(
+            _scrollController.position.minScrollExtent,
+            _scrollController.position.maxScrollExtent,
+          );
+      _scrollController.jumpTo(targetOffset);
+    });
+  }
+
+  double _pinnedGroupHeaderExtent(GalleryGroups groups) {
+    return groups.groupType.showGroupHeader() &&
+            !widget.disablePinnedGroupHeader
+        ? groups.groupHeaderExtent
+        : 0;
+  }
+
+  Future<double> _measureGroupHeaderExtent() async {
+    if (!_groupType.showGroupHeader()) return GalleryGroups.spacing;
+    final size = await getIntrinsicSizeOfWidget(
+      GroupHeaderWidget(
+        title: "Dummy title",
+        gridSize: localSettings.getPhotoGridSize(),
+        filesInGroup: const [],
+        selectedFiles: null,
+        showSelectAll: false,
+      ),
+      context,
+    );
+    return size.height;
+  }
 
   void _selectedFilesListener() {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
@@ -441,7 +524,6 @@ class GalleryState extends State<Gallery> {
     if (event.source == 'uploadCompleted') {
       final Map<int, EnteFile> genIDToUploadedFiles = {};
       for (int i = 0; i < event.updatedFiles.length; i++) {
-        // matching happens on generatedID and localID
         if (event.updatedFiles[i].generatedID == null) {
           return true;
         }
@@ -476,8 +558,6 @@ class GalleryState extends State<Gallery> {
     return shouldReloadFromDB;
   }
 
-  // Handle event when an local file was already uploaded and we have now
-  // added localID link link to the remote file
   bool _shouldReloadOnFileMissingLocal(FilesUpdatedEvent event) {
     bool shouldReloadFromDB = true;
     if (event.source != 'fileMissingLocal' ||
@@ -489,8 +569,6 @@ class GalleryState extends State<Gallery> {
     }
     final Map<int, EnteFile> genIDToUploadedFiles = {};
     for (int i = 0; i < event.updatedFiles.length; i++) {
-      // the file should have generatedID, localID and should not be uploaded for
-      // following logic to work
       if (event.updatedFiles[i].generatedID == null ||
           event.updatedFiles[i].localID == null ||
           event.updatedFiles[i].isUploaded) {
@@ -533,13 +611,76 @@ class GalleryState extends State<Gallery> {
     return false;
   }
 
+  Future<bool> _tryAddNewLocalFiles(LocalPhotosAddedEvent event) async {
+    final resolver = widget.newLocalFilesResolver;
+    if (resolver == null || !_allFilesLoaded || _activeFileLoads > 0) {
+      return false;
+    }
+
+    List<EnteFile>? resolvedFiles;
+    try {
+      resolvedFiles = await resolver(event);
+    } catch (e, s) {
+      _logger.warning('Failed to resolve new local files', e, s);
+      return false;
+    }
+    if (resolvedFiles == null) return false;
+    if (!mounted) return true;
+    if (_activeFileLoads > 0) return false;
+
+    final visibleLocalIDs = _allGalleryFiles
+        .map((file) => file.localID)
+        .nonNulls
+        .toSet();
+    final filesToAdd =
+        resolvedFiles
+            .where(
+              (file) =>
+                  file.localID != null && visibleLocalIDs.add(file.localID!),
+            )
+            .toList()
+          ..sort(_compareGalleryFiles);
+    if (filesToAdd.isNotEmpty) {
+      _setFilesAndReload(_mergeGalleryFiles(filesToAdd));
+    }
+    _logger.info('Added ${filesToAdd.length} new local files in memory');
+    return true;
+  }
+
+  List<EnteFile> _mergeGalleryFiles(List<EnteFile> filesToAdd) {
+    final merged = <EnteFile>[];
+    var currentIndex = 0;
+    var addedIndex = 0;
+    while (currentIndex < _allGalleryFiles.length &&
+        addedIndex < filesToAdd.length) {
+      if (_compareGalleryFiles(
+            filesToAdd[addedIndex],
+            _allGalleryFiles[currentIndex],
+          ) <
+          0) {
+        merged.add(filesToAdd[addedIndex++]);
+      } else {
+        merged.add(_allGalleryFiles[currentIndex++]);
+      }
+    }
+    merged.addAll(_allGalleryFiles.skip(currentIndex));
+    merged.addAll(filesToAdd.skip(addedIndex));
+    return merged;
+  }
+
+  int _compareGalleryFiles(EnteFile first, EnteFile second) {
+    var result = (first.creationTime ?? 0).compareTo(second.creationTime ?? 0);
+    if (result == 0) {
+      result = (first.modificationTime ?? 0).compareTo(
+        second.modificationTime ?? 0,
+      );
+    }
+    return _sortOrderAsc ? result : -result;
+  }
+
   void _updateSwipeHelper() {
     if (widget.selectedFiles != null && _allFilesWithDummies.isNotEmpty) {
-      // Dispose existing helper if present
       _swipeHelper?.dispose();
-      // Use allFilesWithDummies to match the rendered grid structure.
-      // This allows SwipeHelper to track pointer position through dummy
-      // placeholders while filtering them from selection operations.
       _swipeHelper = SwipeToSelectHelper(
         allFiles: _allFilesWithDummies,
         selectedFiles: widget.selectedFiles!,
@@ -549,6 +690,7 @@ class GalleryState extends State<Gallery> {
 
   Future<FileLoadResult> _loadFiles({int? limit}) async {
     _logger.info("Loading ${limit ?? "all"} files");
+    _activeFileLoads++;
     try {
       final startTime = DateTime.now().microsecondsSinceEpoch;
       final result = await widget.asyncLoader(
@@ -567,7 +709,6 @@ class GalleryState extends State<Gallery> {
             "ms",
       );
 
-      /// To curate filters when a gallery is first opened.
       if (!result.hasMore) {
         if (!mounted) {
           return result;
@@ -589,15 +730,17 @@ class GalleryState extends State<Gallery> {
     } catch (e, s) {
       _logger.severe("failed to load files", e, s);
       rethrow;
+    } finally {
+      _activeFileLoads--;
     }
   }
 
   @override
   void dispose() {
-    // Clear scroll controller reference
     _boundariesProvider?.setScrollController(null);
 
     _reloadEventSubscription?.cancel();
+    _layoutChangeSubscription?.cancel();
     _tabDoubleTapEvent?.cancel();
     for (final subscription in _forceReloadEventSubscriptions) {
       subscription.cancel();
@@ -634,7 +777,7 @@ class GalleryState extends State<Gallery> {
 
   ScrollPhysics get _scrollPhysics => widget.disableScroll
       ? const NeverScrollableScrollPhysics()
-      : const ExponentialBouncingScrollPhysics();
+      : const BouncingScrollPhysics();
 
   static String _buildAutomationScrollIdentifier(String tagPrefix) {
     final safeTagPrefix = tagPrefix.replaceAll(
@@ -651,14 +794,12 @@ class GalleryState extends State<Gallery> {
     final appBarPinnedHeight = appBarGeometry?.minExtent ?? 0;
     final appBarCollapseExtent = appBarGeometry?.collapseExtent ?? 0;
 
-    // Share scroll controller with boundaries provider after build
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) {
         _boundariesProvider?.setScrollController(_scrollController);
       }
     });
 
-    // Jump to date logic
     if (widget.fileToJumpTo != null &&
         !_completedJumpToDate &&
         _allFilesLoaded &&
@@ -758,7 +899,6 @@ class GalleryState extends State<Gallery> {
       );
     }
 
-    // Check if width changed due to orientation change and update gallery groups
     if (groups.widthAvailable != widthAvailable) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -806,7 +946,7 @@ class GalleryState extends State<Gallery> {
                 scrollController: _scrollController,
                 galleryGroups: groups,
                 inUseNotifier: scrollBarInUseNotifier,
-                heighOfViewport: MediaQuery.sizeOf(context).height,
+                viewportHeight: MediaQuery.sizeOf(context).height,
                 topPadding: widget.disableVerticalPaddingForScrollbar
                     ? 0.0
                     : appBarPinnedHeight + groupHeaderExtent!,
@@ -840,7 +980,7 @@ class GalleryState extends State<Gallery> {
                             child: CustomScrollView(
                               physics: widget.disableScroll || isSwipeActive
                                   ? const NeverScrollableScrollPhysics()
-                                  : const ExponentialBouncingScrollPhysics(),
+                                  : const BouncingScrollPhysics(),
                               controller: _scrollController,
                               slivers: [
                                 if (widget.appBar != null)
@@ -1004,20 +1144,15 @@ class _PinnedGroupHeaderState extends State<PinnedGroupHeader>
         widget.headerHeightNotifier.value!;
     if (normalizedScrollOffset < 0) {
       _setBaseTopBoundary();
-      // No change in group ID, no need to call setState
       if (currentGroupId == null) return;
       currentGroupId = null;
     } else {
       final groupScrollOffsets = widget.galleryGroups.groupScrollOffsets;
 
-      // Binary search to find the index of the largest scrollOffset in
-      // groupScrollOffsets which is <= scrollPosition
       int low = 0;
       int high = groupScrollOffsets.length - 1;
       int floorIndex = 0;
 
-      // Handle the case where scrollPosition is smaller than the first key.
-      // In this scenario, we associate it with the first heading.
       if (normalizedScrollOffset < groupScrollOffsets.first) {
         return;
       }
@@ -1027,14 +1162,9 @@ class _PinnedGroupHeaderState extends State<PinnedGroupHeader>
         final midValue = groupScrollOffsets[mid];
 
         if (midValue <= normalizedScrollOffset) {
-          // This key is less than or equal to the target scrollPosition.
-          // It's a potential floor. Store its index and try searching higher
-          // for a potentially closer floor value.
           floorIndex = mid;
           low = mid + 1;
         } else {
-          // This key is greater than the target scrollPosition.
-          // The floor must be in the lower half.
           high = mid - 1;
         }
       }
@@ -1042,7 +1172,6 @@ class _PinnedGroupHeaderState extends State<PinnedGroupHeader>
           widget
               .galleryGroups
               .scrollOffsetToGroupIdMap[groupScrollOffsets[floorIndex]]) {
-        // No change in group ID, no need to call setState
         return;
       }
       currentGroupId = widget
@@ -1160,7 +1289,7 @@ class _PinnedGroupHeaderState extends State<PinnedGroupHeader>
                                     .groupIDToFilesMap[currentGroupId]!
                                     .first,
                               ),
-                          gridSize: localSettings.getPhotoGridSize(),
+                          gridSize: widget.galleryGroups.crossAxisCount,
                           height: widget.galleryGroups.groupHeaderExtent,
                           filesInGroup: widget
                               .galleryGroups
@@ -1210,18 +1339,4 @@ class GalleryIndexUpdatedEvent {
   final int index;
 
   GalleryIndexUpdatedEvent(this.tag, this.index);
-}
-
-/// Custom scroll physics that extends [BouncingScrollPhysics] to provide
-/// exponential bouncing behavior for scrollable widgets.
-///
-/// TODO: Revert this PR https://github.com/ente/ente/pull/8401 after Jan 1, 2026.
-/// This was implemented temporarily for the Christmas banner and should be removed afterwards.
-class ExponentialBouncingScrollPhysics extends BouncingScrollPhysics {
-  const ExponentialBouncingScrollPhysics({super.parent});
-
-  @override
-  ExponentialBouncingScrollPhysics applyTo(ScrollPhysics? ancestor) {
-    return ExponentialBouncingScrollPhysics(parent: buildParent(ancestor));
-  }
 }

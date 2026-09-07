@@ -1,7 +1,11 @@
 import { ensureOk, publicRequestHeaders } from "ente-base/http";
 import log from "ente-base/log";
 import { apiURL } from "ente-base/origins";
-import type { CastReceiver } from "ente-cast-wasm";
+import {
+    createCastReceiver,
+    openCastPayload,
+    type CastReceiver,
+} from "ente-cast-wasm";
 import { wait } from "ente-utils/promise";
 import { nullToUndefined } from "ente-utils/transform";
 import { z } from "zod";
@@ -12,13 +16,15 @@ export interface Registration {
 }
 
 export const register = async (): Promise<Registration> => {
-    const { CastReceiver } = await import("ente-cast-wasm");
-    const receiver = new CastReceiver();
+    const receiver = await createCastReceiver();
 
     let pairingCode: string | undefined;
     while (true) {
         try {
-            pairingCode = await registerDevice(receiver.publicKey);
+            pairingCode = await registerDevice(
+                receiver.publicKey,
+                receiver.pqPublicKey,
+            );
         } catch (e) {
             log.error("Failed to register public key with server", e);
         }
@@ -29,11 +35,11 @@ export const register = async (): Promise<Registration> => {
     return { pairingCode, receiver };
 };
 
-const registerDevice = async (publicKey: string) => {
+const registerDevice = async (publicKey: string, pqPublicKey: string) => {
     const res = await fetch(await apiURL("/cast/device-info"), {
         method: "POST",
         headers: publicRequestHeaders(),
-        body: JSON.stringify({ publicKey }),
+        body: JSON.stringify({ publicKey, pqPublicKey }),
     });
     ensureOk(res);
     return z.object({ deviceCode: z.string() }).parse(await res.json())
@@ -54,12 +60,7 @@ export const getCastPayload = async (
     const encryptedCastData = await getEncryptedCastData(pairingCode);
     if (!encryptedCastData) return undefined;
 
-    const payload = receiver.openPayload(encryptedCastData);
-    return {
-        castToken: payload.castToken,
-        collectionID: Number(payload.collectionID),
-        collectionKey: payload.collectionKey,
-    };
+    return openCastPayload(receiver, encryptedCastData);
 };
 
 const getEncryptedCastData = async (code: string) => {

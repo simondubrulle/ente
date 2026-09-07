@@ -139,6 +139,9 @@ func main() {
 	if err != nil {
 		log.Fatal("Could not decode jwt-secret ", err)
 	}
+	if len(jwtSecretBytes) == 0 {
+		log.Fatal("jwt-secret must not be empty")
+	}
 
 	db := setupDatabase()
 	defer db.Close()
@@ -154,8 +157,7 @@ func main() {
 		TaskLockingRepo: taskLockingRepo,
 		HostName:        hostName,
 	}
-	// Note: during boot-up, release any locks that might have been left behind.
-	// This is a safety measure to ensure that no locks are left behind in case of a crash or restart.
+	// Clear locks left by a crash or restart.
 	lockController.ReleaseHostLock()
 
 	var latencyLogger = promauto.NewHistogramVec(prometheus.HistogramOpts{
@@ -246,7 +248,7 @@ func main() {
 	defaultPlan := billing.GetDefaultPlans(plans)
 	stripeClients := billing.GetStripeClients()
 	commonBillController := commonbilling.NewController(emailNotificationCtrl, storagBonusRepo, userRepo, usageRepo, billingRepo)
-	appStoreController := controller.NewAppStoreController(defaultPlan,
+	appStoreController := controller.NewAppStoreController(plans,
 		billingRepo, fileRepo, userRepo, remoteStoreRepository, commonBillController, discordController)
 	playStoreController := controller.NewPlayStoreController(defaultPlan,
 		billingRepo, fileRepo, userRepo, storagBonusRepo, commonBillController)
@@ -480,10 +482,9 @@ func main() {
 		UserRepo: userRepo,
 	}
 	legacyKitController := &legacykitctrl.Controller{
-		Repo:              legacyKitRepository,
-		UserRepo:          userRepo,
-		UserCtrl:          userController,
-		PasskeyController: passkeyCtrl,
+		Repo:     legacyKitRepository,
+		UserRepo: userRepo,
+		UserCtrl: userController,
 	}
 
 	authMiddleware := middleware.AuthMiddleware{UserAuthRepo: userAuthRepo, Cache: authCache, UserController: userController}
@@ -671,12 +672,11 @@ func main() {
 	storageAPI.GET("/comments-reactions/updated-at", socialHandler.LatestUpdates)
 
 	emergencyCtrl := &emergency.Controller{
-		Repo:              emergencyContactRepository,
-		UserRepo:          userRepo,
-		UserLookup:        userLookupController,
-		UserCtrl:          userController,
-		PasskeyController: passkeyCtrl,
-		LockCtrl:          lockController,
+		Repo:       emergencyContactRepository,
+		UserRepo:   userRepo,
+		UserLookup: userLookupController,
+		UserCtrl:   userController,
+		LockCtrl:   lockController,
 	}
 	userHandler := &api.UserHandler{
 		UserController:      userController,
@@ -877,7 +877,7 @@ func main() {
 	publicAPI.GET("/family/invite-info/:token", familyHandler.GetInviteInfo)
 	publicAPI.POST("/family/accept-invite", familyHandler.AcceptInvite)
 
-	privateAPI.DELETE("/family/leave", familyHandler.Leave) // native/web app
+	privateAPI.DELETE("/family/leave", familyHandler.Leave)
 
 	familyAuthAPI.POST("/family/create", familyHandler.CreateFamily)
 	familyAuthAPI.POST("/family/add-member", familyHandler.InviteMember)
@@ -1091,6 +1091,17 @@ func main() {
 
 	setKnownAPIs(server.Routes())
 	setupAndStartBackgroundJobs(objectCleanupController, replicationController3, fileDataCtrl, contactController, spaceModule)
+	time.AfterFunc(10*time.Minute, func() {
+		if err := remoteStoreRepository.MigrateCustomDomainCanonicalValues(context.Background()); err != nil {
+			log.WithError(err).Error("Failed to backfill custom domain canonical values")
+		}
+		migrated, err := userAuthRepo.MigratePlaintextTokens(context.Background())
+		if err != nil {
+			log.WithError(err).Error("Failed to clear plaintext tokens")
+		} else if migrated > 0 {
+			log.WithField("tokens", migrated).Info("Cleared plaintext tokens")
+		}
+	})
 	setupAndStartCrons(
 		userAuthRepo, collectionLinkRepo, fileLinkRepo, pasteRepo, twoFactorRepo, passkeysRepo, fileController, taskLockingRepo, emailNotificationCtrl,
 		trashController, pushController, objectController, dataCleanupController, storageBonusCtrl, emergencyCtrl,
@@ -1264,7 +1275,7 @@ func setupAndStartBackgroundJobs(
 		return
 	}
 
-	fileDataCtrl.StartDataDeletion() // Start data deletion for file data;
+	fileDataCtrl.StartDataDeletion()
 	contactController.StartDataDeletion()
 	objectCleanupController.StartRemovingUnreportedObjects()
 	spaceModule.Cleanup.StartRemovingUnreportedObjects()
@@ -1417,8 +1428,8 @@ func cors() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", c.GetHeader("Origin"))
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
-		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, X-Auth-Token, X-Space-Session-Token, X-Ente-Space-Link-Auth, X-Auth-Access-Token, X-Cast-Access-Token, X-Auth-Access-Token-JWT, X-Auth-Link-Device-Token, X-Client-Package, X-Client-Version, X-Paste-Consume, Authorization, accept, origin, Cache-Control, X-Requested-With, upgrade-insecure-requests, Range")
-		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Request-Id, X-Ente-Link-Device-Token")
+		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, X-Auth-Token, X-Space-Session-Token, X-Space-Link-Auth, X-Auth-Access-Token, X-Cast-Access-Token, X-Auth-Access-Token-JWT, X-Auth-Link-Device-Token, X-Client-Package, X-Client-Version, X-Paste-Consume, Authorization, accept, origin, Cache-Control, X-Requested-With, upgrade-insecure-requests, Range")
+		c.Writer.Header().Set("Access-Control-Expose-Headers", "X-Request-Id, X-Link-Device-Token")
 		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, PATCH, DELETE")
 		c.Writer.Header().Set("Access-Control-Max-Age", "1728000")
 
@@ -1434,7 +1445,6 @@ func cors() gin.HandlerFunc {
 
 func cacheHeaders() gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Add "Cache-Control: no-store" to HTTP GET API responses.
 		if c.Request.Method == http.MethodGet {
 			reqPath := urlSanitizer(c)
 			if reqPath == "/files/preview/:fileID" ||

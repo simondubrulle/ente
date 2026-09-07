@@ -55,7 +55,8 @@ type ListPostsRequest struct {
 	Limit         int    `form:"limit"`
 }
 
-type ListFeedRequest struct {
+type ListHomePostsRequest struct {
+	After  string `form:"after"`
 	Cursor string `form:"cursor"`
 	Limit  int    `form:"limit"`
 }
@@ -315,6 +316,7 @@ type CreateMessageRequest struct {
 	SenderEncryptedMessageKey    string `json:"senderEncryptedMessageKey" binding:"required"`
 	RecipientEncryptedMessageKey string `json:"recipientEncryptedMessageKey" binding:"required"`
 	ReplyMessageID               string `json:"replyMessageId,omitempty"`
+	NotificationKind             string `json:"notificationKind,omitempty"`
 }
 
 type LikeMessageResponse struct {
@@ -365,9 +367,10 @@ type ConversationChatSummaryResponse struct {
 }
 
 type ConversationsResponse struct {
-	Friends         []SpaceFriendResponse                      `json:"friends"`
-	PendingRequests []SpaceFriendRequestResponse               `json:"pendingRequests"`
-	ChatSummaries   map[string]ConversationChatSummaryResponse `json:"chatSummaries"`
+	Friends             []SpaceFriendResponse                      `json:"friends"`
+	PendingRequests     []SpaceFriendRequestResponse               `json:"pendingRequests"`
+	ChatSummaries       map[string]ConversationChatSummaryResponse `json:"chatSummaries"`
+	LatestPostCreatedAt string                                     `json:"latestPostCreatedAt,omitempty"`
 }
 
 type PostObjectPayload struct {
@@ -399,7 +402,8 @@ type PostPage struct {
 	NextCursor string         `json:"nextCursor,omitempty"`
 }
 
-type FeedPage struct {
+type HomePostPage struct {
 	Items      []PostResponse `json:"items"`
 	NextCursor string         `json:"nextCursor,omitempty"`
+	SyncCursor string         `json:"syncCursor"`
 }

@@ -15,6 +15,7 @@ import { logoutML, terminateMLWorker } from "ente-new/photos/services/ml";
 import { logoutSearch } from "ente-new/photos/services/search";
 import { logoutSettings } from "ente-new/photos/services/settings";
 import { logoutUserDetails } from "ente-new/photos/services/user-details";
+import { clearAuthenticatedSession } from "./authenticated-session";
 import { uploadManager } from "./upload-manager";
 
 // Individual cleanup failures must not abort logout.
@@ -22,11 +23,26 @@ export const photosLogout = async () => {
     const ignoreError = (label: string, e: unknown) =>
         log.error(`Ignoring error during logout (${label})`, e);
 
+    try {
+        clearAuthenticatedSession();
+    } catch (e) {
+        ignoreError("Authenticated session", e);
+    }
+
     // Stop workers before clearing databases they may still access.
     try {
         await terminateMLWorker();
     } catch (e) {
         ignoreError("ML/worker", e);
+    }
+
+    const electron = globalThis.electron;
+    if (electron) {
+        try {
+            exportService.disableContinuousExport();
+        } catch (e) {
+            ignoreError("Export", e);
+        }
     }
 
     await accountLogout();
@@ -93,7 +109,6 @@ export const photosLogout = async () => {
         ignoreError("File viewer", e);
     }
 
-    const electron = globalThis.electron;
     if (electron) {
         try {
             await logoutAppLock();
@@ -105,12 +120,6 @@ export const photosLogout = async () => {
             await logoutML();
         } catch (e) {
             ignoreError("ML", e);
-        }
-
-        try {
-            exportService.disableContinuousExport();
-        } catch (e) {
-            ignoreError("Export", e);
         }
 
         try {

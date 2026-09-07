@@ -11,7 +11,6 @@ import "package:ente_lock_screen/lock_screen_settings.dart";
 import "package:ente_lock_screen/ui/app_lock.dart";
 import "package:ente_lock_screen/ui/lock_screen.dart";
 import "package:ente_pure_utils/ente_pure_utils.dart";
-import "package:ente_rust/ente_rust.dart";
 import "package:ente_strings/ente_strings.dart";
 import "package:ente_ui/theme/theme_config.dart" as ente_ui;
 import "package:ffmpeg_kit_flutter/ffmpeg_kit_config.dart";
@@ -40,18 +39,22 @@ import "package:photos/locale.dart";
 import 'package:photos/module/upload/service/file_uploader.dart';
 import 'package:photos/module/upload/service/local_file_update_service.dart';
 import "package:photos/service_locator.dart";
+import "package:photos/services/account/purchase_update_listener.dart";
 import "package:photos/services/account/user_service.dart";
 import 'package:photos/services/app_lifecycle_service.dart';
 import 'package:photos/services/collections_service.dart';
 import 'package:photos/services/favorites_service.dart';
 import 'package:photos/services/home_widget_service.dart';
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
+import "package:photos/services/machine_learning/ml_run_control.dart";
 import 'package:photos/services/machine_learning/ml_service.dart';
 import 'package:photos/services/machine_learning/semantic_search/semantic_search_service.dart';
+import "package:photos/services/memories/memory_music_service.dart";
 import 'package:photos/services/memory_lane/memory_lane_service.dart';
 import 'package:photos/services/memory_share_service.dart';
 import "package:photos/services/notification_service.dart";
 import "package:photos/services/photos_contacts_service.dart";
+import "package:photos/services/process_activity.dart";
 import 'package:photos/services/push_service.dart';
 import 'package:photos/services/search_service.dart';
 import 'package:photos/services/social_notification_coordinator.dart';
@@ -70,20 +73,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 final _logger = Logger("main");
 
-const kLastBGTaskHeartBeatTime = "bg_task_hb_time";
-const kLastFGTaskHeartBeatTime = "fg_task_hb_time";
 const kHeartBeatFrequency = Duration(seconds: 1);
 const kFGSyncFrequency = Duration(minutes: 5);
 const kFGHomeWidgetSyncFrequency = Duration(minutes: 15);
 const kBGTaskTimeout = Duration(seconds: 28);
 const kBGPushTimeout = Duration(seconds: 28);
-const kFGTaskDeathTimeoutInMicroseconds = 5000000;
+// ML self-stops before the platform hard-kills the BG engine (kBGTaskTimeout
+// on iOS, the ~10-minute WorkManager system stop on Android), leaving margin
+// to drain in-flight work and release the process lock cleanly.
+const kBGTaskMLSelfStopIOS = Duration(seconds: 26);
+const kBGTaskMLSelfStopAndroid = Duration(minutes: 9);
 bool isProcessBg = true;
 bool _stopHearBeat = false;
 bool _isSyncInitialized = false;
 bool _isRustInitialized = false;
 Future<void>? _rustInitFuture;
-late final LogSinkGuard _enteRustLogSinkGuard;
 late final photos_rust_log.LogSinkGuard _photosRustLogSinkGuard;
 
 enum ForegroundStartupMode { normal, picker }
@@ -91,6 +95,7 @@ enum ForegroundStartupMode { normal, picker }
 void main() async {
   debugRepaintRainbowEnabled = false;
   WidgetsFlutterBinding.ensureInitialized();
+  await configureStoreKit();
   ente_ui.AppThemeConfig.initialize(ente_ui.EnteApp.photos);
   await initIsIPad();
   if (isIPad) {
@@ -179,7 +184,14 @@ Future<void> _runInForeground(
     }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       unawaited(SemanticSearchService.instance.init());
-      unawaited(_warmForegroundDeferredServices());
+      unawaited(MemoryLaneService.instance.init());
+      unawaited(MemoryMusicService.instance.prepare());
+      unawaited(
+        Future.delayed(
+          const Duration(seconds: 5),
+          installSourceService.autoAttributePendingSource,
+        ),
+      );
     });
     unawaited(_scheduleFGSync('appStart in FG'));
   });
@@ -194,27 +206,6 @@ Future<void> _warmPickerFilesDb() async {
   } catch (e, s) {
     _logger.warning("Picker FilesDB warm-up failed", e, s);
   }
-}
-
-Future<void> _warmForegroundDeferredServices() async {
-  try {
-    await MemoryLaneService.instance.init();
-    if (flagService.facesTimeline) {
-      MemoryLaneService.instance
-          .queueFullRecompute(trigger: "startup")
-          .ignore();
-    } else {
-      _logger.info("Memory Lane disabled via feature flag");
-    }
-  } catch (e, s) {
-    _logger.warning("Deferred MemoryLaneService warm failed", e, s);
-  }
-  unawaited(
-    Future.delayed(
-      const Duration(seconds: 5),
-      installSourceService.autoAttributePendingSource,
-    ),
-  );
 }
 
 ThemeMode _themeMode(AdaptiveThemeMode? savedThemeMode) {
@@ -242,27 +233,48 @@ Future<void> runBackgroundTask(
   TimeLogger tlog, {
   String mode = 'normal',
 }) async {
-  // Check if foreground is recently active to avoid conflicts
-  final isRunningInFG = await _isRunningInForeground();
-
-  // If FG was active in last 30 seconds, skip BG work
-  if (isRunningInFG) {
-    _logger.info(
-      "[BG TASK] Foreground recently active, skipping background work",
-    );
-    return;
-  }
-
-  _logger.info(
-    "[BG TASK] No recent foreground activity, proceeding with background work",
+  // Created at task start so a stop that fires before ML begins stays
+  // latched for the whole task.
+  final mlRunControl = MlRunControl();
+  final mlSelfStopTimer = Timer(
+    Platform.isIOS ? kBGTaskMLSelfStopIOS : kBGTaskMLSelfStopAndroid,
+    () => mlRunControl.requestStop(MlStopReason.backgroundDeadline),
+  );
+  final mlForegroundWatchTimer = Timer.periodic(
+    const Duration(milliseconds: 500),
+    (_) async {
+      if (mlRunControl.stopRequested) return;
+      if (await isForegroundEngineActive()) {
+        mlRunControl.requestStop(MlStopReason.foregroundActive);
+      }
+    },
   );
 
-  // Mark BG as active
+  try {
+    final isRunningInFG = await isForegroundEngineActive();
+    if (isRunningInFG) {
+      _logger.info(
+        "[BG TASK] Foreground recently active, skipping background work",
+      );
+      return;
+    }
 
-  await _runMinimally(taskId, tlog);
+    _logger.info(
+      "[BG TASK] No recent foreground activity, proceeding with background work",
+    );
+
+    await _runMinimally(taskId, tlog, mlRunControl);
+  } finally {
+    mlSelfStopTimer.cancel();
+    mlForegroundWatchTimer.cancel();
+  }
 }
 
-Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
+Future<void> _runMinimally(
+  String taskId,
+  TimeLogger tlog,
+  MlRunControl mlRunControl,
+) async {
   try {
     final PackageInfo packageInfo = await PackageInfo.fromPlatform();
     final SharedPreferences prefs = await SharedPreferences.getInstance();
@@ -286,13 +298,11 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
     await Configuration.instance.init(prefs);
     _logger.info("(for debugging) Configuration done $tlog");
 
-    // App LifeCycle
     AppLifecycleService.instance.init(prefs);
     AppLifecycleService.instance.onAppInBackground(
       'init via: WorkManager $tlog',
     );
 
-    // Crypto rel.
     await Computer.shared().turnOn(workersCount: 4);
     CryptoUtil.init();
 
@@ -305,7 +315,6 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
     await CollectionsService.instance.init(prefs);
     _logger.info("(for debugging) CollectionsService init done $tlog");
 
-    // Upload & Sync Related
     await FileUploader.instance.init(prefs, true);
     LocalFileUpdateService.instance.init(prefs);
     await LocalSyncService.instance.init(prefs);
@@ -313,13 +322,10 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
     await SyncService.instance.init(prefs);
     _isSyncInitialized = true;
 
-    // Misc Services
     await UserService.instance.init();
     SocialNotificationCoordinator.instance.init(prefs);
     await NotificationService.instance.initializeForBackground();
 
-    // Begin Execution
-    // only runs for android
     _logger.info("[BG TASK] update notification");
     updateService.showUpdateNotification().ignore();
     _logger.info("[BG TASK] sync starting");
@@ -329,7 +335,6 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
     _logger.info("[BG TASK] locale fetch");
     final locale = await getLocale();
     await initializeDateFormatting(locale?.languageCode ?? "en");
-    // only runs for android
     _logger.info("[BG TASK] home widget sync");
     if (!isLocalGalleryMode &&
         hasGrantedMLConsent &&
@@ -338,6 +343,13 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
       _logger.info(
         "[BG TASK] person service initialized for memories recompute",
       );
+      // The DiffSyncCompleteEvent fired during _sync predates PersonService
+      // init in this isolate, so sync explicitly before consuming person data.
+      try {
+        await PersonService.instance.sync();
+      } catch (e, s) {
+        _logger.warning("[BG TASK] person sync failed", e, s);
+      }
     }
     await _homeWidgetSync(true);
 
@@ -350,16 +362,16 @@ Future<void> _runMinimally(String taskId, TimeLogger tlog) async {
           "[BG TASK] skipping ML, compute requirements not satisfied",
         );
       } else {
-        bool mlRunStarted = false;
         try {
-          await MLService.instance.init();
           PersonService.init(entityService, MLDataDB.instance, prefs);
-          mlRunStarted = true;
-          await MLService.instance.runAllML(force: false);
+          await MLService.instance.init();
+          final disposition = await MLService.instance.runAllML(
+            force: false,
+            control: mlRunControl,
+          );
+          _logger.info("[BG TASK] ML run disposition: ${disposition.name}");
         } finally {
-          if (!mlRunStarted) {
-            controller.releaseCompute(ml: true);
-          }
+          controller.releaseCompute(ml: true);
         }
       }
     }
@@ -412,7 +424,6 @@ Future<void> _init(
     } else {
       AppLifecycleService.instance.onAppInForeground('init via: $via $tlog');
     }
-    // Start workers asynchronously. No need to wait for them to start
     Computer.shared().turnOn(workersCount: 4).ignore();
     CryptoUtil.init();
 
@@ -427,7 +438,6 @@ Future<void> _init(
       NetworkClient.instance.downloadDio,
       packageInfo,
     );
-    wakeLockService.init(isBackground: isBackground);
 
     _logger.info("Configuration init $tlog");
     await Configuration.instance.init(preferences);
@@ -556,7 +566,7 @@ Future<void> _ensureRustInitialized({required String via}) async {
     return;
   }
 
-  final initFuture = Future.wait([EntePhotosRust.init(), EnteRust.init()]);
+  final initFuture = EntePhotosRust.init();
   _rustInitFuture = initFuture;
   try {
     await initFuture;
@@ -569,10 +579,6 @@ Future<void> _ensureRustInitialized({required String via}) async {
 
 void _attachRustLogStream() {
   final logger = Logger("rust");
-  _enteRustLogSinkGuard = LogSinkGuard();
-  _enteRustLogSinkGuard.attachLogStream().listen((entry) {
-    _logRustEntry(logger, entry.level.name, entry.target, entry.message);
-  });
   _photosRustLogSinkGuard = photos_rust_log.LogSinkGuard();
   _photosRustLogSinkGuard.attachLogStream().listen((entry) {
     _logRustEntry(logger, entry.level.name, entry.target, entry.message);
@@ -637,7 +643,11 @@ Future<void> _sync(String caller) async {
   }
 }
 
-Future runWithLogs(Function() function, {String prefix = ""}) async {
+Future runWithLogs(
+  Function() function, {
+  String prefix = "",
+  Duration? sentryInitTimeout,
+}) async {
   await SuperLogging.main(
     LogConfig(
       body: function,
@@ -645,6 +655,7 @@ Future runWithLogs(Function() function, {String prefix = ""}) async {
       maxLogFiles: 5,
       sentryDsn: kDebugMode ? sentryDebugDSN : sentryDSN,
       tunnel: sentryTunnel,
+      sentryInitTimeout: sentryInitTimeout,
       enableInDebugMode: true,
       prefix: prefix,
     ),
@@ -685,35 +696,20 @@ Future<void> _scheduleFGSync(String caller) async {
   });
 }
 
-Future<bool> _isRunningInForeground() async {
-  final prefs = await SharedPreferences.getInstance();
-  await prefs.reload();
-  final currentTime = DateTime.now().microsecondsSinceEpoch;
-  final lastFGHeartBeatTime = DateTime.fromMicrosecondsSinceEpoch(
-    prefs.getInt(kLastFGTaskHeartBeatTime) ?? 0,
-  );
-  return lastFGHeartBeatTime.microsecondsSinceEpoch >
-      (currentTime - kFGTaskDeathTimeoutInMicroseconds);
-}
-
 Future<void> _handleBackgroundPush(Object message) async {
-  final bool isRunningInFG = await _isRunningInForeground(); // hb
+  final bool isRunningInFG = await isForegroundEngineActive();
   final bool isInForeground = AppLifecycleService.instance.isForeground;
   if (isRunningInFG) {
     _logger.info(
       "Background push received when app is alive and runningInFG: $isRunningInFG inForeground: $isInForeground",
     );
     if (PushService.shouldSync(message)) {
-      // FG is active, let it handle the sync
       _logger.info("Foreground is active, skipping background sync from push");
-      // Could optionally trigger a sync event that FG can handle
     }
   } else {
-    // App is dead or FG is not active
     runWithLogs(() async {
       _logger.info("Background push received, no active foreground");
 
-      // Mark BG as active before starting
       final prefs = await SharedPreferences.getInstance();
       await prefs.setInt(
         kLastBGTaskHeartBeatTime,
@@ -733,11 +729,18 @@ Future<void> _handleBackgroundPush(Object message) async {
 }
 
 Future<void> _logFGHeartBeatInfo(SharedPreferences prefs) async {
-  final bool isRunningInFG = await _isRunningInForeground();
   await prefs.reload();
-  final lastFGTaskHeartBeatTime = prefs.getInt(kLastFGTaskHeartBeatTime) ?? 0;
-  final String lastRun = lastFGTaskHeartBeatTime == 0
+  final threshold =
+      DateTime.now().microsecondsSinceEpoch - kEngineDeathTimeoutInMicroseconds;
+  final lastDartBeatTime = prefs.getInt(kLastFGTaskHeartBeatTime) ?? 0;
+  final lastNativeBeatTime = prefs.getInt(kLastNativeFGTaskHeartBeatTime) ?? 0;
+  String describe(int beatTime) => beatTime == 0
       ? 'never'
-      : DateTime.fromMicrosecondsSinceEpoch(lastFGTaskHeartBeatTime).toString();
-  _logger.info('isAlreadyRunningFG: $isRunningInFG, last Beat: $lastRun');
+      : DateTime.fromMicrosecondsSinceEpoch(beatTime).toString();
+  _logger.info(
+    'dartFGBeatFresh: ${lastDartBeatTime > threshold}, '
+    'nativeFGBeatFresh: ${lastNativeBeatTime > threshold}, '
+    'last Dart beat: ${describe(lastDartBeatTime)}, '
+    'last native beat: ${describe(lastNativeBeatTime)}',
+  );
 }

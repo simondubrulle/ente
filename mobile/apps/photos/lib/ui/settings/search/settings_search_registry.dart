@@ -6,6 +6,7 @@ import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:hugeicons/hugeicons.dart";
 import "package:photos/core/configuration.dart";
+import "package:photos/models/gallery/gallery_layout_config.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/ui/settings/about/about_us_page.dart";
 import "package:photos/ui/settings/account/account_settings_page.dart";
@@ -21,16 +22,15 @@ import "package:photos/ui/settings/streaming/video_streaming_settings_page.dart"
 import "package:photos/ui/settings/support/help_support_page.dart";
 import "package:photos/ui/settings/widget_settings_screen.dart";
 
-/// Registry that provides all searchable settings items
 class SettingsSearchRegistry {
   static List<SettingsSearchItem> getSearchableItems(BuildContext context) {
     final l10n = context.strings;
     final hasLoggedIn = Configuration.instance.isLoggedIn();
     final isLocalGallery = isLocalGalleryMode;
     final showThemeControls = Platform.isAndroid || kDebugMode;
+    final showJustifiedLayout = isJustifiedLayoutAvailable;
     final items = <SettingsSearchItem>[];
 
-    // Account settings
     if (hasLoggedIn && !isLocalGallery) {
       items.add(
         SettingsSearchItem(
@@ -100,7 +100,6 @@ class SettingsSearchRegistry {
       ]);
     }
 
-    // Backup settings
     if (hasLoggedIn && !isLocalGallery) {
       items.add(
         SettingsSearchItem(
@@ -177,20 +176,9 @@ class SettingsSearchRegistry {
             isSubPage: true,
             keywords: ["resumable", "multipart", "uploads"],
           ),
-        if (Platform.isIOS)
-          SettingsSearchItem(
-            title: l10n.disableAutoLock,
-            subtitle: l10n.backupSettings,
-            sectionPath: "${l10n.backup} > ${l10n.backupSettings}",
-            icon: HugeIcons.strokeRoundedSquareLock02,
-            routeBuilder: (_) => const BackupSettingsPage(),
-            isSubPage: true,
-            keywords: ["auto lock", "screen", "awake"],
-          ),
       ]);
     }
 
-    // Security settings
     items.add(
       SettingsSearchItem(
         title: l10n.security,
@@ -273,7 +261,6 @@ class SettingsSearchRegistry {
         ),
     ]);
 
-    // Appearance settings
     items.add(
       SettingsSearchItem(
         title: l10n.appearance,
@@ -321,7 +308,6 @@ class SettingsSearchRegistry {
       ),
     ]);
 
-    // Gallery settings (under Appearance)
     items.add(
       SettingsSearchItem(
         title: l10n.gallery,
@@ -331,11 +317,30 @@ class SettingsSearchRegistry {
         routeBuilder: (_) =>
             const GallerySettingsScreen(fromGalleryLayoutSettingsCTA: false),
         isSubPage: true,
-        keywords: ["grid size", "group by", "layout"],
+        keywords: [
+          "grid size",
+          "group by",
+          "layout",
+          if (showJustifiedLayout) "justified",
+        ],
       ),
     );
 
-    // Grid Size setting
+    if (showJustifiedLayout) {
+      items.add(
+        SettingsSearchItem(
+          title: l10n.layout,
+          subtitle: l10n.gallery,
+          sectionPath: "${l10n.appearance} > ${l10n.gallery}",
+          icon: HugeIcons.strokeRoundedDashboardSquare02,
+          routeBuilder: (_) =>
+              const GallerySettingsScreen(fromGalleryLayoutSettingsCTA: false),
+          isSubPage: true,
+          keywords: ["layout", "grid", "justified"],
+        ),
+      );
+    }
+
     items.add(
       SettingsSearchItem(
         title: l10n.photoGridSize,
@@ -349,7 +354,6 @@ class SettingsSearchRegistry {
       ),
     );
 
-    // Group By setting
     items.add(
       SettingsSearchItem(
         title: l10n.groupBy,
@@ -378,7 +382,6 @@ class SettingsSearchRegistry {
       );
     }
 
-    // Machine Learning settings
     if (hasLoggedIn || isLocalGallery) {
       items.add(
         SettingsSearchItem(
@@ -555,7 +558,6 @@ class SettingsSearchRegistry {
       ]);
     }
 
-    // Free up space
     if (hasLoggedIn && !isLocalGallery) {
       items.add(
         SettingsSearchItem(
@@ -649,7 +651,6 @@ class SettingsSearchRegistry {
       ]);
     }
 
-    // Help & Support
     items.add(
       SettingsSearchItem(
         title: l10n.helpAndSupport,
@@ -708,7 +709,6 @@ class SettingsSearchRegistry {
       ),
     ]);
 
-    // About
     items.add(
       SettingsSearchItem(
         title: l10n.about,
@@ -771,31 +771,26 @@ class SettingsSearchRegistry {
     return items;
   }
 
-  /// Get suggestions shown when search is empty
   static List<SettingsSearchSuggestion> getSuggestions(BuildContext context) {
     final l10n = context.strings;
     final hasLoggedIn = Configuration.instance.isLoggedIn();
     final isLocalGallery = isLocalGalleryMode;
 
     return [
-      // Gallery suggestion
       SettingsSearchSuggestion(
         title: l10n.gallery,
         routeBuilder: (_) =>
             const GallerySettingsScreen(fromGalleryLayoutSettingsCTA: false),
       ),
-      // App lock suggestion
       SettingsSearchSuggestion(
         title: l10n.appLock,
         routeBuilder: (_) => const SecuritySettingsPage(),
       ),
-      // Free up device space suggestion
       if (hasLoggedIn && !isLocalGallery)
         SettingsSearchSuggestion(
           title: l10n.freeUpDeviceSpace,
           routeBuilder: (_) => const FreeUpSpaceOptionsScreen(),
         ),
-      // Backup settings suggestion
       if (hasLoggedIn && !isLocalGallery)
         SettingsSearchSuggestion(
           title: l10n.backupSettings,

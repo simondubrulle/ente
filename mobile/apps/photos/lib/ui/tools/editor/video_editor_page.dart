@@ -19,6 +19,7 @@ import "package:photos/service_locator.dart";
 import "package:photos/services/sync/sync_service.dart";
 import "package:photos/theme/ente_theme.dart";
 import "package:photos/ui/common/linear_progress_dialog.dart";
+import "package:photos/ui/common/photo_library_add_permission.dart";
 import "package:photos/ui/notification/toast.dart";
 import "package:photos/ui/tools/editor/export_video_service.dart";
 import "package:photos/ui/tools/editor/native_video_export_service.dart";
@@ -57,15 +58,12 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
 
   VideoEditorController? _controller;
 
-  /// Toggle state for internal users to switch between native and FFmpeg export
-  /// Initially set to the flag service value
   late bool _useNativeExport;
 
   @override
   void initState() {
     super.initState();
 
-    // Initialize toggle with flagService value
     _useNativeExport = flagService.useNativeVideoEditor;
 
     _controller = VideoEditorController.file(widget.ioFile);
@@ -239,6 +237,9 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
   }
 
   void exportVideo() async {
+    if (!await ensurePhotoLibraryAddPermission(context)) return;
+    if (!mounted) return;
+
     final shouldUseNative = flagService.internalUser
         ? _useNativeExport
         : flagService.useNativeVideoEditor;
@@ -419,8 +420,7 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
           ".mp4";
       final galleryTitle = await getMediaStoreCompatibleTitle(fileName);
 
-      //Disabling notifications for assets changing to insert the file into
-      //files db before triggering a sync.
+      // Insert the edited file before asset notifications trigger a sync.
       await PhotoManager.stopChangeNotify();
       notificationsStopped = true;
 
@@ -460,8 +460,6 @@ class _VideoEditorPageState extends State<VideoEditorPage> {
         showShortToast(context, context.strings.editsSaved);
         final files = List<EnteFile>.of(widget.detailPageConfig.files);
 
-        // the index could be -1 if the files fetched doesn't contain the newly
-        // edited files
         int selectionIndex = files.indexWhere(
           (file) => file.generatedID == newFile.generatedID,
         );

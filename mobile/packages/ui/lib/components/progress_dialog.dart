@@ -130,10 +130,10 @@ class ProgressDialog {
           Navigator.of(_dismissingContext!).pop();
         }
         if (_showLogs) debugPrint('ProgressDialog dismissed');
-        return Future.value(true);
+        return true;
       } else {
         if (_showLogs) debugPrint('ProgressDialog already dismissed');
-        return Future.value(false);
+        return false;
       }
     } catch (err) {
       debugPrint('Seems there is an issue hiding dialog');
@@ -170,8 +170,7 @@ class ProgressDialog {
             );
           },
         );
-        // Delaying the function for 200 milliseconds
-        // [Default transitionDuration of DialogRoute]
+        // Wait for DialogRoute's default transition.
         await Future.delayed(const Duration(milliseconds: 200));
         if (_showLogs) debugPrint('ProgressDialog shown');
         _isShowing = true;
@@ -268,7 +267,6 @@ class _BodyState extends State<_Body> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: <Widget>[
-              // row body
               Row(
                 mainAxisSize: MainAxisSize.min,
                 children: <Widget>[

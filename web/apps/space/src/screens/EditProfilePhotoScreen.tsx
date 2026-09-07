@@ -1,13 +1,13 @@
 import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box } from "@mui/material";
-import { SpaceAvatarCropPage } from "components/SpaceAvatarCropPage";
-import { SpaceLoadingSpinner } from "components/SpaceRouteFallback";
+import { SpaceAvatarCropPage } from "components/AvatarCropPage";
+import { SpaceLoadingSpinner } from "components/RouteFallback";
 import log from "ente-base/log";
 import React, { useEffect, useRef, useState } from "react";
 import type { Area, Point } from "react-easy-crop";
-import { profileBackground } from "screens/ProfileScreen";
-import { spaceTouchTargetSize } from "styles/touchTargets";
+import { spaceAppBackground, spaceText } from "styles/colors";
+import { spaceTouchTargetSize } from "styles/touch-targets";
 import {
     prepareSpaceAvatarImageFromCrop,
     prepareSpaceCoverImageFromCrop,
@@ -18,10 +18,10 @@ import {
     spaceCoverImageErrorMessage,
     spaceCoverImageInputAccept,
     spaceProfileCoverAspectRatio,
-} from "utils/spacePostImage";
+} from "utils/post-image";
 
 const green = "#08C225";
-const textBase = "#000";
+const textBase = spaceText;
 const warning = "#F63A3A";
 
 interface AvatarCropImage {
@@ -48,7 +48,7 @@ const EditProfilePhotoShell: React.FC<
     <Box
         component="main"
         sx={{
-            bgcolor: profileBackground,
+            background: spaceAppBackground,
             color: textBase,
             display: "grid",
             minHeight: "100svh",
@@ -58,7 +58,7 @@ const EditProfilePhotoShell: React.FC<
     >
         <Box
             sx={{
-                bgcolor: profileBackground,
+                bgcolor: "transparent",
                 boxSizing: "border-box",
                 display: "flex",
                 flexDirection: "column",
@@ -359,7 +359,6 @@ export const EditProfilePhotoScreen: React.FC<EditProfilePhotoScreenProps> = ({
         <>
             {avatarFileInput}
             <SpaceAvatarCropPage
-                background={profileBackground}
                 crop={avatarCrop}
                 errorMessage={avatarError}
                 headerVariant="app"

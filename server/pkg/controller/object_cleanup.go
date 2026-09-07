@@ -19,14 +19,6 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
-// ObjectCleanupController exposes functions to remove temporary object storage
-// entries that were never committed to the database.
-//
-//  1. We create presigned URLs for clients to upload their objects to. It might
-//     happen that the client is able to successfully upload to these URLs, but
-//     not tell museum about the successful upload.
-//
-//  2. During replication, we might have half-done multipart uploads.
 type ObjectCleanupController struct {
 	Repo       *repo.ObjectCleanupRepository
 	ObjectRepo *repo.ObjectRepository
@@ -89,11 +81,10 @@ func (c *ObjectCleanupController) removeUnreportedObjects() int {
 
 	tx, tempObjects, err := c.Repo.GetAndLockExpiredObjects()
 	if err != nil {
-		if !errors.Is(err, sql.ErrNoRows) {
-			logger.Error(err)
-		}
+		logger.Error(err)
 		return count
 	}
+	defer tx.Rollback()
 
 	for _, tempObject := range tempObjects {
 		err = c.removeUnreportedObject(tx, tempObject)
@@ -105,12 +96,10 @@ func (c *ObjectCleanupController) removeUnreportedObjects() int {
 
 	logger.Infof("Removed %d objects", count)
 
-	// We always commit the transaction, even on errors for individual rows. To
-	// avoid object getting stuck in a loop, we increase their expiry times.
-
+	// Always commit the batch. skip() delays failed rows to prevent a tight loop.
 	cerr := tx.Commit()
 	if cerr != nil {
-		cerr = stacktrace.Propagate(err, "Failed to commit transaction")
+		cerr = stacktrace.Propagate(cerr, "Failed to commit transaction")
 		logger.Error(cerr)
 	}
 
@@ -156,9 +145,11 @@ func (c *ObjectCleanupController) removeUnreportedObject(tx *sql.Tx, t ente.Temp
 
 	if t.IsMultipart {
 		err = c.abortMultipartUpload(t.ObjectKey, t.UploadID, dc)
-	} else {
-		err = c.DeleteObjectFromDataCenter(t.ObjectKey, dc)
+		if err != nil {
+			return skip(err)
+		}
 	}
+	err = c.DeleteObjectFromDataCenter(t.ObjectKey, dc)
 	if err != nil {
 		return skip(err)
 	}
@@ -171,12 +162,6 @@ func (c *ObjectCleanupController) removeUnreportedObject(tx *sql.Tx, t ente.Temp
 	return nil
 }
 
-// AddTempObjectKey creates a new temporary object entry.
-//
-// It persists a given object key as having been provided to a client for
-// uploading. If a client does not successfully mark this object's upload as
-// having completed within PreSignedRequestValidityDuration, this temp object
-// will be cleaned up.
 func (c *ObjectCleanupController) AddTempObjectKey(objectKey string, dc string) error {
 	expiry := time.Microseconds() + (2 * PreSignedRequestValidityDuration.Microseconds())
 	return c.addCleanupEntryForObjectKey(objectKey, dc, expiry)
@@ -298,7 +283,6 @@ func (c *ObjectCleanupController) abortMultipartUpload(objectKey string, uploadI
 	})
 	if err != nil {
 		if isUnknownUploadError(err) {
-			// This is expected now, since we just aborted the upload
 			return nil
 		}
 		return stacktrace.Propagate(err, "")

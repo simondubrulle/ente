@@ -10,12 +10,11 @@ import "package:photos/service_locator.dart";
 import "package:photos/services/collections_service.dart";
 import "package:photos/services/filter/db_filters.dart";
 import "package:photos/services/location_service.dart";
+import "package:photos/settings/local_settings.dart";
 import 'package:photos/states/location_state.dart';
 import "package:photos/ui/viewer/gallery/gallery.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
-///This gallery will get rebuilt with the updated radius when
-///InheritedLocationTagData notifies a change in radius.
 class DynamicLocationGalleryWidget extends StatefulWidget {
   final ValueNotifier<int?> memoriesCountNotifier;
   final String tagPrefix;
@@ -80,7 +79,6 @@ class _DynamicLocationGalleryWidgetState
     }
 
     return FutureBuilder(
-      //Only rebuild Gallery if the center point or radius changes
       key: ValueKey(
         "${InheritedLocationTagData.of(context).centerPoint}$selectedRadius",
       ),
@@ -111,6 +109,7 @@ class _DynamicLocationGalleryWidgetState
                         },
                     tagPrefix: widget.tagPrefix,
                     enableFileGrouping: false,
+                    layoutTypeOverride: GalleryLayoutType.grid,
                     showSelectAll: false,
                   ),
                 ),

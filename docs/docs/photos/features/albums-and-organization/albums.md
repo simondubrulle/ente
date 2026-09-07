@@ -55,9 +55,21 @@ Personalize your albums by giving them a meaningful name.
 
 - Open the album
 - Click the overflow menu (three dots) in the top right corner
-- Click **Rename album**
+- Click **Edit details**
 - Type in a new name
-- Click **Rename** or press Enter
+- Click **Save**
+
+## Add or edit an album description
+
+Add a description to provide context that appears with the album in the gallery and on shared links.
+
+**On mobile and web/desktop:**
+
+1. Open the album
+2. Open the overflow menu (three dots)
+3. Select **Edit details**
+4. Enter or update the description
+5. Select **Save**
 
 ## Set album cover
 
@@ -67,8 +79,9 @@ Select any photo you want to use as the cover for your album.
 
 - Open the album you want to change
 - Tap the overflow menu (three dots) in the top right corner
-- Select **Set cover**
-- A new screen will appear, prompting you to select the cover photo
+- Select **Edit details**
+- Tap the green pencil icon on the bottom right of the photo
+- A sheet will appear, prompting you to select the cover photo
 - Browse through your photos and tap on the image you want to set as the album cover
 - Tap **Use selected photo**
 
@@ -76,7 +89,8 @@ Select any photo you want to use as the cover for your album.
 
 - Click the album you want to change
 - Click the overflow menu (three dots) in the top right corner
-- Click **Set cover**
+- Click **Edit details**
+- Click the green pencil icon on the bottom right of the photo
 - Select the image you want to use as the album cover
 - Click **Confirm**
 
@@ -118,6 +132,15 @@ Keep your favorite albums at the top by pinning them for quick access.
 - Open the album
 - Tap the overflow menu (three dots) in the top right corner
 - Tap **Pin album** or **Unpin album**
+
+## Find albums on web and desktop
+
+Open **All Albums** to search your album names or filter the list. The available filters include:
+
+- **Links** for albums created by quick links
+- **Shared** for albums you shared with others
+- **Received** for albums shared with you
+- **Empty** for albums you own that aren't shared or archived and contain no photos or videos
 
 ## Empty albums
 

@@ -158,6 +158,10 @@ export const sidebar = [
                                 link: "/photos/features/sharing-and-collaboration/share",
                             },
                             {
+                                text: "Library sharing",
+                                link: "/photos/features/sharing-and-collaboration/library-sharing",
+                            },
+                            {
                                 text: "Collaboration",
                                 link: "/photos/features/sharing-and-collaboration/collaboration",
                             },
@@ -236,6 +240,10 @@ export const sidebar = [
                             {
                                 text: "Detect Text (OCR)",
                                 link: "/photos/features/utilities/detect-text",
+                            },
+                            {
+                                text: "Guest view",
+                                link: "/photos/features/utilities/guest-view",
                             },
                             {
                                 text: "QR codes in photos",
@@ -622,6 +630,7 @@ export const sidebar = [
                     { text: "FAQ", link: "/2of3/faq" },
                 ],
             },
+            { text: "QR", link: "/qr/" },
         ],
     },
     {

@@ -1,12 +1,15 @@
 import type { FriendProfile } from "data/friends";
 import { clientPackageName, desktopAppVersion, isDesktop } from "ente-base/app";
+import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
 import { apiOrigin } from "ente-base/origins";
-import type {
-    SpaceAccountCtxHandle,
-    SpaceLinkCtxHandle,
+import {
+    openSpaceLinkContext,
+    type SpaceAccountCtxHandle,
+    type SpaceLinkCtxHandle,
 } from "ente-space-wasm";
-import type { PendingSpaceInvite } from "services/spaceInvite";
+import { clearCachedSpaceHomeItems } from "services/home-items";
+import type { PendingSpaceInvite } from "services/invite";
 import {
     cachedSpaceMediaBlobURL,
     cachedSpaceMediaBlobURLIfPresent,
@@ -14,22 +17,22 @@ import {
     rememberCachedSpaceMediaBlobURL,
     spacePostMediaCacheKey,
     spaceProfileMediaCacheKey,
-} from "services/spaceMediaCache";
+} from "services/media-cache";
 import {
     ensureCurrentSpaceContext,
     loadExistingSpaceProfile,
     persistCurrentOwnedSpaces,
     releaseCurrentSpaceContext,
-} from "services/spaceProfile";
+} from "services/profile";
 import {
     parseSpaceProfilePayload,
     spaceProfileTextField,
-} from "services/spaceProfilePayload";
-import { normalizeSpaceMessageText } from "utils/spaceMessageLimits";
+} from "services/profile-payload";
+import { normalizeSpaceMessageText } from "utils/message-limits";
 
-export { clearSpaceMediaURLCache } from "services/spaceMediaCache";
+export { clearSpaceMediaURLCache } from "services/media-cache";
 
-const currentFeedPageSize = 10;
+const currentHomePostsPageSize = 100;
 
 interface SpaceAvatar {
     keyVersion: number;
@@ -88,6 +91,10 @@ interface SpacePostPageResponse {
     nextCursor?: string;
 }
 
+interface SpaceHomePostPageResponse extends SpacePostPageResponse {
+    syncCursor: string;
+}
+
 type SpaceMessageConversationActivityType =
     | "empty"
     | "friend_request"
@@ -100,6 +107,7 @@ type SpaceMessageConversationActivityType =
 interface SpaceMessageConversationActivity {
     createdAt: string;
     id: string;
+    kind?: SpaceMessageKindResponse;
     messageId?: string;
     outgoing?: boolean;
     postId?: number;
@@ -117,6 +125,7 @@ interface SpaceFriend {
 
 type SpaceMessageKindResponse =
     | "friend_added"
+    | "poke"
     | "post_like"
     | "post_reply"
     | "regular";
@@ -167,6 +176,7 @@ type SpaceConversationChatSummaries =
 interface SpaceConversationsResponse {
     chatSummaries?: SpaceConversationChatSummaries;
     friends?: SpaceFriend[];
+    latestPostCreatedAt?: string | null;
     pendingRequests?: SpaceFriendRequestResponse[];
 }
 
@@ -204,9 +214,10 @@ export interface SpacePost extends SpacePostBase {
     imageUrl?: string;
 }
 
-export interface SpacePostPage {
+export interface SpaceHomePostPage {
     items: SpacePost[];
     nextCursor?: string;
+    syncCursor: string;
 }
 
 export interface SpaceProfilePost extends SpacePostBase {
@@ -299,6 +310,7 @@ export interface SpaceMessageActivityPost {
 export interface SpaceMessageActivity {
     createdAtMs: number;
     id: string;
+    kind?: SpaceMessageKind;
     messageId?: string;
     outgoing: boolean;
     post?: SpaceMessageActivityPost;
@@ -328,6 +340,7 @@ export interface SpaceMessageConversation {
 
 export interface SpaceMessageConversationList {
     items: SpaceMessageConversation[];
+    latestPostCreatedAtMs: number | null;
 }
 
 export interface SpaceFriendRequest {
@@ -366,16 +379,11 @@ interface SpaceConversationsContext {
     listConversations: (spaceId: string) => Promise<SpaceConversationsResponse>;
 }
 
-export const isSpaceContentError = (error: unknown) => {
-    if (!error || typeof error != "object" || !("code" in error)) return false;
-    const code = error.code;
-    return (
-        code == "crypto" ||
-        code == "base64_decode" ||
-        code == "invalid_input" ||
-        code == "missing_friend_sealed_space_key"
-    );
-};
+export const isSpaceContentError = (error: unknown) =>
+    isNamedError(error, "content_unavailable");
+
+export const isSpaceFriendLimitError = (error: unknown) =>
+    isNamedError(error, "friend_limit_reached");
 
 const timestampMsFromSpaceDate = (value: string) => {
     const parsed = Date.parse(value);
@@ -677,18 +685,22 @@ const profilePostFromPost = (post: SpacePostResponse): SpaceProfilePost => {
     };
 };
 
-const postPageFromAccountPage = async (
+const homePostPageFromAccountPage = async (
     ctx: SpaceAccountCtxHandle,
-    page: SpacePostPageResponse,
+    page: SpaceHomePostPageResponse,
     loadMedia = true,
     viewerSpaceId?: string,
-): Promise<SpacePostPage> => {
+): Promise<SpaceHomePostPage> => {
     const items = await Promise.all(
         (page.items ?? []).map((post) =>
             postFromAccountPost(ctx, post, loadMedia, viewerSpaceId),
         ),
     );
-    return { items, nextCursor: page.nextCursor || undefined };
+    return {
+        items,
+        nextCursor: page.nextCursor || undefined,
+        syncCursor: page.syncCursor,
+    };
 };
 
 const profilePostPageFromPage = (
@@ -728,13 +740,9 @@ export const openPublicSpaceLink = async (
     spaceUsername: string,
     accessKey: string,
 ): Promise<PublicSpaceLinkSession> => {
-    const [{ spaceOpenLinkCtx }, baseUrl] = await Promise.all([
-        import("ente-space-wasm"),
-        apiOrigin(),
-    ]);
-    const ctx = await spaceOpenLinkCtx({
+    const ctx = await openSpaceLinkContext({
         accessKey,
-        baseUrl,
+        baseUrl: await apiOrigin(),
         clientPackage: clientPackageName,
         clientVersion: isDesktop ? desktopAppVersion : undefined,
         spaceUsername,
@@ -971,6 +979,7 @@ const messageActivityFromSpaceActivity = (
     return {
         createdAtMs: timestampMsFromSpaceDate(activity.createdAt),
         id: activity.id,
+        kind: activity.kind || undefined,
         messageId: activity.messageId,
         outgoing: Boolean(activity.outgoing),
         post,
@@ -980,13 +989,21 @@ const messageActivityFromSpaceActivity = (
     };
 };
 
+const isPokeMessageActivity = (activity: SpaceMessageActivity) =>
+    activity.kind == "poke";
+
 const isPassiveAutoReadMessageActivity = (activity: SpaceMessageActivity) =>
     activity.type == "friend_added" ||
     activity.type == "message_like" ||
-    activity.type == "post_like";
+    activity.type == "post_like" ||
+    isPokeMessageActivity(activity);
 
 const messageConversationUnreadCount = (activities: SpaceMessageActivity[]) => {
-    if (activities.length == 1 && activities[0]?.type == "post_like") {
+    const onlyActivity = activities.length == 1 ? activities[0] : undefined;
+    if (
+        onlyActivity?.type == "post_like" ||
+        (onlyActivity && isPokeMessageActivity(onlyActivity))
+    ) {
         return 0;
     }
 
@@ -1017,6 +1034,7 @@ export const requestFriendByUsername = async ({
         ).requestFriendByUsername(spaceId, spaceUsername)) as {
             status?: string;
         };
+        await clearCachedSpaceHomeItems(spaceId);
         return response.status == "friend" ? "friend" : "requested";
     } finally {
         releaseCurrentSpaceContext(ctx);
@@ -1154,6 +1172,7 @@ export const removeCurrentSpaceFriend = async (
     const ctx = await ensureCurrentSpaceContext();
     try {
         await ctx.removeFriendBySpace(actorSpaceId, spaceId);
+        await clearCachedSpaceHomeItems(actorSpaceId);
         await clearSpaceMediaCache();
         clearSpaceFriendsCache();
     } finally {
@@ -1161,19 +1180,21 @@ export const removeCurrentSpaceFriend = async (
     }
 };
 
-export const loadCurrentFeedPage = async (
+export const loadCurrentHomePostsPage = async (
     spaceId: string,
+    after?: string,
     cursor?: string,
-): Promise<SpacePostPage> => {
+): Promise<SpaceHomePostPage> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const page = (await ctx.listFeed(
+        const page = (await ctx.listHomePosts(
             spaceId,
+            after ?? null,
             cursor ?? null,
-            currentFeedPageSize,
-        )) as SpacePostPageResponse;
+            currentHomePostsPageSize,
+        )) as SpaceHomePostPageResponse;
         await persistCurrentOwnedSpaces(ctx);
-        return await postPageFromAccountPage(ctx, page, false, spaceId);
+        return await homePostPageFromAccountPage(ctx, page, false, spaceId);
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1283,18 +1304,25 @@ export const loadCurrentFriendAvatarURL = async (
         return null;
     }
 
+    const avatar = {
+        keyVersion: friend.avatarKeyVersion,
+        objectID: friend.avatarObjectID,
+        size: friend.avatarSize,
+        updatedAt: friend.avatarUpdatedAt,
+    };
+    const cachedAvatarURL = await cachedAccountAvatarURLIfPresent(
+        friend.spaceId,
+        avatar,
+    );
+    if (cachedAvatarURL) return cachedAvatarURL;
+
     const profile = await loadExistingSpaceProfile();
     const ctx = await ensureCurrentSpaceContext();
     try {
         return await accountAvatarURL(
             ctx,
             friend.spaceId,
-            {
-                keyVersion: friend.avatarKeyVersion,
-                objectID: friend.avatarObjectID,
-                size: friend.avatarSize,
-                updatedAt: friend.avatarUpdatedAt,
-            },
+            avatar,
             profile?.spaceId,
         );
     } finally {
@@ -1339,13 +1367,6 @@ export const createCurrentPhotoPost = async ({
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
-};
-
-export const isSpacePostLimitReachedError = (error: unknown) => {
-    if (!error || typeof error != "object" || !("status" in error)) {
-        return false;
-    }
-    return (error as { status?: unknown }).status == 409;
 };
 
 const normalizedImageDimension = (dimension: number | undefined) =>
@@ -1402,6 +1423,29 @@ export const sendCurrentMessage = async (
                 senderSpaceId,
                 spaceId,
                 messageText,
+            )) as SpaceMessageResponse,
+            true,
+            senderSpaceId,
+            { friend: recipient, viewer: sender },
+        );
+    } finally {
+        releaseCurrentSpaceContext(ctx);
+    }
+};
+
+export const sendCurrentPoke = async (
+    senderSpaceId: string,
+    spaceId: string,
+    sender: FriendProfile,
+    recipient: FriendProfile,
+) => {
+    const ctx = await ensureCurrentSpaceContext();
+    try {
+        return await messageFromSpaceMessage(
+            ctx,
+            (await ctx.sendPoke(
+                senderSpaceId,
+                spaceId,
             )) as SpaceMessageResponse,
             true,
             senderSpaceId,
@@ -1486,19 +1530,25 @@ export const loadCurrentMessageConversations = async (
                     summaries,
                     friendSpaceID,
                 );
+                const latestActivity = summary
+                    ? messageActivityFromSpaceActivity(summary.latestActivity)
+                    : undefined;
                 const unreadActivities = summary
-                    ? (summary.unreadActivities ?? []).map(
-                          messageActivityFromSpaceActivity,
-                      )
+                    ? (summary.unreadActivities ?? [])
+                          .map(messageActivityFromSpaceActivity)
+                          .map((activity) =>
+                              activity.id == latestActivity?.id &&
+                              isPokeMessageActivity(latestActivity)
+                                  ? { ...activity, kind: "poke" as const }
+                                  : activity,
+                          )
                     : [];
                 const unreadCount =
                     messageConversationUnreadCount(unreadActivities);
                 return {
                     friend,
-                    latestActivity: summary
-                        ? messageActivityFromSpaceActivity(
-                              summary.latestActivity,
-                          )
+                    latestActivity: latestActivity
+                        ? latestActivity
                         : {
                               createdAtMs: timestampMsFromSpaceDate(
                                   conversation.createdAt,
@@ -1529,7 +1579,12 @@ export const loadCurrentMessageConversations = async (
                 unreadCount: 1,
             }),
         );
-        return { items: [...requestItems, ...friendItems] };
+        return {
+            items: [...requestItems, ...friendItems],
+            latestPostCreatedAtMs: response.latestPostCreatedAt
+                ? timestampMsFromSpaceDate(response.latestPostCreatedAt)
+                : null,
+        };
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1576,6 +1631,12 @@ export const confirmCurrentFriendRequest = async (
             BigInt(requestId),
         );
         clearSpaceFriendsCache();
+        await clearCachedSpaceHomeItems(spaceId);
+    } catch (error) {
+        if (isFriendRequestCanceledError(error)) {
+            await clearCachedSpaceHomeItems(spaceId);
+        }
+        throw error;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1608,6 +1669,12 @@ export const deleteCurrentFriendRequest = async (
             spaceId,
             BigInt(requestId),
         );
+        await clearCachedSpaceHomeItems(spaceId);
+    } catch (error) {
+        if (isFriendRequestCanceledError(error)) {
+            await clearCachedSpaceHomeItems(spaceId);
+        }
+        throw error;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }

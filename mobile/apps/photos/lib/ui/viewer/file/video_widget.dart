@@ -5,6 +5,7 @@ import "package:ente_pure_utils/ente_pure_utils.dart";
 import "package:ente_ui/components/loading_widget.dart";
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:fluttertoast/fluttertoast.dart";
 import "package:logging/logging.dart";
 import "package:photos/core/event_bus.dart";
@@ -28,6 +29,11 @@ class VideoWidget extends StatefulWidget {
   final Function(bool)? shouldDisableScroll;
   final Function({required int memoryDuration})? onFinalFileLoad;
   final bool isFromMemories;
+  final bool isActive;
+  final int? itemIndex;
+  final ValueListenable<int>? activeItemIndexListenable;
+  final bool? isAudioMutedOverride;
+  final ValueNotifier<double>? playbackSpeed;
 
   const VideoWidget(
     this.file, {
@@ -36,6 +42,11 @@ class VideoWidget extends StatefulWidget {
     this.shouldDisableScroll,
     this.onFinalFileLoad,
     this.isFromMemories = false,
+    required this.isActive,
+    this.itemIndex,
+    this.activeItemIndexListenable,
+    this.isAudioMutedOverride,
+    this.playbackSpeed,
     super.key,
   });
 
@@ -52,13 +63,20 @@ class _VideoWidgetState extends State<VideoWidget> {
   PlaylistData? playlistData;
   final nativePlayerKey = GlobalKey();
   final mediaKitKey = GlobalKey();
+  late final ValueNotifier<double> _playbackSpeed =
+      widget.playbackSpeed ?? ValueNotifier<double>(1.0);
 
   bool isPreviewLoadable = false;
+
+  bool get _isActive =>
+      widget.isActive &&
+      (widget.activeItemIndexListenable == null ||
+          widget.activeItemIndexListenable!.value == widget.itemIndex);
 
   @override
   void initState() {
     super.initState();
-    // Automatic error fallback: switch to MediaKit when native player fails
+    widget.activeItemIndexListenable?.addListener(_onActiveItemChanged);
     useMediaKitForVideoSubscription = Bus.instance
         .on<UseMediaKitForVideo>()
         .listen((event) {
@@ -78,8 +96,7 @@ class _VideoWidgetState extends State<VideoWidget> {
         widget.file.uploadedFileID,
       );
       if (!widget.file.isOwner) {
-        // For shared video, we need to on-demand check if the file is streamable
-        // and if not, we need to set isPreviewLoadable to false
+        // Shared previews are discovered on demand; assume loadable until checked.
         isPreviewLoadable = true;
       }
       _checkForPreview();
@@ -88,9 +105,28 @@ class _VideoWidgetState extends State<VideoWidget> {
 
   @override
   void dispose() {
+    widget.activeItemIndexListenable?.removeListener(_onActiveItemChanged);
     useMediaKitForVideoSubscription.cancel();
+    if (widget.playbackSpeed == null) {
+      _playbackSpeed.dispose();
+    }
     super.dispose();
   }
+
+  @override
+  void didUpdateWidget(covariant VideoWidget oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (identical(
+      oldWidget.activeItemIndexListenable,
+      widget.activeItemIndexListenable,
+    )) {
+      return;
+    }
+    oldWidget.activeItemIndexListenable?.removeListener(_onActiveItemChanged);
+    widget.activeItemIndexListenable?.addListener(_onActiveItemChanged);
+  }
+
+  void _onActiveItemChanged() => setState(() {});
 
   Future<void> _checkForPreview() async {
     if (!widget.file.isOwner) {
@@ -142,8 +178,9 @@ class _VideoWidgetState extends State<VideoWidget> {
   @override
   Widget build(BuildContext context) {
     final playPreview = isPreviewLoadable && selectPreviewForPlay;
+    final Widget child;
     if (playPreview && playlistData == null) {
-      return Center(
+      child = Center(
         child: Container(
           width: 48,
           height: 48,
@@ -160,60 +197,72 @@ class _VideoWidgetState extends State<VideoWidget> {
           ),
         ),
       );
-    }
+    } else {
+      final shouldUseNativeVideoPlayer =
+          useNativeVideoPlayer &&
+          !widget.file.isDeviceTrash &&
+          (!playPreview || Platform.isAndroid);
 
-    final shouldUseNativeVideoPlayer =
-        useNativeVideoPlayer && (!playPreview || Platform.isAndroid);
-
-    if (shouldUseNativeVideoPlayer) {
-      return VideoWidgetNative(
-        widget.file,
-        key: nativePlayerKey,
-        tagPrefix: widget.tagPrefix,
-        playbackCallback: widget.playbackCallback,
-        shouldDisableScroll: widget.shouldDisableScroll,
-        playlistData: playlistData,
-        selectedPreview: playPreview,
-        isFromMemories: widget.isFromMemories,
-        onStreamChange: () {
-          setState(() {
-            selectPreviewForPlay = !selectPreviewForPlay;
-            Bus.instance.fire(
-              StreamSwitchedEvent(
-                selectPreviewForPlay,
-                Platform.isAndroid && useNativeVideoPlayer
-                    ? PlayerType.nativeVideoPlayer
-                    : PlayerType.mediaKit,
-              ),
+      child = shouldUseNativeVideoPlayer
+          ? VideoWidgetNative(
+              widget.file,
+              key: nativePlayerKey,
+              tagPrefix: widget.tagPrefix,
+              playbackCallback: widget.playbackCallback,
+              shouldDisableScroll: widget.shouldDisableScroll,
+              playlistData: playlistData,
+              selectedPreview: playPreview,
+              playbackSpeed: _playbackSpeed,
+              isFromMemories: widget.isFromMemories,
+              isActive: _isActive,
+              isAudioMutedOverride: widget.isAudioMutedOverride,
+              onStreamChange: () {
+                setState(() {
+                  selectPreviewForPlay = !selectPreviewForPlay;
+                  Bus.instance.fire(
+                    StreamSwitchedEvent(
+                      selectPreviewForPlay,
+                      Platform.isAndroid && useNativeVideoPlayer
+                          ? PlayerType.nativeVideoPlayer
+                          : PlayerType.mediaKit,
+                    ),
+                  );
+                });
+              },
+              onFinalFileLoad: widget.onFinalFileLoad,
+            )
+          : VideoWidgetMediaKit(
+              widget.file,
+              key: mediaKitKey,
+              tagPrefix: widget.tagPrefix,
+              playbackCallback: widget.playbackCallback,
+              shouldDisableScroll: widget.shouldDisableScroll,
+              preview: playlistData?.preview,
+              selectedPreview: playPreview,
+              playbackSpeed: _playbackSpeed,
+              isFromMemories: widget.isFromMemories,
+              isActive: _isActive,
+              isAudioMutedOverride: widget.isAudioMutedOverride,
+              onStreamChange: () {
+                setState(() {
+                  selectPreviewForPlay = !selectPreviewForPlay;
+                  Bus.instance.fire(
+                    StreamSwitchedEvent(
+                      selectPreviewForPlay,
+                      Platform.isAndroid
+                          ? PlayerType.nativeVideoPlayer
+                          : PlayerType.mediaKit,
+                    ),
+                  );
+                });
+              },
+              onFinalFileLoad: widget.onFinalFileLoad,
             );
-          });
-        },
-        onFinalFileLoad: widget.onFinalFileLoad,
-      );
     }
-    return VideoWidgetMediaKit(
-      widget.file,
-      key: mediaKitKey,
-      tagPrefix: widget.tagPrefix,
-      playbackCallback: widget.playbackCallback,
-      shouldDisableScroll: widget.shouldDisableScroll,
-      preview: playlistData?.preview,
-      selectedPreview: playPreview,
-      isFromMemories: widget.isFromMemories,
-      onStreamChange: () {
-        setState(() {
-          selectPreviewForPlay = !selectPreviewForPlay;
-          Bus.instance.fire(
-            StreamSwitchedEvent(
-              selectPreviewForPlay,
-              Platform.isAndroid
-                  ? PlayerType.nativeVideoPlayer
-                  : PlayerType.mediaKit,
-            ),
-          );
-        });
-      },
-      onFinalFileLoad: widget.onFinalFileLoad,
+
+    return AnnotatedRegion<SystemUiOverlayStyle>(
+      value: SystemUiOverlayStyle.light,
+      child: child,
     );
   }
 

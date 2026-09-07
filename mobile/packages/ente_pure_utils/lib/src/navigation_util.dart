@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/cupertino.dart' show CupertinoPageTransitionsBuilder;
 import 'package:flutter/material.dart';
 
 Future<T?> routeToPage<T extends Object>(
@@ -52,9 +53,9 @@ PageRouteBuilder<T> _buildPageRoute<T extends Object>(Widget page) {
 
 class SwipeableRouteBuilder<T> extends PageRoute<T> {
   final RoutePageBuilder pageBuilder;
+  // Cupertino preserves the iOS back-swipe gesture.
   final PageTransitionsBuilder matchingBuilder =
-      const CupertinoPageTransitionsBuilder(); // Default iOS/macOS (to get the swipe right to go back gesture)
-  // final PageTransitionsBuilder matchingBuilder = const FadeUpwardsPageTransitionsBuilder(); // Default Android/Linux/Windows
+      const CupertinoPageTransitionsBuilder();
 
   SwipeableRouteBuilder({required this.pageBuilder});
 
@@ -77,7 +78,7 @@ class SwipeableRouteBuilder<T> extends PageRoute<T> {
   bool get maintainState => true;
 
   @override
-  Duration get transitionDuration => const Duration(milliseconds: 300); // Can give custom Duration, unlike in MaterialPageRoute
+  Duration get transitionDuration => const Duration(milliseconds: 300);
 
   @override
   Widget buildTransitions(

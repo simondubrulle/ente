@@ -17,7 +17,7 @@ class UpdateService {
   static const kUpdateAvailableShownTimeKey = "update_available_shown_time_key";
   static const _updateNotificationsEnabledKey = "update_notifications_enabled";
   static const changeLogVersionKey = "update_change_log_key";
-  static const currentChangeLogVersion = 58;
+  static const currentChangeLogVersion = 60;
 
   LatestVersionInfo? _latestVersion;
   final _logger = Logger("UpdateService");
@@ -31,11 +31,9 @@ class UpdateService {
   }
 
   Future<bool> shouldShowChangeLog() async {
-    // fetch the change log version which was last shown to user.
     final lastShownAtVersion = _prefs.getInt(changeLogVersionKey);
     if (lastShownAtVersion == null) {
-      // Fresh install: the key was never set, so the user has no previous
-      // version to show a "What's New" for. Silently mark as seen.
+      // Fresh installs have no earlier version whose changelog should be shown.
       await hideChangeLog();
       return false;
     }
@@ -58,6 +56,7 @@ class UpdateService {
     return ChangeLogStrings.hasContentForLocale(
           locale,
           isLocalGallery: isLocalGallery,
+          isAndroid: Platform.isAndroid,
         )
         ? ChangeLogAction.show
         : ChangeLogAction.consumeWithoutShowing;
