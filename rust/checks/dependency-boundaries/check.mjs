@@ -1,5 +1,5 @@
 import { execFileSync } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
 const requestedRoot = resolve(process.argv[2]);
@@ -24,6 +24,27 @@ const pathFromRoot = (path) => relative(root, path).split(sep).join("/");
 const domain = metadata.packages.filter((pkg) =>
     pathFromRoot(pkg.manifest_path).startsWith("rust/crates/"),
 );
+
+const httpOwners = new Set([
+    "rust/crates/assets/Cargo.toml",
+    "rust/crates/core/Cargo.toml",
+    "rust/tools/location-dataset/Cargo.toml",
+]);
+if ([...httpOwners].some((path, i, paths) => i > 0 && paths[i - 1] > path)) {
+    throw new Error("httpOwners must be sorted");
+}
+
+for (const pkg of metadata.packages) {
+    const manifest = pathFromRoot(pkg.manifest_path);
+    if (httpOwners.has(manifest)) continue;
+    for (const dependency of pkg.dependencies) {
+        if (dependency.name !== "reqwest") continue;
+        console.error(
+            `${manifest}: use ente-core::http instead of a direct reqwest dependency`,
+        );
+        process.exitCode = 1;
+    }
+}
 
 if (!domain.length) {
     console.error(`${resolve(root, "rust/crates")}: found no domain crates`);
@@ -55,6 +76,32 @@ for (const manifest of git(
     .filter((path) => path && existsSync(resolve(root, path)))) {
     if (registered.has(manifest)) continue;
     console.error(`${manifest}: domain crate is not registered in the Cargo workspace`);
+    process.exitCode = 1;
+}
+
+for (const path of git(
+    "ls-files",
+    "--cached",
+    "--others",
+    "--exclude-standard",
+    "-z",
+    "--",
+    "rust/bindings/wasm/lib/src",
+    "rust/bindings/frb/lib/src",
+)
+    .split("\0")
+    .filter((path) => path.endsWith(".rs") && existsSync(resolve(root, path)))) {
+    const source = readFileSync(resolve(root, path), "utf8");
+    const declarations = [
+        ...source.matchAll(
+            /^\s*pub\s+(?:async\s+)?(?:struct|enum|type|fn)\s+([A-Za-z_][A-Za-z0-9_]*)/gm,
+        ),
+    ].map((match) => match[1]);
+    const error = declarations.find((name) => name.endsWith("Error"));
+    if (!error || declarations[0] === error) continue;
+    console.error(
+        `${path}: ${declarations[0]} precedes ${error}; put boundary errors before exported types and functions`,
+    );
     process.exitCode = 1;
 }
 
