@@ -2515,6 +2515,16 @@
       }
     }
   },
+  "memoryLaneCardTitle": "{name}’s memory lane",
+  "@memoryLaneCardTitle": {
+    "description": "Title for the Memory Lane card on the home screen",
+    "placeholders": {
+      "name": {
+        "type": "String",
+        "description": "Person's name"
+      }
+    }
+  },
   "memoryLink": "Memory link",
   "memoryShareLinkDescription": "This link will automatically expire in 7 days.",
   "merchandise": "Merchandise",
@@ -2986,6 +2996,22 @@
   "photoLibraryAddPermissionRequired": "Ente needs permission to save photos and videos to Apple Photos. You can allow access in Settings.",
   "photoLibraryAddPermissionRestricted": "Photo Library access is restricted on this device.",
   "photoOrder": "Photo order",
+  "photoViewerFilmstripLabel": "Photo chooser",
+  "@photoViewerFilmstripLabel": {
+    "description": "Accessibility label for the thumbnail filmstrip in the photo viewer"
+  },
+  "photoViewerFilmstripPosition": "Photo {current} of {total}",
+  "@photoViewerFilmstripPosition": {
+    "description": "Accessibility position within the thumbnail filmstrip in the photo viewer",
+    "placeholders": {
+      "current": {
+        "type": "int"
+      },
+      "total": {
+        "type": "int"
+      }
+    }
+  },
   "photos": "Photos",
   "photosAddedByYouWillBeRemovedFromTheAlbum": "Photos added by you will be removed from the album",
   "photosAndVideosCount": "{count, plural, one{{formattedCount} photo & video} other{{formattedCount} photos & videos}}",
@@ -4917,5 +4943,17 @@
       }
     }
   },
-  "grantAccess": "Grant access"
+  "grantAccess": "Grant access",
+  "sharePhotos": "Share photos",
+  "sharePersonPhotos": "Share {name}’s photos",
+  "@sharePersonPhotos": {"placeholders": {"name": {"type": "String"}}},
+  "unnamedPersonAlbumName": "Portrait - {date}",
+  "@unnamedPersonAlbumName": {"placeholders": {"date": {"type": "String"}}},
+  "shareAllPersonPhotos": "Share all photos",
+  "shareAllPersonPhotosDescription": "All photos of {name} including future ones",
+  "@shareAllPersonPhotosDescription": {"placeholders": {"name": {"type": "String"}}},
+  "personShareFailedTitle": "Could not share photos",
+  "personShareFailedBody": "The shared album could not be created. Your photos and selection are unchanged. Please try again.",
+  "personShareRollbackFailed": "The share did not finish, and the album “{name}” could not be removed. It remains in Albums and may have an active public link. Review or delete it there before trying again. Your original photos are safe.",
+  "@personShareRollbackFailed": {"placeholders": {"name": {"type": "String"}}}
 }
