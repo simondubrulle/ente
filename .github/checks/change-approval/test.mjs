@@ -34,7 +34,7 @@ const scan = (
         gitlink,
         symlink,
         ci = false,
-        archive = false,
+        workflow = false,
         directory = ".",
     } = {},
 ) => {
@@ -66,28 +66,44 @@ const scan = (
     };
     git("init", "-q", "-b", "main");
     const checkerDir = ".github/checks/change-approval";
-    if (archive)
+    if (workflow)
         cpSync(import.meta.dirname, join(repo, checkerDir), {
             recursive: true,
         });
     write(base);
     const sha = commit(1);
+    if (workflow) {
+        git("remote", "add", "origin", repo);
+        git("checkout", "-qb", "pr");
+    }
     write(change);
     if (symlink) symlinkSync("missing-target", join(repo, symlink));
     if (committed) commit(2);
-    let entry = script;
-    if (archive) {
-        const extracted = mkdtempSync(
+    let command = process.execPath;
+    let args = [script, sha];
+    const runner = {};
+    if (workflow) {
+        git("checkout", "-q", "--detach", sha);
+        git("merge", "--no-ff", "--no-edit", "pr");
+        runner.RUNNER_TEMP = mkdtempSync(
             join(tmpdir(), "change-approval-trusted-"),
         );
-        t.after(() => rmSync(extracted, { recursive: true }));
-        execFileSync("tar", ["-x", "-C", extracted], {
-            input: execFileSync("git", ["archive", sha, checkerDir], {
-                cwd: repo,
-                env,
-            }),
-        });
-        entry = join(extracted, checkerDir, "check.mjs");
+        t.after(() => rmSync(runner.RUNNER_TEMP, { recursive: true }));
+        const step = execFileSync(
+            "ruby",
+            [
+                "-ryaml",
+                "-e",
+                'puts YAML.safe_load(File.read(ARGV[0]), aliases: true).fetch("jobs").fetch("detect").fetch("steps").find { |step| step["id"] == "scan" }.fetch("run")',
+                join(
+                    import.meta.dirname,
+                    "../../workflows/change-approval.yml",
+                ),
+            ],
+            { encoding: "utf8" },
+        );
+        command = "bash";
+        args = ["-e", "-c", step];
     }
     const outputs = ci
         ? {
@@ -95,9 +111,9 @@ const scan = (
               GITHUB_STEP_SUMMARY: join(repo, ".summary"),
           }
         : {};
-    const stdout = execFileSync(process.execPath, [entry, sha], {
+    const stdout = execFileSync(command, args, {
         cwd: join(repo, directory),
-        env: { ...env, ...outputs },
+        env: { ...env, ...outputs, ...runner },
         encoding: "utf8",
     });
     const read = (file) => (existsSync(file) ? readFileSync(file, "utf8") : "");
@@ -808,13 +824,14 @@ test("reordering Cargo workspace selection lists needs no approval", (t) => {
     }
 });
 
-test("Rust lint declarations, reasons and conditions need approval", (t) => {
+test("Rust lint changes need approval except for removed suppressions", (t) => {
     const expect = '#[expect(dead_code, reason = "Shared helper")]';
     const body = "fn helper() {}";
-    for (const [before, after] of [
+    for (const [before, after, approval = true] of [
         [body, `${expect}\n${body}`],
-        [`${expect}\n${body}`, body],
-        [`${expect}\n${body}`, null],
+        [`${expect}\n${body}`, body, false],
+        [`${expect}\n${body}`, null, false],
+        [`#[allow(dead_code)]\n${body}`, body, false],
         [
             `${expect}\n${body}`,
             `${expect.replace("Shared helper", "New reason")}\n${body}`,
@@ -828,7 +845,11 @@ test("Rust lint declarations, reasons and conditions need approval", (t) => {
             `#[cfg_attr(unix, expect(dead_code))]\n${body}`,
             `#[cfg_attr(test, expect(dead_code))]\n${body}`,
         ],
-        [`#[cfg_attr(unix, cfg_attr(test, expect(dead_code)))]\n${body}`, body],
+        [
+            `#[cfg_attr(unix, cfg_attr(test, expect(dead_code)))]\n${body}`,
+            body,
+            false,
+        ],
         [
             `#[path = "a.rs"]\n${expect}\nmod support;`,
             `#[path = "b.rs"]\n${expect}\nmod support;`,
@@ -839,6 +860,12 @@ test("Rust lint declarations, reasons and conditions need approval", (t) => {
         ],
         [body, `#[allow(dead_code, reason = "Shared helper")]\n${body}`],
         [`#[deny(dead_code)]\nmod guarded {}`, "mod guarded {}"],
+        [`#[cfg_attr(unix, warn(dead_code))]\n${body}`, body],
+        [`#![forbid(unsafe_code)]\n${body}`, body],
+        [
+            `${expect} ${body}`,
+            `${expect} ${body} mod other { ${expect} ${body} }`,
+        ],
         [body, `#[r#expect(dead_code, reason = "Shared helper")]\n${body}`],
         [
             `${expect}\nmod support {}`,
@@ -849,10 +876,17 @@ test("Rust lint declarations, reasons and conditions need approval", (t) => {
             `${body}\n${expect}\nfn other() {}`,
         ],
     ]) {
-        assert.match(
-            scan(t, { "src/lib.rs": before }, { "src/lib.rs": after }),
-            /^1 Rust lint policy file\n/,
+        const output = scan(
+            t,
+            { "src/lib.rs": before },
+            { "src/lib.rs": after },
         );
+        if (approval)
+            assert.match(
+                output,
+                /^1 Rust lint policy file\n[\s\S]*(?:Added|Removed) or changed: #!?\[/,
+            );
+        else assert.equal(output, "");
     }
 });
 
@@ -862,6 +896,7 @@ test("ordinary code under existing lint declarations needs no approval", (t) => 
         '#![expect(dead_code, reason = "Shared helpers")] fn helper() { first(); }',
         "#![forbid(unsafe_code)] fn helper() { first(); }",
         'fn helper() { #[expect(unused_variables, reason = "Temporary binding")] let value = first(); }',
+        '#[expect(clippy::expect_used, reason = "Valid catalog")] Asset::file(AssetFile { url: first() }).expect("valid")',
     ]) {
         assert.equal(
             scan(
@@ -959,6 +994,56 @@ fn helper() {}
     );
 });
 
+test("ESLint directives in added lines need approval", (t) => {
+    const body = "first();\n";
+    for (const directive of [
+        "// eslint-disable-next-line no-console\n",
+        "/* eslint-disable no-console */\n",
+        '/* eslint "no-console": "off" */\n',
+        'const example = "eslint-disable-next-line no-console";\n',
+    ])
+        assert.match(
+            scan(
+                t,
+                { "web/example.ts": body },
+                { "web/example.ts": directive + body },
+            ),
+            /^1 Web lint policy file\n/,
+        );
+    assert.match(
+        scan(
+            t,
+            {
+                "web/example.ts":
+                    "// eslint-disable-next-line no-console\n" + body,
+            },
+            {
+                "web/example.ts":
+                    "// eslint-disable-next-line no-alert\n" + body,
+            },
+        ),
+        /^1 Web lint policy file\n/,
+    );
+});
+
+test("unchanged and removed ESLint directives need no approval", (t) => {
+    const before = "// eslint-disable-next-line no-console\nfirst();\n";
+    for (const after of [before.replace("first", "second"), "first();\n", null])
+        assert.equal(
+            scan(t, { "web/example.ts": before }, { "web/example.ts": after }),
+            "",
+        );
+});
+
+test("new Web directives are checked in uncommitted and untracked files", (t) => {
+    const source = "// eslint-disable-next-line no-console\nfirst();\n";
+    for (const base of [{}, { "web/example.ts": "first();\n" }])
+        assert.match(
+            scan(t, base, { "web/example.ts": source }, { commit: false }),
+            /^1 Web lint policy file\n/,
+        );
+});
+
 test("checks started in a subdirectory inspect repository-wide changes", (t) => {
     const summary =
         "1 binary file, 1 new dependency\n\n## Binary files\n\n- `new.bin` (16 bytes)\n\n## New dependencies\n\n`rust/Cargo.lock`\n\n- b 2.0.0\n";
@@ -990,20 +1075,37 @@ test("checks started in a subdirectory inspect repository-wide changes", (t) => 
     }
 });
 
-test("archived checker imports trusted modules while inspecting changed files", (t) => {
+test("workflow scans PR changes with the complete checker from main", (t) => {
+    const checkerDir = ".github/checks/change-approval";
     const { output, summary } = scan(
         t,
-        {},
         {
-            ".github/checks/change-approval/rust.mjs":
+            "rust/Cargo.toml": '[lints.rust]\nunsafe_code = "deny"\n',
+            [`${checkerDir}/rust.mjs`]:
+                'export { checkRust } from "./additional-rule.mjs";',
+            [`${checkerDir}/additional-rule.mjs`]: readFileSync(
+                join(import.meta.dirname, "rust.mjs"),
+                "utf8",
+            ),
+        },
+        {
+            "rust/Cargo.toml": '[lints.rust]\nunsafe_code = "allow"\n',
+            "tomllib.py": "def loads(source):\n    return {}\n",
+            [`${checkerDir}/additional-rule.mjs`]:
+                "export function checkRust() { return []; }",
+            [`${checkerDir}/web.mjs`]:
                 'throw new Error("loaded an untrusted rule");',
             "src/lib.rs": "pub unsafe fn call() {}",
+            "web/example.ts":
+                "// eslint-disable-next-line no-console\nfirst();\n",
         },
-        { ci: true, archive: true },
+        { ci: true, workflow: true },
     );
     assert.equal(
         output,
-        'categories=["guardrail files","Rust lint policy files"]\n',
+        'categories=["guardrail files","Rust lint policy files","Web lint policy files"]\n',
     );
     assert.match(summary, /- `src\/lib.rs`/);
+    assert.match(summary, /- `web\/example.ts`/);
+    assert.match(summary, /- `rust\/Cargo.toml`/);
 });

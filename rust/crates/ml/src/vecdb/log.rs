@@ -6,7 +6,9 @@ use std::time::{SystemTime, UNIX_EPOCH};
 
 use super::arena::{MAX_KEY_BYTES, validate_key};
 use super::crc::{Crc32, crc32};
-use super::kernel::{StoredVector, VectorPayload, splitmix64, validate_dims};
+use super::kernel::{
+    StoredVector, VectorPayload, is_within_quantized_range, splitmix64, validate_dims,
+};
 use super::{AttrValue, Attribute, StorageKind, VecDbError};
 
 pub(crate) const HEADER_LEN: usize = 32;
@@ -67,6 +69,47 @@ pub(crate) struct Log {
     rollback_pending: bool,
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) struct LogCheckpoint {
+    generation: [u8; 16],
+    end_offset: u64,
+}
+
+pub(crate) fn open_writer_file(path: &Path, create_new: bool) -> Result<File, VecDbError> {
+    let mut options = File::options();
+    options.read(true).write(true).create_new(create_new);
+    #[cfg(windows)]
+    {
+        use std::os::windows::fs::OpenOptionsExt;
+
+        const FILE_SHARE_READ: u32 = 0x00000001;
+        const FILE_SHARE_DELETE: u32 = 0x00000004;
+        options.share_mode(FILE_SHARE_READ | FILE_SHARE_DELETE);
+    }
+    let file = options
+        .open(path)
+        .map_err(|source| writer_open_error(path, source))?;
+    #[cfg(unix)]
+    {
+        use std::fs::TryLockError;
+
+        match file.try_lock() {
+            Ok(()) => {}
+            Err(TryLockError::WouldBlock) => return Err(VecDbError::Locked(path.to_path_buf())),
+            Err(TryLockError::Error(source)) => return Err(VecDbError::io(path, source)),
+        }
+    }
+    Ok(file)
+}
+
+fn writer_open_error(path: &Path, source: std::io::Error) -> VecDbError {
+    #[cfg(windows)]
+    if source.raw_os_error() == Some(32) {
+        return VecDbError::Locked(path.to_path_buf());
+    }
+    VecDbError::io(path, source)
+}
+
 impl Log {
     pub(crate) fn create(
         path: &Path,
@@ -74,12 +117,7 @@ impl Log {
         storage: StorageKind,
     ) -> Result<Self, VecDbError> {
         validate_dims(dims, storage)?;
-        let file = File::options()
-            .read(true)
-            .write(true)
-            .create_new(true)
-            .open(path)
-            .map_err(|source| VecDbError::io(path, source))?;
+        let file = open_writer_file(path, true)?;
         Self::initialize(file, path, dims, storage)
     }
 
@@ -322,6 +360,13 @@ impl Log {
         self.end_offset
     }
 
+    pub(crate) fn checkpoint(&self) -> LogCheckpoint {
+        LogCheckpoint {
+            generation: self.generation,
+            end_offset: self.end_offset,
+        }
+    }
+
     pub(crate) fn extend_end_offset_to(&mut self, target: u64) -> Result<(), VecDbError> {
         let file_len = self
             .file
@@ -539,35 +584,39 @@ fn decode_body(
         return Some(LogRecord::Tombstone { key });
     }
     let (payload, attr_bytes) = rest.split_at(vector_payload_len(storage, dims));
-    let vector = decode_vector(storage, payload);
+    let vector = decode_vector(storage, payload)?;
     let attrs = decode_attrs(attr_bytes)?;
     Some(LogRecord::Add { key, vector, attrs })
 }
 
-fn decode_vector(storage: StorageKind, payload: &[u8]) -> StoredVector {
+fn decode_vector(storage: StorageKind, payload: &[u8]) -> Option<StoredVector> {
     match storage {
-        StorageKind::F32 => StoredVector::F32(
+        StorageKind::F32 => Some(StoredVector::F32(
             payload
                 .as_chunks::<4>()
                 .0
                 .iter()
                 .map(|bytes| f32::from_le_bytes(*bytes))
                 .collect(),
-        ),
+        )),
         StorageKind::I8 => {
             let (scale_bytes, values) = payload.split_at(size_of::<f32>());
-            StoredVector::I8 {
+            let values: Vec<i8> = values
+                .iter()
+                .map(|&byte| i8::from_le_bytes([byte]))
+                .collect();
+            if !values.iter().all(|&value| is_within_quantized_range(value)) {
+                return None;
+            }
+            Some(StoredVector::I8 {
                 scale: f32::from_le_bytes([
                     scale_bytes[0],
                     scale_bytes[1],
                     scale_bytes[2],
                     scale_bytes[3],
                 ]),
-                values: values
-                    .iter()
-                    .map(|&byte| i8::from_le_bytes([byte]))
-                    .collect(),
-            }
+                values,
+            })
         }
     }
 }
@@ -978,7 +1027,7 @@ mod tests {
     }
 
     fn reopen(path: &Path, dims: usize) -> Log {
-        let file = File::options().read(true).write(true).open(path).unwrap();
+        let file = open_writer_file(path, false).unwrap();
         Log::open(file, path, dims, None).unwrap()
     }
 
@@ -988,10 +1037,10 @@ mod tests {
         (start, log.current_end_offset())
     }
 
-    fn append_raw_bytes(path: &Path, bytes: &[u8]) {
-        let mut surgeon = File::options().append(true).open(path).unwrap();
-        surgeon.write_all(bytes).unwrap();
-        surgeon.sync_all().unwrap();
+    fn append_raw_bytes(log: &mut Log, bytes: &[u8]) {
+        log.file.seek(SeekFrom::End(0)).unwrap();
+        log.file.write_all(bytes).unwrap();
+        log.file.sync_all().unwrap();
     }
 
     fn encoded_add(key: &str, vector: &[f32]) -> Vec<u8> {
@@ -1085,6 +1134,50 @@ mod tests {
         let reopened = reopen(&path, 512);
         assert_eq!(reopened.generation(), generation);
         assert_eq!(reopened.current_end_offset(), HEADER_LEN as u64);
+    }
+
+    #[cfg(any(unix, windows))]
+    #[test]
+    fn writer_exclusion_lasts_until_the_file_is_closed() {
+        let dir = TempDir::new().unwrap();
+        let path = dir.path().join("log");
+        let alias = dir.path().join("alias");
+        let created = Log::create(&path, 8, StorageKind::F32).unwrap();
+        std::fs::hard_link(&path, &alias).unwrap();
+        let reader = File::open(&alias).unwrap();
+        assert_eq!(reader.metadata().unwrap().len(), HEADER_LEN as u64);
+        assert!(matches!(
+            open_writer_file(&alias, false),
+            Err(VecDbError::Locked(_))
+        ));
+        drop(reader);
+        let file = created.into_file();
+        assert!(matches!(
+            open_writer_file(&alias, false),
+            Err(VecDbError::Locked(_))
+        ));
+        drop(file);
+        let reopened = reopen(&alias, 8);
+        assert!(matches!(
+            open_writer_file(&path, false),
+            Err(VecDbError::Locked(_))
+        ));
+        drop(reopened);
+        assert!(open_writer_file(&path, false).is_ok());
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn only_sharing_violations_are_reported_as_locked() {
+        let path = Path::new("log");
+        assert!(matches!(
+            writer_open_error(path, std::io::Error::from_raw_os_error(32)),
+            VecDbError::Locked(_)
+        ));
+        assert!(matches!(
+            writer_open_error(path, std::io::Error::from_raw_os_error(5)),
+            VecDbError::Io { source, .. } if source.raw_os_error() == Some(5)
+        ));
     }
 
     #[test]
@@ -1538,7 +1631,7 @@ mod tests {
         log.extend_end_offset_to(captured_end + 1000).unwrap();
         assert_eq!(log.current_end_offset(), captured_end);
         let foreign = encoded_add("second", &vector);
-        append_raw_bytes(&path, &foreign);
+        append_raw_bytes(&mut log, &foreign);
         assert_eq!(log.current_end_offset(), captured_end);
         let grown_end = captured_end + foreign.len() as u64;
         let partial_end = captured_end + foreign.len() as u64 / 2;
@@ -1551,12 +1644,12 @@ mod tests {
         assert_eq!(recoverable_end, grown_end);
         log.extend_end_offset_to(captured_end).unwrap();
         assert_eq!(log.current_end_offset(), grown_end);
-        let file = File::options().read(true).write(true).open(&path).unwrap();
-        file.set_len(captured_end).unwrap();
-        drop(file);
+        log.file.set_len(captured_end).unwrap();
         log.extend_end_offset_to(grown_end).unwrap();
         assert_eq!(log.current_end_offset(), grown_end);
-        assert_eq!(log.generation(), reopen(&path, 8).generation());
+        let generation = log.generation();
+        drop(log);
+        assert_eq!(generation, reopen(&path, 8).generation());
     }
 
     #[test]
@@ -1574,7 +1667,7 @@ mod tests {
             }],
         );
         let phantom = encoded_add("phantom", &vector);
-        append_raw_bytes(&path, &phantom);
+        append_raw_bytes(&mut log, &phantom);
         assert_eq!(
             std::fs::metadata(&path).unwrap().len(),
             acked_end + phantom.len() as u64
@@ -1604,7 +1697,7 @@ mod tests {
             }],
         );
         let stale = encoded_add("stale-with-a-much-longer-key", &vector);
-        append_raw_bytes(&path, &stale);
+        append_raw_bytes(&mut log, &stale);
         assert_eq!(
             std::fs::metadata(&path).unwrap().len(),
             acked_end + stale.len() as u64
@@ -1734,7 +1827,7 @@ mod tests {
                 attrs: &[],
             }],
         );
-        append_raw_bytes(&path, &encoded_add("ghost", &vector));
+        append_raw_bytes(&mut log, &encoded_add("ghost", &vector));
         let replacement = seeded_vector(4, 8);
         let (start, end) = append_bounds(
             &mut log,
@@ -2554,6 +2647,39 @@ mod tests {
             },
         );
         bytes
+    }
+
+    #[test]
+    fn scanner_stops_at_an_int8_payload_outside_the_quantized_range() {
+        let dims = 32usize;
+        let scale = 0.25f32;
+        let within_range = vec![3i8; dims];
+        let mut beyond_range = vec![5i8; dims];
+        beyond_range[7] = i8::MIN;
+        let first = encoded_i8_add("first", scale, &within_range);
+        let rejected = encoded_i8_add("rejected", scale, &beyond_range);
+        let survivor = encoded_i8_add("survivor", scale, &within_range);
+        let dir = TempDir::new().unwrap();
+        let cases = [
+            ("mid-log", [rejected.clone(), survivor].concat(), true),
+            ("tail", rejected, false),
+        ];
+        for (name, after_first, intact_record_beyond) in cases {
+            let path = dir.path().join(name);
+            let mut bytes = encode_header(dims as u32, &[9u8; 16], StorageKind::I8).to_vec();
+            bytes.extend_from_slice(&first);
+            bytes.extend_from_slice(&after_first);
+            std::fs::write(&path, &bytes).unwrap();
+            let mut log = reopen(&path, dims);
+            let (records, recoverable_end) = scan_all(&mut log);
+            assert_eq!(records.len(), 1);
+            assert!(matches!(&records[0].0, LogRecord::Add { key, .. } if key == "first"));
+            assert_eq!(recoverable_end, HEADER_LEN as u64 + first.len() as u64);
+            assert_eq!(
+                log.tail_contains_valid_record(recoverable_end).unwrap(),
+                intact_record_beyond
+            );
+        }
     }
 
     fn write_i8_log_file(path: &Path, dims: u32, record_bytes: &[u8]) {

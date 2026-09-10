@@ -4,6 +4,7 @@ export function writeReport({
     files: { binaries, large, guardrails, configs },
     dependencies,
     rust,
+    web,
 }) {
     const categories = [
         {
@@ -43,6 +44,11 @@ export function writeReport({
             plural: "Rust lint policy files",
             count: rust.length,
         },
+        {
+            singular: "Web lint policy file",
+            plural: "Web lint policy files",
+            count: web.length,
+        },
     ].filter(({ count }) => count);
     const summary = categories
         .map(
@@ -76,8 +82,10 @@ export function writeReport({
         );
     if (rust.length)
         sections.push(
-            `## Rust lint declarations and files containing unsafe\n\n${list(rust.map(code))}`,
+            `## Rust lint declarations and files containing unsafe\n\n${list(rust.map(({ path, reasons }) => `${code(path)}: ${reasons.map(code).join("; ")}`))}`,
         );
+    if (web.length)
+        sections.push(`## Web lint directives\n\n${list(web.map(code))}`);
     const detail = sections.join("\n\n");
 
     const { GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = process.env;
@@ -102,7 +110,10 @@ function list(items) {
 }
 
 function code(path) {
-    return `\`${path}\``;
+    const fence = "`".repeat(
+        Math.max(0, ...(path.match(/`+/g) ?? []).map((run) => run.length)) + 1,
+    );
+    return `${fence}${path.startsWith("`") || path.endsWith("`") ? ` ${path} ` : path}${fence}`;
 }
 
 function withSize({ path, size }) {
