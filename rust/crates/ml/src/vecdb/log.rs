@@ -9,13 +9,13 @@ use super::crc::{Crc32, crc32};
 use super::kernel::{
     StoredVector, VectorPayload, is_within_quantized_range, splitmix64, validate_dims,
 };
-use super::{AttrValue, Attribute, StorageKind, VecDbError};
+use super::{AttrValue, Attribute, DistanceMetric, StorageKind, VecDbError};
 
 pub(crate) const HEADER_LEN: usize = 32;
 const MAGIC: [u8; 4] = *b"EVDB";
 const FORMAT_VERSION: u16 = 1;
 const STORAGE_TAG_OFFSET: usize = 6;
-const METRIC_TAG_INNER_PRODUCT: u8 = 0;
+const METRIC_TAG_OFFSET: usize = 7;
 const RECORD_TYPE_ADD: u8 = 1;
 const RECORD_TYPE_TOMBSTONE: u8 = 2;
 const RECORD_PREFIX_LEN: usize = 3;
@@ -63,6 +63,7 @@ pub(crate) struct Log {
     path: PathBuf,
     dims: usize,
     storage: StorageKind,
+    metric: DistanceMetric,
     generation: [u8; 16],
     end_offset: u64,
     encode_buffer: Vec<u8>,
@@ -115,19 +116,20 @@ impl Log {
         path: &Path,
         dims: usize,
         storage: StorageKind,
+        metric: DistanceMetric,
     ) -> Result<Self, VecDbError> {
         validate_dims(dims, storage)?;
         let file = open_writer_file(path, true)?;
-        Self::initialize(file, path, dims, storage)
+        Self::initialize(file, path, dims, storage, metric)
     }
 
     pub(crate) fn open(
         mut file: File,
         path: &Path,
         expected_dims: usize,
-        requested: Option<StorageKind>,
+        requested: StorageKind,
+        requested_metric: DistanceMetric,
     ) -> Result<Self, VecDbError> {
-        let fallback = requested.unwrap_or(StorageKind::F32);
         let file_len = file
             .metadata()
             .map_err(|source| VecDbError::io(path, source))?
@@ -137,21 +139,45 @@ impl Log {
                 "reinitializing {} whose {file_len}-byte header was never completed",
                 path.display()
             );
-            validate_dims(expected_dims, fallback)?;
-            return Self::initialize(file, path, expected_dims, fallback);
+            validate_dims(expected_dims, requested)?;
+            return Self::initialize(file, path, expected_dims, requested, requested_metric);
         }
         file.seek(SeekFrom::Start(0))
             .map_err(|source| VecDbError::io(path, source))?;
         let mut header = [0u8; HEADER_LEN];
         file.read_exact(&mut header)
             .map_err(|source| VecDbError::io(path, source))?;
-        let (generation, storage) = decode_header(&header, expected_dims, requested)?;
+        let Header {
+            generation,
+            dims,
+            storage,
+            metric,
+        } = decode_header(&header)?;
+        if requested != storage {
+            return Err(VecDbError::StorageMismatch {
+                expected: requested,
+                actual: storage,
+            });
+        }
+        if requested_metric != metric {
+            return Err(VecDbError::MetricMismatch {
+                expected: requested_metric,
+                actual: metric,
+            });
+        }
+        if dims != expected_dims {
+            return Err(VecDbError::DimensionMismatch {
+                expected: expected_dims,
+                actual: dims,
+            });
+        }
         validate_dims(expected_dims, storage)?;
         Ok(Self {
             file,
             path: path.to_path_buf(),
             dims: expected_dims,
             storage,
+            metric,
             generation,
             end_offset: file_len,
             encode_buffer: Vec::new(),
@@ -164,11 +190,12 @@ impl Log {
         path: &Path,
         dims: usize,
         storage: StorageKind,
+        metric: DistanceMetric,
     ) -> Result<Self, VecDbError> {
         let generation = fresh_generation();
         file.seek(SeekFrom::Start(0))
             .map_err(|source| VecDbError::io(path, source))?;
-        file.write_all(&encode_header(dims as u32, &generation, storage))
+        file.write_all(&encode_header(dims as u32, &generation, storage, metric))
             .map_err(|source| VecDbError::io(path, source))?;
         file.sync_all()
             .map_err(|source| VecDbError::io(path, source))?;
@@ -178,6 +205,7 @@ impl Log {
             path: path.to_path_buf(),
             dims,
             storage,
+            metric,
             generation,
             end_offset: HEADER_LEN as u64,
             encode_buffer: Vec::new(),
@@ -189,10 +217,11 @@ impl Log {
         path: &Path,
         dims: usize,
         storage: StorageKind,
+        metric: DistanceMetric,
     ) -> Result<(Self, PathBuf), VecDbError> {
         remove_stale_temp_sibling(path)?;
         let temp_path = temp_sibling_path(path);
-        let log = Self::create(&temp_path, dims, storage)?;
+        let log = Self::create(&temp_path, dims, storage, metric)?;
         Ok((log, temp_path))
     }
 
@@ -379,6 +408,10 @@ impl Log {
 
     pub(crate) fn generation(&self) -> [u8; 16] {
         self.generation
+    }
+
+    pub(crate) fn metric(&self) -> DistanceMetric {
+        self.metric
     }
 
     pub(crate) fn storage(&self) -> StorageKind {
@@ -742,12 +775,17 @@ fn plausible_attrs_len(bytes: &[u8]) -> Option<usize> {
     Some(1 + attr_bytes)
 }
 
-fn encode_header(dims: u32, generation: &[u8; 16], storage: StorageKind) -> [u8; HEADER_LEN] {
+fn encode_header(
+    dims: u32,
+    generation: &[u8; 16],
+    storage: StorageKind,
+    metric: DistanceMetric,
+) -> [u8; HEADER_LEN] {
     let mut bytes = [0u8; HEADER_LEN];
     bytes[0..4].copy_from_slice(&MAGIC);
     bytes[4..6].copy_from_slice(&FORMAT_VERSION.to_le_bytes());
     bytes[STORAGE_TAG_OFFSET] = storage.header_tag();
-    bytes[7] = METRIC_TAG_INNER_PRODUCT;
+    bytes[METRIC_TAG_OFFSET] = metric.header_tag();
     bytes[8..12].copy_from_slice(&dims.to_le_bytes());
     bytes[12..28].copy_from_slice(generation);
     let crc = crc32(&bytes[0..28]);
@@ -756,15 +794,18 @@ fn encode_header(dims: u32, generation: &[u8; 16], storage: StorageKind) -> [u8;
 }
 
 pub(crate) fn header_generation(bytes: &[u8; HEADER_LEN]) -> Result<[u8; 16], VecDbError> {
-    let dims = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as usize;
-    decode_header(bytes, dims, None).map(|(generation, _)| generation)
+    decode_header(bytes).map(|header| header.generation)
 }
 
-fn decode_header(
-    bytes: &[u8; HEADER_LEN],
-    expected_dims: usize,
-    requested: Option<StorageKind>,
-) -> Result<([u8; 16], StorageKind), VecDbError> {
+#[derive(Debug, PartialEq, Eq)]
+struct Header {
+    generation: [u8; 16],
+    dims: usize,
+    storage: StorageKind,
+    metric: DistanceMetric,
+}
+
+fn decode_header(bytes: &[u8; HEADER_LEN]) -> Result<Header, VecDbError> {
     if bytes[0..4] != MAGIC {
         return Err(VecDbError::Corrupt(format!(
             "bad log magic {:02x?}",
@@ -787,30 +828,18 @@ fn decode_header(
     let storage = StorageKind::from_header_tag(bytes[STORAGE_TAG_OFFSET]).ok_or_else(|| {
         VecDbError::Corrupt(format!("unknown scalar tag {}", bytes[STORAGE_TAG_OFFSET]))
     })?;
-    if let Some(requested) = requested
-        && requested != storage
-    {
-        return Err(VecDbError::StorageMismatch {
-            expected: requested,
-            actual: storage,
-        });
-    }
-    if bytes[7] != METRIC_TAG_INNER_PRODUCT {
-        return Err(VecDbError::Corrupt(format!(
-            "unknown metric tag {}",
-            bytes[7]
-        )));
-    }
+    let metric = DistanceMetric::from_header_tag(bytes[METRIC_TAG_OFFSET]).ok_or_else(|| {
+        VecDbError::Corrupt(format!("unknown metric tag {}", bytes[METRIC_TAG_OFFSET]))
+    })?;
     let dims = u32::from_le_bytes([bytes[8], bytes[9], bytes[10], bytes[11]]) as usize;
-    if dims != expected_dims {
-        return Err(VecDbError::DimensionMismatch {
-            expected: expected_dims,
-            actual: dims,
-        });
-    }
     let mut generation = [0u8; 16];
     generation.copy_from_slice(&bytes[12..28]);
-    Ok((generation, storage))
+    Ok(Header {
+        generation,
+        dims,
+        storage,
+        metric,
+    })
 }
 
 fn validate_entry(
@@ -1013,6 +1042,7 @@ pub(crate) fn sync_parent_dir(_path: &Path) -> Result<(), VecDbError> {
 
 #[cfg(test)]
 mod tests {
+    use super::DistanceMetric::InnerProduct;
     use super::*;
     use tempfile::TempDir;
 
@@ -1026,9 +1056,9 @@ mod tests {
             .collect()
     }
 
-    fn reopen(path: &Path, dims: usize) -> Log {
+    fn reopen(path: &Path, dims: usize, storage: StorageKind) -> Log {
         let file = open_writer_file(path, false).unwrap();
-        Log::open(file, path, dims, None).unwrap()
+        Log::open(file, path, dims, storage, InnerProduct).unwrap()
     }
 
     fn append_bounds(log: &mut Log, entries: &[LogEntry<'_>]) -> (u64, u64) {
@@ -1099,7 +1129,7 @@ mod tests {
     }
 
     fn write_log_file(path: &Path, dims: u32, record_bytes: &[u8]) {
-        let mut bytes = encode_header(dims, &[9u8; 16], StorageKind::F32).to_vec();
+        let mut bytes = encode_header(dims, &[9u8; 16], StorageKind::F32, InnerProduct).to_vec();
         bytes.extend_from_slice(record_bytes);
         std::fs::write(path, bytes).unwrap();
     }
@@ -1115,23 +1145,23 @@ mod tests {
     ) -> Result<Log, VecDbError> {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut bytes = encode_header(8, &[7u8; 16], StorageKind::F32);
+        let mut bytes = encode_header(8, &[7u8; 16], StorageKind::F32, InnerProduct);
         mutate(&mut bytes);
         std::fs::write(&path, bytes).unwrap();
         let file = File::options().read(true).write(true).open(&path).unwrap();
-        Log::open(file, &path, expected_dims, None)
+        Log::open(file, &path, expected_dims, StorageKind::F32, InnerProduct)
     }
 
     #[test]
     fn header_round_trips_through_create_and_reopen() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let created = Log::create(&path, 512, StorageKind::F32).unwrap();
+        let created = Log::create(&path, 512, StorageKind::F32, InnerProduct).unwrap();
         let generation = created.generation();
         assert_eq!(created.current_end_offset(), HEADER_LEN as u64);
         assert_eq!(created.path(), path.as_path());
         drop(created.into_file());
-        let reopened = reopen(&path, 512);
+        let reopened = reopen(&path, 512, StorageKind::F32);
         assert_eq!(reopened.generation(), generation);
         assert_eq!(reopened.current_end_offset(), HEADER_LEN as u64);
     }
@@ -1142,7 +1172,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         let alias = dir.path().join("alias");
-        let created = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let created = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         std::fs::hard_link(&path, &alias).unwrap();
         let reader = File::open(&alias).unwrap();
         assert_eq!(reader.metadata().unwrap().len(), HEADER_LEN as u64);
@@ -1157,7 +1187,7 @@ mod tests {
             Err(VecDbError::Locked(_))
         ));
         drop(file);
-        let reopened = reopen(&alias, 8);
+        let reopened = reopen(&alias, 8, StorageKind::F32);
         assert!(matches!(
             open_writer_file(&path, false),
             Err(VecDbError::Locked(_))
@@ -1257,7 +1287,7 @@ mod tests {
             let path = dir.path().join("log");
             std::fs::write(&path, vec![1u8; junk_len]).unwrap();
             let file = File::options().read(true).write(true).open(&path).unwrap();
-            let mut log = Log::open(file, &path, 8, None).unwrap();
+            let mut log = Log::open(file, &path, 8, StorageKind::F32, InnerProduct).unwrap();
             assert_eq!(log.current_end_offset(), HEADER_LEN as u64);
             assert_eq!(std::fs::metadata(&path).unwrap().len(), HEADER_LEN as u64);
             let (records, _) = scan_all(&mut log);
@@ -1274,7 +1304,7 @@ mod tests {
             assert_eq!(start, HEADER_LEN as u64);
             let generation = log.generation();
             drop(log);
-            let reopened = reopen(&path, 8);
+            let reopened = reopen(&path, 8, StorageKind::F32);
             assert_eq!(reopened.generation(), generation);
             assert_eq!(reopened.current_end_offset(), end);
         }
@@ -1284,11 +1314,11 @@ mod tests {
     fn create_rejects_invalid_dimensions() {
         let dir = TempDir::new().unwrap();
         assert!(matches!(
-            Log::create(&dir.path().join("a"), 0, StorageKind::F32),
+            Log::create(&dir.path().join("a"), 0, StorageKind::F32, InnerProduct),
             Err(VecDbError::InvalidDimensions { dims: 0, .. })
         ));
         assert!(matches!(
-            Log::create(&dir.path().join("b"), 12, StorageKind::F32),
+            Log::create(&dir.path().join("b"), 12, StorageKind::F32, InnerProduct),
             Err(VecDbError::InvalidDimensions { dims: 12, .. })
         ));
     }
@@ -1297,10 +1327,14 @@ mod tests {
     fn open_rejects_invalid_dimensions() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        drop(Log::create(&path, 8, StorageKind::F32).unwrap().into_file());
+        drop(
+            Log::create(&path, 8, StorageKind::F32, InnerProduct)
+                .unwrap()
+                .into_file(),
+        );
         let file = File::options().read(true).write(true).open(&path).unwrap();
         assert!(matches!(
-            Log::open(file, &path, 12, None),
+            Log::open(file, &path, 12, StorageKind::F32, InnerProduct),
             Err(VecDbError::DimensionMismatch {
                 expected: 12,
                 actual: 8
@@ -1350,7 +1384,7 @@ mod tests {
             },
         ];
         assert_eq!(
-            encode_header(8, &generation, StorageKind::F32),
+            encode_header(8, &generation, StorageKind::F32, InnerProduct),
             golden_header
         );
         let mut encoded = Vec::new();
@@ -1383,7 +1417,7 @@ mod tests {
         bytes.extend_from_slice(&golden_attr_add);
         bytes.extend_from_slice(&golden_tombstone);
         std::fs::write(&path, &bytes).unwrap();
-        let mut log = reopen(&path, 8);
+        let mut log = reopen(&path, 8, StorageKind::F32);
         assert_eq!(log.generation(), generation);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(
@@ -1421,7 +1455,7 @@ mod tests {
         for dims in [8usize, 512] {
             let dir = TempDir::new().unwrap();
             let path = dir.path().join("log");
-            let mut log = Log::create(&path, dims, StorageKind::F32).unwrap();
+            let mut log = Log::create(&path, dims, StorageKind::F32, InnerProduct).unwrap();
             let vector = seeded_vector(1, dims);
             let entries = [
                 LogEntry::Add {
@@ -1461,7 +1495,7 @@ mod tests {
         ];
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(5, 8);
         for key in keys {
             log.append(&[LogEntry::Add {
@@ -1496,7 +1530,7 @@ mod tests {
     fn decodes_non_finite_components_without_panicking() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = [
             f32::NAN,
             f32::INFINITY,
@@ -1532,7 +1566,7 @@ mod tests {
     fn scanner_stops_at_last_complete_record_for_every_torn_length() {
         let dir = TempDir::new().unwrap();
         let build_path = dir.path().join("log");
-        let mut log = Log::create(&build_path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&build_path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vectors: Vec<Vec<f32>> = (0..3).map(|seed| seeded_vector(seed, 8)).collect();
         let mut boundaries = Vec::new();
         for (index, vector) in vectors.iter().enumerate() {
@@ -1552,7 +1586,7 @@ mod tests {
         for cut in intact_end..boundaries[2].1 {
             let torn_path = dir.path().join(format!("torn-{cut}"));
             std::fs::write(&torn_path, &full_bytes[..cut as usize]).unwrap();
-            let mut torn_log = reopen(&torn_path, 8);
+            let mut torn_log = reopen(&torn_path, 8, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut torn_log);
             assert_eq!(records.len(), 2);
             assert_eq!(records[0].1, boundaries[0].0);
@@ -1565,7 +1599,7 @@ mod tests {
     fn truncate_to_repairs_torn_tail_for_clean_appends() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(1, 8);
         let (_, first_end) = append_bounds(
             &mut log,
@@ -1588,7 +1622,7 @@ mod tests {
         let file = File::options().read(true).write(true).open(&path).unwrap();
         file.set_len(cut).unwrap();
         drop(file);
-        let mut log = reopen(&path, 8);
+        let mut log = reopen(&path, 8, StorageKind::F32);
         assert_eq!(log.current_end_offset(), cut);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
@@ -1616,7 +1650,7 @@ mod tests {
     fn extend_end_offset_grows_to_target_clamps_to_file_and_never_shrinks() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(1, 8);
         let (_, captured_end) = append_bounds(
             &mut log,
@@ -1649,14 +1683,14 @@ mod tests {
         assert_eq!(log.current_end_offset(), grown_end);
         let generation = log.generation();
         drop(log);
-        assert_eq!(generation, reopen(&path, 8).generation());
+        assert_eq!(generation, reopen(&path, 8, StorageKind::F32).generation());
     }
 
     #[test]
     fn discard_unacked_tail_drops_phantom_frames_before_reopen() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(1, 8);
         let (_, acked_end) = append_bounds(
             &mut log,
@@ -1675,7 +1709,7 @@ mod tests {
         log.discard_unacked_tail().unwrap();
         assert_eq!(std::fs::metadata(&path).unwrap().len(), acked_end);
         drop(log);
-        let mut reopened = reopen(&path, 8);
+        let mut reopened = reopen(&path, 8, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut reopened);
         assert_eq!(records.len(), 1);
         assert!(matches!(&records[0].0, LogRecord::Add { key, .. } if key == "acked"));
@@ -1686,7 +1720,7 @@ mod tests {
     fn pending_rollback_truncates_stale_records_before_the_next_append() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(6, 8);
         let (_, acked_end) = append_bounds(
             &mut log,
@@ -1717,7 +1751,7 @@ mod tests {
         assert!(end < acked_end + stale.len() as u64);
         assert_eq!(std::fs::metadata(&path).unwrap().len(), end);
         drop(log);
-        let mut reopened = reopen(&path, 8);
+        let mut reopened = reopen(&path, 8, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut reopened);
         assert_eq!(records.len(), 2);
         assert!(matches!(&records[0].0, LogRecord::Add { key, .. } if key == "acked"));
@@ -1732,8 +1766,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let synced_path = dir.path().join("synced");
         let staged_path = dir.path().join("staged");
-        let mut synced = Log::create(&synced_path, 8, StorageKind::F32).unwrap();
-        let mut staged = Log::create(&staged_path, 8, StorageKind::F32).unwrap();
+        let mut synced = Log::create(&synced_path, 8, StorageKind::F32, InnerProduct).unwrap();
+        let mut staged = Log::create(&staged_path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vectors: Vec<Vec<f32>> = (0..3).map(|seed| seeded_vector(seed, 8)).collect();
         let attrs = [Attribute {
             name: "model".to_string(),
@@ -1772,8 +1806,8 @@ mod tests {
         let staged_bytes = std::fs::read(&staged_path).unwrap();
         assert_eq!(staged_bytes.len(), synced_bytes.len());
         assert_eq!(staged_bytes[HEADER_LEN..], synced_bytes[HEADER_LEN..]);
-        let (synced_records, synced_end) = scan_all(&mut reopen(&synced_path, 8));
-        let (staged_records, staged_end) = scan_all(&mut reopen(&staged_path, 8));
+        let (synced_records, synced_end) = scan_all(&mut reopen(&synced_path, 8, StorageKind::F32));
+        let (staged_records, staged_end) = scan_all(&mut reopen(&staged_path, 8, StorageKind::F32));
         assert_eq!(staged_records.len(), 4);
         assert_eq!(staged_records, synced_records);
         assert_eq!(staged_end, synced_end);
@@ -1783,7 +1817,7 @@ mod tests {
     fn append_failure_rolls_back_without_disturbing_acked_records() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(2, 8);
         let (_, acked_end) = append_bounds(
             &mut log,
@@ -1795,7 +1829,7 @@ mod tests {
         );
         drop(log);
         let unwritable = File::open(&path).unwrap();
-        let mut log = Log::open(unwritable, &path, 8, None).unwrap();
+        let mut log = Log::open(unwritable, &path, 8, StorageKind::F32, InnerProduct).unwrap();
         assert!(matches!(
             log.append(&[LogEntry::Add {
                 key: "lost",
@@ -1807,7 +1841,7 @@ mod tests {
         assert_eq!(log.current_end_offset(), acked_end);
         drop(log);
         assert_eq!(std::fs::metadata(&path).unwrap().len(), acked_end);
-        let mut reopened = reopen(&path, 8);
+        let mut reopened = reopen(&path, 8, StorageKind::F32);
         let (records, _) = scan_all(&mut reopened);
         assert_eq!(records.len(), 1);
         assert!(matches!(&records[0].0, LogRecord::Add { key, .. } if key == "kept"));
@@ -1817,7 +1851,7 @@ mod tests {
     fn append_after_phantom_frames_overwrites_at_the_acked_offset() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(3, 8);
         let (_, acked_end) = append_bounds(
             &mut log,
@@ -1844,7 +1878,7 @@ mod tests {
         assert!(matches!(&records[1].0, LogRecord::Add { key, .. } if key == "third"));
         assert_eq!(recoverable_end, end);
         drop(log);
-        let mut reopened = reopen(&path, 8);
+        let mut reopened = reopen(&path, 8, StorageKind::F32);
         let (records, _) = scan_all(&mut reopened);
         assert_eq!(records.len(), 2);
         assert!(
@@ -1858,7 +1892,7 @@ mod tests {
     fn scanner_stops_at_corrupted_middle_record() {
         let dir = TempDir::new().unwrap();
         let build_path = dir.path().join("log");
-        let mut log = Log::create(&build_path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&build_path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vectors: Vec<Vec<f32>> = (0..3).map(|seed| seeded_vector(seed, 8)).collect();
         let mut boundaries = Vec::new();
         for (index, vector) in vectors.iter().enumerate() {
@@ -1887,7 +1921,7 @@ mod tests {
             let mut corrupted = bytes.clone();
             corrupted[*position] ^= 0x01;
             std::fs::write(&corrupt_path, &corrupted).unwrap();
-            let mut corrupt_log = reopen(&corrupt_path, 8);
+            let mut corrupt_log = reopen(&corrupt_path, 8, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut corrupt_log);
             assert_eq!(records.len(), 1);
             assert_eq!(records[0].1, boundaries[0].0);
@@ -1925,7 +1959,7 @@ mod tests {
             let mut record_bytes = good.clone();
             record_bytes.extend_from_slice(bad);
             write_log_file(&path, dims as u32, &record_bytes);
-            let mut log = reopen(&path, dims);
+            let mut log = reopen(&path, dims, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut log);
             assert_eq!(records.len(), 1);
             assert_eq!(records[0].1, HEADER_LEN as u64);
@@ -1937,7 +1971,7 @@ mod tests {
     fn append_offsets_match_scanner_offsets() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         log.append(&[]).unwrap();
         assert_eq!(log.current_end_offset(), HEADER_LEN as u64);
         let vector = seeded_vector(7, 8);
@@ -1964,7 +1998,7 @@ mod tests {
         assert_eq!(offsets, expected_offsets);
         assert_eq!(recoverable_end, previous_end);
         drop(log);
-        let reopened = reopen(&path, 8);
+        let reopened = reopen(&path, 8, StorageKind::F32);
         assert_eq!(reopened.current_end_offset(), previous_end);
     }
 
@@ -1972,7 +2006,7 @@ mod tests {
     fn append_validates_keys_and_vector_dims() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(1, 8);
         let wrong_dims = seeded_vector(1, 16);
         assert!(matches!(
@@ -2014,8 +2048,15 @@ mod tests {
     #[test]
     fn generation_is_distinct_across_creates() {
         let dir = TempDir::new().unwrap();
-        let first = Log::create(&dir.path().join("first"), 8, StorageKind::F32).unwrap();
-        let second = Log::create(&dir.path().join("second"), 8, StorageKind::F32).unwrap();
+        let first =
+            Log::create(&dir.path().join("first"), 8, StorageKind::F32, InnerProduct).unwrap();
+        let second = Log::create(
+            &dir.path().join("second"),
+            8,
+            StorageKind::F32,
+            InnerProduct,
+        )
+        .unwrap();
         assert_ne!(first.generation(), second.generation());
     }
 
@@ -2023,10 +2064,11 @@ mod tests {
     fn temp_sibling_gets_fresh_generation_and_replaces_stale_tmp() {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let stale_path = dir.path().join("log.tmp");
         std::fs::write(&stale_path, b"stale leftover").unwrap();
-        let (temp_log, temp_path) = Log::create_temp_sibling(&path, 8, StorageKind::F32).unwrap();
+        let (temp_log, temp_path) =
+            Log::create_temp_sibling(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         assert_eq!(temp_path, stale_path);
         assert_ne!(temp_log.generation(), log.generation());
         assert_eq!(temp_log.current_end_offset(), HEADER_LEN as u64);
@@ -2036,7 +2078,7 @@ mod tests {
         );
         let temp_generation = temp_log.generation();
         drop(temp_log);
-        let reopened = reopen(&temp_path, 8);
+        let reopened = reopen(&temp_path, 8, StorageKind::F32);
         assert_eq!(reopened.generation(), temp_generation);
     }
 
@@ -2059,8 +2101,9 @@ mod tests {
                 attrs: &[],
             })
             .collect();
-        let mut bulk_log = Log::create(&bulk_path, dims, StorageKind::F32).unwrap();
-        let mut sequential_log = Log::create(&sequential_path, dims, StorageKind::F32).unwrap();
+        let mut bulk_log = Log::create(&bulk_path, dims, StorageKind::F32, InnerProduct).unwrap();
+        let mut sequential_log =
+            Log::create(&sequential_path, dims, StorageKind::F32, InnerProduct).unwrap();
         let (_, bulk_end) = append_bounds(&mut bulk_log, &entries);
         let mut sequential_end = 0;
         for entry in &entries {
@@ -2100,8 +2143,9 @@ mod tests {
                 attrs: &[],
             },
         ];
-        let mut bulk_log = Log::create(&bulk_path, 8, StorageKind::F32).unwrap();
-        let mut sequential_log = Log::create(&sequential_path, 8, StorageKind::F32).unwrap();
+        let mut bulk_log = Log::create(&bulk_path, 8, StorageKind::F32, InnerProduct).unwrap();
+        let mut sequential_log =
+            Log::create(&sequential_path, 8, StorageKind::F32, InnerProduct).unwrap();
         let (bulk_start, bulk_end) = append_bounds(&mut bulk_log, &entries);
         let mut sequential_end = 0;
         for entry in &entries {
@@ -2150,7 +2194,7 @@ mod tests {
         let vector = seeded_vector(8, 8);
         for (index, attrs) in singles.iter().chain([&full_set]).enumerate() {
             let path = dir.path().join(format!("log-{index}"));
-            let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+            let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
             log.append(&[LogEntry::Add {
                 key: "k",
                 vector: VectorPayload::F32(&vector),
@@ -2159,7 +2203,7 @@ mod tests {
             .unwrap();
             assert_eq!(&scan_attrs_of_single_add(&mut log), attrs);
             drop(log);
-            let mut reopened = reopen(&path, 8);
+            let mut reopened = reopen(&path, 8, StorageKind::F32);
             assert_eq!(&scan_attrs_of_single_add(&mut reopened), attrs);
         }
     }
@@ -2185,7 +2229,7 @@ mod tests {
         let vector = seeded_vector(9, 8);
         for (index, attrs) in cases.iter().enumerate() {
             let path = dir.path().join(format!("log-{index}"));
-            let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+            let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
             log.append(&[LogEntry::Add {
                 key: "k",
                 vector: VectorPayload::F32(&vector),
@@ -2223,7 +2267,7 @@ mod tests {
         ];
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
-        let mut log = Log::create(&path, 8, StorageKind::F32).unwrap();
+        let mut log = Log::create(&path, 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(10, 8);
         for attrs in &invalid {
             assert!(matches!(
@@ -2263,7 +2307,8 @@ mod tests {
             .map(|(index, value)| attr(&format!("f{index}"), AttrValue::F64(*value)))
             .collect();
         let dir = TempDir::new().unwrap();
-        let mut log = Log::create(&dir.path().join("log"), 8, StorageKind::F32).unwrap();
+        let mut log =
+            Log::create(&dir.path().join("log"), 8, StorageKind::F32, InnerProduct).unwrap();
         let vector = seeded_vector(11, 8);
         log.append(&[LogEntry::Add {
             key: "k",
@@ -2361,7 +2406,7 @@ mod tests {
             let mut record_bytes = good.clone();
             record_bytes.extend_from_slice(bad);
             write_log_file(&path, dims as u32, &record_bytes);
-            let mut log = reopen(&path, dims);
+            let mut log = reopen(&path, dims, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut log);
             assert_eq!(records.len(), 1, "case {index}");
             assert_eq!(records[0].1, HEADER_LEN as u64, "case {index}");
@@ -2405,7 +2450,7 @@ mod tests {
             let mut record_bytes = good.clone();
             record_bytes.extend_from_slice(&torn[..cut]);
             write_log_file(&path, dims as u32, &record_bytes);
-            let mut log = reopen(&path, dims);
+            let mut log = reopen(&path, dims, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut log);
             assert_eq!(records.len(), 1, "cut {cut}");
             assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2428,7 +2473,7 @@ mod tests {
                 record_bytes.extend_from_slice(&vec![0xAA; garbage_len]);
                 record_bytes.extend_from_slice(survivor);
                 write_log_file(&path, dims as u32, &record_bytes);
-                let mut log = reopen(&path, dims);
+                let mut log = reopen(&path, dims, StorageKind::F32);
                 let (records, recoverable_end) = scan_all(&mut log);
                 assert_eq!(records.len(), 1);
                 assert_eq!(recoverable_end, HEADER_LEN as u64 + first.len() as u64);
@@ -2479,7 +2524,7 @@ mod tests {
             record_bytes.push(0xAA);
             record_bytes.extend_from_slice(tail);
             write_log_file(&path, dims as u32, &record_bytes);
-            let mut log = reopen(&path, dims);
+            let mut log = reopen(&path, dims, StorageKind::F32);
             let (records, recoverable_end) = scan_all(&mut log);
             assert_eq!(records.len(), 1, "case {index}");
             assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2504,7 +2549,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2535,7 +2580,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2561,7 +2606,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2608,7 +2653,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::F32);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -2626,7 +2671,7 @@ mod tests {
         corrupted_bytes[crc_last] ^= 0xFF;
         let corrupted_path = dir.path().join("log-corrupted");
         write_log_file(&corrupted_path, dims as u32, &corrupted_bytes);
-        let mut corrupted_log = reopen(&corrupted_path, dims);
+        let mut corrupted_log = reopen(&corrupted_path, dims, StorageKind::F32);
         let (corrupted_records, corrupted_end) = scan_all(&mut corrupted_log);
         assert_eq!(corrupted_records.len(), 1);
         assert!(
@@ -2666,11 +2711,12 @@ mod tests {
         ];
         for (name, after_first, intact_record_beyond) in cases {
             let path = dir.path().join(name);
-            let mut bytes = encode_header(dims as u32, &[9u8; 16], StorageKind::I8).to_vec();
+            let mut bytes =
+                encode_header(dims as u32, &[9u8; 16], StorageKind::I8, InnerProduct).to_vec();
             bytes.extend_from_slice(&first);
             bytes.extend_from_slice(&after_first);
             std::fs::write(&path, &bytes).unwrap();
-            let mut log = reopen(&path, dims);
+            let mut log = reopen(&path, dims, StorageKind::I8);
             let (records, recoverable_end) = scan_all(&mut log);
             assert_eq!(records.len(), 1);
             assert!(matches!(&records[0].0, LogRecord::Add { key, .. } if key == "first"));
@@ -2683,7 +2729,7 @@ mod tests {
     }
 
     fn write_i8_log_file(path: &Path, dims: u32, record_bytes: &[u8]) {
-        let mut bytes = encode_header(dims, &[9u8; 16], StorageKind::I8).to_vec();
+        let mut bytes = encode_header(dims, &[9u8; 16], StorageKind::I8, InnerProduct).to_vec();
         bytes.extend_from_slice(record_bytes);
         std::fs::write(path, bytes).unwrap();
     }
@@ -2724,7 +2770,7 @@ mod tests {
         let scale = 0.01f32;
         assert_eq!(scale.to_bits(), 0x3c23_d70a);
         let values = golden_i8_values();
-        let header = encode_header(32, &generation, StorageKind::I8);
+        let header = encode_header(32, &generation, StorageKind::I8, InnerProduct);
         assert_eq!(header[STORAGE_TAG_OFFSET], 1);
         assert_eq!(header[..28], golden_header[..28]);
         let encoded = encoded_i8_add("k1", scale, &values);
@@ -2744,7 +2790,7 @@ mod tests {
         bytes.extend_from_slice(&golden_add);
         bytes.extend_from_slice(&tombstone);
         std::fs::write(&path, &bytes).unwrap();
-        let mut log = reopen(&path, 32);
+        let mut log = reopen(&path, 32, StorageKind::I8);
         assert_eq!(log.storage(), StorageKind::I8);
         assert_eq!(log.generation(), generation);
         let (records, recoverable_end) = scan_all(&mut log);
@@ -2772,11 +2818,16 @@ mod tests {
 
     #[test]
     fn f32_headers_leave_the_storage_tag_zero() {
-        let header = encode_header(8, &[7u8; 16], StorageKind::F32);
+        let header = encode_header(8, &[7u8; 16], StorageKind::F32, InnerProduct);
         assert_eq!(header[STORAGE_TAG_OFFSET], 0);
         assert_eq!(
-            decode_header(&header, 8, None).unwrap(),
-            ([7u8; 16], StorageKind::F32)
+            decode_header(&header).unwrap(),
+            Header {
+                generation: [7u8; 16],
+                dims: 8,
+                storage: StorageKind::F32,
+                metric: InnerProduct
+            }
         );
     }
 
@@ -2800,36 +2851,39 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let i8_path = dir.path().join("i8");
         let f32_path = dir.path().join("f32");
-        let created = Log::create(&i8_path, 32, StorageKind::I8).unwrap();
+        let created = Log::create(&i8_path, 32, StorageKind::I8, InnerProduct).unwrap();
         assert_eq!(created.storage(), StorageKind::I8);
         let generation = created.generation();
         drop(created.into_file());
         drop(
-            Log::create(&f32_path, 32, StorageKind::F32)
+            Log::create(&f32_path, 32, StorageKind::F32, InnerProduct)
                 .unwrap()
                 .into_file(),
         );
-        let open = |path: &Path, requested: Option<StorageKind>| {
+        let open = |path: &Path, requested: StorageKind| {
             let file = File::options().read(true).write(true).open(path).unwrap();
-            Log::open(file, path, 32, requested)
+            Log::open(file, path, 32, requested, InnerProduct)
         };
-        let detected = open(&i8_path, None).unwrap();
+        let detected = open(&i8_path, StorageKind::I8).unwrap();
         assert_eq!(detected.storage(), StorageKind::I8);
         assert_eq!(detected.generation(), generation);
         assert_eq!(
-            open(&i8_path, Some(StorageKind::I8)).unwrap().storage(),
+            open(&i8_path, StorageKind::I8).unwrap().storage(),
             StorageKind::I8
         );
         assert!(matches!(
-            open(&i8_path, Some(StorageKind::F32)),
+            open(&i8_path, StorageKind::F32),
             Err(VecDbError::StorageMismatch {
                 expected: StorageKind::F32,
                 actual: StorageKind::I8
             })
         ));
-        assert_eq!(open(&f32_path, None).unwrap().storage(), StorageKind::F32);
+        assert_eq!(
+            open(&f32_path, StorageKind::F32).unwrap().storage(),
+            StorageKind::F32
+        );
         assert!(matches!(
-            open(&f32_path, Some(StorageKind::I8)),
+            open(&f32_path, StorageKind::I8),
             Err(VecDbError::StorageMismatch {
                 expected: StorageKind::I8,
                 actual: StorageKind::F32
@@ -2845,16 +2899,21 @@ mod tests {
         let path = dir.path().join("log");
         std::fs::write(&path, [1u8; 5]).unwrap();
         let file = File::options().read(true).write(true).open(&path).unwrap();
-        let log = Log::open(file, &path, 64, Some(StorageKind::I8)).unwrap();
+        let log = Log::open(file, &path, 64, StorageKind::I8, InnerProduct).unwrap();
         assert_eq!(log.storage(), StorageKind::I8);
         drop(log);
-        assert_eq!(reopen(&path, 64).storage(), StorageKind::I8);
+        assert_eq!(
+            reopen(&path, 64, StorageKind::I8).storage(),
+            StorageKind::I8
+        );
         let other = dir.path().join("other");
         std::fs::write(&other, [1u8; 5]).unwrap();
         let file = File::options().read(true).write(true).open(&other).unwrap();
         assert_eq!(
-            Log::open(file, &other, 64, None).unwrap().storage(),
-            StorageKind::F32
+            Log::open(file, &other, 64, StorageKind::I8, InnerProduct)
+                .unwrap()
+                .storage(),
+            StorageKind::I8
         );
     }
 
@@ -2863,27 +2922,33 @@ mod tests {
         let dir = TempDir::new().unwrap();
         for dims in [8usize, 16, 24, 40] {
             assert!(matches!(
-                Log::create(&dir.path().join(format!("a{dims}")), dims, StorageKind::I8),
+                Log::create(&dir.path().join(format!("a{dims}")), dims, StorageKind::I8, InnerProduct),
                 Err(VecDbError::InvalidDimensions {
                     dims: rejected,
                     storage: StorageKind::I8
                 }) if rejected == dims
             ));
             assert!(
-                Log::create(&dir.path().join(format!("b{dims}")), dims, StorageKind::F32).is_ok()
+                Log::create(
+                    &dir.path().join(format!("b{dims}")),
+                    dims,
+                    StorageKind::F32,
+                    InnerProduct
+                )
+                .is_ok()
             );
         }
-        assert!(Log::create(&dir.path().join("c"), 32, StorageKind::I8).is_ok());
+        assert!(Log::create(&dir.path().join("c"), 32, StorageKind::I8, InnerProduct).is_ok());
         let path = dir.path().join("c");
         let file = File::options().read(true).write(true).open(&path).unwrap();
         assert!(matches!(
-            Log::open(file, &path, 8, Some(StorageKind::I8)),
+            Log::open(file, &path, 8, StorageKind::I8, InnerProduct),
             Err(VecDbError::DimensionMismatch {
                 expected: 8,
                 actual: 32
             })
         ));
-        let mut forged = encode_header(8, &[3u8; 16], StorageKind::I8);
+        let mut forged = encode_header(8, &[3u8; 16], StorageKind::I8, InnerProduct);
         refresh_crc(&mut forged);
         let forged_path = dir.path().join("forged");
         std::fs::write(&forged_path, forged).unwrap();
@@ -2893,7 +2958,7 @@ mod tests {
             .open(&forged_path)
             .unwrap();
         assert!(matches!(
-            Log::open(file, &forged_path, 8, None),
+            Log::open(file, &forged_path, 8, StorageKind::I8, InnerProduct),
             Err(VecDbError::InvalidDimensions {
                 dims: 8,
                 storage: StorageKind::I8
@@ -2906,7 +2971,7 @@ mod tests {
         for dims in [32usize, 512] {
             let dir = TempDir::new().unwrap();
             let path = dir.path().join("log");
-            let mut log = Log::create(&path, dims, StorageKind::I8).unwrap();
+            let mut log = Log::create(&path, dims, StorageKind::I8, InnerProduct).unwrap();
             let scales = [
                 f32::from_bits(0x3a1f_8f3c),
                 0.0,
@@ -2954,7 +3019,7 @@ mod tests {
                 assert_eq!(decoded_values, values);
             }
             drop(log);
-            let (reopened, _) = scan_all(&mut reopen(&path, dims));
+            let (reopened, _) = scan_all(&mut reopen(&path, dims, StorageKind::I8));
             assert_eq!(reopened.len(), records.len());
             for ((record, offset), (again, again_offset)) in records.iter().zip(&reopened) {
                 assert_eq!(offset, again_offset);
@@ -2968,8 +3033,8 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let i8_path = dir.path().join("i8");
         let f32_path = dir.path().join("f32");
-        let mut i8_log = Log::create(&i8_path, 32, StorageKind::I8).unwrap();
-        let mut f32_log = Log::create(&f32_path, 32, StorageKind::F32).unwrap();
+        let mut i8_log = Log::create(&i8_path, 32, StorageKind::I8, InnerProduct).unwrap();
+        let mut f32_log = Log::create(&f32_path, 32, StorageKind::F32, InnerProduct).unwrap();
         let values = seeded_vector(4, 32);
         let quantized = StoredVector::quantize(&values);
         assert!(matches!(
@@ -3036,7 +3101,7 @@ mod tests {
         let dims = 32usize;
         let dir = TempDir::new().unwrap();
         let build_path = dir.path().join("log");
-        let mut log = Log::create(&build_path, dims, StorageKind::I8).unwrap();
+        let mut log = Log::create(&build_path, dims, StorageKind::I8, InnerProduct).unwrap();
         let mut boundaries = Vec::new();
         for index in 0..3u64 {
             let key = format!("key-{index}");
@@ -3059,7 +3124,7 @@ mod tests {
         for cut in intact_end..boundaries[2].1 {
             let torn_path = dir.path().join(format!("torn-{cut}"));
             std::fs::write(&torn_path, &full_bytes[..cut as usize]).unwrap();
-            let mut torn_log = reopen(&torn_path, dims);
+            let mut torn_log = reopen(&torn_path, dims, StorageKind::I8);
             let (records, recoverable_end) = scan_all(&mut torn_log);
             assert_eq!(records.len(), 2);
             assert_eq!(recoverable_end, intact_end);
@@ -3069,7 +3134,7 @@ mod tests {
         mixed.extend_from_slice(&f32_sized);
         let mixed_path = dir.path().join("mixed");
         std::fs::write(&mixed_path, &mixed).unwrap();
-        let mut mixed_log = reopen(&mixed_path, dims);
+        let mut mixed_log = reopen(&mixed_path, dims, StorageKind::I8);
         let (records, recoverable_end) = scan_all(&mut mixed_log);
         assert_eq!(records.len(), 2);
         assert_eq!(recoverable_end, intact_end);
@@ -3098,7 +3163,7 @@ mod tests {
                 record_bytes.extend_from_slice(&vec![0xAA; garbage_len]);
                 record_bytes.extend_from_slice(survivor);
                 write_i8_log_file(&path, dims as u32, &record_bytes);
-                let mut log = reopen(&path, dims);
+                let mut log = reopen(&path, dims, StorageKind::I8);
                 assert_eq!(log.storage(), StorageKind::I8);
                 let (records, recoverable_end) = scan_all(&mut log);
                 assert_eq!(records.len(), 1);
@@ -3143,7 +3208,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_i8_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::I8);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
@@ -3161,7 +3226,7 @@ mod tests {
         corrupted_bytes[crc_last] ^= 0xFF;
         let corrupted_path = dir.path().join("log-corrupted");
         write_i8_log_file(&corrupted_path, dims as u32, &corrupted_bytes);
-        let mut corrupted_log = reopen(&corrupted_path, dims);
+        let mut corrupted_log = reopen(&corrupted_path, dims, StorageKind::I8);
         let (corrupted_records, corrupted_end) = scan_all(&mut corrupted_log);
         assert_eq!(corrupted_records.len(), 1);
         assert!(
@@ -3185,7 +3250,7 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let path = dir.path().join("log");
         write_i8_log_file(&path, dims as u32, &record_bytes);
-        let mut log = reopen(&path, dims);
+        let mut log = reopen(&path, dims, StorageKind::I8);
         let (records, recoverable_end) = scan_all(&mut log);
         assert_eq!(records.len(), 1);
         assert_eq!(recoverable_end, HEADER_LEN as u64 + good.len() as u64);
