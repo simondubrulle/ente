@@ -17,19 +17,19 @@ class OfflineSettingsBanner extends StatefulWidget {
 }
 
 class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
-  static const _bannerHeight = 130.0;
-  static const _cardRadius = 15.0;
-  static const _contentLeftPadding = 24.0;
-  static const _contentTopPadding = 20.0;
-  static const _contentBottomPadding = 20.0;
-  static const _titleMaxWidth = 320.0;
-  static const _bodyTextMaxWidth = 228.0;
+  static const _bannerHeight = 116.0;
+  static const _cardRadius = Radii.lg;
+  static const _contentLeftPadding = 18.0;
+  static const _contentTopPadding = 16.0;
+  static const _contentBottomPadding = 12.0;
+  static const _titleMaxWidth = 280.0;
+  static const _bodyTextMaxWidth = 232.0;
   static const _duckWidth = 88.0;
-  static const _duckTextReservedWidth = 91.0;
-  static const _closeTextReservedWidth = 24.0;
+  static const _duckTextReservedWidth = 102.0;
+  static const _closeTextReservedWidth = 58.0;
   static const _duckRightInset = 20.0;
-  static const _closeTopInset = 14.0;
-  static const _closeRightInset = 18.0;
+  static const _duckBottomInset = 0.0;
+  static const _closeInset = 8.0;
   static const _ctaIconGap = 4.0;
   static const _maxTextScaleFactor = 1.3;
   bool _dismissed = false;
@@ -74,13 +74,14 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
               clipBehavior: Clip.hardEdge,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(_cardRadius),
-                color: const Color(0xFF292929),
+                color: colors.fillLight,
+                border: Border.all(color: colors.strokeFaint),
               ),
               child: Stack(
                 children: [
                   Positioned(
                     right: _duckRightInset,
-                    bottom: 0,
+                    bottom: _duckBottomInset,
                     child: IgnorePointer(
                       child: Image.asset(
                         "assets/ducky_settings.png",
@@ -93,7 +94,7 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                     padding: const EdgeInsets.fromLTRB(
                       _contentLeftPadding,
                       _contentTopPadding,
-                      24,
+                      16,
                       _contentBottomPadding,
                     ),
                     child: ConstrainedBox(
@@ -115,13 +116,11 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                                 l10n.offlineSettingsBannerTitle,
                                 maxLines: 2,
                                 overflow: TextOverflow.ellipsis,
-                                style: TextStyles.display3.copyWith(
-                                  color: Colors.white,
-                                  fontSize: 18,
-                                  height: 1,
+                                style: TextStyles.large.copyWith(
+                                  color: colors.textBase,
                                 ),
                               ),
-                              const SizedBox(height: 8),
+                              const SizedBox(height: 6),
                               ConstrainedBox(
                                 constraints: BoxConstraints(
                                   maxWidth: bodyTextWidth,
@@ -129,11 +128,11 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                                 child: Text(
                                   l10n.offlineSettingsBannerDesc,
                                   style: TextStyles.mini.copyWith(
-                                    color: Colors.white.withValues(alpha: 0.79),
+                                    color: colors.textLight,
                                   ),
                                 ),
                               ),
-                              const SizedBox(height: 12),
+                              const SizedBox(height: 10),
                               ConstrainedBox(
                                 constraints: BoxConstraints(
                                   maxWidth: bodyTextWidth,
@@ -149,7 +148,7 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                                       children: [
                                         Text(
                                           l10n.getStarted,
-                                          style: TextStyles.body.copyWith(
+                                          style: TextStyles.bodyBold.copyWith(
                                             color: colors.primary,
                                           ),
                                         ),
@@ -158,7 +157,7 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                                           textDirection == TextDirection.rtl
                                               ? "\u2190"
                                               : "\u2192",
-                                          style: TextStyles.body.copyWith(
+                                          style: TextStyles.bodyBold.copyWith(
                                             color: colors.primary,
                                           ),
                                         ),
@@ -174,19 +173,16 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                     ),
                   ),
                   Positioned(
-                    top: _closeTopInset,
-                    right: _closeRightInset,
+                    top: _closeInset,
+                    right: _closeInset,
                     child: IconButtonComponent(
                       tooltip: l10n.close,
-                      size: 28,
-                      iconSize: IconSizes.tiny,
-                      variant: IconButtonComponentVariant.unfilled,
+                      variant: IconButtonComponentVariant.circular,
                       shouldSurfaceExecutionStates: false,
                       onTap: _onDismiss,
                       icon: const HugeIcon(
                         icon: HugeIcons.strokeRoundedCancel01,
-                        color: Colors.white,
-                        size: IconSizes.tiny,
+                        size: IconSizes.small,
                       ),
                     ),
                   ),
