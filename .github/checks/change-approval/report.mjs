@@ -4,7 +4,9 @@ export function writeReport({
     files: { binaries, large, guardrails, configs },
     dependencies,
     rust,
+    swift,
     web,
+    android,
 }) {
     const categories = [
         {
@@ -45,9 +47,19 @@ export function writeReport({
             count: rust.length,
         },
         {
+            singular: "Swift lint policy file",
+            plural: "Swift lint policy files",
+            count: swift.length,
+        },
+        {
             singular: "Web lint policy file",
             plural: "Web lint policy files",
             count: web.length,
+        },
+        {
+            singular: "Android lint policy file",
+            plural: "Android lint policy files",
+            count: android.length,
         },
     ].filter(({ count }) => count);
     const summary = categories
@@ -84,8 +96,14 @@ export function writeReport({
         sections.push(
             `## Rust lint declarations and files containing unsafe\n\n${list(rust.map(({ path, reasons }) => `${code(path)}: ${reasons.map(code).join("; ")}`))}`,
         );
+    if (swift.length)
+        sections.push(`## Swift lint directives\n\n${list(swift.map(code))}`);
     if (web.length)
         sections.push(`## Web lint directives\n\n${list(web.map(code))}`);
+    if (android.length)
+        sections.push(
+            `## Android lint directives\n\n${list(android.map(code))}`,
+        );
     const detail = sections.join("\n\n");
 
     const { GITHUB_OUTPUT, GITHUB_STEP_SUMMARY } = process.env;
