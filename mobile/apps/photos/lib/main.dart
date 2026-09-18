@@ -491,6 +491,13 @@ Future<void> _init(
     await Configuration.instance.init(preferences);
     _logger.info("Configuration done $tlog");
 
+    if (!localSettings.hasInstallDateTime() &&
+        (Configuration.instance.hasConfiguredAccount() || isLocalGalleryMode)) {
+      await localSettings.markForcedInitialMemoriesRefresh();
+      await localSettings.markInitialMemoriesNotificationScheduled();
+    }
+    localSettings.getInstallDateTime();
+
     _logger.info("Lockscreen init $tlog");
     registerCryptoApi(const PhotosCryptoApiAdapter());
     await LockScreenSettings.instance.init(
