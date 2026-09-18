@@ -718,6 +718,22 @@ class MemoriesCacheService {
     return cache;
   }
 
+  Future<void> _backfillInitialMemoriesNotification(
+    MemoriesCache? oldCache,
+  ) async {
+    if (oldCache == null ||
+        localSettings.initialMemoriesNotificationScheduledAt() != null) {
+      return;
+    }
+    final cutoff = DateTime.now()
+        .subtract(const Duration(days: 21))
+        .microsecondsSinceEpoch;
+    if (oldCache.peopleShownLogs.any((log) => log.lastTimeShown <= cutoff) ||
+        oldCache.clipShownLogs.any((log) => log.lastTimeShown <= cutoff)) {
+      await localSettings.markInitialMemoriesNotificationScheduled();
+    }
+  }
+
   static Future<List<SmartMemory>> fromCacheToMemories(
     MemoriesCache cache,
   ) async {
@@ -915,6 +931,7 @@ class MemoriesCacheService {
         w?.start();
         final oldCache = await _readCacheFromDisk();
         w?.log("gotten old cache");
+        await _backfillInitialMemoriesNotification(oldCache);
         final MemoriesCache newCache = _processOldCache(oldCache);
         w?.log("processed old cache");
         final now = DateTime.now();
