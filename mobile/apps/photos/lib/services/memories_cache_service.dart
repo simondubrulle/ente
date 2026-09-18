@@ -931,9 +931,9 @@ class MemoriesCacheService {
         w?.start();
         final oldCache = await _readCacheFromDisk();
         w?.log("gotten old cache");
-        await _backfillInitialMemoriesNotification(oldCache);
         final MemoriesCache newCache = _processOldCache(oldCache);
         w?.log("processed old cache");
+        await _backfillInitialMemoriesNotification(newCache);
         final now = DateTime.now();
         final next = now.add(kMemoriesUpdateFrequency);
         final mlReady = await _isMlReady();
