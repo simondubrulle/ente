@@ -225,7 +225,9 @@
   },
   "allowAppToOpenSharedAlbumLinks": "Allow app to open shared album links",
   "allowDownloads": "Allow downloads",
+  "allowJoining": "Allow joining",
   "allowJoiningAlbum": "Allow joining album",
+  "allowJoiningDescription": "Viewers with an Ente account can join your album and stay updated",
   "allowPermBody": "Please allow access to your photos from Settings so Ente can display and backup your library.",
   "allowPermTitle": "Allow access to photos",
   "allPersonGroupingWillReset": "All groupings for this person will be reset, and you will lose all suggestions made for this person",
@@ -643,6 +645,7 @@
   "collectPhotos": "Collect photos",
   "color": "Color",
   "colorfulMarkets": "Vibrant markets",
+  "commentAndReact": "Comment and react",
   "commentedOnAPhoto": "commented on a photo",
   "@commentedOnAPhoto": {
     "description": "Social notification action text shown after a person's name, for example 'John commented on a photo'. Make sure the translation reads naturally with a name before it, and do not capitalize the first letter."
@@ -1118,6 +1121,7 @@
       }
     }
   },
+  "downloadPhotos": "Download photos",
   "downloadSkippedAlreadyAvailableOnDevice": "{fileName} is already available in the {albumName} album on your device",
   "@downloadSkippedAlreadyAvailableOnDevice": {
     "description": "Toast shown in single-file download flow when the file already exists locally",
@@ -1299,6 +1303,7 @@
   "enableAutomaticBackups": "Automatic backups",
   "enableBackupsIosInstruction": "To enable backups on iOS, choose a folder in Files (for example \"On My iPhone\").",
   "enableComment": "Comments and reactions",
+  "enableDownloadsToAllowJoining": "Enable downloads to allow joining.",
   "enabled": "Enabled",
   "enableMaps": "Enable maps",
   "encrypted": "Encrypted",
@@ -2373,6 +2378,7 @@
   "linkLabel": "Link",
   "linkNeverExpires": "Never",
   "linkRequestLimitExceeded": "This album has been viewed on too many devices",
+  "linkSettings": "Link settings",
   "links": "Links",
   "list": "List",
   "livePhotos": "Live Photos",
@@ -2823,6 +2829,7 @@
     }
   },
   "nothingToSeeHere": "Nothing to see here",
+  "nothingToCleanUp": "Nothing to clean up",
   "nothingToTidyUpHere": "Nothing to tidy up here",
   "notifications": "Notifications",
   "notifyMe": "Notify me",
@@ -2851,6 +2858,7 @@
   "offlineHomeSignupBannerAction": "Back up now",
   "offlineHomeSignupBannerDescription": "Encrypted backups across 3 locations to keep your memories safe.",
   "offlineHomeSignupBannerTitle": "Protect your memories forever",
+  "offlineKeyUnavailableMessage": "Ente Auth cannot access the key for your offline codes.",
   "offlineModeWarning": "You have chosen to proceed without backups. Please take manual backups to make sure your codes are safe.",
   "offlineNameFaceBannerSubtitle": "Sign up to tag them and easily find their photos later.",
   "offlineNameFaceBannerTitle": "Give this face a name",
@@ -3194,7 +3202,11 @@
       "folderName": {}
     }
   },
+  "publicLink": "Public link",
+  "publicLinkAccessDescription": "Anyone with the link can open the album without an Ente account.",
+  "publicLinkCollectDescription": "Anyone with this link can add photos to your album.",
   "publicLinkEnabled": "Public link enabled",
+  "publicLinkViewDescription": "Anyone with this link can access your album.",
   "qr": "QR",
   "qrCode": "QR code",
   "questionmark": "?",
@@ -3423,6 +3435,14 @@
     "description": "Description for remove contact confirmation dialog"
   },
   "removeContactPhoto": "Remove contact photo",
+  "removedItems": "{count, plural, one{Removed {count} item} other{Removed {count} items}}",
+  "@removedItems": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
   "removeDuplicates": "Duplicates",
   "removeDuplicatesDesc": "Remove exact duplicates",
   "removeFromAlbum": "Remove from album",
@@ -4513,6 +4533,7 @@
       }
     }
   },
+  "unableToAccessYourCodes": "Unable to access your codes",
   "unableToCheckForUpdatesRightNow": "Unable to check for updates right now",
   "unableToExtractFileInformation": "Unable to extract information from this file",
   "unarchive": "Unarchive",
