@@ -1672,6 +1672,10 @@
   "fileDeletedSuccessfully": "Item deleted successfully",
   "fileInfoAddDescHint": "Add a description...",
   "fileMarkedAsImportant": "Item marked as important",
+  "fileNameTooLong": "File name is too long. Try a shorter name.",
+  "@fileNameTooLong": {
+    "description": "Validation error when a renamed file exceeds the filesystem filename length limit"
+  },
   "fileNotUploadedYet": "File not uploaded yet",
   "fileRemovedFromImportant": "Item removed from important",
   "files": "Files",
@@ -3565,6 +3569,7 @@
   "restoringFiles": "Restoring files...",
   "restoringItems": "Restoring...",
   "resumableUploads": "Resumable uploads",
+  "retake": "Retake",
   "retry": "Retry",
   "review": "Review",
   "reviewSuggestions": "Review suggestions",
