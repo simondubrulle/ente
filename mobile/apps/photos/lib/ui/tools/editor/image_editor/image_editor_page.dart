@@ -38,6 +38,7 @@ import "package:photos/ui/viewer/file/detail_page.dart";
 import "package:photos/utils/dialog_util.dart";
 import "package:photos/utils/image_util.dart";
 import "package:photos/utils/lossless_edits.dart";
+import 'package:pro_image_editor/core/models/styles/sub_editor_page_style.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 
 class ImageEditorPage extends StatefulWidget {
@@ -297,6 +298,12 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
                 SubEditorMode.emoji,
               ],
               style: MainEditorStyle(
+                subEditorPage: const SubEditorPageStyle(
+                  positionTop: 0,
+                  positionBottom: 0,
+                  positionLeft: 0,
+                  positionRight: 0,
+                ),
                 uiOverlayStyle: SystemUiOverlayStyle(
                   systemNavigationBarContrastEnforced: true,
                   systemNavigationBarColor: Colors.transparent,
@@ -490,6 +497,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               ),
             ),
             cropRotateEditor: CropRotateEditorConfigs(
+              rotateDirection: RotateDirection.right,
               style: CropRotateEditorStyle(
                 background: colors.backgroundBase,
                 cropCornerColor: colors.primary,
