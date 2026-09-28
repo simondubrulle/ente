@@ -225,6 +225,15 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
     final isLightMode = Theme.of(context).brightness == Brightness.light;
     final colors = context.componentColors;
     final actionTextStyle = TextStyles.large.copyWith(color: colors.textBase);
+    final editorUiOverlayStyle =
+        (isLightMode ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
+            .copyWith(
+              systemNavigationBarContrastEnforced: true,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: isLightMode
+                  ? Brightness.dark
+                  : Brightness.light,
+            );
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -304,16 +313,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
                   positionLeft: 0,
                   positionRight: 0,
                 ),
-                uiOverlayStyle: SystemUiOverlayStyle(
-                  systemNavigationBarContrastEnforced: true,
-                  systemNavigationBarColor: Colors.transparent,
-                  statusBarBrightness: isLightMode
-                      ? Brightness.dark
-                      : Brightness.light,
-                  statusBarIconBrightness: isLightMode
-                      ? Brightness.dark
-                      : Brightness.light,
-                ),
+                uiOverlayStyle: editorUiOverlayStyle,
                 appBarBackground: colors.backgroundBase,
                 background: colors.backgroundBase,
                 bottomBarBackground: colors.backgroundBase,
@@ -409,6 +409,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               style: PaintEditorStyle(
                 initialColor: const Color(0xFF00FFFF),
                 background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
               ),
               widgets: PaintEditorWidgets(
                 appBar: (editor, rebuildStream) {
@@ -501,6 +502,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               style: CropRotateEditorStyle(
                 background: colors.backgroundBase,
                 cropCornerColor: colors.primary,
+                uiOverlayStyle: editorUiOverlayStyle,
               ),
               widgets: CropRotateEditorWidgets(
                 appBar: (editor, rebuildStream) {
@@ -534,7 +536,10 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               fadeInUpDuration: fadeInDuration,
               fadeInUpStaggerDelayDuration: fadeInDelay,
               filterList: filterList,
-              style: FilterEditorStyle(background: colors.backgroundBase),
+              style: FilterEditorStyle(
+                background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
+              ),
               widgets: FilterEditorWidgets(
                 slider:
                     (
@@ -585,7 +590,10 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               ),
             ),
             tuneEditor: TuneEditorConfigs(
-              style: TuneEditorStyle(background: colors.backgroundBase),
+              style: TuneEditorStyle(
+                background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
+              ),
               widgets: TuneEditorWidgets(
                 appBar: (editor, rebuildStream) {
                   return ReactiveAppbar(
