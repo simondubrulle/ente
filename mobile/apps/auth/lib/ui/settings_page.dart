@@ -15,9 +15,11 @@ import 'package:ente_auth/ui/settings/developer_settings_widget.dart';
 import 'package:ente_auth/ui/settings/general_settings_page.dart';
 import 'package:ente_auth/ui/settings/more_from_ente_section.dart';
 import 'package:ente_auth/ui/settings/notification_banner_widget.dart';
+import 'package:ente_auth/ui/settings/search/settings_search_registry.dart';
 import 'package:ente_auth/ui/settings/security_settings_page.dart';
 import 'package:ente_auth/ui/settings/support_settings_page.dart';
 import 'package:ente_auth/ui/settings/theme_settings_page.dart';
+import 'package:ente_auth/ui/settings/widgets/change_log_sheet.dart';
 import 'package:ente_auth/utils/dialog_util.dart';
 import 'package:ente_components/ente_components.dart';
 import 'package:ente_lock_screen/local_authentication_service.dart';
@@ -26,6 +28,7 @@ import 'package:ente_ui/components/buttons/button_widget.dart';
 import 'package:ente_ui/components/settings/app_engagement_section.dart';
 import 'package:ente_ui/components/settings/app_version_widget.dart';
 import 'package:ente_ui/components/settings/social_icons_row.dart';
+import 'package:ente_ui/pages/settings_search_page.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:hugeicons/hugeicons.dart';
@@ -184,7 +187,7 @@ class SettingsPage extends StatelessWidget {
       const SizedBox(height: 40),
       const SocialIconsRow(),
       const SizedBox(height: Spacing.md),
-      const AppVersionWidget(),
+      AppVersionWidget(onTap: () => showChangeLogSheet(context)),
       const SizedBox(height: Spacing.xxl),
       const DeveloperSettingsWidget(),
       const NotificationBannerWidget(),
@@ -195,8 +198,61 @@ class SettingsPage extends StatelessWidget {
       title: l10n.settings,
       subtitle: email,
       backButton: _closeButton(context),
+      actions: [
+        IconButtonComponent(
+          tooltip: l10n.searchSettings,
+          variant: IconButtonComponentVariant.primary,
+          shouldSurfaceExecutionStates: false,
+          icon: const HugeIcon(
+            icon: HugeIcons.strokeRoundedSearch01,
+            size: IconSizes.small,
+          ),
+          onTap: () => _openSearch(context),
+        ),
+      ],
       children: contents,
     );
+  }
+
+  Future<void> _openSearch(BuildContext context) async {
+    final completed = await pushAuthSettingsPage<bool>(
+      context,
+      Builder(
+        builder: (context) {
+          final items = SettingsSearchRegistry.getSearchableItems(context);
+          return ColoredBox(
+            color: context.componentColors.backgroundBase,
+            child: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width:
+                    AuthSettingsPageScaffold.maxContentWidth + 2 * Spacing.lg,
+                child: SettingsSearchPage(
+                  key: ValueKey(Localizations.localeOf(context)),
+                  items: items,
+                  suggestions: SettingsSearchRegistry.getSuggestions(
+                    context,
+                    items,
+                  ),
+                  onNavigate: (context, routeBuilder) async {
+                    final completed = await pushAuthSettingsPage<bool>(
+                      context,
+                      routeBuilder(context),
+                    );
+                    if (completed == true && context.mounted) {
+                      Navigator.of(context).pop(true);
+                    }
+                  },
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+    if (completed == true) {
+      scaffoldKey.currentState?.closeDrawer();
+    }
   }
 
   Widget _closeButton(BuildContext context) {

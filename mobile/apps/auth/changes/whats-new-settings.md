@@ -1,0 +1,1 @@
+- Added What's new to the version number, About, and settings search.
