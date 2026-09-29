@@ -2,9 +2,11 @@ import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:ente_auth/core/configuration.dart';
+import 'package:ente_auth/locale.dart';
 import 'package:ente_auth/services/preference_service.dart';
 import 'package:ente_auth/ui/settings/about_settings_page.dart';
 import 'package:ente_auth/ui/settings/data/data_settings_page.dart';
+import 'package:ente_auth/ui/settings/widgets/change_log_strings.dart';
 import 'package:ente_auth/ui/settings_page.dart';
 import 'package:ente_components/ente_components.dart';
 import 'package:ente_network/network.dart';
@@ -60,6 +62,87 @@ void main() {
           null,
         );
     await directory.delete(recursive: true);
+  });
+
+  for (final locale in appSupportedLocales) {
+    if (locale.languageCode != 'en') {
+      test('changelog translates every entry for $locale', () {
+        final english = ChangeLogStrings.forLocale(const Locale('en'));
+        final translated = ChangeLogStrings.forLocale(locale);
+        expect(translated.entries, hasLength(english.entries.length));
+        for (var i = 0; i < translated.entries.length; i++) {
+          expect(translated.entries[i].title, isNotEmpty);
+          expect(translated.entries[i].description, isNotEmpty);
+          expect(translated.entries[i].title, isNot(english.entries[i].title));
+          expect(
+            translated.entries[i].description,
+            isNot(english.entries[i].description),
+          );
+        }
+      });
+    }
+
+    testWidgets('changelog renders and scrolls in $locale', (tester) async {
+      tester.view.physicalSize = const Size(320, 568);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      await tester.pumpWidget(
+        MaterialApp(
+          locale: locale,
+          theme: ComponentTheme.lightTheme(app: ComponentApp.auth),
+          localizationsDelegates: StringsLocalizations.localizationsDelegates,
+          supportedLocales: appSupportedLocales,
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(textScaler: const TextScaler.linear(1.5)),
+            child: child!,
+          ),
+          home: const AboutSettingsPage(),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final l10n = tester.element(find.byType(AboutSettingsPage)).strings;
+      await tester.tap(find.text(l10n.whatsNew));
+      await tester.pumpAndSettle();
+      final sheet = find.byType(BottomSheetComponent);
+      expect(Localizations.localeOf(tester.element(sheet)), locale);
+      expect(
+        Directionality.of(tester.element(sheet)),
+        ['ar', 'fa', 'he'].contains(locale.languageCode)
+            ? TextDirection.rtl
+            : TextDirection.ltr,
+      );
+      final entries = ChangeLogStrings.forLocale(locale).entries;
+      for (final entry in entries) {
+        await tester.scrollUntilVisible(
+          find.text(entry.description),
+          100,
+          scrollable: find.descendant(
+            of: sheet,
+            matching: find.byType(Scrollable),
+          ),
+        );
+        expect(find.text(entry.title), findsOneWidget);
+        expect(find.text(entry.description), findsOneWidget);
+      }
+      expect(tester.takeException(), isNull);
+      await tester.tap(find.text(l10n.continueLabel));
+      await tester.pumpAndSettle();
+      expect(sheet, findsNothing);
+    });
+  }
+
+  test('changelog falls back by language, then to English', () {
+    expect(
+      ChangeLogStrings.forLocale(const Locale('es', 'MX')),
+      same(ChangeLogStrings.forLocale(const Locale('es', 'ES'))),
+    );
+    expect(
+      ChangeLogStrings.forLocale(const Locale('xx')),
+      same(ChangeLogStrings.forLocale(const Locale('en'))),
+    );
   });
 
   for (final signedIn in [false, true]) {
