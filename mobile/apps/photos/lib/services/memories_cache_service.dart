@@ -842,17 +842,9 @@ class MemoriesCacheService {
     }
   }
 
-  bool _isRecentlyInstalled() {
-    final installTime = ServiceLocator.instance.packageInfo.installTime;
-    if (installTime == null) return false;
-    final installAge = DateTime.now().difference(installTime);
-    return !installAge.isNegative && installAge < const Duration(days: 21);
-  }
-
   Future<bool> _shouldForceInitialMemoriesRefresh() async {
     if (!flagService.internalUser ||
         localSettings.hasForcedInitialMemoriesRefresh() ||
-        !_isRecentlyInstalled() ||
         !await _isMlReady()) {
       return false;
     }
@@ -883,10 +875,6 @@ class MemoriesCacheService {
       return;
     }
     if (localSettings.initialMemoriesNotificationScheduledAt() != null) return;
-    if (!_isRecentlyInstalled()) {
-      await localSettings.markInitialMemoriesNotificationScheduled();
-      return;
-    }
     final notifications = NotificationService.instance;
     if (!await notifications.hasGrantedPermissions()) return;
     final strings = await LanguageService.locals;
