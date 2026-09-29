@@ -842,7 +842,7 @@ class MemoriesCacheService {
     }
   }
 
-  bool _isWithinInitialMemoriesWindow() {
+  bool _isRecentlyInstalled() {
     final installTime = ServiceLocator.instance.packageInfo.installTime;
     if (installTime == null) return false;
     final installAge = DateTime.now().difference(installTime);
@@ -852,7 +852,7 @@ class MemoriesCacheService {
   Future<bool> _shouldForceInitialMemoriesRefresh() async {
     if (!flagService.internalUser ||
         localSettings.hasForcedInitialMemoriesRefresh() ||
-        !_isWithinInitialMemoriesWindow() ||
+        !_isRecentlyInstalled() ||
         !await _isMlReady()) {
       return false;
     }
@@ -883,7 +883,7 @@ class MemoriesCacheService {
       return;
     }
     if (localSettings.initialMemoriesNotificationScheduledAt() != null) return;
-    if (!_isWithinInitialMemoriesWindow()) {
+    if (!_isRecentlyInstalled()) {
       await localSettings.markInitialMemoriesNotificationScheduled();
       return;
     }
@@ -894,13 +894,18 @@ class MemoriesCacheService {
       await localSettings.markInitialMemoriesNotificationScheduled();
       return;
     }
-    await notifications.showNotification(
-      strings.memoriesReadyNotificationTitle,
-      strings.memoriesReadyNotificationBody,
-      id: 314159265,
-      channelID: "memoriesReady",
-      channelName: strings.memories,
-    );
+    try {
+      await notifications.showNotification(
+        strings.memoriesReadyNotificationTitle,
+        strings.memoriesReadyNotificationBody,
+        id: 314159265,
+        channelID: "memoriesReady",
+        channelName: strings.memories,
+      );
+    } catch (e, s) {
+      _logger.warning("Failed to show memories ready notification", e, s);
+      return;
+    }
     await localSettings.markInitialMemoriesNotificationScheduled();
   }
 
