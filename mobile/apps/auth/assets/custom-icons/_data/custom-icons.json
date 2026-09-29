@@ -1146,6 +1146,10 @@
       "title": "HTX"
     },
     {
+      "title": "Hueber",
+      "slug": "hueber"
+    },
+    {
       "title": "HuggingFace",
       "altNames": [
         "Hugging Face"
@@ -1477,6 +1481,9 @@
       "altNames": [
         "MacRumors Forums"
       ]
+    },
+    {
+      "title": "magento2"
     },
     {
       "title": "MailCow",
