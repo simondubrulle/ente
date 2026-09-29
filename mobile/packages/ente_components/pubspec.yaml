@@ -21,6 +21,7 @@ dev_dependencies:
 flutter:
   assets:
     - assets/apps/
+    - assets/ente_wordmark.svg
   fonts:
     - family: Inter
       fonts:
@@ -45,3 +46,6 @@ flutter:
     - family: Gochi Hand
       fonts:
         - asset: fonts/GochiHand-Regular.ttf
+    - family: More from Ente Gochi Hand
+      fonts:
+        - asset: fonts/GochiHand-MoreFromEnte.ttf

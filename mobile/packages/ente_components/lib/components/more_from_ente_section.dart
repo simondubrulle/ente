@@ -1,4 +1,7 @@
-import 'package:ente_components/ente_components.dart';
+import 'package:ente_components/components/ente_app_icon.dart';
+import 'package:ente_components/theme/colors.dart';
+import 'package:ente_components/theme/text_styles.dart';
+import 'package:ente_components/theme/theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 
@@ -40,18 +43,6 @@ class MoreFromEnteSection extends StatelessWidget {
   }
 }
 
-Uri moreFromEnteUri({
-  required ComponentApp sourceApp,
-  required ComponentApp destinationApp,
-}) {
-  final path = switch (destinationApp) {
-    ComponentApp.photos => '/',
-    ComponentApp.locker => '/locker',
-    ComponentApp.auth => '/auth',
-  };
-  return Uri.https('ente.com', path, {'from': sourceApp.name});
-}
-
 class _MoreFromEnteBrand extends StatelessWidget {
   const _MoreFromEnteBrand({required this.label});
 
@@ -75,7 +66,8 @@ class _MoreFromEnteBrand extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 color: colors.primary,
-                fontFamily: 'Gochi Hand',
+                fontFamily: 'More from Ente Gochi Hand',
+                package: 'ente_components',
                 fontFamilyFallback: const [TextStyles.fontFamily],
                 fontSize: 26.279,
                 height: 1.02,
@@ -84,7 +76,7 @@ class _MoreFromEnteBrand extends StatelessWidget {
             ),
           ),
           SvgPicture.asset(
-            'assets/svg/ente_wordmark.svg',
+            'packages/ente_components/assets/ente_wordmark.svg',
             width: _wordmarkWidth,
             height: _wordmarkHeight,
             fit: BoxFit.fill,
