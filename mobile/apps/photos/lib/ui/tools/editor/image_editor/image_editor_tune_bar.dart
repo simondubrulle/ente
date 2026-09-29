@@ -197,7 +197,7 @@ class TuneItem extends StatelessWidget {
 
   String? _svgPathForID(String id) {
     return switch (id) {
-      "luminance" || "fade" => "assets/image-editor/image-editor-$id.svg",
+      "fade" => "assets/image-editor/image-editor-fade.svg",
       _ => null,
     };
   }
