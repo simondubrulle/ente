@@ -4,22 +4,12 @@ import 'package:pro_image_editor/pro_image_editor.dart';
 
 List<TuneAdjustmentItem> imageEditorTuneAdjustments(
   I18nTuneEditor i18n,
-  String sharpnessLabel,
   String luminanceLabel,
 ) {
   final presets = tunePresets(icons: const TuneEditorIcons(), i18n: i18n);
-  // Keep Ente's existing controls and their appearance across the 13.x update.
+  // Keep Ente's luminance and fade behavior across the 13.x update.
   return [
     ...presets.take(6),
-    TuneAdjustmentItem(
-      id: 'sharpness',
-      icon: Icons.shutter_speed,
-      label: sharpnessLabel,
-      min: 0,
-      max: 1,
-      divisions: 100,
-      toMatrix: _sharpnessMatrix,
-    ),
     TuneAdjustmentItem(
       id: 'luminance',
       icon: Icons.light_mode_outlined,
@@ -30,33 +20,6 @@ List<TuneAdjustmentItem> imageEditorTuneAdjustments(
       toMatrix: _luminanceMatrix,
     ),
     presets.last.copyWith(toMatrix: _fadeMatrix),
-  ];
-}
-
-List<double> _sharpnessMatrix(double value) {
-  final factor = 1 + value * 2;
-  final offset = -(factor - 1) * 128;
-  return [
-    factor,
-    0,
-    0,
-    0,
-    offset,
-    0,
-    factor,
-    0,
-    0,
-    offset,
-    0,
-    0,
-    factor,
-    0,
-    offset,
-    0,
-    0,
-    0,
-    1,
-    0,
   ];
 }
 

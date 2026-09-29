@@ -190,7 +190,6 @@ class TuneItem extends StatelessWidget {
       "exposure" => HugeIcons.strokeRoundedCameraLens,
       "saturation" => HugeIcons.strokeRoundedDroplet,
       "temperature" => HugeIcons.strokeRoundedTemperature,
-      "sharpness" => HugeIcons.strokeRoundedFocusPoint,
       "hue" => HugeIcons.strokeRoundedColors,
       _ => null,
     };

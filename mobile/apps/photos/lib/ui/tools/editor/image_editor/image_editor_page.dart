@@ -590,7 +590,6 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
             tuneEditor: TuneEditorConfigs(
               tuneAdjustmentOptions: imageEditorTuneAdjustments(
                 tuneI18n,
-                context.strings.imageEditorSharpness,
                 context.strings.imageEditorLuminance,
               ),
               style: TuneEditorStyle(
