@@ -845,10 +845,16 @@ class MemoriesCacheService {
   Future<bool> _shouldForceInitialMemoriesRefresh() async {
     if (!flagService.internalUser ||
         localSettings.hasForcedInitialMemoriesRefresh() ||
-        !await _isMlReady()) {
+        localSettings.initialMemoriesNotificationScheduledAt() != null) {
       return false;
     }
     try {
+      final oldCache = await _readCacheFromDisk();
+      await _backfillInitialMemoriesNotification(_processOldCache(oldCache));
+      if (localSettings.initialMemoriesNotificationScheduledAt() != null ||
+          !await _isMlReady()) {
+        return false;
+      }
       final indexStatus = await getIndexStatus();
       final totalItems = indexStatus.indexedItems + indexStatus.pendingItems;
       final indexPercent = totalItems > 0
@@ -857,7 +863,7 @@ class MemoriesCacheService {
       return indexPercent > 90;
     } catch (e, s) {
       _logger.warning(
-        "Failed to check ML status for initial memories refresh",
+        "Failed to check eligibility for initial memories refresh",
         e,
         s,
       );
