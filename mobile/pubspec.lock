@@ -2144,10 +2144,10 @@ packages:
     dependency: transitive
     description:
       name: pro_image_editor
-      sha256: "2a7897e1e73d747598baa49297a7ad9b09dab0c84789b7a1f1c9cbe7a19b40da"
+      sha256: "5db82a3570b8c56e13fe87041ca17aedc1a64e855e1f6c3c698456fd5c6b1082"
       url: "https://pub.dev"
     source: hosted
-    version: "12.11.1"
+    version: "13.3.1"
   process:
     dependency: transitive
     description:
@@ -3148,5 +3148,5 @@ packages:
     source: hosted
     version: "0.2.4"
 sdks:
-  dart: ">=3.11.0 <4.0.0"
+  dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0"

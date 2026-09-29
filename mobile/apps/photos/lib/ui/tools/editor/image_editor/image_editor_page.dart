@@ -33,6 +33,7 @@ import "package:photos/ui/tools/editor/image_editor/image_editor_filter_bar.dart
 import "package:photos/ui/tools/editor/image_editor/image_editor_main_bottom_bar.dart";
 import "package:photos/ui/tools/editor/image_editor/image_editor_paint_bar.dart";
 import "package:photos/ui/tools/editor/image_editor/image_editor_text_bar.dart";
+import "package:photos/ui/tools/editor/image_editor/image_editor_tune_adjustments.dart";
 import "package:photos/ui/tools/editor/image_editor/image_editor_tune_bar.dart";
 import "package:photos/ui/viewer/file/detail_page.dart";
 import "package:photos/utils/dialog_util.dart";
@@ -234,6 +235,15 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
                   ? Brightness.dark
                   : Brightness.light,
             );
+    final tuneI18n = I18nTuneEditor(
+      brightness: context.strings.imageEditorBrightness,
+      contrast: context.strings.imageEditorContrast,
+      saturation: context.strings.imageEditorSaturation,
+      exposure: context.strings.imageEditorExposure,
+      hue: context.strings.imageEditorHue,
+      temperature: context.strings.imageEditorTemperature,
+      fade: context.strings.imageEditorFade,
+    );
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -263,19 +273,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
             ),
           ),
           configs: ProImageEditorConfigs(
-            i18n: I18n(
-              tuneEditor: I18nTuneEditor(
-                brightness: context.strings.imageEditorBrightness,
-                contrast: context.strings.imageEditorContrast,
-                saturation: context.strings.imageEditorSaturation,
-                exposure: context.strings.imageEditorExposure,
-                hue: context.strings.imageEditorHue,
-                temperature: context.strings.imageEditorTemperature,
-                sharpness: context.strings.imageEditorSharpness,
-                fade: context.strings.imageEditorFade,
-                luminance: context.strings.imageEditorLuminance,
-              ),
-            ),
+            i18n: I18n(tuneEditor: tuneI18n),
             imageGeneration: const ImageGenerationConfigs(
               jpegQuality: 100,
               enableIsolateGeneration: true,
@@ -590,6 +588,11 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               ),
             ),
             tuneEditor: TuneEditorConfigs(
+              tuneAdjustmentOptions: imageEditorTuneAdjustments(
+                tuneI18n,
+                context.strings.imageEditorSharpness,
+                context.strings.imageEditorLuminance,
+              ),
               style: TuneEditorStyle(
                 background: colors.backgroundBase,
                 uiOverlayStyle: editorUiOverlayStyle,
