@@ -496,7 +496,7 @@ class MLService {
           _logRunStopped(control, "after magic cache refresh");
           return MlRunDisposition.stopped;
         }
-        await memoriesCacheService.updateCache(forced: force);
+        await memoriesCacheService.updateCache(forced: force, control: control);
         if (control.stopRequested) {
           _logRunStopped(control, "after memories cache refresh");
           return MlRunDisposition.stopped;

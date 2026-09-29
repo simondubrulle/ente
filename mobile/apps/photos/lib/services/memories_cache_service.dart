@@ -30,6 +30,7 @@ import "package:photos/services/app_navigation_service.dart";
 import "package:photos/services/language_service.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
+import "package:photos/services/machine_learning/ml_run_control.dart";
 import "package:photos/services/memories/photo_selector.dart";
 import "package:photos/services/notification_service.dart";
 import "package:photos/services/search_service.dart";
@@ -872,8 +873,9 @@ class MemoriesCacheService {
   }
 
   Future<void> _showMemoriesReadyNotification(
-    List<SmartMemory> memories,
-  ) async {
+    List<SmartMemory> memories, {
+    MlRunControl? control,
+  }) async {
     if (!flagService.internalUser ||
         !memories.any(
           (m) => (m.type == .people || m.type == .clip) && m.shouldShowNow(),
@@ -884,6 +886,7 @@ class MemoriesCacheService {
     final notifications = NotificationService.instance;
     if (!await notifications.hasGrantedPermissions()) return;
     final strings = await LanguageService.locals;
+    if (control?.stopRequested ?? false) return;
     if (AppLifecycleService.instance.isForeground) {
       await localSettings.markInitialMemoriesNotificationScheduled();
       return;
@@ -903,7 +906,7 @@ class MemoriesCacheService {
     await localSettings.markInitialMemoriesNotificationScheduled();
   }
 
-  Future<void> updateCache({bool forced = false}) async {
+  Future<void> updateCache({bool forced = false, MlRunControl? control}) async {
     if (!showAnyMemories) {
       return;
     }
@@ -1027,7 +1030,10 @@ class MemoriesCacheService {
         if (forceInitialMemoriesRefresh) {
           await localSettings.markForcedInitialMemoriesRefresh();
         }
-        await _showMemoriesReadyNotification(_cachedMemories!);
+        await _showMemoriesReadyNotification(
+          _cachedMemories!,
+          control: control,
+        );
         w?.logAndReset('_cacheUpdated method done');
       } catch (e, s) {
         _logger.severe("Error updating memories cache", e, s);
