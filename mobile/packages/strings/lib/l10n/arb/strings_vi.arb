@@ -1396,7 +1396,7 @@
       }
     }
   },
-  "memoryLaneAgeCaption": "{name} vừa tròn {count, plural, other{{age} tuổi}}",
+  "memoryLaneAgeCaption": "{name} lúc {count, plural, other{{age} tuổi}}",
   "@memoryLaneAgeCaption": {
     "description": "Memory Lane age caption. The age placeholder is rendered as a separate, larger text widget; count selects the plural form.",
     "placeholders": {
@@ -1934,7 +1934,7 @@
     }
   },
   "itemsShowTheNumberOfDaysRemainingBeforePermanentDeletion": "Trên các mục là số ngày còn lại trước khi xóa vĩnh viễn",
-  "itemsWillBeDeletedFromAllCollections": "{count, plural, other{Các mục này sẽ bị xóa khỏi tất cả các bộ sưu tập. Bạn có thể khôi phục chúng từ Thùng rác.}}",
+  "itemsWillBeDeletedFromAllCollections": "{count, plural, one{Mục này sẽ bị xóa khỏi tất cả các bộ sưu tập. Bạn có thể khôi phục mục đó từ Thùng rác.} other{Các mục này sẽ bị xóa khỏi tất cả các bộ sưu tập. Bạn có thể khôi phục chúng từ Thùng rác.}}",
   "@itemsWillBeDeletedFromAllCollections": {
     "description": "Confirmation message explaining that deleted items leave every collection and remain recoverable from Trash.",
     "placeholders": {
@@ -4523,7 +4523,7 @@
   "chooseAccess": "Chọn truy cập",
   "permissions": "Quyền truy cập",
   "viewerRoleDescription": "Xem và tải xuống ảnh",
-  "collaboratorRoleDescription": "Thêm ảnh của họ",
+  "collaboratorRoleDescription": "Ngoài ra, có thể thêm ảnh của chính mình",
   "adminRoleDescription": "Ngoài ra, có thể thêm và xóa người",
   "addAsViewers": "{count, plural, other{Thêm làm người xem}}",
   "@addAsViewers": {

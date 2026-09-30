@@ -234,7 +234,7 @@
     "description": "Success message when authentication is successful"
   },
   "authToChangeEmailVerificationSetting": "Авторизуйтесь, щоб змінити перевірку через пошту",
-  "authToChangeLockscreenSetting": "Автентифікуйтеся, щоб змінити налаштувань екрана блокування",
+  "authToChangeLockscreenSetting": "Автентифікуйтеся, щоб змінити налаштування екрана блокування",
   "authToChangeYourEmail": "Авторизуйтеся, щоб змінити електронну пошту",
   "authToChangeYourPassword": "Автентифікуйтеся, щоб змінити пароль",
   "authToConfigureTwofactorAuthentication": "Авторизуйтесь, щоб налаштувати двоетапну перевірку",
@@ -380,7 +380,7 @@
   "chooseIcon": "Оберіть іконку",
   "chooseYourPlan": "Оберіть свій план",
   "city": "У місті",
-  "citySunsets": "Сяйво міського заходу",
+  "citySunsets": "Сяйво заходу сонця в місті",
   "claimedByYou": "використано вами",
   "cleanedUpSimilarImages": "Ви звільнили {size} простору",
   "@cleanedUpSimilarImages": {
@@ -634,7 +634,7 @@
   "deleteLinkQuestion": "Видалити посилання?",
   "deleteLocation": "Видалити розташування",
   "deleteNotSupportedForSharedFiles": "Видалення не підтримується для спільних файлів",
-  "deleteOnDeviceFiles": "Видалити з файлів пристрою",
+  "deleteOnDeviceFiles": "Видалити файли з пристрою",
   "deletePhotos": "Видалити фото",
   "deletePhotosWithSize": "Видалити {count} фото ({size})",
   "@deletePhotosWithSize": {
@@ -673,7 +673,7 @@
   "deleteSharedAlbum": "Видалити спільний альбом?",
   "deleteSharedAlbumDialogBody": "Альбом буде видалено для всіх\n\nВи втратите доступ до спільних фотографій у цьому альбомі, які належать іншим",
   "deleteShareLinkConfirmation": "Люди з цим посиланням більше не зможуть отримати доступ до елемента.",
-  "deleteSuggestions": "Видалити пропозиції",
+  "deleteSuggestions": "Пропозиції щодо видалення",
   "deleteTagMessage": "Ви впевнені, що хочете видалити цю мітку? Ця дія є незворотною.",
   "deleteTagTitle": "Видалити мітку?",
   "deleteUnparseableCodeMessage": "Це назавжди видалить цей код з Auth. Він не буде переміщений до смітника.",
@@ -1242,7 +1242,7 @@
   "imageEditorExposure": "Експозиція",
   "imageEditorFade": "Вицвітання",
   "imageEditorHue": "Відтінок",
-  "imageEditorLuminance": "Світіння",
+  "imageEditorLuminance": "Світність",
   "imageEditorSaturation": "Насиченість",
   "imageEditorSharpness": "Різкість",
   "imageEditorTemperature": "Температура",
@@ -3118,7 +3118,7 @@
   "yesCancel": "Так, скасувати",
   "yesConvertToViewer": "Так, перетворити в глядача",
   "yesDelete": "Так, видалити",
-  "yesDeleteCollections": "Так, видалити {count, plural, one{колекцію} other{колекції}}",
+  "yesDeleteCollections": "Так, видалити {count, plural, one{{count} колекцію} few{{count} колекції} many{{count} колекцій} other{{count} колекції}}",
   "@yesDeleteCollections": {
     "description": "Button label for confirming deletion of one or more collections",
     "placeholders": {
@@ -3173,7 +3173,7 @@
   "youveNoDuplicateCodesThatCanBeCleared": "У вас немає дублікатів кодів, які можна очистити",
   "youveNoFilesInThisAlbumThatCanBeDeleted": "У цьому альбомі немає файлів, які можуть бути видалені",
   "zoomOutToSeePhotos": "Збільште, щоб побачити фотографії",
-  "backupPausedFreeUpDeviceStorage": "Резервне копіювання призупинено. Звільніть місце на цьому пристрої для відновлення.",
+  "backupPausedFreeUpDeviceStorage": "Резервне копіювання призупинено. Звільніть місце на цьому пристрої, щоб продовжити.",
   "legacyKitSheetHowToRecover": "Як відновити акаунт",
   "legacyKitSheetStepGetAnother": "Це аркуш {index} із {total}. Попросіть {names} поділитися — вам потрібен усього ще один.",
   "@legacyKitSheetStepGetAnother": {
@@ -3211,7 +3211,7 @@
       }
     }
   },
-  "legacyKitSheetStepScan": "Проскануйте аркушів: {count}.",
+  "legacyKitSheetStepScan": "Відскануйте {count} аркуші.",
   "@legacyKitSheetStepScan": {
     "description": "Third recovery step. {count} is how many sheets must be scanned together",
     "placeholders": {

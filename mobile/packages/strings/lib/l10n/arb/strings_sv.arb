@@ -1303,7 +1303,7 @@
   "enableAutomaticBackups": "Automatisk säkerhetskopiering",
   "enableBackupsIosInstruction": "För att aktivera säkerhetskopior på iOS, välj en mapp i Filer (till exempel \"På min iPhone\").",
   "enableComment": "Kommentarer och reaktioner",
-  "enableDownloadsToAllowJoining": "Aktivera hämtningar för att kunna gå med.",
+  "enableDownloadsToAllowJoining": "Aktivera hämtningar för att tillåta andra att gå med.",
   "enabled": "Aktiverad",
   "enableMaps": "Aktivera kartor",
   "encrypted": "Krypterad",
@@ -5068,7 +5068,7 @@
       }
     }
   },
-  "removePersonBody": "{count, plural, =0{Personen förlorar omedelbart åtkomsten till albumet.} one{Personen förlorar omedelbart åtkomsten till albumet. Det {count} foto som personen lade till tas bort.} other{Personen förlorar omedelbart åtkomsten till albumet. De {count} foton som personen lade till tas bort.}}",
+  "removePersonBody": "{count, plural, =0{Personen förlorar omedelbart åtkomsten till albumet.} one{Personen förlorar omedelbart åtkomsten till albumet. Fotot som personen lade till tas bort.} other{Personen förlorar omedelbart åtkomsten till albumet. De {count} foton som personen lade till tas bort.}}",
   "@removePersonBody": {
     "placeholders": {
       "count": {
@@ -5084,7 +5084,7 @@
       }
     }
   },
-  "leaveAlbumBody": "{count, plural, =0{Du förlorar omedelbart åtkomsten till albumet.} one{Du förlorar omedelbart åtkomsten till albumet. Det {count} foto som du lade till tas bort.} other{Du förlorar omedelbart åtkomsten till albumet. De {count} foton som du lade till tas bort.}}",
+  "leaveAlbumBody": "{count, plural, =0{Du förlorar omedelbart åtkomsten till albumet.} one{Du förlorar omedelbart åtkomsten till albumet. Fotot som du lade till tas bort.} other{Du förlorar omedelbart åtkomsten till albumet. De {count} foton som du lade till tas bort.}}",
   "@leaveAlbumBody": {
     "placeholders": {
       "count": {
