@@ -54,7 +54,7 @@ jobs:
                           // ashil-pilot
                           293300083: { allowPrefixes: ["mobile/", "docs/docs/"] },
                           // ashilkn
-                          77285023: { allowPrefixes: ["mobile/"] },
+                          77285023: { allowPrefixes: ["mobile/", "docs/docs/"] },
                           // anandbaburajan
                           2698932: {
                               allowPrefixes: [
