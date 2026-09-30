@@ -227,7 +227,7 @@
   "allowDownloads": "Разрешить скачивание",
   "allowJoining": "Разрешить присоединение",
   "allowJoiningAlbum": "Разрешить объединение альбомов",
-  "allowJoiningDescription": "Пользователи с аккаунтом Ente могут присоединиться к вашему альбому и оставаться в курсе событий",
+  "allowJoiningDescription": "Зрители альбома с аккаунтом Ente могут присоединиться к нему и получать обновления",
   "allowPermBody": "Пожалуйста, разрешите доступ к вашим фото через настройки устройства, чтобы Ente мог отображать и сохранять вашу библиотеку.",
   "allowPermTitle": "Разрешить доступ к фото",
   "allPersonGroupingWillReset": "Все группы этого человека будут сброшены, и вы потеряете все предложения для него",
@@ -344,7 +344,7 @@
   "@authenticationSuccessful": {
     "description": "Success message when authentication is successful"
   },
-  "authenticatorCodesCount": "{count, plural, one{{formattedCount} код аутентификатора} other{{formattedCount} коды аутентификатора}}",
+  "authenticatorCodesCount": "{count, plural, one{{formattedCount} код аутентификатора} few{{formattedCount} кода аутентификатора} many{{formattedCount} кодов аутентификатора} other{{formattedCount} кода аутентификатора}}",
   "@authenticatorCodesCount": {
     "description": "Delete impact row for Auth data",
     "placeholders": {
@@ -429,7 +429,7 @@
       }
     }
   },
-  "backupModeCheckingForMoreItems": "Проверка наличия других товаров",
+  "backupModeCheckingForMoreItems": "Поиск других файлов",
   "backupModeFinishYourBackup": "Завершите резервное копирование",
   "backupModeKeepAppOpen": "Не закрывайте приложение",
   "backupModeNoBackupInProgress": "Резервное копирование не выполняется",
@@ -818,7 +818,7 @@
     }
   },
   "createKit": "Создать набор",
-  "createLegacyKit": "Создать устаревший набор",
+  "createLegacyKit": "Создать комплект Legacy",
   "createNewTag": "Создать новый тег",
   "createPublicLink": "Создать публичную ссылку",
   "createStream": "Создать прямую трансляцию",
@@ -1763,7 +1763,7 @@
       "count": {}
     }
   },
-  "freeUpDeviceSpaceDesc": "Удалите резервные копии.",
+  "freeUpDeviceSpaceDesc": "Удалите с устройства файлы, для которых созданы резервные копии.",
   "freeUpDeviceSpaceDescICloud": "Файлы в общих альбомах iCloud нельзя удалить",
   "@freeUpDeviceSpaceDescICloud": {
     "description": "Here 'cleared' means 'deleted' from the device"
@@ -1868,7 +1868,7 @@
   "imageEditorExposure": "Экспозиция",
   "imageEditorFade": "Затухание",
   "imageEditorHue": "Оттенок",
-  "imageEditorLuminance": "Яркость",
+  "imageEditorLuminance": "Светимость",
   "imageEditorSaturation": "Насыщенность",
   "imageEditorSharpness": "Резкость",
   "imageEditorTemperature": "Температура",
@@ -1966,7 +1966,7 @@
   "@invalidEndpoint": {
     "description": "Error message when endpoint is invalid"
   },
-  "invalidEndpointMessage": "Извините, введенный вами адрес электронной почты недействителен. Пожалуйста, введите действительный адрес электронной почты и попробуйте снова.",
+  "invalidEndpointMessage": "Извините, введённый вами адрес сервера недействителен. Пожалуйста, введите действительный адрес сервера и попробуйте снова.",
   "@invalidEndpointMessage": {
     "description": "Detailed error message when endpoint is invalid"
   },
@@ -2160,7 +2160,7 @@
       }
     }
   },
-  "librarySharingAllCurrentAlbumsShared": "Все ваши текущие альбомы доступны для общего доступа",
+  "librarySharingAllCurrentAlbumsShared": "Вы уже поделились всеми текущими альбомами",
   "librarySharingBannerDescription": "Поделитесь всеми своими альбомами",
   "librarySharingDisable": "Отключить",
   "librarySharingDisableDescription": "Альбомы, которыми вы уже поделились, останутся доступными для {recipient}, включая фотографии, которые вы в них добавите. Новые альбомы не будут автоматически становится общими.\n\nЧтобы прекратить общий доступ к альбому, коснитесь его и выберите «{stopSharingLabel}».",
@@ -2205,7 +2205,7 @@
   "librarySharingRoles": "Роли",
   "librarySharingShareAlbums": "Поделиться альбомами",
   "librarySharingShareWith": "Поделиться с",
-  "librarySharingSharingWith": "Поделиться с",
+  "librarySharingSharingWith": "Общий доступ предоставлен",
   "librarySharingStopSharing": "Закрыть доступ",
   "librarySharingTitle": "Совместное использование библиотеки",
   "librarySharingUpdateRoles": "Обновить роли",
@@ -3136,7 +3136,7 @@
     "description": "Recovery key save description"
   },
   "recoveryKeySaveShortDescription": "Пожалуйста, сохраните этот ключ в безопасном месте.",
-  "recoveryKeySuccessBody": "Отлично! Ваш ключ восстановления действителен. Спасибо за проверку.",
+  "recoveryKeySuccessBody": "Отлично! Ваш ключ восстановления действителен. Спасибо за проверку.\n\nНе забудьте сохранить резервную копию ключа восстановления в надёжном месте.",
   "recoveryKeyVerified": "Ключ восстановления подтверждён",
   "recoveryKeyVerifyReason": "Ключ восстановления — единственный способ восстановить фотографии, если вы забыли пароль. Вы можете найти ключ восстановления в разделе «Настройки» > «Аккаунт».\n\nПожалуйста, введите здесь свой ключ восстановления, чтобы убедиться, что вы сохранили его правильно.",
   "recoveryReady": "Теперь вы можете восстановить аккаунт {email}, установив новый пароль.",
@@ -3497,7 +3497,7 @@
   "scanCode": "Сканировать код",
   "scanDocumentDescription": "Просканируйте важные документы.",
   "scanDocumentTitle": "Документ",
-  "scanFilenamePrefix": "Сканировать",
+  "scanFilenamePrefix": "Скан",
   "@scanFilenamePrefix": {
     "description": "Prefix of the default filename for a scanned document PDF, e.g. 'Scan 13 Aug 2026, 14.30.pdf'"
   },
@@ -4722,7 +4722,7 @@
   },
   "grantAccess": "Предоставить доступ",
   "sharePhotos": "Поделиться фотографиями",
-  "sharePersonPhotos": "Поделиться фотографиями с {name}",
+  "sharePersonPhotos": "Поделиться фото, на которых есть {name}",
   "@sharePersonPhotos": {
     "placeholders": {
       "name": {
@@ -4749,7 +4749,7 @@
   },
   "personShareFailedTitle": "Не удалось поделиться фотографиями",
   "personShareFailedBody": "Не удалось создать общий альбом. Ваши фотографии и выбранные изображения остались без изменений. Пожалуйста, попробуйте еще раз.",
-  "personShareRollbackFailed": "Публикация не завершилась, и удалить альбом “{name}” не удалось. Он остается в альбомах и может содержать активную общедоступную ссылку. Просмотрите или удалите её, прежде чем повторять попытку. Ваши исходные фотографии в безопасности.",
+  "personShareRollbackFailed": "Публикация не завершилась, и удалить альбом “{name}” не удалось. Он остаётся в разделе «Альбомы» и может содержать активную общедоступную ссылку. Просмотрите или удалите этот альбом там, прежде чем повторять попытку. Ваши исходные фотографии в безопасности.",
   "@personShareRollbackFailed": {
     "placeholders": {
       "name": {

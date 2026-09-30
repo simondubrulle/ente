@@ -256,7 +256,7 @@
     "description": "Action of 'Archiving' an element"
   },
   "archiveAlbum": "Archivar álbum",
-  "archiveCollectionName": "Archivar",
+  "archiveCollectionName": "Archivo",
   "@archiveCollectionName": {
     "description": "Name of the 'Archive' collection"
   },

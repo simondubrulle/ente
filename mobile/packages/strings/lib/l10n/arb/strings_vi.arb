@@ -4524,7 +4524,7 @@
   "permissions": "Quyền truy cập",
   "viewerRoleDescription": "Xem và tải xuống ảnh",
   "collaboratorRoleDescription": "Thêm ảnh của họ",
-  "adminRoleDescription": "Thêm ảnh của họ và xóa người",
+  "adminRoleDescription": "Ngoài ra, có thể thêm và xóa người",
   "addAsViewers": "{count, plural, other{Thêm làm người xem}}",
   "@addAsViewers": {
     "placeholders": {
