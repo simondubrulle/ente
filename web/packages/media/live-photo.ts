@@ -3,6 +3,7 @@ import {
     lowercaseExtension,
     nameAndExtension,
 } from "ente-base/file-name";
+import { mergeUint8Arrays } from "ente-utils/array";
 import { ensureArrayBufferBacked } from "ente-utils/bytes";
 import JSZip, { type JSZipObject, type JSZipStreamHelper } from "jszip";
 import { FileType } from "./file-type";
@@ -134,12 +135,7 @@ const readLivePhotoEntry = (
             .on("end", () => {
                 if (settled) return;
                 try {
-                    const data = new Uint8Array(length);
-                    let offset = 0;
-                    for (const chunk of chunks) {
-                        data.set(chunk, offset);
-                        offset += chunk.length;
-                    }
+                    const data = mergeUint8Arrays(chunks);
                     chunks.length = 0;
                     settled = true;
                     resolve(data);
