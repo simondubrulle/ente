@@ -6,8 +6,6 @@ import "package:photos/core/event_bus.dart";
 import "package:photos/db/ml/base.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
 import "package:photos/db/ml/cluster_centroid_vector_db.dart";
-import "package:photos/db/ml/db_pet_model_mappers.dart";
-import "package:photos/db/ml/pet_vector_db.dart";
 import "package:photos/events/embedding_updated_event.dart";
 import "package:photos/generated/protos/ente/common/vector.pb.dart";
 import "package:photos/main.dart" show isProcessBg;
@@ -15,7 +13,6 @@ import "package:photos/models/ml/clip.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/machine_learning/compute_controller.dart";
 import "package:photos/services/machine_learning/ml_process_lock.dart";
-import "package:photos/services/machine_learning/ml_result.dart";
 import "package:synchronized/synchronized.dart";
 
 mixin MLDataDBOrchestration implements IMLDataDB<int> {
@@ -33,128 +30,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
 
   ClipVectorDB get clipVectorDB;
   ClusterCentroidVectorDB get clusterCentroidVectorDB;
-  bool get isLocalGallery;
   Logger get logger;
-
-  @override
-  Future<void> storePetFaceEmbeddings(
-    List<DBPetFace> dbPetFaces,
-    List<PetFaceResult> petFaces,
-  ) async {
-    if (dbPetFaces.length != petFaces.length) {
-      throw StateError(
-        'dbPetFaces.length (${dbPetFaces.length}) != petFaces.length (${petFaces.length})',
-      );
-    }
-    try {
-      final bySpecies = <int, List<(DBPetFace, PetFaceResult)>>{};
-      for (int i = 0; i < dbPetFaces.length; i++) {
-        final species = petFaces[i].species;
-        bySpecies.putIfAbsent(species, () => []);
-        bySpecies[species]!.add((dbPetFaces[i], petFaces[i]));
-      }
-      for (final entry in bySpecies.entries) {
-        final vdb = PetVectorDB.forModel(
-          species: entry.key,
-          isFace: true,
-          localGallery: isLocalGallery,
-        );
-        final petFaceIds = entry.value.map((e) => e.$1.petFaceId).toList();
-        final idMap = await getPetFaceVectorIdMap(
-          petFaceIds,
-          createIfMissing: true,
-        );
-        final vectorIds = <int>[];
-        final embeddings = <Float32List>[];
-        final insertedPetFaceIds = <String>[];
-        for (final (dbFace, pfResult) in entry.value) {
-          final vid = idMap[dbFace.petFaceId];
-          if (vid == null) continue;
-          final emb = Float32List.fromList(pfResult.embedding);
-          if (emb.length != PetVectorDB.faceDimension) {
-            logger.warning(
-              "Skipping pet face embedding with wrong dimension ${emb.length}",
-            );
-            continue;
-          }
-          vectorIds.add(vid);
-          embeddings.add(emb);
-          insertedPetFaceIds.add(dbFace.petFaceId);
-        }
-        if (vectorIds.isNotEmpty) {
-          await vdb.bulkInsertEmbeddings(
-            vectorIds: vectorIds,
-            embeddings: embeddings,
-          );
-          final updateMap = Map.fromIterables(insertedPetFaceIds, vectorIds);
-          await updatePetFaceVectorIds(updateMap);
-        }
-      }
-    } catch (e, s) {
-      logger.severe("Failed to store pet face embeddings in vector DB", e, s);
-      rethrow;
-    }
-  }
-
-  @override
-  Future<void> storePetBodyEmbeddings(
-    List<DBPetBody> dbPetBodies,
-    List<PetBodyResult> petBodies,
-  ) async {
-    if (dbPetBodies.length != petBodies.length) {
-      throw StateError(
-        'dbPetBodies.length (${dbPetBodies.length}) != petBodies.length (${petBodies.length})',
-      );
-    }
-    try {
-      final bySpecies = <int, List<(DBPetBody, PetBodyResult)>>{};
-      for (int i = 0; i < dbPetBodies.length; i++) {
-        final species = dbPetBodies[i].species;
-        bySpecies.putIfAbsent(species, () => []);
-        bySpecies[species]!.add((dbPetBodies[i], petBodies[i]));
-      }
-      for (final entry in bySpecies.entries) {
-        final vdb = PetVectorDB.forModel(
-          species: entry.key,
-          isFace: false,
-          localGallery: isLocalGallery,
-        );
-        final bodyIds = entry.value.map((e) => e.$1.petBodyId).toList();
-        final idMap = await getPetBodyVectorIdMap(
-          bodyIds,
-          createIfMissing: true,
-        );
-        final vectorIds = <int>[];
-        final embeddings = <Float32List>[];
-        final insertedBodyIds = <String>[];
-        for (final (dbBody, bodyResult) in entry.value) {
-          final vid = idMap[dbBody.petBodyId];
-          if (vid == null) continue;
-          final emb = Float32List.fromList(bodyResult.embedding);
-          if (emb.length != PetVectorDB.bodyDimension) {
-            logger.warning(
-              "Skipping pet body embedding with wrong dimension ${emb.length}",
-            );
-            continue;
-          }
-          vectorIds.add(vid);
-          embeddings.add(emb);
-          insertedBodyIds.add(dbBody.petBodyId);
-        }
-        if (vectorIds.isNotEmpty) {
-          await vdb.bulkInsertEmbeddings(
-            vectorIds: vectorIds,
-            embeddings: embeddings,
-          );
-          final updateMap = Map.fromIterables(insertedBodyIds, vectorIds);
-          await updatePetBodyVectorIds(updateMap);
-        }
-      }
-    } catch (e, s) {
-      logger.severe("Failed to store pet body embeddings in vector DB", e, s);
-      rethrow;
-    }
-  }
 
   @override
   Future<void> clearTable() =>
@@ -165,12 +41,6 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     await clipVectorDB.deleteIndexFile();
     await clusterCentroidVectorDB.deleteIndexFile();
     await clearPetTables();
-    final petVdbs = isLocalGallery
-        ? PetVectorDB.allLocalGalleryInstances
-        : PetVectorDB.allInstances;
-    for (final vdb in petVdbs) {
-      await vdb.deleteIndexFile();
-    }
     _markClusterSummaryMutated();
   }
 
@@ -861,63 +731,6 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     } catch (e, s) {
       logger.severe("ClipVectorDB rebuild from SQLite failed", e, s);
     }
-  }
-
-  @override
-  Future<void> deletePetDataForFiles(List<int> fileIDs) async {
-    if (fileIDs.isEmpty) return;
-    final (faceRows, bodyRows) = await getPetRowsForFiles(fileIDs);
-
-    final faceVidsBySpecies = <int, List<int>>{};
-    final faceIdsToRemove = <String>[];
-    for (final (petFaceId, vid, species) in faceRows) {
-      faceIdsToRemove.add(petFaceId);
-      if (vid != null) {
-        faceVidsBySpecies.putIfAbsent(species, () => []);
-        faceVidsBySpecies[species]!.add(vid);
-      }
-    }
-
-    final bodyVidsBySpecies = <int, List<int>>{};
-    final bodyIdsToRemove = <String>[];
-    for (final (petBodyId, vid, species) in bodyRows) {
-      bodyIdsToRemove.add(petBodyId);
-      if (vid != null) {
-        bodyVidsBySpecies.putIfAbsent(species, () => []);
-        bodyVidsBySpecies[species]!.add(vid);
-      }
-    }
-
-    for (final entry in faceVidsBySpecies.entries) {
-      try {
-        final vdb = PetVectorDB.forModel(
-          species: entry.key,
-          isFace: true,
-          localGallery: isLocalGallery,
-        );
-        await vdb.deleteEmbeddings(entry.value);
-      } catch (e, s) {
-        logger.warning("Failed to delete pet face vectors", e, s);
-      }
-    }
-    for (final entry in bodyVidsBySpecies.entries) {
-      try {
-        final vdb = PetVectorDB.forModel(
-          species: entry.key,
-          isFace: false,
-          localGallery: isLocalGallery,
-        );
-        await vdb.deleteEmbeddings(entry.value);
-      } catch (e, s) {
-        logger.warning("Failed to delete pet body vectors", e, s);
-      }
-    }
-
-    await deletePetRowsForFiles(
-      fileIDs: fileIDs,
-      petFaceIds: faceIdsToRemove,
-      petBodyIds: bodyIdsToRemove,
-    );
   }
 
   @override
