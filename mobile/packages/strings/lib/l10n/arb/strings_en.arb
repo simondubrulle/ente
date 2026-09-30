@@ -1978,6 +1978,15 @@
   "importEnteEncGuide": "Select the encrypted JSON file exported from Ente",
   "importEnterSetupKey": "Enter a setup key",
   "importFailureDesc": "Could not parse the selected file.",
+  "importFileTooLarge": "The selected file is too large. Maximum size: {size}.",
+  "@importFileTooLarge": {
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "10 MiB"
+      }
+    }
+  },
   "importFromGallery": "Import from gallery",
   "importGoogleAuthConfirmation": "{codeCount, plural, one{Import 1 code from Google Authenticator?} other{Import {codeCount} codes from Google Authenticator?}}",
   "@importGoogleAuthConfirmation": {
@@ -2804,6 +2813,7 @@
   },
   "noResult": "No result",
   "noResultsFound": "No results found",
+  "noMatchingResultsFound": "No matching results found",
   "noSessionsFound": "No sessions found!",
   "noSimilarImagesFound": "No similar images found",
   "noSuggestionsForPerson": "No suggestions for {personName}",

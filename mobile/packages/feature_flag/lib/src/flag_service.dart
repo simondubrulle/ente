@@ -123,7 +123,7 @@ class FlagService {
 
   bool get useRustForHeicDecoder => internalUser;
 
-  bool get petEnabled => internalUser;
+  bool get petEnabled => false;
 
   bool get qrFeatureEnabled => true;
 

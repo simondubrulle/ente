@@ -23,7 +23,10 @@ import {
     MessageReactionPicker,
 } from "components/MessageReactionPicker";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
-import { SpacePostPhotosBadge } from "components/PostPhotosBadge";
+import {
+    SpacePostPhotosBadge,
+    SpacePostVideoBadge,
+} from "components/PostPhotosBadge";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareInviteButton } from "components/ShareInviteButton";
 import { SpaceSkipLink } from "components/SkipLink";
@@ -728,18 +731,31 @@ const ConversationListItem: React.FC<{
                     {showPostThumbnailSlot &&
                         (postThumbnailUrl ? (
                             <Box
-                                component="img"
-                                alt=""
-                                src={postThumbnailUrl}
                                 sx={{
-                                    borderRadius: "20%",
-                                    display: "block",
-                                    height: 44,
-                                    objectFit: "cover",
-                                    objectPosition: "center",
+                                    position: "relative",
                                     width: 44,
+                                    height: 44,
                                 }}
-                            />
+                            >
+                                <Box
+                                    component="img"
+                                    alt=""
+                                    src={postThumbnailUrl}
+                                    sx={{
+                                        borderRadius: "20%",
+                                        display: "block",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                        objectPosition: "center",
+                                        width: "100%",
+                                    }}
+                                />
+                                <SpacePostVideoBadge
+                                    durationMs={
+                                        (activityPost ?? post)?.durationMs
+                                    }
+                                />
+                            </Box>
                         ) : (
                             <Box
                                 aria-label={
@@ -1359,6 +1375,9 @@ const PostQuotePreview: React.FC<{
                     </Box>
                 )}
                 {canOpen && <SpacePostPhotosBadge count={photoCount} />}
+                {canOpen && (
+                    <SpacePostVideoBadge durationMs={loadedQuote?.durationMs} />
+                )}
             </Box>
         </QuoteFrame>
     );
