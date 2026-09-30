@@ -219,7 +219,11 @@ class SettingsPage extends StatelessWidget {
       context,
       Builder(
         builder: (context) {
-          final items = SettingsSearchRegistry.getSearchableItems(context);
+          final items = SettingsSearchRegistry.getSearchableItems(
+            context,
+            onSignIn: _showBackupReminder,
+            onLogout: _logout,
+          );
           return ColoredBox(
             color: context.componentColors.backgroundBase,
             child: Align(
