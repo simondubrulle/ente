@@ -8,7 +8,6 @@ import "package:photos/db/common/base.dart";
 import "package:photos/db/ml/base.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
 import "package:photos/db/ml/cluster_centroid_vector_db.dart";
-import "package:photos/db/ml/db_pet_model_mappers.dart";
 import "package:photos/db/ml/ml_data_db_orchestration.dart";
 import "package:photos/db/ml/rust_db_model_mappers.dart" as mappers;
 import "package:photos/models/ml/clip.dart";
@@ -27,18 +26,15 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
   final String _databaseName;
   final ClipVectorDB _clipVectorDB;
   final ClusterCentroidVectorDB _clusterCentroidVectorDB;
-  final bool _isLocalGallery;
 
   RustMLDataDB._privateConstructor({
     String databaseName = "ente.ml.db",
     ClipVectorDB? clipVectorDB,
     ClusterCentroidVectorDB? clusterCentroidVectorDB,
-    bool isLocalGallery = false,
   }) : _databaseName = databaseName,
        _clipVectorDB = clipVectorDB ?? ClipVectorDB.instance,
        _clusterCentroidVectorDB =
-           clusterCentroidVectorDB ?? ClusterCentroidVectorDB.instance,
-       _isLocalGallery = isLocalGallery;
+           clusterCentroidVectorDB ?? ClusterCentroidVectorDB.instance;
 
   static final RustMLDataDB instance = RustMLDataDB._privateConstructor();
   static final RustMLDataDB localGalleryInstance =
@@ -46,7 +42,6 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
         databaseName: "ente.ml.offline.db",
         clipVectorDB: ClipVectorDB.localGalleryInstance,
         clusterCentroidVectorDB: ClusterCentroidVectorDB.localGalleryInstance,
-        isLocalGallery: true,
       );
 
   @override
@@ -57,14 +52,11 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
       _clusterCentroidVectorDB;
 
   @override
-  bool get isLocalGallery => _isLocalGallery;
-
-  @override
   Logger get logger => _logger;
 
-  Future<rust.MlDb>? _dbFuture;
+  Future<rust.MlStore>? _dbFuture;
 
-  Future<rust.MlDb> get _db async {
+  Future<rust.MlStore> get _db async {
     final future = _dbFuture ??= _openDatabase();
     try {
       return await future;
@@ -76,12 +68,12 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
     }
   }
 
-  Future<rust.MlDb> _openDatabase() async {
+  Future<rust.MlStore> _openDatabase() async {
     final documentsDirectory = await getApplicationDocumentsDirectory();
     final String path = join(documentsDirectory.path, _databaseName);
     _logger.info("Opening rust ML DB access: DB path $path");
     try {
-      return await rust.MlDb.open(path: path);
+      return await rust.MlStore.open(path: path);
     } on rust.MlDbError_Downgrade catch (e) {
       throw DatabaseDowngradeError(e.message);
     }
@@ -90,50 +82,6 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
   @override
   Future<void> bulkInsertFaces(List<Face> faces) async =>
       (await _db).bulkInsertFaces(faces: faces.map(mappers.toFaceRow).toList());
-
-  @override
-  Future<void> bulkInsertPetFaces(List<DBPetFace> petFaces) async =>
-      (await _db).bulkInsertPetFaces(
-        petFaces: petFaces.map(mappers.toPetFaceRow).toList(),
-      );
-
-  @override
-  Future<void> bulkInsertPetBodies(List<DBPetBody> petBodies) async =>
-      (await _db).bulkInsertPetBodies(
-        petBodies: petBodies.map(mappers.toPetBodyRow).toList(),
-      );
-
-  @override
-  Future<void> updatePetFaceVectorIds(
-    Map<String, int> petFaceIdToVectorId,
-  ) async => (await _db).updatePetFaceVectorIds(
-    petFaceIdToVectorId: petFaceIdToVectorId,
-  );
-
-  @override
-  Future<void> updatePetBodyVectorIds(
-    Map<String, int> petBodyIdToVectorId,
-  ) async => (await _db).updatePetBodyVectorIds(
-    petBodyIdToVectorId: petBodyIdToVectorId,
-  );
-
-  @override
-  Future<Map<String, int>> getPetFaceVectorIdMap(
-    Iterable<String> petFaceIds, {
-    bool createIfMissing = false,
-  }) async => (await _db).getPetFaceVectorIdMap(
-    petFaceIds: petFaceIds.toList(),
-    createIfMissing: createIfMissing,
-  );
-
-  @override
-  Future<Map<String, int>> getPetBodyVectorIdMap(
-    Iterable<String> petBodyIds, {
-    bool createIfMissing = false,
-  }) async => (await _db).getPetBodyVectorIdMap(
-    petBodyIds: petBodyIds.toList(),
-    createIfMissing: createIfMissing,
-  );
 
   @override
   Future<void> updateFaceIdToClusterId(
@@ -227,20 +175,6 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
     final db = await _db;
     final rows = await db.getFacesForGivenFileId(fileUploadId: fileUploadID);
     return rows.isEmpty ? null : rows.map(mappers.toFace).toList();
-  }
-
-  @override
-  Future<List<DBPetFace>?> getPetFacesForFileID(int fileUploadID) async {
-    final db = await _db;
-    final rows = await db.getPetFacesForFileId(fileUploadId: fileUploadID);
-    return rows.isEmpty ? null : rows.map(mappers.toDBPetFace).toList();
-  }
-
-  @override
-  Future<List<DBPetBody>?> getPetBodiesForFileID(int fileUploadID) async {
-    final db = await _db;
-    final rows = await db.getPetBodiesForFileId(fileUploadId: fileUploadID);
-    return rows.isEmpty ? null : rows.map(mappers.toDBPetBody).toList();
   }
 
   @override
@@ -654,47 +588,11 @@ class RustMLDataDB with MLDataDBOrchestration implements IMLDataDB<int> {
   }) async => (await _db).petIndexedFileIds(minimumMlVersion: minimumMlVersion);
 
   @override
-  Future<int> getPetIndexedFileCount({
-    int minimumMlVersion = petMlVersion,
-  }) async =>
-      (await _db).getPetIndexedFileCount(minimumMlVersion: minimumMlVersion);
-
-  @override
   Future<Set<int>> getFullyIndexedFileIds({required bool includePets}) async {
     final db = await _db;
     final fileIDs = await db.getFullyIndexedFileIds(includePets: includePets);
     return fileIDs.inner.toSet();
   }
-
-  @override
-  Future<(List<(String, int?, int)>, List<(String, int?, int)>)>
-  getPetRowsForFiles(List<int> fileIDs) async {
-    final db = await _db;
-    final rows = await db.getPetRowsForFiles(
-      fileIds: Int64List.fromList(fileIDs),
-    );
-    return (
-      [
-        for (final row in rows.faces)
-          (row.petFaceId, row.faceVectorId, row.species),
-      ],
-      [
-        for (final row in rows.bodies)
-          (row.petBodyId, row.bodyVectorId, row.species),
-      ],
-    );
-  }
-
-  @override
-  Future<void> deletePetRowsForFiles({
-    required List<int> fileIDs,
-    required List<String> petFaceIds,
-    required List<String> petBodyIds,
-  }) async => (await _db).deletePetRowsForFiles(
-    fileIds: Int64List.fromList(fileIDs),
-    petFaceIds: petFaceIds,
-    petBodyIds: petBodyIds,
-  );
 
   @override
   Future<void> insertClipRows(List<ClipEmbedding> embeddings) async =>

@@ -2,6 +2,7 @@ mod api;
 mod args;
 mod core_db;
 mod db;
+mod export;
 mod home;
 mod login;
 mod output;
@@ -28,7 +29,7 @@ use args::{
 use output::AccountView;
 use vault::{State, Vault};
 
-#[tokio::main(flavor = "current_thread")]
+#[tokio::main]
 async fn main() {
     if let Err(error) = run(Cli::parse()).await {
         eprintln!("Error: {error:#}");
@@ -117,8 +118,14 @@ async fn session(
         SessionCommand::Logout => {
             let mut vault = Vault::open()?;
             let index = vault.state.resolve(selected)?;
-            let home = home::lock_account(vault.state.accounts[index].storage_id, true)?;
+            let home = home::try_lock_account(vault.state.accounts[index].storage_id)?;
             let name = vault.state.accounts[index].name.clone();
+            let sessions = &vault.state.accounts[index].sessions;
+            let removal = if sessions.len() == 1 && sessions.contains_key(&product) {
+                Some(home.for_removal()?)
+            } else {
+                None
+            };
             api::logout(&vault.state.accounts[index], product).await?;
             vault.state.accounts[index].sessions.remove(&product);
             let removed = vault.state.accounts[index].sessions.is_empty();
@@ -126,8 +133,8 @@ async fn session(
                 remove_account(&mut vault.state, index);
             }
             vault.save()?;
-            if removed {
-                home.remove()?;
+            if let Some(removal) = removal {
+                removal.remove()?;
             }
             drop(vault);
             output::action(
@@ -192,7 +199,8 @@ async fn account_command(command: AccountCommand, options: &Options) -> Result<(
             );
             let mut vault = Vault::open()?;
             let index = vault.state.named(&name)?;
-            let home = home::lock_account(vault.state.accounts[index].storage_id, true)?;
+            let home =
+                home::try_lock_account(vault.state.accounts[index].storage_id)?.for_removal()?;
             let products = vault.state.accounts[index]
                 .sessions
                 .keys()

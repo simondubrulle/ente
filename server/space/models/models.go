@@ -291,6 +291,7 @@ type ShareUpdatePayload struct {
 }
 
 type CreatePostRequest struct {
+	ClientRequestID  string              `json:"clientRequestId,omitempty" binding:"max=64"`
 	EncryptedPostKey string              `json:"encryptedPostKey" binding:"required"`
 	KeyVersion       int                 `json:"keyVersion" binding:"required,gt=0"`
 	CaptionCipher    *string             `json:"captionCipher,omitempty"`
@@ -318,6 +319,11 @@ type CreateMessageRequest struct {
 	NotificationKind             string `json:"notificationKind,omitempty"`
 }
 
+type SetMessageReactionRequest struct {
+	SenderEncryptedReaction    string `json:"senderEncryptedReaction" binding:"required"`
+	RecipientEncryptedReaction string `json:"recipientEncryptedReaction" binding:"required"`
+}
+
 type LikeMessageResponse struct {
 	Liked bool `json:"liked"`
 }
@@ -329,6 +335,7 @@ type MessageResponse struct {
 	RecipientSpaceID    string  `json:"recipientSpaceId"`
 	MessageCipher       string  `json:"messageCipher,omitempty"`
 	EncryptedMessageKey string  `json:"encryptedMessageKey,omitempty"`
+	EncryptedReaction   string  `json:"encryptedReaction,omitempty"`
 	Text                string  `json:"text,omitempty"`
 	ReplyPostID         *int64  `json:"replyPostId,omitempty"`
 	ReplyMessageID      *string `json:"replyMessageId,omitempty"`
@@ -355,6 +362,7 @@ type MessageConversationActivityResponse struct {
 	RecipientSpaceID    string  `json:"recipientSpaceId,omitempty"`
 	MessageCipher       string  `json:"messageCipher,omitempty"`
 	EncryptedMessageKey string  `json:"encryptedMessageKey,omitempty"`
+	EncryptedReaction   string  `json:"encryptedReaction,omitempty"`
 	ReplyMessageID      *string `json:"replyMessageId,omitempty"`
 	PostID              *int64  `json:"postId,omitempty"`
 	PostSpaceID         string  `json:"postSpaceId,omitempty"`
@@ -373,10 +381,11 @@ type ConversationsResponse struct {
 }
 
 type PostObjectPayload struct {
-	ObjectKey      string `json:"objectKey" binding:"required"`
-	Size           int64  `json:"size,omitempty" binding:"omitempty,gt=0"`
-	Position       int    `json:"position,omitempty" binding:"gte=0"`
-	MetadataCipher string `json:"metadataCipher" binding:"required"`
+	Video          *PostObjectPayload `json:"video,omitempty" binding:"omitempty"`
+	ObjectKey      string             `json:"objectKey" binding:"required"`
+	Size           int64              `json:"size,omitempty" binding:"omitempty,gt=0"`
+	Position       int                `json:"position,omitempty" binding:"gte=0"`
+	MetadataCipher string             `json:"metadataCipher" binding:"required"`
 }
 
 type PostResponse struct {

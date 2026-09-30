@@ -13,6 +13,7 @@ class FlagService {
   static const int _videoStreamingFlag = 1 << 3;
   static const int _castSessionsV2Flag = 1 << 5;
   static const int _librarySharingFlag = 1 << 7;
+  static const int _previewUploadV2Flag = 1 << 8;
   static const int _cfUploadWorkerRolloutPercent = 50;
 
   static const String _userIdKey = "user_id";
@@ -98,12 +99,16 @@ class FlagService {
 
   bool get useNativeVideoEditor => true;
 
+  bool get videoEditorSpeedEnabled => internalUser;
+
   bool get facesTimeline => true;
   bool get ritualsFlag => true;
 
   bool get stopStreamProcess => true;
 
   bool get streamEnabledByDefault => _isServerFlagEnabled(_videoStreamingFlag);
+
+  bool get previewUploadV2 => _isServerFlagEnabled(_previewUploadV2Flag);
 
   bool get manualTagFileToPerson => hasGrantedMLConsent;
 
@@ -118,7 +123,7 @@ class FlagService {
 
   bool get useRustForHeicDecoder => internalUser;
 
-  bool get petEnabled => internalUser;
+  bool get petEnabled => false;
 
   bool get qrFeatureEnabled => true;
 

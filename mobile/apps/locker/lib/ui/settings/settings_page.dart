@@ -4,13 +4,13 @@ import "package:ente_accounts/services/user_service.dart";
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
 import "package:ente_ui/components/settings/app_engagement_section.dart";
-import "package:ente_ui/components/settings/app_version_widget.dart";
-import "package:ente_ui/components/settings/social_icons_row.dart";
+import "package:ente_ui/components/settings/more_from_ente_footer.dart";
 import "package:flutter/foundation.dart";
 import "package:flutter/material.dart";
 import "package:hugeicons/hugeicons.dart";
 import "package:locker/services/feature_flag_service.dart";
 import "package:locker/services/review_service.dart";
+import "package:locker/services/update_service.dart";
 import "package:locker/ui/settings/pages/about_page.dart";
 import "package:locker/ui/settings/pages/account_settings_page.dart";
 import "package:locker/ui/settings/pages/debug_settings_page.dart";
@@ -18,6 +18,7 @@ import "package:locker/ui/settings/pages/general_settings_page.dart";
 import "package:locker/ui/settings/pages/security_settings_page.dart";
 import "package:locker/ui/settings/pages/support_page.dart";
 import "package:locker/ui/settings/pages/theme_settings_page.dart";
+import "package:locker/ui/settings/widgets/change_log_sheet.dart";
 import "package:locker/utils/bottom_sheet_illustration.dart";
 
 class SettingsWidget extends StatelessWidget {
@@ -105,9 +106,10 @@ class SettingsWidget extends StatelessWidget {
     }
 
     contents.addAll([
-      const SizedBox(height: 24),
-      const Center(child: SocialIconsRow()),
-      const AppVersionWidget(),
+      MoreFromEnteFooter(
+        currentApp: ComponentApp.locker,
+        onVersionTap: () => _openChangeLog(context),
+      ),
       if (hasLoggedIn &&
           (FeatureFlagService.instance.internalUser || kDebugMode)) ...[
         SettingsItem(
@@ -155,6 +157,13 @@ class SettingsWidget extends StatelessWidget {
     );
     if (shouldLogout == true && context.mounted) {
       await UserService.instance.logout(context);
+    }
+  }
+
+  Future<void> _openChangeLog(BuildContext context) async {
+    await UpdateService.instance.markChangeLogShown();
+    if (context.mounted) {
+      await showChangeLogSheet(context);
     }
   }
 }

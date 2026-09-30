@@ -1,11 +1,35 @@
 use std::collections::BTreeMap;
+use std::future::Future;
 
 use ente_core::b64;
 use ente_space::{AccountSpaceCtx, SpaceLinkCtx};
+use futures_util::future::{AbortHandle, Abortable};
 use serde::{Deserialize, Serialize};
 use serde_wasm_bindgen as swb;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
+use web_sys::AbortSignal;
+
+async fn with_abort_signal<T>(
+    future: impl Future<Output = Result<T, ente_space::Error>>,
+    signal: Option<AbortSignal>,
+) -> Result<T, JsValue> {
+    let Some(signal) = signal else {
+        return future.await.map_err(|error| Error::from(error).into());
+    };
+    if signal.aborted() {
+        return Err(signal.reason());
+    }
+    let (handle, registration) = AbortHandle::new_pair();
+    let on_abort = Closure::<dyn FnMut()>::new(move || handle.abort());
+    signal.add_event_listener_with_callback("abort", on_abort.as_ref().unchecked_ref())?;
+    let result = Abortable::new(future, registration).await;
+    signal.remove_event_listener_with_callback("abort", on_abort.as_ref().unchecked_ref())?;
+    match result {
+        Ok(result) => result.map_err(|error| Error::from(error).into()),
+        Err(_) => Err(signal.reason()),
+    }
+}
 
 #[derive(Debug, thiserror::Error)]
 pub enum Error {
@@ -151,11 +175,48 @@ pub struct PostPhotoAssetOptions {
 }
 
 #[derive(Deserialize, Tsify)]
-pub struct PostPhotoInput {
-    #[serde(with = "swb::preserve")]
-    #[tsify(type = "Uint8Array")]
-    bytes: js_sys::Uint8Array,
-    options: PostPhotoAssetOptions,
+#[serde(rename_all = "camelCase")]
+pub struct PostVideoAssetOptions {
+    width: i32,
+    height: i32,
+    duration_ms: u32,
+}
+
+#[derive(Serialize, Deserialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+pub struct UploadedPostAsset {
+    object_key: String,
+    size: Option<i64>,
+    metadata_cipher: Option<String>,
+}
+
+impl From<ente_space::PostObjectPayload> for UploadedPostAsset {
+    fn from(value: ente_space::PostObjectPayload) -> Self {
+        Self {
+            object_key: value.object_key,
+            size: value.size,
+            metadata_cipher: value.metadata_cipher,
+        }
+    }
+}
+
+impl From<UploadedPostAsset> for ente_space::PostObjectPayload {
+    fn from(value: UploadedPostAsset) -> Self {
+        Self {
+            object_key: value.object_key,
+            size: value.size,
+            metadata_cipher: value.metadata_cipher,
+            position: None,
+            video: None,
+        }
+    }
+}
+
+#[derive(Deserialize, Tsify)]
+pub struct PostMediaInput {
+    preview: UploadedPostAsset,
+    #[tsify(optional)]
+    video: Option<UploadedPostAsset>,
 }
 
 #[derive(Serialize, Tsify)]
@@ -267,6 +328,7 @@ pub struct MessageResponse {
     reply_message_id: Option<String>,
     liked: bool,
     viewer_liked: bool,
+    reaction: Option<String>,
     is_deleted: bool,
     created_at: String,
     updated_at: String,
@@ -300,6 +362,7 @@ struct MessageConversationActivity {
     outgoing: bool,
     message_id: Option<String>,
     text: Option<String>,
+    reaction: Option<String>,
     post_id: Option<i64>,
     reply_object_key: Option<String>,
     post_space_id: Option<String>,
@@ -309,6 +372,8 @@ struct MessageConversationActivity {
 #[derive(Serialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 struct PostPhoto {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    video: Option<PostVideo>,
     asset: PostAsset,
     #[serde(skip_serializing_if = "Option::is_none")]
     position: Option<i32>,
@@ -324,6 +389,13 @@ struct PostPhoto {
     height: Option<i32>,
     #[serde(skip_serializing_if = "Option::is_none")]
     media_type: Option<String>,
+}
+
+#[derive(Serialize, Tsify)]
+#[serde(rename_all = "camelCase")]
+struct PostVideo {
+    asset: PostAsset,
+    duration_ms: u32,
 }
 
 #[derive(Serialize, Tsify)]
@@ -492,18 +564,6 @@ impl From<ente_space::LikePostResponse> for LikePostResponse {
     }
 }
 
-#[derive(Serialize, Tsify)]
-#[serde(rename_all = "camelCase")]
-pub struct LikeMessageResponse {
-    liked: bool,
-}
-
-impl From<ente_space::LikeMessageResponse> for LikeMessageResponse {
-    fn from(value: ente_space::LikeMessageResponse) -> Self {
-        Self { liked: value.liked }
-    }
-}
-
 fn decode_b64_field(value: &str) -> Result<Vec<u8>, Error> {
     b64::decode(value)
         .map_err(ente_space::Error::from)
@@ -640,10 +700,27 @@ impl From<PostAsset> for ente_space::PostAsset {
     }
 }
 
+impl From<ente_space::PostAsset> for PostAsset {
+    fn from(asset: ente_space::PostAsset) -> Self {
+        Self {
+            space_id: asset.space_id,
+            post_id: asset.post_id,
+            object_key: asset.object_key,
+            encrypted_post_key: asset.encrypted_post_key,
+            key_version: asset.key_version,
+            size: asset.size,
+        }
+    }
+}
+
 impl From<ente_space::PostPhoto> for PostPhoto {
     fn from(photo: ente_space::PostPhoto) -> Self {
         let metadata = photo.metadata.unwrap_or_default();
         Self {
+            video: photo.video.map(|video| PostVideo {
+                asset: video.asset.into(),
+                duration_ms: video.duration_ms,
+            }),
             asset: PostAsset {
                 space_id: photo.asset.space_id,
                 post_id: photo.asset.post_id,
@@ -686,6 +763,14 @@ impl From<ente_space::Message> for MessageResponse {
                 (String::new(), None, false, true)
             }
         };
+        let reaction = message.reaction.unwrap_or_else(|error| {
+            log::warn!(
+                "Space message {} reaction is unavailable: {}",
+                message.message_id,
+                ente_core::error::chain(&error)
+            );
+            None
+        });
         Self {
             message_id: message.message_id,
             kind: message.kind,
@@ -695,6 +780,7 @@ impl From<ente_space::Message> for MessageResponse {
             reply_post_id: message.reply_post_id,
             reply_object_key,
             reply_message_id: message.reply_message_id,
+            reaction,
             liked: message.liked,
             viewer_liked: message.viewer_liked,
             is_deleted,
@@ -719,7 +805,16 @@ impl From<ente_space::MessageActivity> for MessageConversationActivity {
                 (None, None, true)
             }
         };
+        let reaction = activity.reaction.unwrap_or_else(|error| {
+            log::warn!(
+                "Space conversation activity {} reaction is unavailable: {}",
+                activity.id,
+                ente_core::error::chain(&error)
+            );
+            None
+        });
         Self {
+            reaction,
             id: activity.id,
             activity_type: activity.activity_type,
             kind: activity.kind,
@@ -1089,31 +1184,107 @@ impl SpaceAccountCtxHandle {
         PostResponse::from(post).into_js().map_err(Into::into)
     }
 
-    #[wasm_bindgen(js_name = createPhotoPost)]
-    pub async fn create_photo_post(
+    #[wasm_bindgen(js_name = generatePostKey)]
+    pub fn generate_post_key(&self) -> Vec<u8> {
+        self.inner.generate_post_key()
+    }
+
+    #[wasm_bindgen(js_name = uploadPostPhotoAsset)]
+    pub async fn upload_post_photo_asset(
         &self,
         space_id: String,
-        photos: Vec<<PostPhotoInput as Tsify>::JsType>,
+        post_key: Vec<u8>,
+        bytes: Vec<u8>,
+        options: <PostPhotoAssetOptions as Tsify>::JsType,
+        signal: Option<AbortSignal>,
+    ) -> Result<<UploadedPostAsset as Tsify>::JsType, JsValue> {
+        let options = PostPhotoAssetOptions::from_js(options).map_err(Error::from)?;
+        let asset = with_abort_signal(
+            self.inner.upload_post_photo_asset(
+                &space_id,
+                &post_key,
+                &bytes,
+                ente_space::PostPhotoAssetOptions {
+                    width: options.width,
+                    height: options.height,
+                    media_type: options.media_type,
+                    thumb_hash: options.thumb_hash,
+                },
+            ),
+            signal,
+        )
+        .await?;
+        UploadedPostAsset::from(asset)
+            .into_js()
+            .map_err(|error| Error::from(error).into())
+    }
+
+    #[wasm_bindgen(js_name = uploadPostVideoAsset)]
+    pub async fn upload_post_video_asset(
+        &self,
+        space_id: String,
+        post_key: Vec<u8>,
+        bytes: Vec<u8>,
+        options: <PostVideoAssetOptions as Tsify>::JsType,
+        signal: Option<AbortSignal>,
+    ) -> Result<<UploadedPostAsset as Tsify>::JsType, JsValue> {
+        let options = PostVideoAssetOptions::from_js(options).map_err(Error::from)?;
+        let asset = with_abort_signal(
+            self.inner.upload_post_video_asset(
+                &space_id,
+                &post_key,
+                &bytes,
+                options.width,
+                options.height,
+                options.duration_ms,
+            ),
+            signal,
+        )
+        .await?;
+        UploadedPostAsset::from(asset)
+            .into_js()
+            .map_err(|error| Error::from(error).into())
+    }
+
+    #[wasm_bindgen(js_name = createMediaPost)]
+    pub async fn create_media_post(
+        &self,
+        space_id: String,
+        post_key: Vec<u8>,
+        items: Vec<<PostMediaInput as Tsify>::JsType>,
+        client_request_id: String,
         caption: Option<String>,
-    ) -> Result<<PostResponse as Tsify>::JsType, Error> {
-        let photos = photos
+    ) -> Result<i64, Error> {
+        if !(1..=10).contains(&items.len()) {
+            return Err(
+                ente_space::Error::InvalidInput("Choose between 1 and 10 items".into()).into(),
+            );
+        }
+        let items = items
             .into_iter()
-            .map(PostPhotoInput::from_js)
+            .map(PostMediaInput::from_js)
             .collect::<Result<Vec<_>, _>>()?;
-        let photos = photos.into_iter().map(|photo| ente_space::PostPhotoInput {
-            bytes: photo.bytes.to_vec(),
-            options: ente_space::PostPhotoAssetOptions {
-                width: photo.options.width,
-                height: photo.options.height,
-                media_type: photo.options.media_type,
-                thumb_hash: photo.options.thumb_hash,
-            },
-        });
-        let post = self
+        let objects = items
+            .into_iter()
+            .enumerate()
+            .map(|(position, item)| {
+                let mut object: ente_space::PostObjectPayload = item.preview.into();
+                object.position = Some(position as i32);
+                object.video = item.video.map(|video| Box::new(video.into()));
+                object
+            })
+            .collect::<Vec<_>>();
+        let (id, _) = self
             .inner
-            .create_photo_post(&space_id, photos, caption.as_deref())
+            .create_post_with_request_id(
+                &space_id,
+                &objects,
+                caption.as_deref().map(str::as_bytes),
+                Some(&post_key),
+                Some(client_request_id),
+            )
             .await?;
-        PostResponse::from(post).into_js().map_err(Into::into)
+        Ok(id)
     }
 
     #[wasm_bindgen(js_name = downloadPostAsset)]
@@ -1242,20 +1413,18 @@ impl SpaceAccountCtxHandle {
         MessageResponse::from(message).into_js().map_err(Into::into)
     }
 
-    #[wasm_bindgen(js_name = likeMessage)]
-    pub async fn like_message(
+    #[wasm_bindgen(js_name = setMessageReaction)]
+    pub async fn set_message_reaction(
         &self,
         space_id: String,
+        sender_space_id: String,
         message_id: String,
-        like: bool,
-    ) -> Result<<LikeMessageResponse as Tsify>::JsType, Error> {
-        LikeMessageResponse::from(
-            self.inner
-                .like_message(&space_id, &message_id, like)
-                .await?,
-        )
-        .into_js()
-        .map_err(Into::into)
+        emoji: Option<String>,
+    ) -> Result<(), Error> {
+        self.inner
+            .set_message_reaction(&space_id, &sender_space_id, &message_id, emoji.as_deref())
+            .await
+            .map_err(Into::into)
     }
 
     #[wasm_bindgen(js_name = deleteMessage)]

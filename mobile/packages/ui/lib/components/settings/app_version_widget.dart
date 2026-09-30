@@ -4,7 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 
 class AppVersionWidget extends StatefulWidget {
-  const AppVersionWidget({super.key});
+  const AppVersionWidget({super.key, this.onTap});
+
+  final VoidCallback? onTap;
 
   @override
   State<AppVersionWidget> createState() => _AppVersionWidgetState();
@@ -28,17 +30,27 @@ class _AppVersionWidgetState extends State<AppVersionWidget> {
           return const SizedBox.shrink();
         }
 
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: Spacing.xl),
-          child: Center(
-            child: Text(
-              context.strings.appVersion(versionValue: snapshot.data!.version),
-              style: TextStyles.mini.copyWith(
-                color: context.componentColors.textLight,
-              ),
-            ),
+        final version = context.strings.appVersion(
+          versionValue: snapshot.data!.version,
+        );
+        final versionText = Text(
+          version,
+          style: TextStyles.mini.copyWith(
+            color: context.componentColors.textLight,
           ),
         );
+
+        final versionContent = Padding(
+          padding: const EdgeInsets.symmetric(vertical: Spacing.xl),
+          child: Center(child: versionText),
+        );
+        return widget.onTap == null
+            ? versionContent
+            : InkWell(
+                onTap: widget.onTap,
+                borderRadius: BorderRadius.circular(Radii.sm),
+                child: versionContent,
+              );
       },
     );
   }
