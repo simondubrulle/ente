@@ -13,6 +13,7 @@ import 'package:ente_network/network.dart';
 import 'package:ente_strings/ente_strings.dart';
 import 'package:ente_ui/pages/settings_search_page.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -126,6 +127,19 @@ void main() {
         );
         expect(find.text(entry.title), findsOneWidget);
         expect(find.text(entry.description), findsOneWidget);
+        for (final text in [entry.title, entry.description]) {
+          final paragraph = tester.renderObject<RenderParagraph>(
+            find.descendant(
+              of: find.text(text),
+              matching: find.byType(RichText),
+            ),
+          );
+          expect(paragraph.textAlign, TextAlign.start);
+          expect(
+            paragraph.textDirection,
+            Directionality.of(tester.element(sheet)),
+          );
+        }
       }
       expect(tester.takeException(), isNull);
       await tester.tap(find.text(l10n.continueLabel));
