@@ -8,6 +8,7 @@ export default defineConfig({
     resolve: {
         alias: {
             services: fileURLToPath(new URL("./src/services", import.meta.url)),
+            utils: fileURLToPath(new URL("./src/utils", import.meta.url)),
         },
     },
 });

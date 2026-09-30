@@ -2981,6 +2981,7 @@ dependencies = [
  "ente-core",
  "ente-space",
  "ente-wasm-lib",
+ "futures-util",
  "js-sys",
  "log",
  "serde",
@@ -2990,6 +2991,7 @@ dependencies = [
  "tsify",
  "wasm-bindgen",
  "wasm-bindgen-futures",
+ "web-sys",
 ]
 
 [[package]]
