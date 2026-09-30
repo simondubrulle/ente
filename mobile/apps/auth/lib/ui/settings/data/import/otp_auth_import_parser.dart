@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:base32/base32.dart';
+import 'package:ente_auth/core/errors.dart';
 import 'package:ente_auth/models/code.dart';
 import 'package:ente_auth/ui/settings/data/import/import_flow.dart';
 import 'package:logging/logging.dart';
@@ -9,11 +10,16 @@ import 'package:pointycastle/export.dart' hide Algorithm;
 
 final _logger = Logger('OtpAuthImportParser');
 
+const otpAuthImportMaxBytes = 10 * 1024 * 1024;
+
 class IncorrectOtpAuthPasswordException implements Exception {
   const IncorrectOtpAuthPasswordException();
 }
 
 List<Code> parseOtpAuthExport(Uint8List fileBytes, {required String password}) {
+  if (fileBytes.length > otpAuthImportMaxBytes) {
+    throw const ImportFileTooLargeException(otpAuthImportMaxBytes);
+  }
   final outer = _decryptOuterArchive(fileBytes);
   final isBackup = outer.containsKey('WrappedData');
   final encryptedData = _bytes(outer[isBackup ? 'WrappedData' : 'Data']);

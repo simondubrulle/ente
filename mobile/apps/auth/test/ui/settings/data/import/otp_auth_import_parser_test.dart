@@ -2,12 +2,23 @@ import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
+import 'package:ente_auth/core/errors.dart';
 import 'package:ente_auth/models/code.dart';
 import 'package:ente_auth/ui/settings/data/import/otp_auth_import_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('OTP Auth import parser', () {
+    test('rejects oversized files before attempting decryption', () {
+      expect(
+        () => parseOtpAuthExport(
+          Uint8List(otpAuthImportMaxBytes + 1),
+          password: '',
+        ),
+        throwsA(isA<ImportFileTooLargeException>()),
+      );
+    });
+
     for (final version in ['1.0', '1.1']) {
       test('decrypts backup version $version', () async {
         final codes = parseOtpAuthExport(
