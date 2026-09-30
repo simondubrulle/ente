@@ -14,6 +14,6 @@ object WhatsNewContent {
                 title = "Keep the conversation going",
                 description =
                     "Ensu now keeps better track of the details that matter in longer chats, so you can ask follow-up questions with less need to repeat yourself.",
-            ),
+            )
         )
 }
