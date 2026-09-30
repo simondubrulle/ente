@@ -1462,7 +1462,7 @@
       }
     }
   },
-  "memoryLaneCaptionYearsAgo": "{name} {count, plural, one{vor einem Jahr} other{vor {number} Jahren}}",
+  "memoryLaneCaptionYearsAgo": "{name} {count, plural, one{vor {number} Jahr} other{vor {number} Jahren}}",
   "@memoryLaneCaptionYearsAgo": {
     "description": "Memory Lane caption in elapsed years. Always keep the number, including for one.",
     "placeholders": {
@@ -1478,7 +1478,7 @@
       }
     }
   },
-  "memoryLaneCaptionMonthsAgo": "{name} {count, plural, one{vor einem Monat} other{vor {number} Monaten}}",
+  "memoryLaneCaptionMonthsAgo": "{name} {count, plural, one{vor {number} Monat} other{vor {number} Monaten}}",
   "@memoryLaneCaptionMonthsAgo": {
     "description": "Memory Lane caption in elapsed months. Always keep the number, including for one.",
     "placeholders": {
@@ -1494,7 +1494,7 @@
       }
     }
   },
-  "memoryLaneCaptionWeeksAgo": "{name} {count, plural, one{vor einer Woche} other{vor {number} Wochen}}",
+  "memoryLaneCaptionWeeksAgo": "{name} {count, plural, one{vor {number} Woche} other{vor {number} Wochen}}",
   "@memoryLaneCaptionWeeksAgo": {
     "description": "Memory Lane caption in elapsed weeks. Always keep the number, including for one.",
     "placeholders": {
@@ -1510,7 +1510,7 @@
       }
     }
   },
-  "memoryLaneCaptionDaysAgo": "{name} {count, plural, one{vor einem Tag} other{vor {number} Tagen}}",
+  "memoryLaneCaptionDaysAgo": "{name} {count, plural, one{vor {number} Tag} other{vor {number} Tagen}}",
   "@memoryLaneCaptionDaysAgo": {
     "description": "Memory Lane caption in elapsed days. Always keep the number, including for one.",
     "placeholders": {

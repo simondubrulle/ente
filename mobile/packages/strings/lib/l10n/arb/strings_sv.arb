@@ -4466,7 +4466,7 @@
     }
   },
   "trashIsEmpty": "Papperskorgen är tom",
-  "trim": "Beskär",
+  "trim": "Trimma",
   "tripInYear": "Resa under {year}",
   "@tripInYear": {
     "placeholders": {

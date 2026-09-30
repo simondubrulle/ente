@@ -1014,7 +1014,7 @@
   "@facesTimelineBannerTitle": {
     "description": "Title for the Memory Lane suggestion banner shown on a person's page"
   },
-  "facesTimelineCaptionYearsAgo": "{count, plural, one{# рік тому} few {# роки тому} many {# років тому} other{# років тому}}",
+  "facesTimelineCaptionYearsAgo": "{count, plural, zero{зараз} one{# рік тому} few {# роки тому} many {# років тому} other{# років тому}}",
   "@facesTimelineCaptionYearsAgo": {
     "description": "Caption for frames when birthdate is unknown, expressing time difference",
     "placeholders": {
