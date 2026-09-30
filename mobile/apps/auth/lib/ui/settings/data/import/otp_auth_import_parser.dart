@@ -197,8 +197,6 @@ bool _constantTimeEquals(Uint8List first, Uint8List second) {
 }
 
 Object? _unarchive(Uint8List data) {
-  // Allow ordinary shared values while keeping decoding and expansion
-  // proportional to the encoded archive size.
   final budget = _ArchiveBudget(data.length * 16);
   return _KeyedArchive(
     _asMap(_BinaryPlistReader(data, budget).parse()),
