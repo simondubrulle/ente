@@ -3,6 +3,7 @@ import { clientPackageName, desktopAppVersion, isDesktop } from "ente-base/app";
 import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
 import { apiOrigin } from "ente-base/origins";
+import type { UploadedPostAsset } from "ente-space-wasm";
 import {
     openSpaceLinkContext,
     type DecryptedSpaceProfile,
@@ -71,7 +72,17 @@ interface SpacePostBase {
 
 export type SpacePostAsset = PostAsset & { mediaType?: string };
 
+export interface SpacePostVideo {
+    asset?: SpacePostAsset;
+    url?: string;
+    durationMs: number;
+    start?: number;
+    end?: number;
+    muted?: boolean;
+}
+
 export interface SpacePostPhoto {
+    video?: SpacePostVideo;
     height?: number;
     imageAsset?: SpacePostAsset;
     imageUrl?: string;
@@ -134,6 +145,7 @@ interface PublicSpaceIdentityResponse {
 type SpaceMessageKind = MessageResponse["kind"];
 
 export interface SpaceMessageQuote {
+    durationMs?: number;
     imageUrl?: string;
     isUnavailable?: boolean;
     hasLoadError?: boolean;
@@ -405,8 +417,17 @@ const cacheAccountPostAssetURL = async (photo: PostPhoto, blob: Blob) => {
     await rememberCachedSpaceMediaBlobURL(key, blob);
 };
 
+const postVideoFrom = (photo: PostPhoto): SpacePostVideo | undefined =>
+    photo.video
+        ? {
+              asset: { ...photo.video.asset, mediaType: "video/mp4" },
+              durationMs: photo.video.durationMs,
+          }
+        : undefined;
+
 const postPhotosFromResponse = (post: PostResponse): SpacePostPhoto[] =>
     post.photos.map((photo) => ({
+        video: postVideoFrom(photo),
         height: photo.height,
         imageAsset: postAssetFrom(photo),
         thumbHash: photo.thumbHash,
@@ -460,6 +481,7 @@ const postFromAccountPost = async (
     return {
         ...base,
         avatarUrl: author.avatarUrl,
+        video: postVideoFrom(photo),
         height: photo.height,
         imageAsset: postAssetFrom(photo),
         imageUrl,
@@ -479,6 +501,7 @@ const profilePostFromPost = (post: PostResponse): SpaceProfilePost => {
     return {
         ...base,
         avatarUrl: null,
+        video: postVideoFrom(photo),
         height: photo.height,
         imageAsset: postAssetFrom(photo),
         photos: postPhotosFromResponse(post),
@@ -597,6 +620,7 @@ const messageQuoteFromPostResponse = async (
     );
     const photo = post.photos[photoIndex];
     const quote: SpaceMessageQuote = {
+        durationMs: photo?.video?.durationMs,
         objectKey,
         photoCount: post.photos.length,
         postId: post.postId,
@@ -1108,38 +1132,97 @@ export const loadCurrentFriendAvatarURL = async (
     }
 };
 
-export const createCurrentPhotoPost = async ({
-    caption,
+export interface PreparedSpacePostMedia {
+    file: File;
+    height: number;
+    width: number;
+    thumbHash: string;
+    video?: { file: File; durationMs: number };
+}
+
+export interface SpacePostUploadSession {
+    requestId?: string;
+    key?: Uint8Array;
+    postId?: number;
+    uploads: {
+        preview?: UploadedPostAsset;
+        video?: UploadedPostAsset;
+        expiresAt: number;
+    }[];
+}
+
+export const createCurrentMediaPost = async ({
     images,
+    caption,
     spaceId,
+    session,
+    signal,
 }: {
-    caption?: string;
-    images: { file: File; height: number; width: number; thumbHash: string }[];
+    images: PreparedSpacePostMedia[];
+    caption: string;
     spaceId: string;
+    session: SpacePostUploadSession;
+    signal?: AbortSignal;
 }) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const photos = await Promise.all(
-            images.map(async (image) => ({
-                bytes: new Uint8Array(await image.file.arrayBuffer()),
-                options: {
-                    width: normalizedImageDimension(image.width),
-                    height: normalizedImageDimension(image.height),
-                    mediaType: image.file.type || undefined,
-                    thumbHash: image.thumbHash || undefined,
-                },
-            })),
-        );
-        const created = await ctx.createPhotoPost(
+        if (!session.postId) {
+            session.key ??= ctx.generatePostKey();
+            session.requestId ??= crypto.randomUUID();
+            for (const [index, image] of images.entries()) {
+                signal?.throwIfAborted();
+                let upload = session.uploads[index];
+                if (!upload || upload.expiresAt < Date.now()) {
+                    upload = { expiresAt: Date.now() + 25 * 60 * 1000 };
+                    session.uploads[index] = upload;
+                }
+                upload.preview ??= await ctx.uploadPostPhotoAsset(
+                    spaceId,
+                    session.key,
+                    new Uint8Array(await image.file.arrayBuffer()),
+                    {
+                        width: image.width,
+                        height: image.height,
+                        mediaType: image.file.type,
+                        thumbHash: image.thumbHash,
+                    },
+                    signal,
+                );
+                signal?.throwIfAborted();
+                if (image.video)
+                    upload.video ??= await ctx.uploadPostVideoAsset(
+                        spaceId,
+                        session.key,
+                        new Uint8Array(await image.video.file.arrayBuffer()),
+                        {
+                            width: image.width,
+                            height: image.height,
+                            durationMs: image.video.durationMs,
+                        },
+                        signal,
+                    );
+            }
+            signal?.throwIfAborted();
+            session.postId = Number(
+                await ctx.createMediaPost(
+                    spaceId,
+                    session.key,
+                    session.uploads.map((upload) => ({
+                        preview: upload.preview!,
+                        video: upload.video,
+                    })),
+                    session.requestId,
+                    caption.trim() || undefined,
+                ),
+            );
+        }
+        const created = await ctx.getPost(
             spaceId,
-            photos,
-            caption?.trim() || null,
+            BigInt(session.postId),
+            spaceId,
         );
-        await Promise.all(
-            created.photos.map((photo, index) =>
-                cacheAccountPostAssetURL(photo, images[index]!.file),
-            ),
-        );
+        for (const [index, photo] of created.photos.entries())
+            await cacheAccountPostAssetURL(photo, images[index]!.file);
         const post = await postFromAccountPost(ctx, created, true, spaceId);
         await prependCachedSpaceFeedPost(spaceId, post);
         return post;
@@ -1147,11 +1230,6 @@ export const createCurrentPhotoPost = async ({
         releaseCurrentSpaceContext(ctx);
     }
 };
-
-const normalizedImageDimension = (dimension: number | undefined) =>
-    typeof dimension == "number" && Number.isFinite(dimension) && dimension > 0
-        ? Math.round(dimension)
-        : undefined;
 
 export const setCurrentPostLiked = async (
     spaceId: string,

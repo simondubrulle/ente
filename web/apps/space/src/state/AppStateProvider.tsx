@@ -23,9 +23,11 @@ import {
 import {
     clearSpaceFriendsCache,
     clearSpaceMediaURLCache,
-    createCurrentPhotoPost,
+    createCurrentMediaPost,
+    type PreparedSpacePostMedia,
 } from "services/space";
 import {
+    initialFriends,
     type LocalSpaceFeedPost,
     type OnboardingEntrySource,
     type PendingCreateProfile,
@@ -34,7 +36,6 @@ import {
     SpaceAppStateContext,
     type SpacePostPublication,
     type SpaceProfileLoadStatus,
-    initialFriends,
 } from "state/app-state";
 import {
     confirmLocalFeedPost,
@@ -42,6 +43,7 @@ import {
     failLocalFeedPost,
 } from "utils/local-feed-post";
 import { prepareSpacePostImageFromEdit } from "utils/post-image";
+import { prepareSpaceVideo } from "utils/post-video";
 
 const postStatusDurationMs = 2000;
 
@@ -166,20 +168,23 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
             };
             setPostPublication(publication);
             try {
-                const preparedImages = [];
+                const prepared: PreparedSpacePostMedia[] = [];
                 for (const image of images) {
-                    preparedImages.push(
-                        await prepareSpacePostImageFromEdit(
-                            image.file,
-                            image.cropArea,
-                            image.rotationDegrees,
-                        ),
+                    prepared.push(
+                        image.video
+                            ? await prepareSpaceVideo(image.file, image.video)
+                            : await prepareSpacePostImageFromEdit(
+                                  image.file,
+                                  image.cropArea,
+                                  image.rotationDegrees,
+                              ),
                     );
                 }
-                const post = await createCurrentPhotoPost({
+                const post = await createCurrentMediaPost({
                     caption,
-                    images: preparedImages,
+                    images: prepared,
                     spaceId,
+                    session: { uploads: [] },
                 });
                 confirmLocalFeedPost(setLocalFeedPosts, localPostId, post);
                 if (postPublishGenerationRef.current == generation) {
