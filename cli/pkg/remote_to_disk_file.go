@@ -207,6 +207,11 @@ func (c *ClICtrl) downloadEntry(ctx context.Context,
 }
 
 func removeDiskFile(diskFileMeta *export.DiskFileMetadata, diskInfo *albumDiskInfo) error {
+	for _, fileName := range diskFileMeta.Info.FileNames {
+		if !filepath.IsLocal(fileName) || fileName == "." || filepath.Base(fileName) != fileName {
+			return fmt.Errorf("invalid exported filename %q", fileName)
+		}
+	}
 	log.Printf("Removing file %s from disk", diskFileMeta.MetaFileName)
 	err := os.Remove(filepath.Join(diskInfo.ExportRoot, diskInfo.AlbumMeta.FolderName, ".meta", diskFileMeta.MetaFileName))
 	if err != nil && !os.IsNotExist(err) {

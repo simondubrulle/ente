@@ -1978,6 +1978,15 @@
   "importEnteEncGuide": "Select the encrypted JSON file exported from Ente",
   "importEnterSetupKey": "Enter a setup key",
   "importFailureDesc": "Could not parse the selected file.",
+  "importFileTooLarge": "The selected file is too large. Maximum size: {size}.",
+  "@importFileTooLarge": {
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "10 MiB"
+      }
+    }
+  },
   "importFromGallery": "Import from gallery",
   "importGoogleAuthConfirmation": "{codeCount, plural, one{Import 1 code from Google Authenticator?} other{Import {codeCount} codes from Google Authenticator?}}",
   "@importGoogleAuthConfirmation": {
@@ -2520,6 +2529,10 @@
   "@mediaManagementHintTitle": {
     "description": "Title of a sheet prompting Android users to enable media management permission."
   },
+  "meetEnteLocker": "Meet Ente Locker",
+  "@meetEnteLocker": {
+    "description": "Button in the Photos changelog that opens the Ente Locker website"
+  },
   "members": "Members",
   "memberStorageUsed": "{amount} used",
   "@memberStorageUsed": {
@@ -2800,6 +2813,7 @@
   },
   "noResult": "No result",
   "noResultsFound": "No results found",
+  "noMatchingResultsFound": "No matching results found",
   "noSessionsFound": "No sessions found!",
   "noSimilarImagesFound": "No similar images found",
   "noSuggestionsForPerson": "No suggestions for {personName}",
@@ -4214,6 +4228,7 @@
   "sortNewestFirst": "Newest first",
   "sortOldestFirst": "Oldest first",
   "sortZToA": "Z-A",
+  "speed": "Speed",
   "sportsAction": "Game on",
   "sportsWithThem": "Sports with {name}",
   "@sportsWithThem": {
@@ -5002,7 +5017,7 @@
   "youAreViewer": "You are a viewer",
   "youAreCollaborator": "You are a collaborator",
   "youAreAdmin": "You are an admin",
-  "emptyAlbumShareMessage": "You have not shared this album with anyone yet.",
+  "emptyAlbumShareMessage": "Add a person to\nshare your album with them",
   "addPeople": "Add people",
   "fromYourContacts": "From your contacts",
   "chooseAccess": "Choose access",

@@ -99,6 +99,8 @@ class FlagService {
 
   bool get useNativeVideoEditor => true;
 
+  bool get videoEditorSpeedEnabled => internalUser;
+
   bool get facesTimeline => true;
   bool get ritualsFlag => true;
 
@@ -121,7 +123,7 @@ class FlagService {
 
   bool get useRustForHeicDecoder => internalUser;
 
-  bool get petEnabled => internalUser;
+  bool get petEnabled => false;
 
   bool get qrFeatureEnabled => true;
 

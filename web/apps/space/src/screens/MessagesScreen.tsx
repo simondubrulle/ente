@@ -23,7 +23,10 @@ import {
     MessageReactionPicker,
 } from "components/MessageReactionPicker";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
-import { SpacePostPhotosBadge } from "components/PostPhotosBadge";
+import {
+    SpacePostPhotosBadge,
+    SpacePostVideoBadge,
+} from "components/PostPhotosBadge";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareInviteButton } from "components/ShareInviteButton";
 import { SpaceSkipLink } from "components/SkipLink";
@@ -728,18 +731,31 @@ const ConversationListItem: React.FC<{
                     {showPostThumbnailSlot &&
                         (postThumbnailUrl ? (
                             <Box
-                                component="img"
-                                alt=""
-                                src={postThumbnailUrl}
                                 sx={{
-                                    borderRadius: "20%",
-                                    display: "block",
-                                    height: 44,
-                                    objectFit: "cover",
-                                    objectPosition: "center",
+                                    position: "relative",
                                     width: 44,
+                                    height: 44,
                                 }}
-                            />
+                            >
+                                <Box
+                                    component="img"
+                                    alt=""
+                                    src={postThumbnailUrl}
+                                    sx={{
+                                        borderRadius: "20%",
+                                        display: "block",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                        objectPosition: "center",
+                                        width: "100%",
+                                    }}
+                                />
+                                <SpacePostVideoBadge
+                                    durationMs={
+                                        (activityPost ?? post)?.durationMs
+                                    }
+                                />
+                            </Box>
                         ) : (
                             <Box
                                 aria-label={
@@ -1359,6 +1375,9 @@ const PostQuotePreview: React.FC<{
                     </Box>
                 )}
                 {canOpen && <SpacePostPhotosBadge count={photoCount} />}
+                {canOpen && (
+                    <SpacePostVideoBadge durationMs={loadedQuote?.durationMs} />
+                )}
             </Box>
         </QuoteFrame>
     );
@@ -1786,9 +1805,9 @@ const MessageBubble: React.FC<{
                                             borderRadius: "12px",
                                             fontFamily:
                                                 '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
-                                            fontSize: 14,
-                                            minHeight: 24,
-                                            minWidth: 28,
+                                            fontSize: 15,
+                                            minHeight: 25,
+                                            minWidth: 29,
                                             pt: "2px",
                                             px: "3px",
                                             color: green,
@@ -2211,10 +2230,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
     React.useLayoutEffect(() => {
         resizeComposer(composerRef.current);
-        if (!selectedFriend || !stickToThreadBottomRef.current) return;
+        if (!selectedThreadID || !stickToThreadBottomRef.current) return;
         if (smoothNextMessageScrollRef.current) return;
         scrollThreadToBottom();
-    }, [messageText, replyingTo, scrollThreadToBottom, selectedFriend]);
+    }, [messageText, replyingTo, scrollThreadToBottom, selectedThreadID]);
 
     React.useEffect(() => {
         setReplyingTo(null);
@@ -2224,7 +2243,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         setMessageText("");
         stickToThreadBottomRef.current = true;
         smoothNextMessageScrollRef.current = false;
-    }, [selectedFriend]);
+    }, [selectedThreadID]);
 
     React.useEffect(() => {
         if (!messageContextMenu?.open) return;
@@ -2253,7 +2272,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }, [isThreadReadOnly]);
 
     React.useLayoutEffect(() => {
-        if (!selectedFriend || isThreadLoading) return;
+        if (!selectedThreadID || isThreadBusy) return;
         if (!stickToThreadBottomRef.current) return;
         if (smoothNextMessageScrollRef.current) {
             smoothNextMessageScrollRef.current = false;
@@ -2262,10 +2281,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         }
         scrollThreadToBottom();
     }, [
-        isThreadLoading,
+        isThreadBusy,
         scheduleThreadBottomScroll,
         scrollThreadToBottom,
-        selectedFriend,
+        selectedThreadID,
         visibleMessages.length,
     ]);
 

@@ -1,2 +1,0 @@
-- Added What's new to the version number, About, and settings search.
-- Added search for individual settings available for your account and device.

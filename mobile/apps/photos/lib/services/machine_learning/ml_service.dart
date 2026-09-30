@@ -1,5 +1,4 @@
 import "dart:async";
-import "dart:convert" show jsonEncode;
 import "dart:io" show File, Platform;
 import "dart:math" show min;
 import "dart:typed_data" show Uint8List;
@@ -11,7 +10,6 @@ import "package:photos/core/event_bus.dart";
 import "package:photos/db/files_db.dart";
 import "package:photos/db/ml/base.dart";
 import "package:photos/db/ml/db.dart";
-import "package:photos/db/ml/db_pet_model_mappers.dart";
 import "package:photos/db/offline_files_db.dart";
 import "package:photos/events/app_mode_changed_event.dart";
 import "package:photos/events/compute_control_event.dart";
@@ -27,7 +25,6 @@ import "package:photos/service_locator.dart";
 import "package:photos/services/filedata/model/file_data.dart";
 import "package:photos/services/machine_learning/face_ml/face_clustering/face_clustering_service.dart";
 import "package:photos/services/machine_learning/face_ml/face_clustering/face_db_info_for_clustering.dart";
-import "package:photos/services/machine_learning/face_ml/face_detection/detection.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_exceptions.dart";
 import "package:photos/services/machine_learning/ml_indexing_isolate.dart";
@@ -343,6 +340,7 @@ class MLService {
   Future<MlRunDisposition> runAllML({
     bool force = false,
     bool allowImageIndexing = true,
+    int? maxFilesToIndex,
     MlRunControl? control,
     Duration? lockWait,
   }) async {
@@ -395,6 +393,7 @@ class MLService {
             mode: mode,
             force: force,
             allowImageIndexing: allowImageIndexing,
+            maxFilesToIndex: maxFilesToIndex,
             control: runControl,
           );
         },
@@ -436,6 +435,7 @@ class MLService {
     required MLMode mode,
     required bool force,
     required bool allowImageIndexing,
+    required int? maxFilesToIndex,
     required MlRunControl control,
   }) async {
     assert(MlProcessLock.instance.isBusy, "ml funnel must be held");
@@ -472,6 +472,7 @@ class MLService {
           mode: mode,
           control: control,
           allowImageIndexing: allowImageIndexing,
+          maxFilesToIndex: maxFilesToIndex,
         );
       }
       if (control.stopRequested) {
@@ -590,6 +591,7 @@ class MLService {
     required MLMode mode,
     required MlRunControl control,
     bool allowImageIndexing = true,
+    int? maxFilesToIndex,
   }) async {
     assert(MlProcessLock.instance.isBusy, "ml funnel must be held");
     if (control.stopRequested) {
@@ -610,6 +612,7 @@ class MLService {
           fetchEmbeddingsAndInstructions(fileDownloadMlLimit, mode: mode);
 
       int fileAnalyzedCount = 0;
+      int fileAttemptCount = 0;
       final Stopwatch stopwatch = Stopwatch()..start();
 
       bool stopRun = false;
@@ -629,6 +632,10 @@ class MLService {
           _logger.info(
             'stopping indexing because user is not connected to wifi and in online mode',
           );
+          if (maxFilesToIndex != null) {
+            allowImageIndexing = false;
+            continue;
+          }
           break;
         } else {
           await MLModelDownloadService.instance.ensureModelsDownloaded(
@@ -640,7 +647,10 @@ class MLService {
           }
         }
         final futures = <Future<bool>>[];
-        for (final instruction in chunk) {
+        final instructions = maxFilesToIndex == null
+            ? chunk
+            : chunk.take(maxFilesToIndex - fileAttemptCount);
+        for (final instruction in instructions) {
           if (control.stopRequested) {
             _logRunStopped(control, "between indexing instructions");
             stopRun = true;
@@ -648,6 +658,7 @@ class MLService {
           }
           futures.add(_processImage(instruction));
         }
+        fileAttemptCount += futures.length;
         // Drain: work that was already started must complete (and commit)
         // before this run can exit and release the process lock.
         final awaitedFutures = await Future.wait(futures);
@@ -656,6 +667,9 @@ class MLService {
           (previousValue, element) => previousValue + (element ? 1 : 0),
         );
         fileAnalyzedCount += sumFutures;
+        if (fileAttemptCount == maxFilesToIndex) {
+          allowImageIndexing = false;
+        }
         if (stopRun) {
           break;
         }
@@ -1007,61 +1021,6 @@ class MLService {
         }
       }
 
-      // Delete stale pet rows first so re-indexing with fewer detections does
-      // not leave old data behind.
-      final rustPets = result.petFaces != null || result.petBodies != null;
-      if (rustPets) {
-        await mlDataDB.deletePetDataForFiles([result.fileId]);
-        if (result.petFaces != null && result.petFaces!.isNotEmpty) {
-          final dbPetFaces = result.petFaces!.map((pf) {
-            return DBPetFace(
-              fileId: result.fileId,
-              petFaceId: pf.petFaceId,
-              detection: jsonEncode(pf.detection.toJson()),
-              faceVectorId: null,
-              species: pf.species,
-              faceScore: pf.detection.score,
-              imageHeight: result.decodedImageSize.height,
-              imageWidth: result.decodedImageSize.width,
-              mlVersion: petMlVersion,
-            );
-          }).toList();
-          await mlDataDB.bulkInsertPetFaces(dbPetFaces);
-          await mlDataDB.storePetFaceEmbeddings(dbPetFaces, result.petFaces!);
-        } else if (instruction.shouldRunPets) {
-          // No pet faces detected; insert empty marker so the file is
-          // considered pet-indexed (mirrors Face.empty for human faces).
-          await mlDataDB.bulkInsertPetFaces([DBPetFace.empty(result.fileId)]);
-        }
-
-        if (result.petBodies != null && result.petBodies!.isNotEmpty) {
-          final dbPetBodies = result.petBodies!.map((obj) {
-            final detectionObj = FaceDetectionRelative(
-              score: obj.score,
-              box: [
-                obj.boxXyxy[0],
-                obj.boxXyxy[1],
-                obj.boxXyxy[2],
-                obj.boxXyxy[3],
-              ],
-              allKeypoints: const [],
-            );
-            return DBPetBody(
-              fileId: result.fileId,
-              petBodyId: obj.petBodyId,
-              detection: jsonEncode(detectionObj.toJson()),
-              bodyVectorId: null,
-              species: obj.cocoClass == 15 ? 1 : 0,
-              score: obj.score,
-              imageHeight: result.decodedImageSize.height,
-              imageWidth: result.decodedImageSize.width,
-              mlVersion: petMlVersion,
-            );
-          }).toList();
-          await mlDataDB.bulkInsertPetBodies(dbPetBodies);
-          await mlDataDB.storePetBodyEmbeddings(dbPetBodies, result.petBodies!);
-        }
-      }
       _logger.info("ML result for fileID ${result.fileId} stored remote+local");
       indexedOrSkipped = true;
       return actuallyRanML;
@@ -1100,13 +1059,6 @@ class MLService {
           }
           storedMarkers.add("clip");
         }
-        if (instruction.shouldRunPets) {
-          await mlDataDB.deletePetDataForFiles([instruction.fileKey]);
-          await mlDataDB.bulkInsertPetFaces([
-            DBPetFace.empty(instruction.fileKey, error: true),
-          ]);
-          storedMarkers.add("pets");
-        }
         _logger.info(
           "Stored empty ML result markers for fileID ${instruction.fileKey}: ${storedMarkers.join(', ')}",
         );
@@ -1117,15 +1069,10 @@ class MLService {
         return true;
       }
       _logger.severe(
-        "Failed to index file for fileID ${instruction.fileKey} (format $format, type $fileType, size $size). Cleaning up partial results so the file will be automatically retried later.",
+        "Failed to index file for fileID ${instruction.fileKey} (format $format, type $fileType, size $size).",
         e,
         s,
       );
-      // Clean up any pet rows that were already committed before the
-      // failure so the file is not treated as fully indexed.
-      if (instruction.shouldRunPets) {
-        await mlDataDB.deletePetDataForFiles([instruction.fileKey]);
-      }
       return false;
     } finally {
       if (indexedOrSkipped) {

@@ -186,13 +186,6 @@ class SettingsSearchRegistry {
           icon: HugeIcons.strokeRoundedInformationCircle,
           routeBuilder: (_) => const AboutSettingsPage(),
         ),
-      SettingsSearchItem(
-        title: l10n.whatsNew,
-        sectionPath: l10n.about,
-        icon: HugeIcons.strokeRoundedParty,
-        routeBuilder: (_) => const AboutSettingsPage(),
-        keywords: ['changelog', 'release notes', 'updates'],
-      ),
       if (hasLoggedIn)
         SettingsSearchItem(
           title: l10n.logout,
@@ -208,7 +201,7 @@ class SettingsSearchRegistry {
     List<SettingsSearchItem> items,
   ) {
     final l10n = context.strings;
-    final titles = {l10n.data, l10n.security, l10n.whatsNew};
+    final titles = {l10n.data, l10n.security};
     return [
       for (final item in items)
         if (titles.contains(item.title))
