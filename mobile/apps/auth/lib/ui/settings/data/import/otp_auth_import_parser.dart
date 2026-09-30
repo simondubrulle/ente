@@ -45,6 +45,8 @@ List<Code> parseOtpAuthExport(Uint8List fileBytes, {required String password}) {
   late final Map<String, Object?> root;
   try {
     root = _asMap(_unarchive(decryptedData));
+  } on _ArchiveExpansionLimitException {
+    rethrow;
   } catch (_) {
     if (isLegacy) throw const IncorrectOtpAuthPasswordException();
     rethrow;
@@ -211,10 +213,15 @@ class _ArchiveBudget {
 
   void consume(int amount) {
     if (amount < 0 || amount > remaining) {
-      throw const FormatException('OTP Auth archive expansion limit exceeded');
+      throw const _ArchiveExpansionLimitException();
     }
     remaining -= amount;
   }
+}
+
+class _ArchiveExpansionLimitException extends FormatException {
+  const _ArchiveExpansionLimitException()
+    : super('OTP Auth archive expansion limit exceeded');
 }
 
 class _KeyedArchive {
