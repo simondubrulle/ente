@@ -1813,11 +1813,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         Boolean(viewerSpaceId) && selectedPhotoFriendID == viewerSpaceId;
     const desiredFeedEntries = React.useMemo<HomeFeedEntry[]>(() => {
         const localResolvedPostIds = new Set(
-            localFeedPosts
-                .filter(
-                    (item) => item.status == "posted" || item.status == "ready",
-                )
-                .map((item) => item.post.postId),
+            localFeedPosts.map((item) =>
+                item.status == "posted" || item.status == "ready"
+                    ? item.post.postId
+                    : item.postId,
+            ),
         );
         return [
             ...localFeedPosts.map(
@@ -1825,7 +1825,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     identity:
                         item.status == "posted" || item.status == "ready"
                             ? `post:${item.post.postId}`
-                            : `local:${item.id}`,
+                            : item.postId
+                              ? `post:${item.postId}`
+                              : `local:${item.id}`,
                     item,
                     kind: "local",
                     renderKey: `local:${item.id}`,
@@ -2071,6 +2073,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             );
         }
 
+        const fetchedPost = item.postId
+            ? feedItems.find((post) => post.postId == item.postId)
+            : undefined;
+        if (fetchedPost) return feedItemFor(fetchedPost, item.id, "posted");
+
         return (
             <FeedItem
                 key={item.id}
@@ -2092,7 +2099,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         ? item.reason == "post-limit"
                             ? "post-limit"
                             : "failed"
-                        : "posting"
+                        : item.postId
+                          ? "posted"
+                          : "posting"
                 }
                 timestampMs={item.timestampMs}
                 viewerLiked={false}

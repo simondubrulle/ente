@@ -6,16 +6,11 @@ import type { FFmpegCommand } from "ente-base/types/ipc";
 import { ensureArrayBufferBacked } from "ente-utils/bytes";
 import { PromiseQueue } from "ente-utils/promise";
 import { z } from "zod";
-import {
-    ffmpegPathPlaceholder,
-    inputPathPlaceholder,
-    outputPathPlaceholder,
-} from "./constants";
+import { inputPathPlaceholder, outputPathPlaceholder } from "./constants";
 import type { VideoTranscodeEdit } from "./web-codecs";
 
 let _ffmpeg: Promise<FFmpeg> | undefined;
 
-// Interleaved ffmpeg.wasm calls can corrupt its memory.
 const _ffmpegTaskQueue = new PromiseQueue<unknown>();
 
 const ffmpegLazy = (signal?: AbortSignal): Promise<FFmpeg> =>
@@ -39,24 +34,6 @@ const createFFmpeg = async (signal?: AbortSignal) => {
         _ffmpeg = undefined;
         throw error;
     }
-};
-
-export const ffmpegExecWeb = async (
-    command: FFmpegCommand,
-    blob: Blob,
-    outputFileExtension: string,
-    options?: { signal?: AbortSignal; onProgress?: (seconds: number) => void },
-): Promise<Uint8Array<ArrayBuffer>> => {
-    return runFFmpegTask(async (ffmpeg) => {
-        const progress = ({ time }: { time: number }) =>
-            options?.onProgress?.(time / 1_000_000);
-        ffmpeg.on("progress", progress);
-        try {
-            return await ffmpegExec(ffmpeg, command, outputFileExtension, blob);
-        } finally {
-            ffmpeg.off("progress", progress);
-        }
-    }, options?.signal);
 };
 
 export const determineVideoDurationWeb = async (
@@ -184,7 +161,6 @@ const ffmpegExec = async (
             try {
                 if (ffmpeg.loaded) await ffmpeg.deleteFile(outputPath);
             } catch (e) {
-                // A failed command may not create the output file.
                 if (status === 0) {
                     log.error(`Failed to remove output ${outputPath}`, e);
                 }
@@ -228,19 +204,15 @@ const substitutePlaceholders = (
     inputFilePath: string,
     outputFilePath: string,
 ) =>
-    command
-        .map((segment) => {
-            if (segment == ffmpegPathPlaceholder) {
-                return undefined;
-            } else if (segment == inputPathPlaceholder) {
-                return inputFilePath;
-            } else if (segment == outputPathPlaceholder) {
-                return outputFilePath;
-            } else {
-                return segment;
-            }
-        })
-        .filter((s) => s !== undefined);
+    command.map((segment) => {
+        if (segment == inputPathPlaceholder) {
+            return inputFilePath;
+        } else if (segment == outputPathPlaceholder) {
+            return outputFilePath;
+        } else {
+            return segment;
+        }
+    });
 
 const FFProbeOutputIsHDR = z.object({
     streams: z.array(z.object({ color_transfer: z.string().optional() })),
@@ -254,7 +226,6 @@ const isHDRVideo = async (ffmpeg: FFmpeg, inputFilePath: string) => {
             [
                 ["-i", inputFilePath],
                 "-show_streams",
-                // FFmpeg may auto-select another stream in multi-stream files.
                 ["-select_streams", "v:0"],
                 ["-of", "json"],
                 ["-o", "output.json"],
@@ -286,7 +257,6 @@ const ffprobeOutput = async (
 
     try {
         status = await ffmpeg.ffprobe(cmd);
-        // ffmpeg.wasm currently returns -1 on success.
         if (status !== 0 && status != -1) {
             log.info(
                 `[wasm] ffprobe command failed with exit code ${status}: ${cmd.join(" ")}`,
@@ -302,8 +272,6 @@ const ffprobeOutput = async (
         try {
             if (ffmpeg.loaded) await ffmpeg.deleteFile(outputPath);
         } catch (e) {
-            // Output file might not even exist if the command did not succeed,
-            // so only log on success.
             if (status === 0 || status == -1) {
                 log.error(`Failed to remove output ${outputPath}`, e);
             }
@@ -317,7 +285,6 @@ const FFProbeOutputDuration = z.object({
 
 const ffprobeExecVideoDuration = async (ffmpeg: FFmpeg, blob: Blob) =>
     withInputMount(ffmpeg, blob, async (inputPath) => {
-        // Scalar output can contain extra lines; JSON is more reliable.
         const jsonString = await ffprobeOutput(
             ffmpeg,
             [

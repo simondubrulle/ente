@@ -414,7 +414,7 @@ const accountPostAssetURL = (
 
 const cacheAccountPostAssetURL = async (photo: PostPhoto, blob: Blob) => {
     const key = postAssetCacheKey(postAssetFrom(photo));
-    await rememberCachedSpaceMediaBlobURL(key, blob);
+    return rememberCachedSpaceMediaBlobURL(key, blob);
 };
 
 const postVideoFrom = (photo: PostPhoto): SpacePostVideo | undefined =>
@@ -1216,14 +1216,30 @@ export const createCurrentMediaPost = async ({
                 ),
             );
         }
-        const created = await ctx.getPost(
-            spaceId,
-            BigInt(session.postId),
-            spaceId,
+        return session.postId;
+    } finally {
+        releaseCurrentSpaceContext(ctx);
+    }
+};
+
+export const loadCurrentCreatedPost = async (
+    spaceId: string,
+    postId: number,
+    previews: File[],
+) => {
+    const ctx = await ensureCurrentSpaceContext();
+    try {
+        const created = await ctx.getPost(spaceId, BigInt(postId), spaceId);
+        const imageURLs = await Promise.all(
+            created.photos.map((photo, index) =>
+                cacheAccountPostAssetURL(photo, previews[index]!),
+            ),
         );
-        for (const [index, photo] of created.photos.entries())
-            await cacheAccountPostAssetURL(photo, images[index]!.file);
-        const post = await postFromAccountPost(ctx, created, true, spaceId);
+        const post = await postFromAccountPost(ctx, created, false, spaceId);
+        post.imageUrl = imageURLs[0];
+        post.photos?.forEach((photo, index) => {
+            photo.imageUrl = imageURLs[index];
+        });
         await prependCachedSpaceFeedPost(spaceId, post);
         return post;
     } finally {

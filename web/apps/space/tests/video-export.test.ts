@@ -13,7 +13,7 @@ const mocks = vi.hoisted(() => ({
 vi.mock("ente-base/log", () => ({
     default: { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() },
 }));
-vi.mock("ente-media/ffmpeg/web-codecs", () => ({
+vi.mock("../src/utils/video-encoding/web-codecs", () => ({
     encodeVideoWithWebCodecs: mocks.encode,
 }));
 vi.mock("@ffmpeg/ffmpeg", () => ({
@@ -50,7 +50,8 @@ beforeEach(() => {
 afterEach(() => vi.unstubAllGlobals());
 
 const exporter = async () => {
-    const { transcodeVideoWeb } = await import("ente-media/ffmpeg/web");
+    const { transcodeVideoWeb } =
+        await import("../src/utils/video-encoding/web");
     return (signal?: AbortSignal) =>
         transcodeVideoWeb(
             new Blob(["video"]),

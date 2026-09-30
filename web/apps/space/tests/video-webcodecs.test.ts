@@ -1,6 +1,6 @@
 import type { FFmpeg } from "@ffmpeg/ffmpeg";
-import { encodeVideoWithWebCodecs } from "ente-media/ffmpeg/web-codecs";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
+import { encodeVideoWithWebCodecs } from "../src/utils/video-encoding/web-codecs";
 
 let frames: Frame[];
 let encodedSources: number[];

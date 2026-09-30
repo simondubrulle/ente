@@ -1,10 +1,10 @@
 import type { FFmpegCommand } from "ente-base/types/ipc";
+import type { PreparedSpacePostImage } from "utils/post-image";
+import { thumbHashBase64FromCanvas } from "utils/thumbhash";
 import {
     inputPathPlaceholder,
     outputPathPlaceholder,
-} from "ente-media/ffmpeg/constants";
-import type { PreparedSpacePostImage } from "utils/post-image";
-import { thumbHashBase64FromCanvas } from "utils/thumbhash";
+} from "./video-encoding/constants";
 
 export interface SpacePostVideoEdit {
     start: number;
@@ -234,7 +234,7 @@ export const prepareSpaceVideo = async (
     let exported = exports.get(file);
     if (exported?.key != key) {
         const { transcodeVideoWeb, determineVideoDurationWeb } =
-            await import("ente-media/ffmpeg/web");
+            await import("./video-encoding/web");
         const command: FFmpegCommand = {
             default: videoExportCommand(edit, false),
             hdr: videoExportCommand(edit, true),
