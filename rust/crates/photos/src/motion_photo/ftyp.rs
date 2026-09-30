@@ -3,23 +3,20 @@ use std::io::{self, Read};
 
 const FTYP_BOX_MIN_SIZE: u32 = 8;
 
-// Real ftyp boxes are usually 16-32 bytes. The larger ceiling allows unusual
-// brand lists while rejecting accidental matches in image data.
+// Reject accidental ftyp matches in image data.
 const FTYP_BOX_MAX_SIZE: u32 = 1024;
 
-// Image-only brands are intentionally excluded.
 const KNOWN_VIDEO_BRANDS: &[[u8; 4]] = &[
     *b"isom", *b"iso2", *b"iso5", *b"iso6", *b"mp41", *b"mp42", *b"mp71", *b"M4V ", *b"M4VP",
     *b"avc1", *b"mmp4", *b"3gp4", *b"3gp5", *b"3gp6", *b"qt  ", *b"MSNV", *b"dash", *b"f4v ",
 ];
 
-// Some phones embed preview and full MP4s in either order. Return the largest
-// valid segment.
+// Phones may embed both preview and full videos.
 pub(super) fn find_largest_ftyp_segment<R: Read>(
     mut reader: R,
     size: usize,
 ) -> io::Result<Option<VideoIndex>> {
-    // Retain enough bytes to recognize a size/type/brand header across reads.
+    // Keep partial 12-byte headers across reads.
     const OVERLAP: usize = 11;
     let mut buffer = vec![0; BUFFER_SIZE + OVERLAP];
     let mut carried = 0;

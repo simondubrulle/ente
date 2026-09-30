@@ -4,7 +4,6 @@ use ente_photos::{
 };
 use std::path::{Path, PathBuf};
 
-// External fixtures live beside the repository unless overridden.
 fn fixture_dir() -> Option<PathBuf> {
     if let Some(path) = std::env::var_os("ENTE_TEST_FIXTURES_DIR") {
         return Some(PathBuf::from(path).join("media/motion-photos/v1/files"));

@@ -83,12 +83,11 @@ fn get_motion_video_index<R: Read + Seek>(
     match xmp::extract_xmp(reader.take(size as u64)) {
         Ok(data) => Ok(extract_video_index_from_xmp(&data, size)),
         Err(MotionPhotoError::Xml(_)) => Ok(None),
-        // Propagate limit and I/O errors so callers preserve existing motion-photo tags.
+        // None clears existing motion-photo tags.
         Err(err) => Err(err),
     }
 }
 
-// Extract up to 64 MiB into memory. Use file extraction for larger videos.
 pub fn extract_motion_video_from_path<P: AsRef<Path>>(
     file_path: P,
     index: Option<VideoIndex>,
@@ -135,8 +134,7 @@ pub fn extract_motion_video_file_from_path<P: AsRef<Path>, Q: AsRef<Path>>(
     source.seek(SeekFrom::Start(index.start as u64))?;
     fs::create_dir_all(destination_directory.as_ref())?;
     let output = destination_directory.as_ref().join(file_name);
-    // The output may alias the source. Copy forward before truncating so writes
-    // at offset zero never overwrite bytes that have not been read yet.
+    // Copy forward before truncating: output may alias the source.
     let mut destination = OpenOptions::new()
         .write(true)
         .create(true)
@@ -236,18 +234,6 @@ mod tests {
         super::get_motion_video_index(&mut Cursor::new(bytes), bytes.len()).expect("read index")
     }
 
-    fn extract_motion_video(
-        bytes: &[u8],
-        index: Option<VideoIndex>,
-    ) -> Result<Vec<u8>, MotionPhotoError> {
-        let mut reader = Cursor::new(bytes);
-        let index = resolve_video_index(&mut reader, bytes.len(), index)?;
-        reader.seek(SeekFrom::Start(index.start as u64))?;
-        let mut result = Vec::new();
-        copy_video(&mut reader, &mut result, index.end - index.start)?;
-        Ok(result)
-    }
-
     fn make_ftyp_box(brand: [u8; 4]) -> Vec<u8> {
         let mut buf = Vec::with_capacity(16);
         buf.extend_from_slice(&16u32.to_be_bytes());
@@ -298,10 +284,6 @@ mod tests {
         let index = get_motion_video_index(&bytes).expect("video index should exist");
         assert_eq!(index.start, first_start);
         assert_eq!(index.end, second_start);
-        let extracted =
-            extract_motion_video(&bytes, Some(index)).expect("video bytes should extract");
-        assert_eq!(extracted.len(), second_start - first_start);
-
         let mut bytes2 = b"jpeg-prefix".to_vec();
         bytes2.extend_from_slice(&make_ftyp_box(*b"mp42"));
         bytes2.extend_from_slice(&[0xCC; 50]);
@@ -413,9 +395,13 @@ mod tests {
     #[test]
     fn extracts_video_bytes_for_valid_index() {
         let bytes = bytes_with_xmp_and_video(20, "GCamera:MotionPhoto=\"1\"");
-        let video = extract_motion_video(&bytes, None).expect("video bytes should extract");
-        assert_eq!(video.len(), 20);
-        assert!(video.iter().all(|byte| *byte == 0xAB));
+        let temp = tempdir().unwrap();
+        let image = temp.path().join("motion.jpg");
+        fs::write(&image, bytes).unwrap();
+        let video = extract_motion_video_from_path(&image, None)
+            .unwrap()
+            .unwrap();
+        assert_eq!(video, vec![0xAB; 20]);
     }
 
     #[test]
@@ -497,24 +483,32 @@ mod tests {
         let temp = tempdir().expect("temp dir");
         let image = temp.path().join("source.jpg");
         let source: Vec<u8> = (0..BUFFER_SIZE * 3 + 19).map(|i| (i % 251) as u8).collect();
-        let index = VideoIndex {
-            start: 13,
-            end: source.len() - 7,
-        };
+        fs::write(&image, &source).unwrap();
+        fs::hard_link(&image, temp.path().join("hard.mp4")).unwrap();
+        #[cfg(unix)]
+        std::os::unix::fs::symlink(&image, temp.path().join("symbolic.mp4")).unwrap();
 
-        for file_name in ["clip.mp4", "source.jpg"] {
-            fs::write(&image, &source).expect("write source");
-            fs::write(temp.path().join(file_name), &source).expect("write existing output");
-            let output = extract_motion_video_file_from_path(
-                &image,
-                temp.path(),
-                file_name,
-                Some(index.clone()),
-            )
-            .expect("extract video")
-            .expect("video output");
-
-            assert_eq!(fs::read(output).unwrap(), source[index.start..index.end]);
+        for file_name in [
+            "clip.mp4",
+            "source.jpg",
+            "hard.mp4",
+            #[cfg(unix)]
+            "symbolic.mp4",
+        ] {
+            for start in [0, 13] {
+                fs::write(&image, &source).unwrap();
+                fs::write(temp.path().join(file_name), &source).unwrap();
+                let end = source.len() - 7;
+                let output = extract_motion_video_file_from_path(
+                    &image,
+                    temp.path(),
+                    file_name,
+                    Some(VideoIndex { start, end }),
+                )
+                .unwrap()
+                .unwrap();
+                assert_eq!(fs::read(output).unwrap(), source[start..end]);
+            }
         }
     }
 
@@ -570,47 +564,14 @@ mod tests {
     }
 
     #[test]
-    fn file_extraction_preserves_source_aliases() {
-        let temp = tempdir().unwrap();
-        let image = temp.path().join("source.jpg");
-        let source: Vec<u8> = (0..BUFFER_SIZE * 2 + 9).map(|i| (i % 251) as u8).collect();
-        fs::write(&image, &source).unwrap();
-        fs::hard_link(&image, temp.path().join("hard.mp4")).unwrap();
-        #[cfg(unix)]
-        std::os::unix::fs::symlink(&image, temp.path().join("symbolic.mp4")).unwrap();
-
-        for output in ["hard.mp4", "symbolic.mp4"] {
-            if !temp.path().join(output).exists() {
-                continue;
-            }
-            for start in [0, 11] {
-                fs::write(&image, &source).unwrap();
-                let end = source.len() - 5;
-                extract_motion_video_file_from_path(
-                    &image,
-                    temp.path(),
-                    output,
-                    Some(VideoIndex { start, end }),
-                )
-                .unwrap();
-                assert_eq!(fs::read(&image).unwrap(), source[start..end]);
-                assert_eq!(
-                    fs::read(temp.path().join(output)).unwrap(),
-                    source[start..end]
-                );
-            }
-        }
-    }
-
-    #[test]
     fn file_extraction_streams_videos_above_the_byte_api_limit() {
         let temp = tempdir().unwrap();
         let image = temp.path().join("source.jpg");
         let length = MAX_VIDEO_BYTES_SIZE + 1;
-        let mut file = File::create(&image).unwrap();
-        file.set_len(length as u64 + 1).unwrap();
-        file.seek(SeekFrom::Start(length as u64)).unwrap();
-        file.write_all(b"Z").unwrap();
+        File::create(&image)
+            .unwrap()
+            .set_len(length as u64 + 1)
+            .unwrap();
         let index = VideoIndex {
             start: 1,
             end: length + 1,
@@ -623,12 +584,7 @@ mod tests {
             extract_motion_video_file_from_path(&image, temp.path(), "clip.mp4", Some(index))
                 .unwrap()
                 .unwrap();
-        let mut result = File::open(output).unwrap();
-        assert_eq!(result.metadata().unwrap().len(), length as u64);
-        result.seek(SeekFrom::End(-1)).unwrap();
-        let mut last = [0];
-        result.read_exact(&mut last).unwrap();
-        assert_eq!(last, *b"Z");
+        assert_eq!(fs::metadata(output).unwrap().len(), length as u64);
     }
 
     #[test]

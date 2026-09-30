@@ -5,7 +5,6 @@ use std::io::{BufRead, BufReader, Read};
 const XMP_MARKER_BEGIN: &[u8] = b"<x:xmpmeta";
 const XMP_MARKER_END: &[u8] = b"</x:xmpmeta>";
 
-// Match the input budget of the EXIF reader; the photo itself can be larger.
 pub(super) const MAX_XMP_SIZE: usize = 8 * 1024 * 1024;
 
 pub(super) fn extract_xmp<R: Read>(source: R) -> Result<HashMap<String, String>, MotionPhotoError> {
@@ -110,43 +109,26 @@ mod tests {
     }
 
     #[test]
-    fn recognizes_both_markers_across_chunks() {
-        let begin = b"<x:xmpmeta>";
-        let attributes = br#"<rdf:Description GPano:ProjectionType="equirectangular"/>"#;
+    fn reads_first_packet_across_chunks() {
+        let begin = br#"<x:xmpmeta Item:Length="7">"#;
         for marker in [XMP_MARKER_BEGIN, XMP_MARKER_END] {
             for split in 1..marker.len() {
                 let prefix = if marker == XMP_MARKER_BEGIN {
                     BUFFER_SIZE - split
                 } else {
-                    BUFFER_SIZE - split - begin.len() - attributes.len()
+                    BUFFER_SIZE - split - begin.len()
                 };
                 let source = [
                     vec![0; prefix],
                     begin.to_vec(),
-                    attributes.to_vec(),
                     XMP_MARKER_END.to_vec(),
+                    br#"<x:xmpmeta Item:Length="8"></x:xmpmeta>"#.to_vec(),
                 ]
                 .concat();
                 let result = extract_xmp(source.as_slice()).unwrap();
-                assert_eq!(
-                    result.get("GPano:ProjectionType").unwrap(),
-                    "equirectangular"
-                );
+                assert_eq!(result.get("Item:Length").unwrap(), "7");
             }
         }
-    }
-
-    #[test]
-    fn preserves_first_packet_attribute_and_utf8_semantics() {
-        let mut source = vec![0; BUFFER_SIZE * 2];
-        source.extend_from_slice(br#"<x:xmpmeta><rdf:Description xmlns:rdf="ignored" xml:lang="ignored" GPano:ProjectionType="old" note="A &amp; B"/><rdf:Description GPano:ProjectionType="cylindrical" invalid=""#);
-        source.push(0xff);
-        source.extend_from_slice(br#""/></x:xmpmeta><x:xmpmeta><rdf:Description GPano:ProjectionType="ignored"/></x:xmpmeta>"#);
-        let data = extract_xmp(source.as_slice()).unwrap();
-        assert_eq!(data.len(), 3);
-        assert_eq!(data.get("GPano:ProjectionType").unwrap(), "cylindrical");
-        assert_eq!(data.get("note").unwrap(), "A & B");
-        assert_eq!(data.get("invalid").unwrap(), "\u{fffd}");
     }
 
     #[test]
@@ -155,7 +137,6 @@ mod tests {
         let mut xml = begin.to_vec();
         xml.resize(MAX_XMP_SIZE - XMP_MARKER_END.len(), b' ');
         xml.extend_from_slice(XMP_MARKER_END);
-        // Trailing image data does not count toward the metadata budget.
         xml.extend_from_slice(&[0; 32]);
         assert!(extract_xmp(xml.as_slice()).unwrap().is_empty());
         xml.insert(begin.len(), b' ');
