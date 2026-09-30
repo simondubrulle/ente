@@ -287,8 +287,7 @@ class BackgroundTasks {
               mlLockWait: BgTaskUtils.mlLockWaitFor(taskName),
             ).timeout(
               remainingBudget.isNegative ? Duration.zero : remainingBudget,
-              onTimeout: () async {
-                await BgTaskUtils.releaseResourcesForKill(taskName, prefs);
+              onTimeout: () {
                 throw TimeoutException("Background task timed out");
               },
             );
