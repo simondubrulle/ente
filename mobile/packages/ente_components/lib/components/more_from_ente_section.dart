@@ -66,7 +66,7 @@ class _MoreFromEnteBrand extends StatelessWidget {
               maxLines: 1,
               style: TextStyle(
                 color: colors.primary,
-                fontFamily: 'More from Ente Gochi Hand',
+                fontFamily: 'Gochi Hand',
                 package: 'ente_components',
                 fontFamilyFallback: const [TextStyles.fontFamily],
                 fontSize: 26.279,

@@ -46,6 +46,3 @@ flutter:
     - family: Gochi Hand
       fonts:
         - asset: fonts/GochiHand-Regular.ttf
-    - family: More from Ente Gochi Hand
-      fonts:
-        - asset: fonts/GochiHand-MoreFromEnte.ttf
