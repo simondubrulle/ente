@@ -98,7 +98,7 @@
   "@addPage": {
     "description": "Button to capture another page in the document scanner"
   },
-  "addPeopleWidgetPrompt": "Añadir un widget de álbum a la pantalla de inicio para personalizarlo aquí.",
+  "addPeopleWidgetPrompt": "Añadir un widget de personas a la pantalla de inicio para personalizarlo aquí.",
   "addPerson": "Añadir persona",
   "@addPerson": {
     "description": "Title for the manual tagging flow where user selects a person to tag files with."

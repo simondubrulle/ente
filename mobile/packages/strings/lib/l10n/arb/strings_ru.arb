@@ -957,7 +957,7 @@
     }
   },
   "deleteMultipleAlbumsQuestion": "Удалить эти альбомы?",
-  "deleteMultipleCollectionsDialogBody": "{count, plural, one{{count} коллекции} other{{count} collections}} будет удалено навсегда.",
+  "deleteMultipleCollectionsDialogBody": "{count, plural, one{{count} коллекция будет удалена навсегда.} few{{count} коллекции будут удалены навсегда.} many{{count} коллекций будут удалены навсегда.} other{{count} коллекции будут удалены навсегда.}}",
   "@deleteMultipleCollectionsDialogBody": {
     "description": "Confirmation message body for deleting multiple collections",
     "placeholders": {
@@ -2065,7 +2065,7 @@
   },
   "leaveSharedAlbum": "Покинуть общий альбом?",
   "left": "Влево",
-  "leftCollectionsSuccessfully": "{count, plural, one{Left {count} коллекция завершена} other{Left {count} коллекций завершено}}",
+  "leftCollectionsSuccessfully": "{count, plural, one{Вы успешно покинули {count} коллекцию} few{Вы успешно покинули {count} коллекции} many{Вы успешно покинули {count} коллекций} other{Вы успешно покинули {count} коллекции}}",
   "@leftCollectionsSuccessfully": {
     "description": "Success message when leaving collections",
     "placeholders": {
@@ -2082,7 +2082,7 @@
   "legacyEmptyStateDescription": "В ваше отсутствие Legacy поможет вашим близким получить доступ к вашей информации в Locker.",
   "legacyIntroCard1": "Мы даем вам 3 карты",
   "legacyIntroCard2": "Поделитесь ими с\n3 человека, которым вы доверяете",
-  "legacyIntroCard3": "Любые 2 из 3 действий могут разблокировать вашу информацию в Locker",
+  "legacyIntroCard3": "Любые 2 из этих 3 человек могут разблокировать вашу информацию в Locker",
   "legacyIntroTitle": "Помогите близким получить доступ к важной информации в ваше отсутствие.",
   "legacyInvite": "{email} пригласил вас стать доверенным контактом",
   "@legacyInvite": {
@@ -2098,7 +2098,7 @@
   "legacyKitEmptyDescription": "Дайте возможность людям, которым вы доверяете, объединиться для восстановления вашего аккаунта",
   "legacyKitMaxReached": "Вы можете создать до 5 комплектов для сохранения старых версий.",
   "legacyKitRecoveryAttemptInProgress": "Попытка восстановления в процессе",
-  "legacyKitRecoveryAttemptMessage": "Было инициировано восстановление с использованием этого устаревшего комплекта, и они получат доступ к учетной записи по адресу {availableAt}.\n\nВы можете отклонить запрос на восстановление в любое время до этого момента.",
+  "legacyKitRecoveryAttemptMessage": "С помощью этого комплекта Legacy было инициировано восстановление. Доступ к учётной записи будет предоставлен {availableAt}.\n\nВы можете отклонить запрос на восстановление в любое время до этого момента.",
   "@legacyKitRecoveryAttemptMessage": {
     "placeholders": {
       "availableAt": {
@@ -3850,7 +3850,7 @@
   "shareTextRecommendUsingEnte": "Скачайте Ente, чтобы мы могли легко обмениваться файлами оригинального качества\n\nhttps://ente.com",
   "shareTextRecommendUsingEnteForFamily": "Скачай Ente, чтобы я мог добавить тебя в свой семейный тариф\n\nhttps://ente.com",
   "shareTextRecommendUsingEnteForPhotos": "Скачай Ente, чтобы мы могли легко делиться фото и видео в оригинальном качестве\n\nhttps://ente.com",
-  "shareTextReferralInvite": "Получите 20 Гб бесплатно с помощью Ente Photos! Скачайте приложение по ссылке https://ente.com/invite and use code {referralCode}.",
+  "shareTextReferralInvite": "Получите 20 Гб бесплатно с помощью Ente Photos! Скачайте приложение по ссылке https://ente.com/invite и используйте код {referralCode}.",
   "@shareTextReferralInvite": {
     "placeholders": {
       "referralCode": {}
@@ -4677,7 +4677,7 @@
       }
     }
   },
-  "legacyKitSheetIntro": "Если меня когда-нибудь не будет рядом или вы потеряете доступ к моему аккаунту, этот лист поможет вам восстановить мои фотографии, документы и многое другое.",
+  "legacyKitSheetIntro": "Если меня когда-нибудь не будет рядом или я потеряю доступ к своему аккаунту, этот лист поможет вам восстановить мои фотографии, документы и многое другое.",
   "@legacyKitSheetIntro": {
     "description": "Written in the voice of the account owner, addressed to the sheet holder"
   },
