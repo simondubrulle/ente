@@ -69,6 +69,41 @@ test("uses WebCodecs output without running the software encoder", async () => {
     expect(mocks.workers[0]!.unmount).toHaveBeenCalled();
 });
 
+test("preloading and posting share the same in-flight engine load", async () => {
+    let finish!: () => void;
+    mocks.load.mockImplementationOnce(
+        () =>
+            new Promise<void>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const { preloadVideoEncoderWeb } =
+        await import("../src/utils/video-encoding/web");
+    const first = preloadVideoEncoderWeb();
+    const second = preloadVideoEncoderWeb();
+    const bytes = new Uint8Array([1, 2]);
+    mocks.encode.mockResolvedValue(bytes);
+    const posted = (await exporter())();
+    expect(mocks.load).toHaveBeenCalledTimes(1);
+    expect(mocks.encode).not.toHaveBeenCalled();
+    finish();
+    await Promise.all([first, second]);
+    expect(await posted).toBe(bytes);
+    expect(mocks.load).toHaveBeenCalledTimes(1);
+    expect(mocks.workers).toHaveLength(1);
+});
+
+test("posting can retry after a failed preload", async () => {
+    mocks.load.mockRejectedValueOnce(new Error("Offline"));
+    const { preloadVideoEncoderWeb } =
+        await import("../src/utils/video-encoding/web");
+    await expect(preloadVideoEncoderWeb()).rejects.toThrow("Offline");
+    mocks.encode.mockResolvedValue(new Uint8Array([2]));
+    expect(await (await exporter())()).toEqual(new Uint8Array([2]));
+    expect(mocks.workers[0]!.terminate).toHaveBeenCalled();
+    expect(mocks.load).toHaveBeenCalledTimes(2);
+});
+
 test.each(["unsupported", "failed", "missing API"])(
     "keeps the software exporter available when WebCodecs is %s",
     async (mode) => {

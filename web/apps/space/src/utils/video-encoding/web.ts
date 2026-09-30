@@ -36,6 +36,10 @@ const createFFmpeg = async (signal?: AbortSignal) => {
     }
 };
 
+export const preloadVideoEncoderWeb = async () => {
+    await ffmpegLazy();
+};
+
 export const determineVideoDurationWeb = async (
     blob: Blob,
     signal?: AbortSignal,

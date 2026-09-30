@@ -100,13 +100,12 @@ export const encodeVideoWithWebCodecs = async (
         const stream = probe.streams[0];
         if (
             !probe.format.format_name.split(",").includes("mov") ||
-            stream?.codec_name !== "h264" ||
-            !["avc1", "avc3"].includes(stream.codec_tag_string) ||
-            stream.pix_fmt !== "yuv420p" ||
-            ["smpte2084", "arib-std-b67"].includes(
-                stream.color_transfer ?? "",
-            ) ||
-            stream.color_primaries === "bt2020" ||
+            !stream ||
+            !(stream.codec_name === "h264"
+                ? ["avc1", "avc3"].includes(stream.codec_tag_string)
+                : stream.codec_name === "hevc" &&
+                  ["hvc1", "hev1"].includes(stream.codec_tag_string)) ||
+            !["yuv420p", "yuvj420p", "yuv420p10le"].includes(stream.pix_fmt) ||
             (stream.sample_aspect_ratio &&
                 stream.sample_aspect_ratio !== "1:1") ||
             Number(stream.start_time ?? 0) !== 0
@@ -165,13 +164,41 @@ export const encodeVideoWithWebCodecs = async (
             "-",
         ]);
         const description = await readBytes(descriptionPath);
-        if (description.length < 7 || description[0] !== 1) return;
-        const decoderConfig: VideoDecoderConfig = {
-            codec:
+        const hevc = stream.codec_name === "hevc";
+        if (description.length < (hevc ? 23 : 7) || description[0] !== 1)
+            return;
+        let codec: string;
+        if (hevc) {
+            const profile = description[1]!;
+            const compatibility = new DataView(
+                description.buffer,
+                description.byteOffset,
+                description.byteLength,
+            ).getUint32(2);
+            const reversedCompatibility = parseInt(
+                compatibility
+                    .toString(2)
+                    .padStart(32, "0")
+                    .split("")
+                    .reverse()
+                    .join(""),
+                2,
+            );
+            const constraints = Array.from(description.slice(6, 12), (value) =>
+                value.toString(16).padStart(2, "0"),
+            )
+                .join(".")
+                .replace(/(\.00)+$/, "");
+            codec = `${stream.codec_tag_string}.${["", "A", "B", "C"][profile >> 6]}${profile & 31}.${reversedCompatibility.toString(16)}.${profile & 32 ? "H" : "L"}${description[12]}.${constraints}`;
+        } else {
+            codec =
                 "avc1." +
                 Array.from(description.slice(1, 4), (value) =>
                     value.toString(16).padStart(2, "0"),
-                ).join(""),
+                ).join("");
+        }
+        const decoderConfig: VideoDecoderConfig = {
+            codec,
             description,
             hardwareAcceleration: "prefer-hardware",
         };
@@ -205,6 +232,11 @@ export const encodeVideoWithWebCodecs = async (
             edit.start,
             frameCount,
             rotation,
+            stream.pix_fmt === "yuv420p10le" ||
+                stream.color_primaries === "bt2020" ||
+                ["smpte2084", "arib-std-b67"].includes(
+                    stream.color_transfer ?? "",
+                ),
             decoderConfig,
             encoderConfig,
             signal,
@@ -264,6 +296,7 @@ const encodeFrames = async (
     start: number,
     frameCount: number,
     rotation: number,
+    convertColor: boolean,
     decoderConfig: VideoDecoderConfig,
     encoderConfig: VideoEncoderConfig,
     signal?: AbortSignal,
@@ -302,11 +335,13 @@ const encodeFrames = async (
     let previous: VideoFrame | undefined;
     let encoded = 0;
     const chunks: Uint8Array<ArrayBuffer>[] = [];
-    const canvas = rotation
-        ? new OffscreenCanvas(encoderConfig.width, encoderConfig.height)
-        : undefined;
-    const context = canvas?.getContext("2d");
-    if (canvas && !context) throw new Error("Couldn't rotate the video");
+    const canvas =
+        rotation || convertColor
+            ? new OffscreenCanvas(encoderConfig.width, encoderConfig.height)
+            : undefined;
+    const context = canvas?.getContext("2d", { colorSpace: "srgb" });
+    if (canvas && !context)
+        throw new Error("Couldn't prepare the video frames");
     const encoder = new VideoEncoder({
         output(chunk) {
             if (chunk.timestamp !== frameTime(chunks.length)) {
