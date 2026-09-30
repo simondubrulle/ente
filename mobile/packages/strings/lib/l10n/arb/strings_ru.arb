@@ -439,7 +439,7 @@
   "backupModeScreenDimmingDescription": "Экран приглушается для экономии заряда батареи. Коснитесь его в любом месте, чтобы вернуться к яркости.",
   "backupModeScreenWillDim": "Экран автоматически приглушится для экономии заряда батареи",
   "backupModeSettingsDescription": "Не закрывайте приложение, до завершения резервного копирования",
-  "backupModeStart": "Начать резервное копирование",
+  "backupModeStart": "Включить режим резервного копирования",
   "backupModeStayInEnte": "Оставайтесь в Ente. Переключение между приложениями приостанавливает резервное копирование.",
   "backupModeTapToWakeScreen": "Нажмите, чтобы разбудить экран",
   "backupOnlyNewPhotos": "Резервное копирование только новых фото",
@@ -1780,7 +1780,7 @@
   "@generatingEncryptionKeysTitle": {
     "description": "Generating encryption keys title"
   },
-  "getAnotherPartOfKitFrom": "Дополнительную часть комплекта можно получить здесь",
+  "getAnotherPartOfKitFrom": "Другую часть комплекта можно получить у следующих людей:",
   "getInTouch": "Связь",
   "getStarted": "Начать",
   "gettingReady": "Идет подготовка",
@@ -1905,7 +1905,7 @@
   "importInstruction": "Пожалуйста, выберите файл, содержащий список ваших кодов в следующем формате",
   "importLabel": "Импорт",
   "importLastpassGuide": "Используйте опцию \"Перенести аккаунты\" в настройках Lastpass Authenticator и нажмите на \"Экспортировать учетные записи в файл\". Импортируйте загружённый JSON-файл.",
-  "importOtpAuthGuide": "Для экспорта зашифрованной резервной копии из OTP Auth выберите файл с расширением .otpauthdb или .otpauthdp. Поддерживается также экспорт файлов .otpauth для одной учетной записи.",
+  "importOtpAuthGuide": "Экспортируйте зашифрованную резервную копию из OTP Auth, затем выберите полученный файл .otpauthdb или .otpauthdp. Также поддерживаются файлы .otpauth, экспортированные для одной учётной записи.",
   "importProtonAuthGuide": "Используйте опцию «Экспорт» в настройках Proton Authenticator.\n\nЕсли ваш экспорт защищен паролем, вам потребуется ввести его для расшифровки.",
   "importRaivoGuide": "Используйте опцию «Экспорт OTP-кодов в Zip-архив» в настройках Raivo.\n\nРаспакуйте zip-архив и импортируйте JSON-файл.",
   "importSelectAppExport": "Выбрать файл экспорта {appName}",
@@ -4630,7 +4630,7 @@
     }
   },
   "youAreOnTheLatestVersion": "Вы используете последнюю версию",
-  "youCannotAddYourselfAsLegacyContact": "Вы не можете добавить себя в качестве контактного лица для связи с предыдущими контактами",
+  "youCannotAddYourselfAsLegacyContact": "Вы не можете добавить себя в качестве доверенного контакта Legacy",
   "youCannotDowngradeToThisPlan": "Вы не можете понизить до этого тарифа",
   "youCannotShareWithYourself": "Вы не можете поделиться с самим собой",
   "youHaveNoFileSuggestedForDeletion": "У вас нет файлов, которые были предложены для удаления",
