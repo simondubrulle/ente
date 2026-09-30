@@ -66,6 +66,53 @@ void main() {
       );
     });
 
+    test('preserves ordinary shared folders and account lists', () async {
+      // The same folder occurs twice; a third shares its account list.
+      // Two more folders have missing/empty account lists.
+      final codes = parseOtpAuthExport(
+        await _fixture('backup-shared.otpauthdb'),
+        password: 'abc123',
+      );
+      final original = parseOtpAuthExport(
+        await _fixture('backup-1.1.otpauthdb'),
+        password: 'abc123',
+      );
+
+      expect(codes.map((code) => code.rawData), [
+        for (var index = 0; index < 3; index++)
+          ...original.map((code) => code.rawData),
+      ]);
+    });
+
+    for (final representation in ['uids', 'inline']) {
+      test('rejects excessive $representation archive expansion', () async {
+        // Small synthetic backups share 16 account references across 32
+        // folder references, encoded either as UIDs or inline containers.
+        final bytes = await _fixture(
+          'backup-expanded-$representation.otpauthdb',
+        );
+        expect(
+          () => parseOtpAuthExport(bytes, password: 'abc123'),
+          throwsA(
+            isA<FormatException>().having(
+              (error) => error.message,
+              'message',
+              'OTP Auth archive expansion limit exceeded',
+            ),
+          ),
+        );
+      });
+    }
+
+    test('bounds binary decoding before resolving the keyed archive', () async {
+      // Distinct plist object IDs point to the same 512-byte test value.
+      final bytes = await _fixture('backup-expanded-binary.otpauthdb');
+      expect(
+        () => parseOtpAuthExport(bytes, password: 'abc123'),
+        throwsFormatException,
+      );
+    });
+
     for (final version in ['1.0', '1.1']) {
       test('rejects an incorrect password for backup version $version', () {
         expect(
