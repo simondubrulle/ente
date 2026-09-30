@@ -2905,8 +2905,8 @@
   "updateAvailable": "Доступне оновлення",
   "updateBackupPassword": "Оновити пароль резервної копії",
   "updated": "Оновлено",
-  "updateSettings": "Налаштування оновлень",
-  "updateTime": "Час оновлень",
+  "updateSettings": "Оновити налаштування",
+  "updateTime": "Оновити час",
   "@updateTime": {
     "description": "Button label to update the recovery time for a trusted contact"
   },
