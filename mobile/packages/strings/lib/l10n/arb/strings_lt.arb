@@ -332,7 +332,7 @@
   "@authToViewSecrets": {
     "description": "Message prompting authentication to view secrets"
   },
-  "authToViewTrashedFiles": "Nustatykite tapatybę, kad peržiūrėtumėte savo ištuštintus failus.",
+  "authToViewTrashedFiles": "Nustatykite tapatybę, kad peržiūrėtumėte išmestus failus",
   "authToViewYourActiveSessions": "Nustatykite tapatybę, kad peržiūrėtumėte savo aktyvius seansus.",
   "authToViewYourHiddenFiles": "Nustatykite tapatybę, kad peržiūrėtumėte savo paslėptus failus.",
   "authToViewYourMemories": "Nustatykite tapatybę, kad peržiūrėtumėte savo prisiminimus.",
