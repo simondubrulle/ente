@@ -5,6 +5,7 @@ import {
     scheduleSlideshowAdvance,
     slideshowFiles,
     slideshowIndex,
+    slideshowPrefetchFiles,
 } from "../src/components/Collections/album-slideshow";
 
 const photo = (id: number, fileType: FileType = FileType.image) =>
@@ -34,25 +35,44 @@ test("navigation loops in both directions and handles empty and single-photo alb
     expect(slideshowIndex(0, -1, 0)).toBe(0);
 });
 
+test("prefetches two upcoming photos and one previous photo without duplicates", () => {
+    const files = [photo(1), photo(2), photo(3), photo(4)];
+    expect(slideshowPrefetchFiles(files, 0, 1)).toEqual([
+        files[1],
+        files[2],
+        files[3],
+    ]);
+    expect(slideshowPrefetchFiles(files, 0, -1)).toEqual([
+        files[3],
+        files[2],
+        files[1],
+    ]);
+    expect(slideshowPrefetchFiles(files.slice(0, 2), 0, 1)).toEqual([files[1]]);
+    expect(slideshowPrefetchFiles(files.slice(0, 1), 0, 1)).toEqual([]);
+});
+
 describe("playback timeout", () => {
     const ready = { enabled: true, ready: true, count: 2 };
-    test("advances once after five seconds", () => {
-        vi.useFakeTimers();
-        const advance = vi.fn();
-        scheduleSlideshowAdvance(ready, advance);
-        vi.advanceTimersByTime(4999);
-        expect(advance).not.toHaveBeenCalled();
-        vi.advanceTimersByTime(1);
-        expect(advance).toHaveBeenCalledTimes(1);
-        vi.advanceTimersByTime(60_000);
-        expect(advance).toHaveBeenCalledTimes(1);
-    });
+    test.each([5, 15, 600])(
+        "advances once after the selected %i seconds",
+        (durationSeconds) => {
+            vi.useFakeTimers();
+            const advance = vi.fn();
+            scheduleSlideshowAdvance({ ...ready, durationSeconds }, advance);
+            vi.advanceTimersByTime(durationSeconds * 1000 - 1);
+            expect(advance).not.toHaveBeenCalled();
+            vi.advanceTimersByTime(1);
+            expect(advance).toHaveBeenCalledTimes(1);
+            vi.advanceTimersByTime(60_000);
+            expect(advance).toHaveBeenCalledTimes(1);
+        },
+    );
 
     test("skips undisplayable media after ten seconds, or replaces that timeout once ready", () => {
         vi.useFakeTimers();
         const advance = vi.fn();
         const cancel = scheduleSlideshowAdvance(
-            { ...ready, ready: false },
+            { ...ready, ready: false, durationSeconds: 600 },
             advance,
         );
         vi.advanceTimersByTime(9999);
