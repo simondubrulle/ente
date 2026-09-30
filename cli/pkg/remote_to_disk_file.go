@@ -84,10 +84,8 @@ func (c *ClICtrl) syncFiles(ctx context.Context, account model.Account) error {
 			if err != nil {
 				if errors.Is(err, model.ErrDecryption) {
 					continue
-				} else if existingEntry.IsLivePhoto() && (errors.Is(err, zip.ErrFormat) || errors.Is(err, zip.ErrInsecurePath)) {
+				} else if existingEntry.IsLivePhoto() && (errors.Is(err, zip.ErrFormat) || errors.Is(err, zip.ErrInsecurePath) || errors.Is(err, model.ErrLiveZip)) {
 					log.Printf("err processing live photo %s (%d), %s", existingEntry.GetTitle(), existingEntry.ID, err.Error())
-					continue
-				} else if existingEntry.IsLivePhoto() && errors.Is(err, model.ErrLiveZip) {
 					continue
 				} else if model.IsBadTimeStampError(err) {
 					log.Printf("Skipping file due to error %s (%d)", existingEntry.GetTitle(), existingEntry.ID)
@@ -153,6 +151,8 @@ func (c *ClICtrl) downloadEntry(ctx context.Context,
 			if err != nil {
 				return err
 			}
+			defer os.Remove(imagePath)
+			defer os.Remove(videoPath)
 			if imagePath == "" && videoPath == "" {
 				log.Printf("imagePath %s, videoPath %s", imagePath, videoPath)
 				return model.ErrLiveZip
