@@ -7,6 +7,26 @@ let encodedSources: number[];
 let encoderFailure: boolean;
 let stallEncoder: (() => void) | undefined;
 let supported: boolean;
+let decoderConfig: VideoDecoderConfig;
+let canvasOptions: CanvasRenderingContext2DSettings[];
+
+class Canvas {
+    sourceTime = 0;
+    constructor(
+        public width: number,
+        public height: number,
+    ) {}
+    getContext(_type: string, options: CanvasRenderingContext2DSettings) {
+        canvasOptions.push(options);
+        return {
+            setTransform: vi.fn(),
+            rotate: vi.fn(),
+            drawImage: (frame: Frame) => {
+                this.sourceTime = frame.sourceTime;
+            },
+        };
+    }
+}
 
 class Frame {
     timestamp: number;
@@ -34,7 +54,8 @@ class Decoder extends EventTarget {
     constructor(private init: VideoDecoderInit) {
         super();
     }
-    configure() {
+    configure(config: VideoDecoderConfig) {
+        decoderConfig = config;
         this.state = "configured";
     }
     decode(chunk: EncodedVideoChunk) {
@@ -94,6 +115,8 @@ beforeEach(() => {
     encoderFailure = false;
     stallEncoder = undefined;
     supported = true;
+    canvasOptions = [];
+    vi.stubGlobal("OffscreenCanvas", Canvas);
     vi.stubGlobal("VideoFrame", Frame);
     vi.stubGlobal("VideoEncoder", Encoder);
     vi.stubGlobal("VideoDecoder", Decoder);
@@ -111,7 +134,11 @@ beforeEach(() => {
 });
 afterEach(() => vi.unstubAllGlobals());
 
-const fixture = (fps = 30, streamChanges = {}) => {
+const fixture = (
+    fps = 30,
+    streamChanges = {},
+    description = new Uint8Array([1, 100, 0, 40, 255, 225, 0]),
+) => {
     const files = new Map<string, Uint8Array | string>();
     const packets = Array.from({ length: Math.ceil(fps * 20) }, (_, index) => ({
         pts_time: (index / fps).toFixed(6),
@@ -156,10 +183,7 @@ const fixture = (fps = 30, streamChanges = {}) => {
         },
         exec: vi.fn((args: string[]) => {
             if (args[0] === "-dump_attachment:v:0")
-                files.set(
-                    args[1]!,
-                    new Uint8Array([1, 100, 0, 40, 255, 225, 0]),
-                );
+                files.set(args[1]!, description);
             else files.set(args.at(-1)!, new Uint8Array([1, 2, 3]));
             return 0;
         }),
@@ -210,11 +234,7 @@ test("29.97 fps and fractional selections never export more than the selected du
     expect(encodedSources).toHaveLength(299);
 });
 
-test("HDR and unsupported hardware are left to the existing exporter", async () => {
-    const hdr = fixture(30, { color_transfer: "smpte2084" });
-    expect(await hdr.encode(0, 10)).toBeUndefined();
-    expect(hdr.ffmpeg.exec).not.toHaveBeenCalled();
-    expect(hdr.files.size).toBe(0);
+test("unsupported hardware is left to the existing exporter", async () => {
     supported = false;
     expect(await fixture().encode(0, 10)).toBeUndefined();
     expect(encodedSources).toHaveLength(0);
@@ -238,4 +258,72 @@ test("codec failures release resources and reject instead of leaving the export 
     await expect(encode(0, 10)).rejects.toThrow("Encoder failed");
     expect(frames.every((frame) => frame.closed)).toBe(true);
     expect(files.size).toBe(0);
+});
+
+test("full-range 8-bit H.264 uses WebCodecs", async () => {
+    const { encode, files } = fixture(30, { pix_fmt: "yuvj420p" });
+    expect(await encode(0, 10)).toBeDefined();
+    expect(encodedSources).toHaveLength(300);
+    expect(frames.every((frame) => frame.closed)).toBe(true);
+    expect(files.size).toBe(0);
+});
+
+test.each(["hvc1", "hev1"])(
+    "decodes HEVC %s with its configuration record",
+    async (tag) => {
+        const description = new Uint8Array([
+            1, 1, 96, 0, 0, 0, 176, 0, 0, 0, 0, 0, 153, 240, 0, 252, 253, 248,
+            248, 0, 0, 15, 0,
+        ]);
+        const { encode } = fixture(
+            60,
+            { codec_name: "hevc", codec_tag_string: tag },
+            description,
+        );
+        expect(await encode(0, 10)).toBeDefined();
+        expect(decoderConfig.codec).toBe(`${tag}.1.6.L153.b0`);
+        expect(decoderConfig.description).toBe(description);
+        expect(encodedSources).toHaveLength(300);
+        expect(canvasOptions).toHaveLength(0);
+    },
+);
+
+test.each(["arib-std-b67", "smpte2084"])(
+    "converts HEVC %s frames to SDR before encoding",
+    async (transfer) => {
+        const description = new Uint8Array([
+            1, 2, 32, 0, 0, 0, 144, 0, 0, 0, 0, 0, 153, 240, 0, 252, 253, 250,
+            250, 0, 0, 15, 0,
+        ]);
+        const { encode, files } = fixture(
+            30,
+            {
+                codec_name: "hevc",
+                codec_tag_string: "hvc1",
+                pix_fmt: "yuv420p10le",
+                color_primaries: "bt2020",
+                color_transfer: transfer,
+            },
+            description,
+        );
+        expect(await encode(0, 10)).toBeDefined();
+        expect(decoderConfig.codec).toBe("hvc1.2.4.L153.90");
+        expect(canvasOptions).toEqual([{ colorSpace: "srgb" }]);
+        expect(encodedSources).toEqual(
+            Array.from({ length: 300 }, (_, i) =>
+                Math.round((i * 1_000_000) / 30),
+            ),
+        );
+        expect(frames.every((frame) => frame.closed)).toBe(true);
+        expect(files.size).toBe(0);
+    },
+);
+
+test("a truncated HEVC configuration is left to the existing exporter", async () => {
+    const { encode } = fixture(30, {
+        codec_name: "hevc",
+        codec_tag_string: "hvc1",
+    });
+    expect(await encode(0, 10)).toBeUndefined();
+    expect(encodedSources).toHaveLength(0);
 });
