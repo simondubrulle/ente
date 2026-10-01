@@ -44,8 +44,6 @@ import "package:photos/ui/viewer/gallery/jump_to_date_gallery.dart";
 import "package:photos/utils/dialog_util.dart";
 import "package:photos/utils/share_util.dart";
 
-const _memoryOverlayHorizontalInset = 24.0;
-const _socialToActionBarGap = 38.0;
 const _memoryCaptionHorizontalInset = 16.0;
 const _memoryCaptionActionBarGap = 4.0;
 const _memoryCaptionLineHeight = 16.0;
@@ -838,11 +836,10 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
               Positioned(
                 left:
                     MediaQuery.paddingOf(context).left +
-                    _memoryOverlayHorizontalInset,
+                    kMemoryOverlayHorizontalInset,
                 bottom:
                     MediaQuery.paddingOf(context).bottom +
-                    kMemoryBottomActionBarHeight +
-                    _socialToActionBarGap,
+                    kMemoryOverlayBottomInset,
                 child: ValueListenableBuilder<int>(
                   valueListenable: inheritedData.indexNotifier,
                   builder: (context, index, _) {
@@ -870,11 +867,8 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
                 if (safeIndex == null) return const SizedBox.shrink();
                 final padding = MediaQuery.paddingOf(context);
                 return Positioned(
-                  right: padding.right + _memoryOverlayHorizontalInset,
-                  bottom:
-                      padding.bottom +
-                      kMemoryBottomActionBarHeight +
-                      _socialToActionBarGap,
+                  right: padding.right + kMemoryOverlayHorizontalInset,
+                  bottom: padding.bottom + kMemoryOverlayBottomInset,
                   child: FileSocialOverlay(
                     file: inheritedData.memories[safeIndex].file,
                     currentUserID: Configuration.instance.getUserID(),

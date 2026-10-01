@@ -23,6 +23,7 @@ import "package:photos/services/memory_share_service.dart";
 import "package:photos/theme/ente_theme.dart";
 import "package:photos/ui/home/memories/memory_music_session.dart";
 import "package:photos/ui/home/memories/memory_progress_indicator.dart";
+import "package:photos/ui/home/memories/memory_viewer_constants.dart";
 import "package:photos/ui/viewer/gallery/jump_to_date_gallery.dart";
 import "package:photos/ui/viewer/people/memory_lane_page.dart";
 import "package:photos/utils/dialog_util.dart";
@@ -950,8 +951,8 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
             ),
             if (memoryAudio != null && _entries.isNotEmpty)
               Positioned(
-                left: safePadding.left + 16,
-                bottom: safePadding.bottom + screenSize.height * 0.055 - 8,
+                left: safePadding.left + kMemoryOverlayHorizontalInset,
+                bottom: safePadding.bottom + kMemoryOverlayBottomInset,
                 child: MemoryAudioMuteButton(memoryAudio),
               ),
           ],
