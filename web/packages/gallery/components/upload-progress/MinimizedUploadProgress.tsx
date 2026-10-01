@@ -39,14 +39,14 @@ export function MinimizedUploadProgress() {
             context.finishedUploads,
             context.preUploadSkippedFiles,
         ).failed > 0;
-    const title =
-        context.uploadPhase == "done" && hasFailures
-            ? t("failed_uploads")
-            : showUploadProgress
-              ? t("uploaded_percent", { percent: progress })
-              : context.uploadPhase == "done"
-                ? uploadStatusText(context.uploadPhase)
-                : t("file_upload");
+    let title = t("file_upload");
+    if (context.uploadPhase == "done" && hasFailures) {
+        title = t("failed_uploads");
+    } else if (showUploadProgress) {
+        title = t("uploaded_percent", { percent: progress });
+    } else if (context.uploadPhase == "done") {
+        title = uploadStatusText(context.uploadPhase);
+    }
 
     const setDragSurface = (surface: HTMLDivElement | null) => {
         dragSurfaceRef.current = surface;
