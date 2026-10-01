@@ -7,7 +7,7 @@ use std::{
 use html_escape::decode_html_entities;
 use once_cell::sync::Lazy;
 use plsfix::fix_text;
-use regex::Regex;
+use regex::{Regex, regex};
 
 use crate::error::{MlError, MlResult};
 
@@ -15,25 +15,13 @@ use super::CLIP_TEXT_TOKEN_COUNT;
 
 const BPE_MERGES_END_EXCLUSIVE: usize = 49152 - 256 - 2 + 1;
 
-#[expect(
-    clippy::expect_used,
-    reason = "The tokenizer regex is a fixed valid literal"
-)]
-static TOKEN_PATTERN: Lazy<Regex> = Lazy::new(|| {
-    Regex::new(
+fn token_pattern() -> &'static Regex {
+    regex!(
         // Keep this aligned with MobileCLIP's Python tokenizer path
         // (open_clip SimpleTokenizer), including Unicode token classes.
-        r"(?i)<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+",
+        r"(?i)<\|startoftext\|>|<\|endoftext\|>|'s|'t|'re|'ve|'m|'ll|'d|[\p{L}]+|[\p{N}]|[^\s\p{L}\p{N}]+"
     )
-    .expect("valid clip tokenizer regex")
-});
-
-#[expect(
-    clippy::expect_used,
-    reason = "The whitespace regex is a fixed valid literal"
-)]
-static WHITESPACE_PATTERN: Lazy<Regex> =
-    Lazy::new(|| Regex::new(r"\s+").expect("valid whitespace regex"));
+}
 
 struct TokenizerState {
     vocab_path: String,
@@ -174,7 +162,7 @@ impl ClipTextTokenizer {
     fn encode(&mut self, text: &str) -> MlResult<Vec<i32>> {
         let mut bpe_tokens = Vec::<i32>::new();
         let clean_text = whitespace_clean(&basic_clean(text)).to_lowercase();
-        for matched in TOKEN_PATTERN.find_iter(&clean_text) {
+        for matched in token_pattern().find_iter(&clean_text) {
             let mut token = String::new();
             for byte in matched.as_str().as_bytes() {
                 let value = self.byte_encoder.get(byte).ok_or_else(|| {
@@ -269,7 +257,7 @@ fn basic_clean(text: &str) -> String {
 }
 
 fn whitespace_clean(text: &str) -> String {
-    let replaced = WHITESPACE_PATTERN.replace_all(text, " ");
+    let replaced = regex!(r"\s+").replace_all(text, " ");
     replaced.trim().to_string()
 }
 
@@ -337,11 +325,11 @@ fn bytes_to_unicode() -> MlResult<(HashMap<u8, String>, Vec<String>)> {
 
 #[cfg(test)]
 mod tests {
-    use super::{ClipTextTokenizer, TOKEN_PATTERN, basic_clean, whitespace_clean};
+    use super::{ClipTextTokenizer, basic_clean, token_pattern, whitespace_clean};
 
     fn cleaned_tokens(text: &str) -> Vec<String> {
         let clean_text = whitespace_clean(&basic_clean(text)).to_lowercase();
-        TOKEN_PATTERN
+        token_pattern()
             .find_iter(&clean_text)
             .map(|matched| matched.as_str().to_string())
             .collect()
