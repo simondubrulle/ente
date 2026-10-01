@@ -36,7 +36,7 @@ List<Code> _parseEntries<T>(Iterable<T> entries, Code Function(T entry) parse) {
     try {
       codes.add(parse(entry));
     } catch (error, stackTrace) {
-      // Parser errors can contain OTP secrets; omit them from logs and telemetry.
+      // Parser errors may contain OTP secrets.
       _logger.warning(
         'Skipping malformed import entry (${error.runtimeType})',
         null,
