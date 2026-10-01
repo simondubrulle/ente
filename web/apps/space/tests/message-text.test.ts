@@ -77,3 +77,36 @@ test("punctuation around links stays outside the link", () => {
     expect(html).toContain(">https://ente.io</a>.), then ");
     expect(html).toMatch(/>ente\.io<\/a>!$/);
 });
+
+test.each([
+    "bücher.de",
+    "bu\u0308cher.de",
+    "bücher.example.com",
+    "example.cöm",
+    "example.com.中国",
+    "例example.com",
+])("internationalized bare domains stay entirely unlinked: %s", (domain) => {
+    const html = renderMessage(`See ${domain} or ente.io`);
+    expect(html.startsWith(`See ${domain} or <a `)).toBe(true);
+    expect(html).toContain('href="https://ente.io"');
+});
+
+test.each(["。", "，", "、", "！", "？", "；", "：", "…", "。”"])(
+    "non-ASCII sentence punctuation stays outside links: %s",
+    (punctuation) => {
+        const html = renderMessage(
+            `See https://example.com/path${punctuation}`,
+        );
+        expect(html).toContain('href="https://example.com/path"');
+        expect(
+            html.endsWith(`>https://example.com/path</a>${punctuation}`),
+        ).toBe(true);
+    },
+);
+
+test("explicit URLs preserve internationalized domains and Unicode paths", () => {
+    const url = "https://bücher.de/資料/日本語?q=%E3%80%82";
+    const html = renderMessage(url);
+    expect(html).toContain(`href="${url}"`);
+    expect(html).toContain(`>${url}</a>`);
+});

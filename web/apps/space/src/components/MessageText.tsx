@@ -1,7 +1,7 @@
 import React from "react";
 
 const messageURLPattern =
-    /\bhttps?:\/\/[^\s<>"']+|(?<![\w@/.:+-])(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}(?![\w@-])(?::\d+)?(?:[/?#][^\s<>"']*)?/gi;
+    /\bhttps?:\/\/[^\s<>"']+|(?<![\p{L}\p{M}\p{N}_@/.:+-])(?:[a-z\d](?:[a-z\d-]*[a-z\d])?\.)+[a-z]{2,}(?![\p{L}\p{M}\p{N}_@-]|\.[\p{L}\p{M}\p{N}_-])(?::\d+)?(?:[/?#][^\s<>"']*)?/giu;
 
 export const SpaceMessageText: React.FC<{ text: string }> = ({ text }) => {
     const content: React.ReactNode[] = [];
@@ -9,7 +9,7 @@ export const SpaceMessageText: React.FC<{ text: string }> = ({ text }) => {
 
     for (const match of text.matchAll(messageURLPattern)) {
         let value = match[0];
-        while (/[.,!?;:)\]}]$/.test(value)) {
+        while (/[.,!?;:)\]}。，、！？；：…’”]$/.test(value)) {
             if (
                 value.endsWith(")") &&
                 value.split("(").length >= value.split(")").length
