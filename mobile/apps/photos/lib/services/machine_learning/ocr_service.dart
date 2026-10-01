@@ -32,6 +32,7 @@ class OcrService {
   final OcrBackend Function() _createVisionBackend;
   late final OcrBackendKind backendKind = _chooseBackendKind();
   late final OcrBackend _backend = _createBackend(backendKind);
+  Future<void>? _modelPreload;
 
   OcrBackendKind _chooseBackendKind() {
     final kind = _preferredBackendKind();
@@ -47,6 +48,16 @@ class OcrService {
       return OcrBackendKind.vision;
     }
     throw UnsupportedError("OCR is only supported on Android and iOS");
+  }
+
+  Future<void> preloadModels() {
+    if (!_isAndroid) return Future.value();
+    return _modelPreload ??= Future.sync(() => prepareModels())
+        .then<void>((_) {})
+        .catchError((Object error, StackTrace stackTrace) {
+          _modelPreload = null;
+          _logger.warning("Could not preload OCR models", error, stackTrace);
+        });
   }
 
   Future<ModelPreparationStatus> prepareModels({

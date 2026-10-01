@@ -33,6 +33,10 @@ impl OcrSession {
         }
     }
 
+    pub(super) fn load(&mut self) -> MlResult<()> {
+        self.session.load()
+    }
+
     pub(super) fn run<T>(
         &mut self,
         operation: impl FnMut(&mut SessionHandle) -> SessionRunResult<T>,

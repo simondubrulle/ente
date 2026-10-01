@@ -55,10 +55,12 @@ class RustOcrBackend implements OcrBackend {
       await setMlExecutionConfig(
         enableWebgpu: await webGpuExecutionPolicy.isEligible(),
       );
-      _engine = await OcrEngine.create(
+      final engine = await OcrEngine.create(
         assetsDir: assetsDir,
         includeRecognizer: includeRecognizer,
       );
+      await engine.loadModels();
+      _engine = engine;
       _includesRecognizer = includeRecognizer;
       final loadedModels = includeRecognizer
           ? "detector, classifier and recognizer"

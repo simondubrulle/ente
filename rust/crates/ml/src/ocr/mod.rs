@@ -161,6 +161,17 @@ impl OcrEngine {
         })
     }
 
+    pub fn load_models(&self) -> MlResult<()> {
+        self.detector.load()?;
+        if let Some(classifier) = &self.classifier {
+            classifier.load()?;
+        }
+        if let Some(recognizer) = &self.recognizer {
+            recognizer.load()?;
+        }
+        Ok(())
+    }
+
     fn text_models(&self) -> MlResult<(&AngleClassifier, &TextRecognizer)> {
         match (&self.classifier, &self.recognizer) {
             (Some(classifier), Some(recognizer)) if self.missing_text_model_paths.is_empty() => {

@@ -94,6 +94,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   String? _resolvedImageSizePath;
   Size? _resolvedImageSize;
   int _imageSizeRequestId = 0;
+  Animation<double>? _routeAnimation;
 
   @override
   void initState() {
@@ -103,6 +104,36 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
       _handleGlobalPointerEvent,
     );
     _evaluateFile();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final animation = ModalRoute.of(context)?.animation;
+    if (animation != _routeAnimation) {
+      _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
+      _routeAnimation = animation;
+      _routeAnimation?.addStatusListener(_onRouteAnimationStatus);
+    }
+    _scheduleModelPreload();
+  }
+
+  void _onRouteAnimationStatus(AnimationStatus status) {
+    if (status == AnimationStatus.completed) {
+      _scheduleModelPreload();
+    }
+  }
+
+  void _scheduleModelPreload() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_isEligible) return;
+      if (ModalRoute.of(context)?.isCurrent == false) return;
+      final animation = _routeAnimation;
+      if (animation != null && animation.status != AnimationStatus.completed) {
+        return;
+      }
+      unawaited(_ocrService.preloadModels());
+    });
   }
 
   @override
@@ -121,6 +152,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
 
   @override
   void dispose() {
+    _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
     _cancelActiveRegionRequest();
     _regionRetryTimer?.cancel();
     _zoomSettleTimer?.cancel();
@@ -217,6 +249,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
         _localFilePath = null;
         _detectedRegions = null;
       });
+      _scheduleModelPreload();
     }
     if (!_requiresRegionRouting) {
       return;

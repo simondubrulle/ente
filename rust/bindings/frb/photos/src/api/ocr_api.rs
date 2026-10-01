@@ -86,6 +86,12 @@ impl OcrEngine {
         ocr::assets::is_detector_downloaded(&AssetStore::new(assets_dir))
     }
 
+    pub fn load_models(&self) -> Result<(), RustOcrError> {
+        self.inner
+            .load_models()
+            .map_err(|error| RustOcrError::from(ocr::OcrError::Ml(error)))
+    }
+
     pub fn detect_text(
         &self,
         image_path: String,

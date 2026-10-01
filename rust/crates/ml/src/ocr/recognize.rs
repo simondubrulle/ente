@@ -70,6 +70,14 @@ impl TextRecognizer {
         }
     }
 
+    pub(crate) fn load(&self) -> MlResult<()> {
+        self.dictionary.entries()?;
+        self.session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .load()
+    }
+
     pub(crate) fn recognize(
         &self,
         crops: &[&ImageU8],

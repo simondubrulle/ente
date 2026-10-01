@@ -42,6 +42,13 @@ impl AngleClassifier {
         }
     }
 
+    pub(crate) fn load(&self) -> MlResult<()> {
+        self.session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .load()
+    }
+
     pub(crate) fn classify(&self, crops: &mut [ImageU8]) -> MlResult<Vec<AngleDecision>> {
         classify_in_batches(crops, |batch| self.score_batch(batch))
     }
