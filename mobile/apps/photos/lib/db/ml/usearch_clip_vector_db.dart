@@ -14,13 +14,13 @@ import "package:synchronized/synchronized.dart";
 
 class UsearchClipVectorDB implements ClipVectorDB {
   static final Logger _logger = Logger("UsearchClipVectorDB");
-  static const int embeddingDimensions = 512;
-  static const int embeddingBytesLength = embeddingDimensions * 4;
 
   final String _databaseName;
   final String _migrationKey;
 
-  static final BigInt _embeddingDimension = BigInt.from(embeddingDimensions);
+  static final BigInt _embeddingDimension = BigInt.from(
+    ClipVectorDB.embeddingDimensions,
+  );
 
   static Logger get logger => _logger;
 

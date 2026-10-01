@@ -5,9 +5,8 @@ import "package:flutter_rust_bridge/flutter_rust_bridge.dart" show Uint64List;
 import "package:logging/logging.dart";
 import "package:path/path.dart";
 import "package:path_provider/path_provider.dart";
-import "package:photos/db/ml/base.dart";
 import "package:photos/db/ml/cluster_centroid_vector_db.dart";
-import "package:photos/db/ml/db.dart";
+import "package:photos/db/ml/dart_db.dart";
 import "package:photos/src/rust/api/usearch_api.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:synchronized/synchronized.dart";
@@ -19,8 +18,9 @@ class UsearchClusterCentroidVectorDB implements ClusterCentroidVectorDB {
   final String _migrationKey;
   final bool _localGallery;
 
-  static const int embeddingDimensions = 192;
-  static final BigInt _embeddingDimension = BigInt.from(embeddingDimensions);
+  static final BigInt _embeddingDimension = BigInt.from(
+    ClusterCentroidVectorDB.embeddingDimensions,
+  );
 
   static Logger get logger => _logger;
 
@@ -44,8 +44,8 @@ class UsearchClusterCentroidVectorDB implements ClusterCentroidVectorDB {
 
   factory UsearchClusterCentroidVectorDB() => instance;
 
-  IMLDataDB<int> get _mlDataDB =>
-      _localGallery ? MLDataDB.localGalleryInstance : MLDataDB.instance;
+  DartMLDataDB get _mlDataDB =>
+      _localGallery ? DartMLDataDB.localGalleryInstance : DartMLDataDB.instance;
 
   Future<VectorDb>? _vectorDbFuture;
   Future<void>? _warmupFuture;
