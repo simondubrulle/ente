@@ -11,6 +11,10 @@ SubEditorPageStyle imageEditorSubEditorPageStyle(
   ValueGetter<SubEditor?> activeEditor,
 ) {
   return SubEditorPageStyle(
+    positionTop: 0,
+    positionBottom: 0,
+    positionLeft: 0,
+    positionRight: 0,
     transitionsBuilder: (context, animation, secondaryAnimation, child) =>
         FadeTransition(
           opacity: animation,

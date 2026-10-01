@@ -16,6 +16,7 @@ import {
     type SpaceViewerPostActionMode,
 } from "components/FileViewer";
 import { SpaceHomeHeader } from "components/HomeHeader";
+import { SpaceInlinePostVideo } from "components/InlinePostVideo";
 import {
     spacePostLikeButtonPop,
     spacePostLikeHeartPop,
@@ -39,6 +40,7 @@ import {
     type SpacePostAssetURLLoader,
     type SpacePostAvatarURLLoader,
     type SpacePostPhoto,
+    type SpacePostVideo,
 } from "services/space";
 import type { LocalSpaceFeedPost } from "state/app-state";
 import { spaceEmptyStateButtonSx } from "styles/buttons";
@@ -378,10 +380,12 @@ interface FeedItemProps {
     imageUrl?: string;
     isAvatarPending: boolean;
     isOwnPost: boolean;
+    isViewerOpen?: boolean;
     isUnavailable?: boolean;
     name: string;
     onLoadAvatar?: () => Promise<string | null | undefined>;
     onLoadImage?: (index: number) => Promise<string | undefined>;
+    onLoadVideo?: SpacePostAssetURLLoader;
     onOpenFriend?: (friendID: string, username?: string) => void;
     onOpenPhoto?: (photo: SpaceViewerPhoto, focusReplyOnOpen?: boolean) => void;
     onOpenProfile?: () => void;
@@ -612,7 +616,7 @@ const FeedLikeButton: React.FC<FeedLikeButtonProps> = ({
                     icon={FavouriteIcon}
                     primaryColor={isLiked ? green : feedActionForeground}
                     size={feedActionIconSize}
-                    strokeWidth={2}
+                    strokeWidth={2.2}
                 />
             </Box>
         </Box>
@@ -652,11 +656,13 @@ const FeedPhotoOverlay: React.FC<{
 };
 
 const FeedPhoto: React.FC<{
+    video?: SpacePostVideo;
     imageUrl?: string;
     isActive: boolean;
     isUnavailable: boolean;
     name: string;
     onLoadImage?: () => Promise<string | undefined>;
+    onLoadVideo?: SpacePostAssetURLLoader;
     onOpenPhoto?: () => void;
     shouldLoad: boolean;
     thumbHash?: string;
@@ -666,9 +672,11 @@ const FeedPhoto: React.FC<{
     isUnavailable,
     name,
     onLoadImage,
+    onLoadVideo,
     onOpenPhoto,
     shouldLoad,
     thumbHash,
+    video,
 }) => {
     const decodedPhoto = useDecodedImage(imageUrl, true);
     const isPostUnavailable = isUnavailable || Boolean(decodedPhoto.failed);
@@ -700,14 +708,24 @@ const FeedPhoto: React.FC<{
 
     return (
         <Box
-            component="button"
-            type="button"
+            component={video ? "div" : "button"}
+            type={video ? undefined : "button"}
             aria-label={
-                isPostUnavailable ? "Post unavailable" : `Open ${name} photo`
+                isPostUnavailable
+                    ? "Post unavailable"
+                    : video
+                      ? undefined
+                      : `Open ${name} photo`
             }
-            disabled={!canOpenPhoto}
-            tabIndex={isActive ? 0 : -1}
-            onClick={onOpenPhoto}
+            disabled={video ? undefined : !canOpenPhoto}
+            tabIndex={!video && isActive ? 0 : -1}
+            onClick={video ? undefined : onOpenPhoto}
+            onFocus={(event: React.FocusEvent<HTMLElement>) => {
+                if (video && event.target == event.currentTarget)
+                    event.currentTarget
+                        .querySelector("video")
+                        ?.focus({ preventScroll: true });
+            }}
             sx={{
                 appearance: "none",
                 bgcolor: "transparent",
@@ -789,6 +807,14 @@ const FeedPhoto: React.FC<{
                     }}
                 />
             )}
+            {!isPostUnavailable && isPhotoReady && video && (
+                <SpaceInlinePostVideo
+                    imageUrl={displayImageUrl!}
+                    video={video}
+                    isActive={isActive}
+                    onLoadVideo={onLoadVideo}
+                />
+            )}
             {isPostUnavailable && (
                 <Box
                     sx={{
@@ -822,10 +848,12 @@ const FeedItem: React.FC<FeedItemProps> = ({
     imageUrl,
     isAvatarPending,
     isOwnPost,
+    isViewerOpen,
     isUnavailable = false,
     name,
     onLoadAvatar,
     onLoadImage,
+    onLoadVideo,
     onOpenFriend,
     onOpenPhoto,
     onOpenProfile,
@@ -845,7 +873,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
     );
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
     const activePhoto = feedPhotos[photoIndex]!;
-    const [settledPhotoIndex, setSettledPhotoIndex] = useState(photoIndex);
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
     const photoAnimationRef = React.useRef<number | null>(null);
     const swipeRef = React.useRef<{
@@ -878,7 +905,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
             ) {
                 carousel.scrollLeft = left;
                 carousel.style.scrollSnapType = "";
-                setSettledPhotoIndex(nextIndex);
                 return;
             }
             const startTime = performance.now();
@@ -891,7 +917,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
                 } else {
                     photoAnimationRef.current = null;
                     carousel.style.scrollSnapType = "";
-                    setSettledPhotoIndex(nextIndex);
                 }
             };
             photoAnimationRef.current = requestAnimationFrame(animate);
@@ -966,7 +991,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
                 left: photoIndex * carousel.clientWidth,
                 behavior: "instant",
             });
-            setSettledPhotoIndex(photoIndex);
         }
     }, [photoIndex]);
     const rootRef = React.useRef<HTMLElement | null>(null);
@@ -1015,12 +1039,16 @@ const FeedItem: React.FC<FeedItemProps> = ({
             activePhoto.width ??
             dimensionsFromAspectRatio(aspectRatio).width,
     };
-    const photoFrameAspectRatio = Math.max(
+    const firstPhoto = feedPhotos[0]!;
+    const firstPhotoAspectRatio =
+        firstPhoto.width && firstPhoto.height
+            ? firstPhoto.width / firstPhoto.height
+            : aspectRatio;
+    const frameAspectRatio = Math.max(
         minimumPostPhotoFrameAspectRatio,
-        photoDimensions.width / photoDimensions.height,
-    );
-    const [frameAspectRatio, setFrameAspectRatio] = useState(
-        photoFrameAspectRatio,
+        feedPhotos.length > 1
+            ? firstPhotoAspectRatio
+            : photoDimensions.width / photoDimensions.height,
     );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
     const canOpenPhoto =
@@ -1116,12 +1144,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
     }, [decodedPhoto.failed, postId]);
 
     React.useEffect(() => {
-        if (photoIndex == settledPhotoIndex) {
-            setFrameAspectRatio(photoFrameAspectRatio);
-        }
-    }, [photoFrameAspectRatio, photoIndex, settledPhotoIndex]);
-
-    React.useEffect(() => {
         if (likePopID == 0) return;
 
         const timeoutID = window.setTimeout(
@@ -1136,6 +1158,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
             ref={rootRef}
             component="article"
             sx={{
+                WebkitTapHighlightColor: "transparent",
                 bgcolor: showFooter ? spaceSurface : "transparent",
                 borderRadius: "16px",
                 boxSizing: "border-box",
@@ -1254,19 +1277,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         );
                         if (index != photoIndex) onPhotoIndexChange?.(index);
                     }}
-                    onScrollEnd={(event) => {
-                        if (
-                            swipeRef.current?.dragging ||
-                            photoAnimationRef.current != null
-                        )
-                            return;
-                        const carousel = event.currentTarget;
-                        setSettledPhotoIndex(
-                            Math.round(
-                                carousel.scrollLeft / carousel.clientWidth,
-                            ),
-                        );
-                    }}
                     onKeyDown={(event) => {
                         if (
                             event.key != "ArrowLeft" &&
@@ -1303,7 +1313,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         <FeedPhoto
                             key={index}
                             imageUrl={photo.imageUrl}
-                            isActive={index == photoIndex}
+                            isActive={index == photoIndex && !isViewerOpen}
                             isUnavailable={
                                 isUnavailable || Boolean(photo.isUnavailable)
                             }
@@ -1313,6 +1323,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     ? () => onLoadImage(index)
                                     : undefined
                             }
+                            onLoadVideo={onLoadVideo}
                             onOpenPhoto={
                                 onOpenPhoto
                                     ? () => openPhoto(false, index)
@@ -1323,6 +1334,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 Math.abs(index - photoIndex) <= 1
                             }
                             thumbHash={photo.thumbHash}
+                            video={photo.video}
                         />
                     ))}
                 </Box>
@@ -1802,11 +1814,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         Boolean(viewerSpaceId) && selectedPhotoFriendID == viewerSpaceId;
     const desiredFeedEntries = React.useMemo<HomeFeedEntry[]>(() => {
         const localResolvedPostIds = new Set(
-            localFeedPosts
-                .filter(
-                    (item) => item.status == "posted" || item.status == "ready",
-                )
-                .map((item) => item.post.postId),
+            localFeedPosts.map((item) =>
+                item.status == "posted" || item.status == "ready"
+                    ? item.post.postId
+                    : item.postId,
+            ),
         );
         return [
             ...localFeedPosts.map(
@@ -1814,7 +1826,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     identity:
                         item.status == "posted" || item.status == "ready"
                             ? `post:${item.post.postId}`
-                            : `local:${item.id}`,
+                            : item.postId
+                              ? `post:${item.postId}`
+                              : `local:${item.id}`,
                     item,
                     kind: "local",
                     renderKey: `local:${item.id}`,
@@ -2016,6 +2030,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 isOwnPost={
                     Boolean(viewerSpaceId) && item.spaceId == viewerSpaceId
                 }
+                isViewerOpen={Boolean(selectedViewer)}
                 isUnavailable={isUnavailable}
                 name={item.name}
                 onLoadAvatar={
@@ -2024,6 +2039,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         : undefined
                 }
                 onLoadImage={(index) => loadFeedPostImage(postPhotos[index]!)}
+                onLoadVideo={onLoadPostImage}
                 onOpenFriend={onOpenFriend}
                 onOpenPhoto={(photo, focusReply) =>
                     openFeedPhoto({ ...item, photos }, photo, focusReply)
@@ -2058,6 +2074,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             );
         }
 
+        const fetchedPost = item.postId
+            ? feedItems.find((post) => post.postId == item.postId)
+            : undefined;
+        if (fetchedPost) return feedItemFor(fetchedPost, item.id, "posted");
+
         return (
             <FeedItem
                 key={item.id}
@@ -2079,7 +2100,9 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         ? item.reason == "post-limit"
                             ? "post-limit"
                             : "failed"
-                        : "posting"
+                        : item.postId
+                          ? "posted"
+                          : "posting"
                 }
                 timestampMs={item.timestampMs}
                 viewerLiked={false}

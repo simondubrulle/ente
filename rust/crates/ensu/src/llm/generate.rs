@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, AtomicI64, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::Instant;
 
-use super::context::Context;
+use super::context::LocalContext;
 use super::event::{EventSink, FinishReason, GenerationEvent, GenerationSummary, JobId};
 use super::{Error, format_error, lock};
 
@@ -27,7 +27,7 @@ fn cancel_flags() -> &'static Mutex<HashMap<JobId, Arc<AtomicBool>>> {
     CANCEL_FLAGS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-fn register_job() -> (JobId, Arc<AtomicBool>) {
+pub(super) fn register_job() -> (JobId, Arc<AtomicBool>) {
     let job_id = JOB_COUNTER.fetch_add(1, Ordering::Relaxed);
     let flag = Arc::new(AtomicBool::new(false));
     lock(cancel_flags()).insert(job_id, flag.clone());
@@ -48,7 +48,7 @@ fn check_cancelled(cancel_flag: &AtomicBool) -> Result<(), Error> {
     }
 }
 
-struct JobGuard(JobId);
+pub(super) struct JobGuard(pub(super) JobId);
 
 impl Drop for JobGuard {
     fn drop(&mut self) {
@@ -476,7 +476,7 @@ fn build_sampler(model: &LlamaModel, request: &SamplingParams) -> Result<LlamaSa
     Ok(LlamaSampler::chain_simple(samplers))
 }
 
-impl Context {
+impl LocalContext {
     pub fn measure_text_chat_prompt(&self, request: &ChatRequest) -> Result<usize, Error> {
         if request
             .image_paths
@@ -502,15 +502,74 @@ impl Context {
         &self,
         request: ChatRequest,
         sink: &mut dyn EventSink,
+        job_id: JobId,
+        cancel_flag: Arc<AtomicBool>,
+        start: Instant,
     ) -> Result<GenerationSummary, Error> {
-        generate_chat_stream(self, request, sink)
+        generate_chat_stream(self, request, sink, job_id, cancel_flag, start)
+    }
+
+    pub fn truncate_text_chat_messages(
+        &self,
+        messages: Vec<ChatMessage>,
+        max_tokens: u32,
+    ) -> Result<Vec<ChatMessage>, Error> {
+        let max_tokens = max_tokens.min(self.context_size());
+        let mut request = ChatRequest {
+            messages,
+            ..Default::default()
+        };
+        loop {
+            let tokens = self.measure_text_chat_prompt(&request)?;
+            if tokens <= max_tokens as usize {
+                return Ok(request.messages);
+            }
+            let index = request
+                .messages
+                .iter()
+                .rposition(|message| message.role != "system")
+                .ok_or(Error::PromptTooLong {
+                    tokens,
+                    context_size: max_tokens,
+                })?;
+            let content = std::mem::take(&mut request.messages[index].content);
+            let tokens = self.measure_text_chat_prompt(&request)?;
+            if tokens > max_tokens as usize {
+                if request.messages[..index]
+                    .iter()
+                    .all(|message| message.role == "system")
+                {
+                    return Err(Error::PromptTooLong {
+                        tokens,
+                        context_size: max_tokens,
+                    });
+                }
+                request.messages.remove(index);
+                continue;
+            }
+            let (mut low, mut high) = (0, content.len());
+            while low < high {
+                let end = content.ceil_char_boundary(low + (high - low).div_ceil(2));
+                request.messages[index].content = content[..end].to_owned();
+                if self.measure_text_chat_prompt(&request)? <= max_tokens as usize {
+                    low = end;
+                } else {
+                    high = content.floor_char_boundary(end - 1);
+                }
+            }
+            request.messages[index].content = content[..low].to_owned();
+            return Ok(request.messages);
+        }
     }
 }
 
 fn generate_chat_stream(
-    context: &Context,
+    context: &LocalContext,
     request: ChatRequest,
     sink: &mut dyn EventSink,
+    job_id: JobId,
+    cancel_flag: Arc<AtomicBool>,
+    start: Instant,
 ) -> Result<GenerationSummary, Error> {
     let ChatRequest {
         messages,
@@ -530,16 +589,6 @@ fn generate_chat_stream(
         stop_sequences,
         grammar,
     } = request;
-
-    let (job_id, cancel_flag) = register_job();
-    let _job_guard = JobGuard(job_id);
-    let start = Instant::now();
-
-    sink.add(GenerationEvent::Text {
-        job_id,
-        text: String::new(),
-        token_id: None,
-    });
 
     let max_tokens = max_tokens.unwrap_or(DEFAULT_GENERATION_MAX_TOKENS);
     let max_tokens = usize::try_from(max_tokens.max(0)).unwrap_or(0);
@@ -789,10 +838,6 @@ fn generate_chat_stream(
         total_time_ms: Some(start.elapsed().as_millis() as i64),
         finish_reason: job.finish_reason,
     };
-
-    sink.add(GenerationEvent::Done {
-        summary: summary.clone(),
-    });
 
     Ok(summary)
 }

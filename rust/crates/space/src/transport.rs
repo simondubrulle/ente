@@ -89,6 +89,8 @@ pub struct AssetDownloadResponse {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct PostObjectPayload {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub video: Option<Box<PostObjectPayload>>,
     pub object_key: String,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub size: Option<i64>,
@@ -101,6 +103,8 @@ pub struct PostObjectPayload {
 #[derive(Debug, Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatePostRequest {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub client_request_id: Option<String>,
     pub encrypted_post_key: String,
     pub key_version: i32,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -156,6 +160,8 @@ pub struct MessageResponse {
     #[serde(default)]
     pub encrypted_message_key: String,
     #[serde(default)]
+    pub encrypted_reaction: String,
+    #[serde(default)]
     pub text: String,
     #[serde(default)]
     pub reply_post_id: Option<i64>,
@@ -200,6 +206,8 @@ pub struct MessageConversationActivity {
     pub message_cipher: String,
     #[serde(default)]
     pub encrypted_message_key: String,
+    #[serde(default)]
+    pub encrypted_reaction: String,
     #[serde(default)]
     pub reply_message_id: Option<String>,
     #[serde(default)]

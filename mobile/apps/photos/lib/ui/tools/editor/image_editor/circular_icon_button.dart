@@ -11,6 +11,7 @@ class CircularIconButton extends StatelessWidget {
   final IconData? icon;
   final Widget? child;
   final double size;
+  final double width;
   final bool isSelected;
 
   const CircularIconButton({
@@ -22,6 +23,7 @@ class CircularIconButton extends StatelessWidget {
     this.icon,
     this.child,
     this.size = 60,
+    this.width = 90,
     this.isSelected = false,
   }) : assert(
          hugeIcon != null || svgPath != null || icon != null || child != null,
@@ -62,7 +64,7 @@ class CircularIconButton extends StatelessWidget {
         onTap: onTap,
         behavior: HitTestBehavior.opaque,
         child: SizedBox(
-          width: 90,
+          width: width,
           child: Column(
             mainAxisSize: MainAxisSize.min,
             mainAxisAlignment: MainAxisAlignment.center,

@@ -830,6 +830,7 @@
   "credentialNotesHint": "Recovery methods, security questions, ...",
   "criticalUpdateAvailable": "Critical update available",
   "crop": "Crop",
+  "cropAndRotate": "Crop & rotate",
   "curatedMemories": "Curated memories",
   "currentBackupFolder": "Current backup folder:",
   "currentlyRunning": "currently running",
@@ -1967,7 +1968,6 @@
   "imageEditorGreen": "Green",
   "imageEditorHue": "Hue",
   "imageEditorItalic": "Italic",
-  "imageEditorLuminance": "Luminance",
   "imageEditorNoBackground": "No background",
   "@imageEditorNoBackground": {
     "description": "Text background style with no visible background"
@@ -1977,7 +1977,6 @@
   "imageEditorPurple": "Purple",
   "imageEditorRed": "Red",
   "imageEditorSaturation": "Saturation",
-  "imageEditorSharpness": "Sharpness",
   "imageEditorSolidBackground": "Solid background",
   "@imageEditorSolidBackground": {
     "description": "Text background style with a fully opaque color"
@@ -1989,6 +1988,7 @@
     "description": "Tool for adding text to a photo"
   },
   "imageEditorTextColor": "Text color",
+  "imageEditorTint": "Tint",
   "imageEditorTranslucentBackground": "Translucent background",
   "@imageEditorTranslucentBackground": {
     "description": "Text background style with a half-transparent color"
@@ -2012,6 +2012,15 @@
   "importEnteEncGuide": "Select the encrypted JSON file exported from Ente",
   "importEnterSetupKey": "Enter a setup key",
   "importFailureDesc": "Could not parse the selected file.",
+  "importFileTooLarge": "The selected file is too large. Maximum size: {size}.",
+  "@importFileTooLarge": {
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "10 MiB"
+      }
+    }
+  },
   "importFromGallery": "Import from gallery",
   "importGoogleAuthConfirmation": "{codeCount, plural, one{Import 1 code from Google Authenticator?} other{Import {codeCount} codes from Google Authenticator?}}",
   "@importGoogleAuthConfirmation": {
@@ -2027,6 +2036,7 @@
   "importInstruction": "Please select a file that contains a list of your codes in the following format",
   "importLabel": "Import",
   "importLastpassGuide": "Use the \"Transfer accounts\" option within Lastpass Authenticator Settings and press \"Export accounts to file\". Import the JSON downloaded.",
+  "importOpenAuthenticatorGuide": "Use the options under \"Backups\" in Open Authenticator's Settings to create a backup, then share or export it.\n\nYou will need to enter the backup password you set when creating it.",
   "importOtpAuthGuide": "Export an encrypted backup from OTP Auth, then select the .otpauthdb or .otpauthdp file. Single-account .otpauth exports are also supported.",
   "importProtonAuthGuide": "Use the \"Export\" option in Proton Authenticator Settings to export your codes.\n\nIf your export is password protected, you will need to enter the password to decrypt it.",
   "importRaivoGuide": "Use the \"Export OTPs to Zip archive\" option in Raivo's Settings.\n\nExtract the zip file and import the JSON file.",
@@ -2553,6 +2563,10 @@
   "@mediaManagementHintTitle": {
     "description": "Title of a sheet prompting Android users to enable media management permission."
   },
+  "meetEnteLocker": "Meet Ente Locker",
+  "@meetEnteLocker": {
+    "description": "Button in the Photos changelog that opens the Ente Locker website"
+  },
   "members": "Members",
   "memberStorageUsed": "{amount} used",
   "@memberStorageUsed": {
@@ -2564,6 +2578,8 @@
     }
   },
   "memories": "Memories",
+  "memoriesReadyNotificationTitle": "Rediscover your memories ✨",
+  "memoriesReadyNotificationBody": "Tailored for you, crafted on your phone.",
   "memoriesWidgetDesc": "Select the kinds of memories you want to see on your home screen.",
   "memoryCount": "{count, plural, =0{no memories} one{{formattedCount} memory} other{{formattedCount} memories}}",
   "@memoryCount": {
@@ -2833,6 +2849,7 @@
   },
   "noResult": "No result",
   "noResultsFound": "No results found",
+  "noMatchingResultsFound": "No matching results found",
   "noSessionsFound": "No sessions found!",
   "noSimilarImagesFound": "No similar images found",
   "noSuggestionsForPerson": "No suggestions for {personName}",
@@ -4247,6 +4264,7 @@
   "sortNewestFirst": "Newest first",
   "sortOldestFirst": "Oldest first",
   "sortZToA": "Z-A",
+  "speed": "Speed",
   "sportsAction": "Game on",
   "sportsWithThem": "Sports with {name}",
   "@sportsWithThem": {
@@ -4310,6 +4328,7 @@
       }
     }
   },
+  "straighten": "Straighten",
   "streamDetails": "Stream details",
   "streetArt": "Street art stories",
   "streetFood": "Street food bites",
@@ -5035,7 +5054,7 @@
   "youAreViewer": "You are a viewer",
   "youAreCollaborator": "You are a collaborator",
   "youAreAdmin": "You are an admin",
-  "emptyAlbumShareMessage": "You have not shared this album with anyone yet.",
+  "emptyAlbumShareMessage": "Add a person to\nshare your album with them",
   "addPeople": "Add people",
   "fromYourContacts": "From your contacts",
   "chooseAccess": "Choose access",

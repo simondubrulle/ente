@@ -217,7 +217,7 @@ func testCreatePost(ctx context.Context, module *Module, _ int64, spaceID string
 	if captionCipher != nil {
 		caption = testSpaceBytes(*captionCipher)
 	}
-	postID, _, err := module.Posts.CreatePost(ctx, spaceID, testSpaceBytes(encryptedPostKey), caption, keyVersion, objects)
+	postID, _, err := module.Posts.CreatePost(ctx, spaceID, testSpaceBytes(encryptedPostKey), caption, keyVersion, objects, "")
 	return postID, err
 }
 
@@ -275,7 +275,7 @@ func TestCreatePostEnforcesSpacePostLimit(t *testing.T) {
 	`, space.SpaceID, space.CurrentVersion, MaxPostsPerSpace)
 	require.NoError(t, err)
 
-	_, postCount, err := module.Posts.CreatePost(ctx, space.SpaceID, testSpaceBytes("post-key"), nil, space.CurrentVersion, nil)
+	_, postCount, err := module.Posts.CreatePost(ctx, space.SpaceID, testSpaceBytes("post-key"), nil, space.CurrentVersion, nil, "")
 	require.ErrorIs(t, err, ErrSpacePostLimitReached)
 	require.Equal(t, MaxPostsPerSpace, postCount)
 
@@ -290,7 +290,7 @@ func TestCreatePostEnforcesSpacePostLimit(t *testing.T) {
 	`, space.SpaceID)
 	require.NoError(t, err)
 
-	postID, postCount, err := module.Posts.CreatePost(ctx, space.SpaceID, testSpaceBytes("post-key"), nil, space.CurrentVersion, nil)
+	postID, postCount, err := module.Posts.CreatePost(ctx, space.SpaceID, testSpaceBytes("post-key"), nil, space.CurrentVersion, nil, "")
 	require.NoError(t, err)
 	require.NotZero(t, postID)
 	require.Equal(t, MaxPostsPerSpace, postCount)
@@ -525,10 +525,10 @@ func insertSpaceUser(t *testing.T, module *Module, email string, publicKey strin
 	})
 	_, err := module.Spaces.DB.Exec(`
 		INSERT INTO key_attributes (
-			user_id, kek_salt, kek_hash_bytes, encrypted_key, key_decryption_nonce,
+			user_id, kek_salt, encrypted_key, key_decryption_nonce,
 			public_key, encrypted_secret_key, secret_key_decryption_nonce
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
-	`, userID, "salt", []byte{1, 2, 3}, "encrypted-key", "nonce", publicKey, "encrypted-secret-key", "secret-nonce")
+		) VALUES ($1, $2, $3, $4, $5, $6, $7)
+	`, userID, "salt", "encrypted-key", "nonce", publicKey, "encrypted-secret-key", "secret-nonce")
 	require.NoError(t, err)
 	return userID
 }

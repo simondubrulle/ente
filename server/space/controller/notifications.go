@@ -118,7 +118,7 @@ func (n *SpaceWebPushSender) OnSpacePostCreated(actor SpaceActivityActor, postID
 	}
 	n.send(
 		actor,
-		"posted a new photo",
+		"shared a new post",
 		"Check it out",
 		spaceActivityPostCreated,
 		fmt.Sprintf("/app/posts/%s/%d", url.PathEscape(actor.SpaceID), postID),
@@ -143,7 +143,7 @@ func (n *SpaceWebPushSender) OnSpacePokeSent(actor SpaceActivityActor, recipient
 }
 
 func (n *SpaceWebPushSender) OnSpaceMessageLiked(actor SpaceActivityActor, recipientUserID int64) {
-	n.sendAccountActivity(actor, "liked a message", "View conversation", spaceActivityMessageLiked, conversationURL(actor.SpaceID), recipientUserID)
+	n.sendAccountActivity(actor, "reacted to your message", "View conversation", spaceActivityMessageLiked, conversationURL(actor.SpaceID), recipientUserID)
 }
 
 func (n *SpaceWebPushSender) OnSpaceFriendAdded(actor SpaceActivityActor, recipientUserID int64) {

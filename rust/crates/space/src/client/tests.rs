@@ -60,6 +60,7 @@ async fn message_thread_keeps_content_failures_local_to_each_message() {
         sender_space_id: "space_friend".into(),
         recipient_space_id: "space_owner_main".into(),
         message_cipher: b64::encode(&encrypt_secretbox_payload(&key, plaintext).unwrap()),
+        encrypted_reaction: String::new(),
         encrypted_message_key: encrypted_key.clone(),
         text: String::new(),
         reply_post_id: None,
@@ -70,11 +71,12 @@ async fn message_thread_keeps_content_failures_local_to_each_message() {
         created_at: "2026-09-23T00:00:00Z".into(),
         updated_at: "2026-09-23T00:00:00Z".into(),
     };
-    let readable = message(
+    let mut readable = message(
         "readable",
         "regular",
         br#"{"version":1,"kind":"regular","text":"hello","replyObjectKey":"photo"}"#,
     );
+    readable.encrypted_reaction = "invalid".into();
     let poke = message(
         "poke",
         "regular",
@@ -105,6 +107,7 @@ async fn message_thread_keeps_content_failures_local_to_each_message() {
     assert_eq!(opened.next_cursor, "next");
     assert_eq!(opened.items.len(), 6);
     assert_eq!(content(&opened.items[0]).text, "hello");
+    assert!(opened.items[0].reaction.is_err());
     assert_eq!(
         content(&opened.items[0]).reply_object_key.as_deref(),
         Some("photo")
@@ -136,6 +139,7 @@ async fn unread_poke_uses_latest_activity_kind() {
         sender_space_id: "space_friend".into(),
         recipient_space_id: "space_owner_main".into(),
         message_cipher: String::new(),
+        encrypted_reaction: String::new(),
         encrypted_message_key: String::new(),
         reply_message_id: None,
         post_id: None,
@@ -185,6 +189,7 @@ async fn conversation_activities_open_content_and_preserve_server_kind() {
             sender_space_id: "space_friend".into(),
             recipient_space_id: "space_owner_main".into(),
             message_cipher: b64::encode(&encrypt_secretbox_payload(&key, &plaintext).unwrap()),
+            encrypted_reaction: String::new(),
             encrypted_message_key: encrypted_key.clone(),
             reply_message_id: None,
             post_id: None,
@@ -216,6 +221,7 @@ async fn conversation_activities_open_content_and_preserve_server_kind() {
         sender_space_id: "space_friend".into(),
         recipient_space_id: "space_owner_main".into(),
         message_cipher: b64::encode(&encrypt_secretbox_payload(&key, b"not-json").unwrap()),
+        encrypted_reaction: String::new(),
         encrypted_message_key: encrypted_key,
         reply_message_id: None,
         post_id: None,
@@ -1228,6 +1234,7 @@ async fn create_post_rejects_video_object_media_type() {
         .create_post(
             "space_owner_main",
             &[PostObjectPayload {
+                video: None,
                 object_key: "object-1".to_owned(),
                 size: None,
                 position: Some(0),
@@ -1339,6 +1346,55 @@ async fn update_space_profile_sends_encrypted_profile_and_profile_assets() {
     );
     spaces.assert_async().await;
     update.assert_async().await;
+}
+
+#[tokio::test]
+async fn removing_profile_images_sets_only_the_requested_asset_flag() {
+    let mut server = Server::new_async().await;
+    let space_root_key = generate_key();
+    let ctx = test_account_ctx_with_space_root_key(&server.url(), space_root_key.clone());
+    let space_key = generate_key();
+    let spaces = server
+        .mock("GET", "/account/space")
+        .with_status(200)
+        .with_body(owned_space_response(
+            &space_root_key,
+            &space_key,
+            "space_owner_main",
+            "owner-main",
+            3,
+        ))
+        .create_async()
+        .await;
+    let cover = server
+        .mock("POST", "/spaces/space_owner_main/profile")
+        .match_body(Matcher::Regex(
+            r#"^\{"keyVersion":3,"encryptedProfile":"[^"]+","removeCover":true\}$"#.into(),
+        ))
+        .with_status(200)
+        .with_body(r#"{"status":"updated"}"#)
+        .create_async()
+        .await;
+    let avatar = server
+        .mock("POST", "/spaces/space_owner_main/profile")
+        .match_body(Matcher::Regex(
+            r#"^\{"keyVersion":3,"encryptedProfile":"[^"]+","removeAvatar":true\}$"#.into(),
+        ))
+        .with_status(200)
+        .with_body(r#"{"status":"updated"}"#)
+        .create_async()
+        .await;
+
+    ctx.remove_space_profile_cover("space_owner_main", b"profile-v2")
+        .await
+        .expect("cover removal should succeed");
+    ctx.remove_space_profile_avatar("space_owner_main", b"profile-v2")
+        .await
+        .expect("avatar removal should succeed");
+
+    spaces.assert_async().await;
+    cover.assert_async().await;
+    avatar.assert_async().await;
 }
 
 #[tokio::test]

@@ -1,7 +1,7 @@
 name: photos
 description: ente photos application
 
-version: 1.3.65+2158
+version: 1.3.66+2158
 publish_to: none
 
 resolution: workspace
@@ -26,6 +26,7 @@ dependencies:
       ref: 82e365fed8a1a76f6eea0220de98389eed7b0445
   connectivity_plus: 6.1.4
   crypto: 3.0.7
+  cupertino_http: 3.1.0
   cupertino_icons: 1.0.8
   defer_pointer: 0.0.2
   device_info_plus: 11.5.0
@@ -111,7 +112,7 @@ dependencies:
   flutter_localizations:
     sdk: flutter
   flutter_map: 8.3.1
-  flutter_rust_bridge: 2.12.0
+  flutter_rust_bridge: 2.13.0
   # Version 9.2.4 leaves lock-screen keys behind after an app reinstall.
   # Upgrade only after this is fixed or with a migration.
   # https://github.com/juliansteenbakker/flutter_secure_storage/issues/870#issuecomment-2777447937
@@ -162,7 +163,7 @@ dependencies:
       url: https://github.com/ente/move_to_background.git
       ref: 0cdfeed654d79636eff0c57110f3f6ad5801ba2f
   nanoid: 1.0.0
-  native_dio_adapter: 1.5.1
+  native_dio_adapter: 1.6.0
   native_video_editor:
     path: ../../packages/native_video_editor
   native_video_player: 4.0.1
@@ -176,7 +177,7 @@ dependencies:
   photo_manager_image_provider: 2.2.0
   pinput: 5.0.2
   pointycastle: 3.9.1
-  pro_image_editor: 11.23.0
+  pro_image_editor: 13.3.1
   protobuf: 4.2.0
   random_access_source: 4.3.1
   receive_sharing_intent: # pub.dev is behind
@@ -188,7 +189,7 @@ dependencies:
   sentry: 9.6.0
   sentry_flutter: 9.6.0
   share_plus: 12.0.0
-  shared_preferences: 2.5.3
+  shared_preferences: 2.5.4
   sqlite3_flutter_libs: 0.5.41
   sqlite_async: 0.11.7
   styled_text: 8.1.0

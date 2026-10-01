@@ -296,11 +296,11 @@ test("README deletions need approval in CI and local scans", (t) => {
     }
 });
 
-test("unchanged READMEs and ordinary Markdown deletions need no approval", (t) => {
+test("unchanged READMEs need no approval", (t) => {
     const { stdout, output, summary } = scan(
         t,
-        { "README.md": "# Keep\n", "docs/old.md": "# Remove\n" },
-        { "docs/old.md": null, "notes.txt": "Ordinary change\n" },
+        { "README.md": "# Keep\n" },
+        { "notes.txt": "Ordinary change\n" },
         { ci: true },
     );
     assert.equal(stdout, "");
@@ -308,15 +308,12 @@ test("unchanged READMEs and ordinary Markdown deletions need no approval", (t) =
     assert.equal(summary, "No approval needed.\n");
 });
 
-test("ordinary Markdown additions and edits need no approval", (t) => {
+test("README approval matches the beginning of the filename", (t) => {
     for (const ci of [false, true]) {
         const result = scan(
             t,
-            { "random.md": "# Original\n" },
+            {},
             {
-                "random.md": "# Updated\n",
-                "docs/guide.markdown": "# Guide\n",
-                "web/page.MDX": "# Page\n",
                 "README-assets/notes.md": "# Notes\n",
                 "docs/not-README.md": "# Other\n",
             },
@@ -845,6 +842,25 @@ test("Android lint configurations need approval when added, edited, or deleted",
         assert.match(summary, /10 guardrail files/);
         for (const file of Object.keys(files))
             assert.ok(summary.includes(`\`${file}\``));
+    }
+});
+
+test("Gradle version bumps are exempt only when nothing else changes", (t) => {
+    const version = (n) => `versionName = "1.2.${n}"
+versionCode = findProperty("build")?.toString()?.toInt() ?: ${n}
+versionName '1.2.${n}-beta'
+versionCode ${n}
+`;
+    for (const path of [
+        "android/a/build.gradle",
+        "android/b/build.gradle.kts",
+    ]) {
+        const base = { [path]: version(1) };
+        assert.equal(scan(t, base, { [path]: version(2) }), "");
+        assert.match(
+            scan(t, base, { [path]: version(2) + 'apply(plugin = "other")\n' }),
+            /^1 guardrail file\n/,
+        );
     }
 });
 

@@ -24,11 +24,15 @@ import io.ente.ensu.bindings.voiceActivityModelAsset
 import io.ente.ensu.llm.ModelMaintenance
 import io.ente.ensu.llm.withMaintenanceSuspended
 import io.ente.ensu.notes.LocalNotesStore
+import io.ente.ensu.toDirectByteBuffer
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import kotlin.coroutines.CoroutineContext
+import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
@@ -80,12 +84,19 @@ internal fun rememberVoiceTranscriptionController(
     assetStore: AssetStore,
     transcriber: Transcriber,
     onTranscript: (String) -> Unit,
+    onVoiceInputJob: (Job) -> Unit,
 ): VoiceTranscriptionController {
     val lifecycleOwner = LocalLifecycleOwner.current
     val notes = LocalNotesStore.current
     val controller =
         remember(transcriber, notes) {
-            VoiceTranscriptionController(assetStore, transcriber, onTranscript, notes)
+            VoiceTranscriptionController(
+                assetStore,
+                transcriber,
+                onTranscript,
+                notes,
+                onVoiceInputJob,
+            )
         }
     DisposableEffect(controller, lifecycleOwner) {
         val observer = LifecycleEventObserver { _, event ->
@@ -105,6 +116,7 @@ internal class VoiceTranscriptionController(
     private val transcriber: Transcriber,
     private val onTranscript: (String) -> Unit,
     private val maintenance: ModelMaintenance?,
+    private val onVoiceInputJob: (Job) -> Unit,
 ) {
     private val modelAssets =
         listOf(
@@ -126,6 +138,15 @@ internal class VoiceTranscriptionController(
     var state: VoiceInputState by mutableStateOf(VoiceInputState.Idle)
         private set
 
+    private fun launchVoiceWork(
+        context: CoroutineContext = EmptyCoroutineContext,
+        block: suspend CoroutineScope.() -> Unit,
+    ): Job =
+        scope.launch(context, start = CoroutineStart.LAZY, block = block).also {
+            onVoiceInputJob(it)
+            it.start()
+        }
+
     fun onPermissionDenied() {
         state = VoiceInputState.Error("Microphone permission is required for voice input.")
     }
@@ -137,14 +158,14 @@ internal class VoiceTranscriptionController(
             return
         }
 
-        preparingRecordingJob = scope.launch {
+        preparingRecordingJob = launchVoiceWork {
             try {
                 ensureTranscriptionModelDownloaded()
                 if (!isActive || !canStartRecording()) {
                     if (state is VoiceInputState.Downloading) {
                         state = VoiceInputState.Idle
                     }
-                    return@launch
+                    return@launchVoiceWork
                 }
                 beginRecording()
                 preloadTranscriptionModel()
@@ -189,7 +210,7 @@ internal class VoiceTranscriptionController(
         state = VoiceInputState.Recording
 
         recordingJob =
-            scope.launch(Dispatchers.IO) {
+            launchVoiceWork(Dispatchers.IO) {
                 var recorder: AudioRecord? = null
                 try {
                     val activeRecorder = createRecorder(recordingSampleRate)
@@ -239,14 +260,14 @@ internal class VoiceTranscriptionController(
         state = VoiceInputState.Transcribing
         preparingRecordingJob?.cancel()
         preparingRecordingJob = null
-        scope.launch {
+        launchVoiceWork {
             recordingJob?.cancelAndJoin()
             recordingJob = null
 
             val pcm = synchronized(bufferLock) { recordedPcm.toByteArray() }
             if (pcm.size < minimumRecordingBytes(recordingSampleRate)) {
                 showTransientError("No speech captured.")
-                return@launch
+                return@launchVoiceWork
             }
 
             transcribeRecording(pcm, recordingSampleRate)
@@ -292,7 +313,7 @@ internal class VoiceTranscriptionController(
                             }
                             transcriber.transcribe(
                                 sampleRate.toUInt(),
-                                pcm,
+                                pcm.toDirectByteBuffer(),
                             )
                         }
                         .trim()
@@ -335,7 +356,7 @@ internal class VoiceTranscriptionController(
     private fun preloadTranscriptionModel() {
         transcriptionPreloadJob?.cancel()
         transcriptionPreloadJob =
-            scope.launch(Dispatchers.IO) {
+            launchVoiceWork(Dispatchers.IO) {
                 try {
                     maintenance.withMaintenanceSuspended { transcriber.loadModel() }
                 } catch (error: CancellationException) {
