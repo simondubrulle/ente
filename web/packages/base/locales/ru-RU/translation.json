@@ -72,6 +72,7 @@
     "upload_cancelling": "Отмена оставшихся загрузок",
     "upload_done": "{{count, number}} загружено",
     "upload_skipped": "{{count, number}} пропущено",
+    "upload_failed": "",
     "import_library": "Импортировать библиотеку",
     "need_help": "Нужна помощь?",
     "provider_not_listed": "Не видим вашего провайдера",

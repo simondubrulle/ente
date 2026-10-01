@@ -72,6 +72,7 @@
     "upload_cancelling": "باقی اپ لوڈز روکے جا رہے ہیں",
     "upload_done": "{{count, number}} اپ لوڈ ہو گئے",
     "upload_skipped": "{{count, number}} چھوڑ دیے گئے",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

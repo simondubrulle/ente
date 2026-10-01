@@ -72,6 +72,7 @@
     "upload_cancelling": "남은 업로드 취소중",
     "upload_done": "{{count, number}}개 업로드 완료",
     "upload_skipped": "{{count, number}}개 건너뜀",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

@@ -72,6 +72,7 @@
     "upload_cancelling": "取消剩餘上傳項目",
     "upload_done": "{{count, number}} 個已上載",
     "upload_skipped": "{{count, number}} 個已略過",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",
