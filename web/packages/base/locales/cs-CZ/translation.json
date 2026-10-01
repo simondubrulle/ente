@@ -72,6 +72,7 @@
     "upload_cancelling": "Ruší se zbývající nahrávání",
     "upload_done": "{{count, number}} nahráno",
     "upload_skipped": "{{count, number}} přeskočeno",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

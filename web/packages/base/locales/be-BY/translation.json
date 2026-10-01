@@ -72,6 +72,7 @@
     "upload_cancelling": "Скасаванне запампоўванняў, якія засталіся",
     "upload_done": "{{count, number}} запампавана",
     "upload_skipped": "{{count, number}} прапушчана",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

@@ -72,6 +72,7 @@
     "upload_cancelling": "Anulowanie pozostałych przesłań",
     "upload_done": "Przesłano {{count, number}}",
     "upload_skipped": "Pominięto {{count, number}}",
+    "upload_failed": "",
     "import_library": "Importuj swoją bibliotekę",
     "need_help": "Potrzebujesz pomocy?",
     "provider_not_listed": "",

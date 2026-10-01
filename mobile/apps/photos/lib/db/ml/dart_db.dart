@@ -8,11 +8,11 @@ import 'package:path/path.dart' show join;
 import 'package:path_provider/path_provider.dart';
 import "package:photos/db/common/base.dart";
 import "package:photos/db/ml/base.dart";
-import "package:photos/db/ml/clip_vector_db.dart";
-import "package:photos/db/ml/cluster_centroid_vector_db.dart";
 import "package:photos/db/ml/db_model_mappers.dart";
 import "package:photos/db/ml/ml_data_db_orchestration.dart";
 import 'package:photos/db/ml/schema.dart';
+import "package:photos/db/ml/usearch_clip_vector_db.dart";
+import "package:photos/db/ml/usearch_cluster_centroid_vector_db.dart";
 import "package:photos/models/ml/clip.dart";
 import "package:photos/models/ml/face/face.dart";
 import "package:photos/models/ml/face/face_with_embedding.dart";
@@ -32,27 +32,28 @@ class DartMLDataDB
   static const int _maxSqlBindParamsPerQuery = 10000;
 
   final String _databaseName;
-  final ClipVectorDB _clipVectorDB;
-  final ClusterCentroidVectorDB _clusterCentroidVectorDB;
+  final UsearchClipVectorDB _clipVectorDB;
+  final UsearchClusterCentroidVectorDB _clusterCentroidVectorDB;
   final List<String> _migrationScripts;
 
   DartMLDataDB._privateConstructor({
     String databaseName = "ente.ml.db",
-    ClipVectorDB? clipVectorDB,
-    ClusterCentroidVectorDB? clusterCentroidVectorDB,
+    UsearchClipVectorDB? clipVectorDB,
+    UsearchClusterCentroidVectorDB? clusterCentroidVectorDB,
     List<String>? migrationScripts,
   }) : _databaseName = databaseName,
-       _clipVectorDB = clipVectorDB ?? ClipVectorDB.instance,
+       _clipVectorDB = clipVectorDB ?? UsearchClipVectorDB.instance,
        _clusterCentroidVectorDB =
-           clusterCentroidVectorDB ?? ClusterCentroidVectorDB.instance,
+           clusterCentroidVectorDB ?? UsearchClusterCentroidVectorDB.instance,
        _migrationScripts = migrationScripts ?? _defaultMigrationScripts;
 
   static final DartMLDataDB instance = DartMLDataDB._privateConstructor();
   static final DartMLDataDB localGalleryInstance =
       DartMLDataDB._privateConstructor(
         databaseName: "ente.ml.offline.db",
-        clipVectorDB: ClipVectorDB.localGalleryInstance,
-        clusterCentroidVectorDB: ClusterCentroidVectorDB.localGalleryInstance,
+        clipVectorDB: UsearchClipVectorDB.localGalleryInstance,
+        clusterCentroidVectorDB:
+            UsearchClusterCentroidVectorDB.localGalleryInstance,
         migrationScripts: _localGalleryMigrationScripts,
       );
 
@@ -79,10 +80,10 @@ class DartMLDataDB
   ];
 
   @override
-  ClipVectorDB get clipVectorDB => _clipVectorDB;
+  UsearchClipVectorDB get clipVectorDB => _clipVectorDB;
 
   @override
-  ClusterCentroidVectorDB get clusterCentroidVectorDB =>
+  UsearchClusterCentroidVectorDB get clusterCentroidVectorDB =>
       _clusterCentroidVectorDB;
 
   @override
@@ -1480,7 +1481,9 @@ class DartMLDataDB
     final List<EmbeddingVector> embeddings = [];
     for (final result in results) {
       final bytes = result[embeddingColumn] as Uint8List;
-      if (bytes.lengthInBytes != ClipVectorDB.embeddingBytesLength) continue;
+      if (bytes.lengthInBytes != UsearchClipVectorDB.embeddingBytesLength) {
+        continue;
+      }
       final embedding = EmbeddingVector(
         fileID: result[fileIDColumn],
         embedding: Float32List.sublistView(bytes),
@@ -1592,7 +1595,7 @@ class DartMLDataDB
         'WHERE $mlVersionColumn >= ? AND LENGTH($embeddingColumn) = ?';
     final List<Map<String, dynamic>> maps = await db.getAll(query, [
       minimumMlVersion,
-      ClipVectorDB.embeddingBytesLength,
+      UsearchClipVectorDB.embeddingBytesLength,
     ]);
     return maps.first['count'] as int;
   }

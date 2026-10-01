@@ -8,6 +8,7 @@ import "package:photos/core/event_bus.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
 import "package:photos/db/ml/cluster_centroid_vector_db.dart";
 import "package:photos/db/ml/db.dart";
+import "package:photos/db/ml/usearch_clip_vector_db.dart";
 import "package:photos/events/people_changed_event.dart";
 import "package:photos/models/ml/face/person.dart";
 import "package:photos/service_locator.dart";
@@ -404,8 +405,8 @@ class _MLDebugSettingsPageState extends State<MLDebugSettingsPage> {
         ? ClusterCentroidVectorDB.localGalleryInstance
         : ClusterCentroidVectorDB.instance;
     final migrationStatus = await Future.wait<bool>([
-      clipVectorDB.checkIfMigrationDone(),
-      clusterCentroidVectorDB.checkIfMigrationDone(),
+      clipVectorDB.isReady(),
+      clusterCentroidVectorDB.isReady(),
     ]);
     return (
       clipDone: migrationStatus[0],
@@ -1036,8 +1037,8 @@ class _MLDebugSettingsPageState extends State<MLDebugSettingsPage> {
       firstButtonOnTap: () async {
         try {
           final vectorDB = isLocalGalleryMode
-              ? ClipVectorDB.localGalleryInstance
-              : ClipVectorDB.instance;
+              ? UsearchClipVectorDB.localGalleryInstance
+              : UsearchClipVectorDB.instance;
           await vectorDB.deleteIndexFile();
           if (!context.mounted) return;
           showShortToast(context, "Done");

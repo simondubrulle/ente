@@ -72,6 +72,7 @@
     "upload_cancelling": "กำลังยกเลิกการอัปโหลดที่เหลือ",
     "upload_done": "อัปโหลดแล้ว {{count, number}}",
     "upload_skipped": "ข้ามแล้ว {{count, number}} อัปโหลด",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

@@ -4,8 +4,8 @@ import "dart:typed_data";
 import "package:logging/logging.dart";
 import "package:photos/core/event_bus.dart";
 import "package:photos/db/ml/base.dart";
-import "package:photos/db/ml/clip_vector_db.dart";
-import "package:photos/db/ml/cluster_centroid_vector_db.dart";
+import "package:photos/db/ml/usearch_clip_vector_db.dart";
+import "package:photos/db/ml/usearch_cluster_centroid_vector_db.dart";
 import "package:photos/events/embedding_updated_event.dart";
 import "package:photos/generated/protos/ente/common/vector.pb.dart";
 import "package:photos/main.dart" show isProcessBg;
@@ -28,8 +28,8 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   final Lock _clusterCentroidVectorMigrationLock = Lock();
   bool _clusterCentroidVectorDbRecoveryRequested = false;
 
-  ClipVectorDB get clipVectorDB;
-  ClusterCentroidVectorDB get clusterCentroidVectorDB;
+  UsearchClipVectorDB get clipVectorDB;
+  UsearchClusterCentroidVectorDB get clusterCentroidVectorDB;
   Logger get logger;
 
   @override
@@ -63,7 +63,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     _markClusterSummaryMutated();
 
     if (!flagService.enableVectorDb ||
-        !await clusterCentroidVectorDB.checkIfMigrationDone()) {
+        !await clusterCentroidVectorDB.isReady()) {
       return;
     }
 
@@ -93,7 +93,8 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
           );
           continue;
         }
-        if (centroid.length != ClusterCentroidVectorDB.embeddingDimensions) {
+        if (centroid.length !=
+            UsearchClusterCentroidVectorDB.embeddingDimensions) {
           logger.warning(
             "Unexpected centroid embedding size ${centroid.length} for cluster ${entry.key}, skipping vector update",
           );
@@ -124,7 +125,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     _markClusterSummaryMutated();
 
     if (!flagService.enableVectorDb ||
-        !await clusterCentroidVectorDB.checkIfMigrationDone()) {
+        !await clusterCentroidVectorDB.isReady()) {
       await deleteClusterCentroidVectorIdMapping(clusterID);
       return;
     }
@@ -153,7 +154,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
       await resetClusterTables(faces: faces);
       _markClusterSummaryMutated();
 
-      if (await clusterCentroidVectorDB.checkIfMigrationDone()) {
+      if (await clusterCentroidVectorDB.isReady()) {
         await _withClusterCentroidVectorWriteRecovery(
           operation: "dropClustersAndPersonTable",
           writeOperation: () async {
@@ -170,7 +171,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   Future<void> checkMigrateFillClusterCentroidVectorDB({
     bool force = false,
   }) async {
-    if (!force && await clusterCentroidVectorDB.checkIfMigrationDone()) {
+    if (!force && await clusterCentroidVectorDB.isReady()) {
       return;
     }
     await _runMlOperationExclusive(
@@ -184,8 +185,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     required bool force,
   }) async {
     await _clusterCentroidVectorMigrationLock.synchronized(() async {
-      final migrationDone = await clusterCentroidVectorDB
-          .checkIfMigrationDone();
+      final migrationDone = await clusterCentroidVectorDB.isReady();
       if (migrationDone && !force) {
         logger.info(
           "ClusterCentroidVectorDB migration not needed, already done",
@@ -377,7 +377,8 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
             );
             continue;
           }
-          if (centroid.length == ClusterCentroidVectorDB.embeddingDimensions) {
+          if (centroid.length ==
+              UsearchClusterCentroidVectorDB.embeddingDimensions) {
             clusterIDs.add(clusterID);
             clusterIDToCentroid[clusterID] = centroid;
           } else {
@@ -454,7 +455,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
 
   @override
   Future<void> checkMigrateFillClipVectorDB({bool force = false}) async {
-    if (!force && await clipVectorDB.checkIfMigrationDone()) {
+    if (!force && await clipVectorDB.isReady()) {
       return;
     }
     await _runMlOperationExclusive(
@@ -466,7 +467,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
 
   Future<void> _checkMigrateFillClipVectorDB({required bool force}) async {
     await _clipVectorMigrationLock.synchronized(() async {
-      final migrationDone = await clipVectorDB.checkIfMigrationDone();
+      final migrationDone = await clipVectorDB.isReady();
       if (migrationDone && !force) {
         logger.info("ClipVectorDB migration not needed, already done");
         return;
@@ -523,7 +524,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
           final List<Float32List> embeddings = [];
           for (final (fileID, embeddingBytes) in results) {
             final embedding = Float32List.view(embeddingBytes.buffer);
-            if (embedding.length == ClipVectorDB.embeddingDimensions) {
+            if (embedding.length == UsearchClipVectorDB.embeddingDimensions) {
               fileIDs.add(fileID);
               embeddings.add(Float32List.view(embeddingBytes.buffer));
             } else if (embedding.isEmpty) {
@@ -654,7 +655,8 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   }
 
   bool _isVectorizableClipEmbedding(ClipEmbedding embedding) {
-    return embedding.embedding.length == ClipVectorDB.embeddingDimensions;
+    return embedding.embedding.length ==
+        UsearchClipVectorDB.embeddingDimensions;
   }
 
   List<ClipEmbedding> _vectorizableClipEmbeddings(
@@ -675,7 +677,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
 
     for (final (fileID, length) in skippedNonEmpty) {
       logger.warning(
-        "Skipping ClipVectorDB write for fileID $fileID because embedding length $length does not match expected ${ClipVectorDB.embeddingDimensions}",
+        "Skipping ClipVectorDB write for fileID $fileID because embedding length $length does not match expected ${UsearchClipVectorDB.embeddingDimensions}",
       );
     }
 
@@ -741,7 +743,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     if (embeddings.length == 1) {
       if (flagService.enableVectorDb &&
           vectorizableEmbeddings.isNotEmpty &&
-          await clipVectorDB.checkIfMigrationDone()) {
+          await clipVectorDB.isReady()) {
         await _withClipVectorWriteRecovery(
           operation: "putClip(single)",
           writeOperation: () async {
@@ -755,7 +757,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     } else {
       if (flagService.enableVectorDb &&
           vectorizableEmbeddings.isNotEmpty &&
-          await clipVectorDB.checkIfMigrationDone()) {
+          await clipVectorDB.isReady()) {
         await _withClipVectorWriteRecovery(
           operation: "putClip(bulk)",
           writeOperation: () async {
@@ -775,8 +777,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   @override
   Future<void> deleteClipEmbeddings(List<int> fileIDs) async {
     await deleteClipRows(fileIDs);
-    if (flagService.enableVectorDb &&
-        await clipVectorDB.checkIfMigrationDone()) {
+    if (flagService.enableVectorDb && await clipVectorDB.isReady()) {
       await _withClipVectorWriteRecovery(
         operation: "deleteClipEmbeddings",
         writeOperation: () async {
@@ -790,8 +791,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   @override
   Future<void> deleteClipIndexes() async {
     await deleteAllClipRows();
-    if (flagService.enableVectorDb &&
-        await clipVectorDB.checkIfMigrationDone()) {
+    if (flagService.enableVectorDb && await clipVectorDB.isReady()) {
       await _withClipVectorWriteRecovery(
         operation: "deleteClipIndexes",
         writeOperation: () async {

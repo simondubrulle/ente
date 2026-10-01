@@ -33,7 +33,6 @@ func TestLimitRequestBody(t *testing.T) {
 		body := strings.Repeat("a", tc.size)
 		for _, framing := range []string{"known length", "unknown length"} {
 			t.Run(tc.name+"/"+framing, func(t *testing.T) {
-				// Exercise both ordinary body logging and the redacted path.
 				for _, path := range []string{"/test", "/events"} {
 					t.Run(path, func(t *testing.T) {
 						rateLimiter := &RateLimitMiddleware{limit: 1}

@@ -72,6 +72,7 @@
     "upload_cancelling": "Annulation des chargements restants",
     "upload_done": "{{count, number}} chargé",
     "upload_skipped": "{{count, number}} ignoré(s)",
+    "upload_failed": "",
     "import_library": "Importer votre librairie",
     "need_help": "Besoin d'aide ?",
     "provider_not_listed": "Ne voit pas votre fournisseur",
