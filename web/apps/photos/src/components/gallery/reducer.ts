@@ -11,6 +11,10 @@ import {
     findUserUncategorizedCollection,
     type Collection,
 } from "ente-media/collection";
+import {
+    collectionSortBy,
+    sortCollectionFiles,
+} from "ente-media/collection-sort";
 import type { EnteFile } from "ente-media/file";
 import {
     isArchivedFile,
@@ -1760,8 +1764,11 @@ const sortAndUniqueFilteredFiles = (
     const uniqueFiles = uniqueFilesByID(
         suppressSharedFilesSavedByUser(files, currentUserID, activeCollection),
     );
-    const sortAsc = activeCollection?.pubMagicMetadata?.data.asc ?? false;
-    return sortAsc ? sortFiles(uniqueFiles, true) : uniqueFiles;
+    const metadata = activeCollection?.pubMagicMetadata?.data;
+    // The synced library is already in newest-first order.
+    return metadata?.asc || collectionSortBy(metadata) !== "date"
+        ? sortCollectionFiles(uniqueFiles, metadata)
+        : uniqueFiles;
 };
 
 const suppressSharedFilesSavedByUser = (

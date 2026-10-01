@@ -99,6 +99,7 @@ export interface FileListProps {
     width: number;
     annotatedFiles: FileListAnnotatedFile[];
     layout?: "grid" | "masonry";
+    disableGrouping?: boolean;
     header?: FileListHeaderOrFooter;
     footer?: FileListHeaderOrFooter;
     enableSelect?: boolean;
@@ -115,6 +116,7 @@ export const FileList: React.FC<FileListProps> = ({
     height,
     width,
     layout = "grid",
+    disableGrouping,
     header,
     footer,
     annotatedFiles,
@@ -205,34 +207,42 @@ export const FileList: React.FC<FileListProps> = ({
             }
         };
 
-        const spaceBetweenDatesToImageContainerWidthRatio = 0.244;
-
-        let pendingSplits = new Array<FileListAnnotatedFile[]>();
-        for (const split of splitByDate(annotatedFiles)) {
-            const filledColumns = pendingSplits.reduce(
-                (a, s) => a + s.length,
-                0,
+        if (disableGrouping) {
+            items.push(
+                ...batch(annotatedFiles, columns).map((files) =>
+                    createFileItem([files]),
+                ),
             );
-            const incomingColumns = split.length;
+        } else {
+            const spaceBetweenDatesToImageContainerWidthRatio = 0.244;
 
-            if (
-                !isSmallerLayout &&
-                filledColumns +
-                    incomingColumns +
-                    Math.ceil(
-                        pendingSplits.length *
-                            spaceBetweenDatesToImageContainerWidthRatio,
-                    ) <=
-                    columns
-            ) {
-                pendingSplits.push(split);
-                continue;
+            let pendingSplits = new Array<FileListAnnotatedFile[]>();
+            for (const split of splitByDate(annotatedFiles)) {
+                const filledColumns = pendingSplits.reduce(
+                    (a, s) => a + s.length,
+                    0,
+                );
+                const incomingColumns = split.length;
+
+                if (
+                    !isSmallerLayout &&
+                    filledColumns +
+                        incomingColumns +
+                        Math.ceil(
+                            pendingSplits.length *
+                                spaceBetweenDatesToImageContainerWidthRatio,
+                        ) <=
+                        columns
+                ) {
+                    pendingSplits.push(split);
+                    continue;
+                }
+
+                if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
+                pendingSplits = [split];
             }
-
             if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
-            pendingSplits = [split];
         }
-        if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
 
         if (!annotatedFiles.length) {
             items.push({
@@ -267,6 +277,7 @@ export const FileList: React.FC<FileListProps> = ({
         footer,
         annotatedFiles,
         shouldUseMasonry,
+        disableGrouping,
         layoutParams,
         emptyStateAction,
     ]);

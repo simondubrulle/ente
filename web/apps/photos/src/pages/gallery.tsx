@@ -97,6 +97,7 @@ import type { UploadTypeSelectorIntent } from "ente-gallery/components/Upload";
 import { useSaveGroups } from "ente-gallery/components/utils/save-groups";
 import type { FileViewerInitialSidebar } from "ente-gallery/components/viewer/FileViewer";
 import type { Collection } from "ente-media/collection";
+import { collectionSortBy } from "ente-media/collection-sort";
 import type { EnteFile } from "ente-media/file";
 import { ItemVisibility, metadataHash } from "ente-media/file-metadata";
 import { AssignPersonDialog } from "ente-new/photos/components/AssignPersonDialog";
@@ -2067,7 +2068,13 @@ const Page: React.FC = () => {
                     files={filteredFiles}
                     onShowMap={handleShowCollectionMap}
                     enableDownload={true}
-                    disableGrouping={state.searchSuggestion?.type == "clip"}
+                    disableGrouping={
+                        state.searchSuggestion?.type == "clip" ||
+                        (!isInSearchMode &&
+                            collectionSortBy(
+                                activeCollection?.pubMagicMetadata?.data,
+                            ) === "name")
+                    }
                     enableSelect={true}
                     selected={selected}
                     setSelected={setSelected}
