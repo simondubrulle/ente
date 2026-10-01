@@ -72,6 +72,7 @@
     "upload_cancelling": "Cancelando envios restantes",
     "upload_done": "{{count, number}} enviado",
     "upload_skipped": "{{count, number}} pulado",
+    "upload_failed": "",
     "import_library": "Importar sua biblioteca",
     "need_help": "Precisa de ajuda?",
     "provider_not_listed": "Não vê seu provedor",

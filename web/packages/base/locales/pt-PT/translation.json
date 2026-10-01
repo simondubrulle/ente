@@ -72,6 +72,7 @@
     "upload_cancelling": "Cancelar envio restante",
     "upload_done": "{{count,number}} carregados",
     "upload_skipped": "{{count,number}} ignorados",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "",
     "provider_not_listed": "",

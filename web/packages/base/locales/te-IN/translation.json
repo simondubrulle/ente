@@ -72,6 +72,7 @@
     "upload_cancelling": "మిగిలిన అప్‌లోడ్‌లను రద్దు చేస్తోంది",
     "upload_done": "{{count, number}} అప్‌లోడ్ చేయబడ్డాయి",
     "upload_skipped": "{{count, number}} దాటవేయబడ్డాయి",
+    "upload_failed": "",
     "import_library": "మీ లైబ్రరీని దిగుమతి చేయండి",
     "need_help": "సహాయం కావాలా?",
     "provider_not_listed": "మీ ప్రొవైడర్ కనిపించడం లేదా",

@@ -72,6 +72,7 @@
     "upload_cancelling": "Скасування завантажень, які залишилися",
     "upload_done": "{{count, number}} завантажено",
     "upload_skipped": "{{count, number}} пропущено",
+    "upload_failed": "",
     "import_library": "Імпортувати свою бібліотеку",
     "need_help": "Потрібна допомога?",
     "provider_not_listed": "",

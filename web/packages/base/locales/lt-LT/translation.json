@@ -72,6 +72,7 @@
     "upload_cancelling": "Atšaukiami likę įkėlimai",
     "upload_done": "{{count, number}} įkelta",
     "upload_skipped": "{{count, number}} praleista",
+    "upload_failed": "",
     "import_library": "",
     "need_help": "Reikia pagalbos?",
     "provider_not_listed": "Nematau savo teikėją",
