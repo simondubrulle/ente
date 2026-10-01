@@ -3,10 +3,6 @@ import {
     EnteLockerIcon,
     EntePhotosIcon,
 } from "@/components/EnteAppIcon";
-import {
-    DropdownInput,
-    type DropdownOption,
-} from "@/components/sidebar/DropdownInput";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ErrorOutlinedIcon from "@mui/icons-material/ErrorOutlined";
 import {
@@ -48,6 +44,7 @@ import { useFormik } from "formik";
 import { t } from "i18next";
 import React, { useState } from "react";
 import { Trans } from "react-i18next";
+import { DropdownInput, type DropdownOption } from "../DropdownInput";
 
 type DeleteAccountProps = ModalVisibilityProps & {
     onAuthenticateUser: () => Promise<boolean>;

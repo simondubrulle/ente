@@ -1,13 +1,4 @@
 import { ShapeIcon } from "@/components/icons/ShapeIcon";
-import { DropdownInput } from "@/components/sidebar/DropdownInput";
-import { ReferralSettings } from "@/components/sidebar/ReferralSettings";
-import { WatchFolder } from "@/components/sidebar/WatchFolder";
-import { DeleteAccount } from "@/components/sidebar/account/DeleteAccount";
-import { SessionsSettings } from "@/components/sidebar/account/SessionsSettings";
-import { SubscriptionCard } from "@/components/sidebar/account/SubscriptionCard";
-import { TwoFactorSettings } from "@/components/sidebar/account/TwoFactorSettings";
-import { AppLockSettings } from "@/components/sidebar/preferences/AppLockSettings";
-import { MLSettings } from "@/components/sidebar/preferences/MLSettings";
 import { downloadAppDialogAttributes } from "@/components/utils/download";
 import exportService from "@/services/export";
 import {
@@ -141,6 +132,15 @@ import React, {
     type MouseEventHandler,
 } from "react";
 import { Trans } from "react-i18next";
+import { DropdownInput } from "./DropdownInput";
+import { ReferralSettings } from "./ReferralSettings";
+import { WatchFolder } from "./WatchFolder";
+import { DeleteAccount } from "./account/DeleteAccount";
+import { SessionsSettings } from "./account/SessionsSettings";
+import { SubscriptionCard } from "./account/SubscriptionCard";
+import { TwoFactorSettings } from "./account/TwoFactorSettings";
+import { AppLockSettings } from "./preferences/AppLockSettings";
+import { MLSettings } from "./preferences/MLSettings";
 
 type SidebarProps = ModalVisibilityProps & {
     normalCollectionSummaries: CollectionSummaries;
