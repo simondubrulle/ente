@@ -5,7 +5,6 @@ const path = require("node:path");
 
 const vipsVersion = "8.18.7";
 
-// Version bumps: verify assets against GitHub metadata before updating pins.
 const vipsAssets = {
     "linux-x64": {
         name: "vips-x64",

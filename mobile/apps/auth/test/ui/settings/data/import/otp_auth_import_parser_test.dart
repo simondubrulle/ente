@@ -78,8 +78,6 @@ void main() {
     });
 
     test('preserves ordinary shared folders and account lists', () async {
-      // The same folder occurs twice; a third shares its account list.
-      // Two more folders have missing/empty account lists.
       final codes = parseOtpAuthExport(
         await _fixture('backup-shared.otpauthdb'),
         password: 'abc123',
@@ -97,8 +95,6 @@ void main() {
 
     for (final representation in ['uids', 'inline']) {
       test('rejects excessive $representation archive expansion', () async {
-        // Small synthetic backups share 16 account references across 32
-        // folder references, encoded either as UIDs or inline containers.
         final bytes = await _fixture(
           'backup-expanded-$representation.otpauthdb',
         );
@@ -116,7 +112,6 @@ void main() {
     }
 
     test('bounds binary decoding before resolving the keyed archive', () async {
-      // Distinct plist object IDs point to the same 512-byte test value.
       final bytes = await _fixture('backup-expanded-binary.otpauthdb');
       expect(
         () => parseOtpAuthExport(bytes, password: 'abc123'),

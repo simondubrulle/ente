@@ -278,7 +278,7 @@ class _KeyedArchive {
     }
     final cached = _cache[index];
     if (cached != null) {
-      // Reusing a resolved object still expands it again during import.
+      // Import expands cached objects again.
       _budget.consume(cached.cost);
       _resolving.remove(index);
       return cached.value;
