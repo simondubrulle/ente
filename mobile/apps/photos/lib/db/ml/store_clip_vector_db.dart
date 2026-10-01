@@ -19,8 +19,19 @@ class StoreClipVectorDB implements ClipVectorDB {
   );
 
   @override
-  Future<bool> isReady() async =>
-      await _mlDataDB.fillState(rust.Index.clip) == rust.FillState.filled;
+  Future<bool> isReady() async {
+    try {
+      return await _mlDataDB.fillState(rust.Index.clip) ==
+          rust.FillState.filled;
+    } catch (e, s) {
+      _logger.warning(
+        "Clip vector index readiness check failed, treating it as not ready",
+        e,
+        s,
+      );
+      return false;
+    }
+  }
 
   @override
   Future<void> warmup() async {
