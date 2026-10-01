@@ -17,10 +17,12 @@ import "package:photos/models/memory_lane/memory_lane_models.dart";
 import "package:photos/models/ml/face/face.dart";
 import "package:photos/models/ml/face/person.dart";
 import "package:photos/service_locator.dart";
+import "package:photos/services/memory_lane/memory_lane_cache_service.dart";
 import "package:photos/services/memory_lane/memory_lane_service.dart";
 import "package:photos/services/memory_share_service.dart";
 import "package:photos/theme/ente_theme.dart";
 import "package:photos/ui/home/memories/memory_music_session.dart";
+import "package:photos/ui/home/memories/memory_progress_indicator.dart";
 import "package:photos/ui/viewer/gallery/jump_to_date_gallery.dart";
 import "package:photos/ui/viewer/people/memory_lane_page.dart";
 import "package:photos/utils/dialog_util.dart";
@@ -59,6 +61,7 @@ class MemoryLanePageV2 extends StatefulWidget {
   final bool isActive;
   final VoidCallback? onNextMemory;
   final VoidCallback? onPreviousMemory;
+  final bool isFromMemoriesStrip;
 
   const MemoryLanePageV2({
     required this.personId,
@@ -67,6 +70,7 @@ class MemoryLanePageV2 extends StatefulWidget {
     this.isActive = true,
     this.onNextMemory,
     this.onPreviousMemory,
+    this.isFromMemoriesStrip = false,
     super.key,
   });
 
@@ -75,12 +79,16 @@ class MemoryLanePageV2 extends StatefulWidget {
 }
 
 class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
-  static const _playbackInterval = Duration(milliseconds: 800);
+  late final _playbackInterval = Duration(
+    seconds: widget.isFromMemoriesStrip ? 3 : 1,
+  );
 
   final _logger = Logger("MemoryLanePageV2");
   Timer? _playbackTimer;
+  AnimationController? _progressAnimationController;
+  final _playbackElapsed = Stopwatch();
   Object? _playbackToken;
-  bool _wasPlayingBeforeSeek = false;
+  int? _photoPointer;
   bool _useFastTransition = false;
   late final Future<void> _memoryLaneLoaded;
   Key _currentEntryKey = UniqueKey();
@@ -91,6 +99,8 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   _decodedEntries = {};
   final List<EnteFile> _files = [];
   int i = 0;
+  bool _hasMarkedScheduleSeen = false;
+  MemoryLaneSchedule? _schedule;
 
   @override
   void initState() {
@@ -101,7 +111,7 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final musicController = MemoryMusicScope.maybeOf(context)?.controller;
+    final musicController = MemoryAudioScope.maybeOf(context)?.controller;
     if (widget.isActive) {
       unawaited(musicController?.setViewerActionPaused(true));
     }
@@ -117,7 +127,7 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
     }
     unawaited(_play(0));
     unawaited(
-      MemoryMusicScope.maybeOf(
+      MemoryAudioScope.maybeOf(
         context,
         listen: false,
       )?.controller?.setViewerActionPaused(true),
@@ -133,6 +143,15 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
 
   Future<void> _loadMemoryLane() async {
     try {
+      if (widget.isFromMemoriesStrip) {
+        final schedule = await MemoryLaneCacheService.instance
+            .getCurrentMemoriesStripSchedule();
+        if (!mounted) return;
+        if (schedule?.personID == widget.personId &&
+            schedule?.isCluster == widget.isCluster) {
+          _schedule = schedule;
+        }
+      }
       final timeline = await MemoryLaneService.instance.getTimeline(
         widget.personId,
         isCluster: widget.isCluster,
@@ -182,15 +201,17 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
     final token = Object();
     setState(() {
       _playbackTimer?.cancel();
+      _playbackElapsed
+        ..stop()
+        ..reset();
+      _progressAnimationController?.reset();
       _selectEntry(index, fastTransition: fastTransition);
-      _playbackToken =
-          index < _entries.length - 1 || widget.onNextMemory != null
-          ? token
-          : null;
+      _playbackToken = token;
     });
-    if (_playbackToken == null) return;
     await _chunkinator!.get(_entries[index]);
     if (!mounted || !widget.isActive || _playbackToken != token) return;
+    _playbackElapsed.start();
+    _progressAnimationController?.forward(from: 0);
     _playbackTimer = Timer(_playbackInterval, () {
       if (index < _entries.length - 1) {
         unawaited(_play(index + 1));
@@ -204,6 +225,8 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   void _pause() {
     setState(() {
       _playbackTimer?.cancel();
+      _playbackElapsed.stop();
+      _progressAnimationController?.stop();
       _playbackToken = null;
     });
   }
@@ -221,20 +244,10 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
     });
   }
 
-  void _onPlayPauseTap() {
-    if (_playbackToken != null) {
-      _pause();
-    } else if (i == _entries.length - 1) {
-      _play(0);
-    } else {
-      unawaited(_play(i));
-    }
-  }
-
-  void _onSeekEnd() {
-    final wasPlaying = _wasPlayingBeforeSeek;
-    _wasPlayingBeforeSeek = false;
-    if (wasPlaying) unawaited(_play(i));
+  void _onPhotoPointerEnd(PointerEvent event) {
+    if (event.pointer != _photoPointer) return;
+    _photoPointer = null;
+    unawaited(_play(i, fastTransition: true));
   }
 
   Future<Uint8List?> _loadEntry(MemoryLaneEntry entry, EnteFile file) async {
@@ -302,7 +315,10 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
       _useFastTransition = fastTransition;
     }
     i = index;
-    if (index != _entries.length - 1) return;
+    if (index != _entries.length - 1) {
+      _hasMarkedScheduleSeen = false;
+      return;
+    }
     final entryKey = _currentEntryKey;
     unawaited(
       _chunkinator!.get(_entries[index]).then((bytes) async {
@@ -310,11 +326,20 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
             !mounted ||
             !widget.isActive ||
             _currentEntryKey != entryKey ||
-            ModalRoute.of(context)?.isCurrent != true ||
-            localSettings.hasSeenMemoryLane(widget.personId)) {
+            ModalRoute.of(context)?.isCurrent != true) {
           return;
         }
-        await localSettings.markMemoryLaneSeen(widget.personId);
+        final markScheduleSeen = !_hasMarkedScheduleSeen;
+        _hasMarkedScheduleSeen = true;
+        if (!localSettings.hasSeenMemoryLane(widget.personId)) {
+          await localSettings.markMemoryLaneSeen(widget.personId);
+        }
+        final schedule = _schedule;
+        if (markScheduleSeen && schedule != null) {
+          await MemoryLaneCacheService.instance.markScheduleCompletelySeen(
+            schedule,
+          );
+        }
       }),
     );
   }
@@ -322,6 +347,10 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   @override
   Widget build(BuildContext context) {
     final screenSize = MediaQuery.sizeOf(context);
+    final safePadding = MediaQuery.paddingOf(context);
+    final toolbarTopPadding = widget.isFromMemoriesStrip
+        ? math.max(40.0 - safePadding.top, 0.0) + 16
+        : 16.0;
     return FutureBuilder<void>(
       future: _memoryLaneLoaded,
       builder: (context, snapshot) {
@@ -336,68 +365,66 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
         final file = _files.isEmpty ? null : _files[i];
         final entry = _entries.isEmpty ? null : _chunkinator!.get(_entries[i]);
         final creationTime = file?.creationTime;
-        final birthDate = DateTime.tryParse(
-          widget.person?.data.birthDate ?? "",
-        );
         final creationDate = creationTime == null
             ? null
             : DateTime.fromMicrosecondsSinceEpoch(creationTime);
-        int? age;
-        if (birthDate != null &&
-            creationDate != null &&
-            !creationDate.isBefore(birthDate)) {
-          age = creationDate.year - birthDate.year;
-          final lastDay = DateTime(
-            creationDate.year,
-            birthDate.month + 1,
-            0,
-          ).day;
-          final anniversary = DateTime(
-            creationDate.year,
-            birthDate.month,
-            birthDate.day.clamp(1, lastDay),
-          );
-          if (creationDate.isBefore(anniversary)) age--;
-        }
         const captionPlaceholder = "\uFFFC";
         int? captionValue;
         String? caption;
-        if (age != null && name != null && name.isNotEmpty) {
-          captionValue = age;
-          caption = context.strings.memoryLaneAgeCaption(
-            name: name,
-            count: age,
-            age: captionPlaceholder,
-          );
-        } else if (creationDate != null) {
+        if (creationDate != null) {
           final now = DateTime.now();
-          final anniversary = DateTime(
-            now.year,
+          final today = DateTime.utc(now.year, now.month, now.day);
+          final photoDate = DateTime.utc(
+            creationDate.year,
             creationDate.month,
+            creationDate.day,
+          );
+          var months =
+              (now.year - creationDate.year) * 12 +
+              now.month -
+              creationDate.month;
+          final anniversary = DateTime.utc(
+            now.year,
+            now.month,
             creationDate.day.clamp(
               1,
-              DateTime(now.year, creationDate.month + 1, 0).day,
+              DateTime.utc(now.year, now.month + 1, 0).day,
             ),
           );
-          captionValue =
-              (now.year -
-                      creationDate.year -
-                      (now.isBefore(anniversary) ? 1 : 0))
-                  .clamp(0, 1000);
-          caption = context.strings.facesTimelineCaptionYearsAgo(
-            count: captionValue,
-          );
-          if (caption.contains("#")) {
-            caption = caption.replaceAll("#", captionPlaceholder);
-          } else {
-            caption = caption.replaceFirst(
-              NumberFormat.decimalPattern(
-                context.strings.localeName,
-              ).format(captionValue),
-              captionPlaceholder,
+          if (today.isBefore(anniversary)) months--;
+          final days = today.difference(photoDate).inDays;
+          if (months >= 12) {
+            captionValue = months ~/ 12;
+            caption = context.strings.memoryLaneCaptionYearsAgo(
+              name: name ?? "",
+              count: captionValue,
+              number: captionPlaceholder,
             );
+          } else if (months >= 1) {
+            captionValue = months;
+            caption = context.strings.memoryLaneCaptionMonthsAgo(
+              name: name ?? "",
+              count: captionValue,
+              number: captionPlaceholder,
+            );
+          } else if (days >= 7) {
+            captionValue = days ~/ 7;
+            caption = context.strings.memoryLaneCaptionWeeksAgo(
+              name: name ?? "",
+              count: captionValue,
+              number: captionPlaceholder,
+            );
+          } else if (days >= 1) {
+            captionValue = days;
+            caption = context.strings.memoryLaneCaptionDaysAgo(
+              name: name ?? "",
+              count: captionValue,
+              number: captionPlaceholder,
+            );
+          } else {
+            caption = context.strings.memoryLaneCaptionToday(name: name ?? "");
           }
-          if (name != null && name.isNotEmpty) caption = "$name $caption";
+          caption = caption.trim();
         }
         final captionParts =
             caption?.split(captionPlaceholder) ?? const <String>[];
@@ -439,461 +466,452 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
                 ),
               ),
             ),
+            if (widget.isFromMemoriesStrip && _entries.isNotEmpty)
+              Positioned(
+                top: math.max(safePadding.top, 40),
+                left: safePadding.left + 16,
+                right: safePadding.right + 16,
+                child: MemoryProgressIndicator(
+                  totalSteps: _entries.length,
+                  currentIndex: i,
+                  duration: _playbackInterval,
+                  unselectedColor: Colors.white.withValues(alpha: 0.4),
+                  animationController: (controller) {
+                    _progressAnimationController = controller;
+                    controller.value =
+                        (_playbackElapsed.elapsedMicroseconds /
+                                _playbackInterval.inMicroseconds)
+                            .clamp(0.0, 1.0);
+                    if (_playbackElapsed.isRunning) controller.forward();
+                  },
+                  onAnimationControllerDisposed: (controller) {
+                    if (_progressAnimationController == controller) {
+                      _progressAnimationController = null;
+                    }
+                  },
+                ),
+              ),
             Scaffold(
               backgroundColor: Colors.transparent,
-              appBar: AppBar(
-                backgroundColor: Colors.transparent,
-                foregroundColor: Colors.white,
-                iconTheme: const IconThemeData(color: Colors.white),
-                actionsIconTheme: const IconThemeData(color: Colors.white),
-                systemOverlayStyle: SystemUiOverlayStyle.light,
-                title: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Hero(
-                      tag: 'memory-lane-title-${widget.personId}',
-                      child: Text(
-                        title,
-                        style: darkTheme.textTheme.large.copyWith(
-                          inherit: false,
+              appBar: PreferredSize(
+                preferredSize: Size.fromHeight(
+                  kToolbarHeight + toolbarTopPadding,
+                ),
+                child: Padding(
+                  padding: EdgeInsets.only(top: toolbarTopPadding),
+                  child: AppBar(
+                    centerTitle: false,
+                    backgroundColor: Colors.transparent,
+                    foregroundColor: Colors.white,
+                    iconTheme: const IconThemeData(color: Colors.white),
+                    actionsIconTheme: const IconThemeData(color: Colors.white),
+                    systemOverlayStyle: SystemUiOverlayStyle.light,
+                    title: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Hero(
+                          tag: 'memory-lane-title-${widget.personId}',
+                          child: Text(
+                            title,
+                            style: darkTheme.textTheme.large.copyWith(
+                              inherit: false,
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
+                        if (file != null && creationTime != null)
+                          GestureDetector(
+                            onTap: () => _onDateTap(file),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Text(
+                                  DateFormat.yMMMMd(
+                                    Localizations.localeOf(
+                                      context,
+                                    ).toLanguageTag(),
+                                  ).format(
+                                    DateTime.fromMicrosecondsSinceEpoch(
+                                      creationTime,
+                                    ),
+                                  ),
+                                  style: darkTheme.textTheme.small,
+                                ),
+                                const Icon(
+                                  Icons.chevron_right,
+                                  size: 16,
+                                  color: Colors.white,
+                                ),
+                              ],
+                            ),
+                          ),
+                      ],
+                    ),
+                    leadingWidth: 48 + screenSize.width * 0.04,
+                    actionsPadding: EdgeInsets.only(
+                      right: screenSize.width * 0.04,
+                    ),
+                    // TODO: Replace with an Ente component when it supports this pressed overlay.
+                    leading: Align(
+                      alignment: Alignment.centerRight,
+                      child: SizedBox.square(
+                        dimension: 48,
+                        child: IconButton(
+                          tooltip: context.strings.close,
+                          style: IconButton.styleFrom(
+                            overlayColor: Colors.white.withValues(alpha: 0.08),
+                          ),
+                          icon: const HugeIcon(
+                            icon: HugeIcons.strokeRoundedCancel01,
+                            color: Colors.white,
+                          ),
+                          onPressed: () => Navigator.of(context).pop(),
+                        ),
                       ),
                     ),
-                    if (file != null && creationTime != null)
-                      GestureDetector(
-                        onTap: () => _onDateTap(file),
-                        child: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              DateFormat.yMMMMd(
-                                Localizations.localeOf(context).toLanguageTag(),
-                              ).format(
-                                DateTime.fromMicrosecondsSinceEpoch(
-                                  creationTime,
-                                ),
+                    actions: [
+                      if (widget.person != null &&
+                          flagService.enableMemoryShareLink &&
+                          !isLocalGalleryMode)
+                        // TODO: Replace with an Ente component when it supports this pressed overlay.
+                        SizedBox.square(
+                          dimension: 48,
+                          child: IconButton(
+                            tooltip: context.strings.shareLink,
+                            style: IconButton.styleFrom(
+                              overlayColor: Colors.white.withValues(
+                                alpha: 0.08,
                               ),
-                              style: darkTheme.textTheme.small,
                             ),
-                            const Icon(
-                              Icons.chevron_right,
-                              size: 16,
+                            icon: const HugeIcon(
+                              icon: HugeIcons.strokeRoundedShare08,
                               color: Colors.white,
                             ),
-                          ],
+                            onPressed: _onShareTap,
+                          ),
                         ),
-                      ),
-                  ],
-                ),
-                leadingWidth: 48 + screenSize.width * 0.04,
-                actionsPadding: EdgeInsets.only(right: screenSize.width * 0.04),
-                // TODO: Replace with an Ente component when it supports this pressed overlay.
-                leading: Align(
-                  alignment: Alignment.centerRight,
-                  child: SizedBox.square(
-                    dimension: 48,
-                    child: IconButton(
-                      tooltip: context.strings.close,
-                      style: IconButton.styleFrom(
-                        overlayColor: Colors.white.withValues(alpha: 0.08),
-                      ),
-                      icon: const HugeIcon(
-                        icon: HugeIcons.strokeRoundedCancel01,
-                        color: Colors.white,
-                      ),
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    ],
                   ),
                 ),
-                actions: [
-                  if (widget.person != null &&
-                      flagService.enableMemoryShareLink &&
-                      !isLocalGalleryMode)
-                    // TODO: Replace with an Ente component when it supports this pressed overlay.
-                    SizedBox.square(
-                      dimension: 48,
-                      child: IconButton(
-                        tooltip: context.strings.shareLink,
-                        style: IconButton.styleFrom(
-                          overlayColor: Colors.white.withValues(alpha: 0.08),
-                        ),
-                        icon: const HugeIcon(
-                          icon: HugeIcons.strokeRoundedShare08,
-                          color: Colors.white,
-                        ),
-                        onPressed: _onShareTap,
-                      ),
-                    ),
-                ],
               ),
-              body: Column(
-                children: [
-                  Expanded(
-                    child: GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTapUp:
-                          widget.onNextMemory == null &&
-                              widget.onPreviousMemory == null
-                          ? null
-                          : (details) {
-                              if (!widget.isActive || _entries.isEmpty) return;
-                              final previous =
-                                  details.localPosition.dx <
-                                  screenSize.width / 2;
-                              final index = i + (previous ? -1 : 1);
-                              if (index < 0 || index >= _entries.length) {
-                                final onMemory = previous
-                                    ? widget.onPreviousMemory
-                                    : widget.onNextMemory;
-                                if (onMemory != null) {
-                                  _pause();
-                                  onMemory();
-                                }
-                              } else if (_playbackToken != null) {
-                                unawaited(_play(index, fastTransition: true));
-                              } else {
-                                setState(
-                                  () =>
-                                      _selectEntry(index, fastTransition: true),
-                                );
+              body: SafeArea(
+                child: Column(
+                  children: [
+                    Expanded(
+                      child: Listener(
+                        onPointerDown: (event) {
+                          if (_photoPointer != null || !widget.isActive) return;
+                          _photoPointer = event.pointer;
+                          _pause();
+                        },
+                        onPointerUp: _onPhotoPointerEnd,
+                        onPointerCancel: _onPhotoPointerEnd,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapUp: (details) {
+                            if (!widget.isActive || _entries.isEmpty) return;
+                            final previous =
+                                details.localPosition.dx < screenSize.width / 2;
+                            final index = i + (previous ? -1 : 1);
+                            if (index < 0 || index >= _entries.length) {
+                              final onMemory = previous
+                                  ? widget.onPreviousMemory
+                                  : widget.onNextMemory;
+                              if (onMemory != null) {
+                                _pause();
+                                onMemory();
                               }
-                            },
-                      child: Padding(
-                        padding: EdgeInsets.symmetric(
-                          horizontal: screenSize.width * 0.08,
-                          vertical: screenSize.height * 0.04,
-                        ),
-                        child: Align(
-                          child: AspectRatio(
-                            aspectRatio: 3 / 4,
-                            child: ClipRRect(
-                              borderRadius: BorderRadius.circular(24),
-                              child: AnimatedSwitcher(
-                                duration: Duration(
-                                  milliseconds: _useFastTransition ? 100 : 1000,
-                                ),
-                                switchInCurve: Curves.easeOutCubic,
-                                switchOutCurve: Curves.easeInCubic,
-                                transitionBuilder: (child, animation) {
-                                  return AnimatedBuilder(
-                                    animation: animation,
-                                    child: FadeTransition(
-                                      opacity: animation,
-                                      child: ScaleTransition(
-                                        scale: Tween<double>(
-                                          begin: 1,
-                                          end: 1.1,
-                                        ).animate(animation),
-                                        child: child,
-                                      ),
+                            } else {
+                              unawaited(_play(index, fastTransition: true));
+                            }
+                          },
+                          onLongPress: () {},
+                          child: Padding(
+                            padding: EdgeInsets.symmetric(
+                              horizontal: screenSize.width * 0.08,
+                              vertical: screenSize.height * 0.02,
+                            ),
+                            child: Align(
+                              child: AspectRatio(
+                                aspectRatio: 3 / 4,
+                                child: ClipRRect(
+                                  borderRadius: BorderRadius.circular(16),
+                                  child: AnimatedSwitcher(
+                                    duration: Duration(
+                                      milliseconds: _useFastTransition
+                                          ? 100
+                                          : 1000,
                                     ),
-                                    builder: (context, child) {
-                                      final blur = 12 * (1 - animation.value);
-                                      return ImageFiltered(
-                                        imageFilter: ImageFilter.blur(
-                                          sigmaX: blur,
-                                          sigmaY: blur,
+                                    switchInCurve: Curves.easeOutCubic,
+                                    switchOutCurve: Curves.easeInCubic,
+                                    transitionBuilder: (child, animation) {
+                                      return AnimatedBuilder(
+                                        animation: animation,
+                                        child: FadeTransition(
+                                          opacity: animation,
+                                          child: ScaleTransition(
+                                            scale: Tween<double>(
+                                              begin: 1,
+                                              end: 1.1,
+                                            ).animate(animation),
+                                            child: child,
+                                          ),
                                         ),
-                                        child: child,
+                                        builder: (context, child) {
+                                          final blur =
+                                              12 * (1 - animation.value);
+                                          return ImageFiltered(
+                                            imageFilter: ImageFilter.blur(
+                                              sigmaX: blur,
+                                              sigmaY: blur,
+                                            ),
+                                            child: child,
+                                          );
+                                        },
                                       );
                                     },
-                                  );
-                                },
-                                child: switch (snapshot.connectionState) {
-                                  ConnectionState.done when file != null =>
-                                    LayoutBuilder(
-                                      key: _currentEntryKey,
-                                      builder: (context, constraints) =>
-                                          FutureBuilder<(Uint8List, int)?>(
-                                            future: entry == null
-                                                ? null
-                                                : _fetchEntry(
-                                                    entry,
-                                                    constraints.biggest *
-                                                        MediaQuery.devicePixelRatioOf(
-                                                          context,
-                                                        ) *
-                                                        1.1,
-                                                  ),
-                                            builder: (context, entrySnapshot) {
-                                              final crop = entrySnapshot.data;
-                                              if (crop == null) {
-                                                if (entrySnapshot
-                                                        .connectionState ==
-                                                    ConnectionState.done) {
-                                                  return Center(
-                                                    child: Text(
-                                                      context
-                                                          .strings
-                                                          .facesTimelineUnavailable,
-                                                      style: darkTheme
-                                                          .textTheme
-                                                          .small,
-                                                    ),
-                                                  );
-                                                }
-                                                return const Center(
-                                                  child:
-                                                      CircularProgressIndicator(
-                                                        color: Colors.white,
+                                    child: switch (snapshot.connectionState) {
+                                      ConnectionState.done when file != null =>
+                                        LayoutBuilder(
+                                          key: _currentEntryKey,
+                                          builder: (context, constraints) =>
+                                              FutureBuilder<(Uint8List, int)?>(
+                                                future: entry == null
+                                                    ? null
+                                                    : _fetchEntry(
+                                                        entry,
+                                                        constraints.biggest *
+                                                            MediaQuery.devicePixelRatioOf(
+                                                              context,
+                                                            ) *
+                                                            1.1,
                                                       ),
-                                                );
-                                              }
-                                              return Image.memory(
-                                                crop.$1,
-                                                cacheWidth: crop.$2,
-                                                fit: BoxFit.cover,
-                                                width: double.infinity,
-                                                height: double.infinity,
-                                              );
-                                            },
-                                          ),
-                                    ),
-                                  ConnectionState.done => Center(
-                                    key: const ValueKey("memory-lane-empty"),
-                                    child: Text(
-                                      context.strings.facesTimelineUnavailable,
-                                      style: darkTheme.textTheme.small,
-                                    ),
+                                                builder: (context, entrySnapshot) {
+                                                  final crop =
+                                                      entrySnapshot.data;
+                                                  if (crop == null) {
+                                                    if (entrySnapshot
+                                                            .connectionState ==
+                                                        ConnectionState.done) {
+                                                      return Center(
+                                                        child: Text(
+                                                          context
+                                                              .strings
+                                                              .facesTimelineUnavailable,
+                                                          style: darkTheme
+                                                              .textTheme
+                                                              .small,
+                                                        ),
+                                                      );
+                                                    }
+                                                    return const Center(
+                                                      child:
+                                                          CircularProgressIndicator(
+                                                            color: Colors.white,
+                                                          ),
+                                                    );
+                                                  }
+                                                  return Image.memory(
+                                                    crop.$1,
+                                                    cacheWidth: crop.$2,
+                                                    fit: BoxFit.cover,
+                                                    width: double.infinity,
+                                                    height: double.infinity,
+                                                  );
+                                                },
+                                              ),
+                                        ),
+                                      ConnectionState.done => Center(
+                                        key: const ValueKey(
+                                          "memory-lane-empty",
+                                        ),
+                                        child: Text(
+                                          context
+                                              .strings
+                                              .facesTimelineUnavailable,
+                                          style: darkTheme.textTheme.small,
+                                        ),
+                                      ),
+                                      _ => const Center(
+                                        key: ValueKey("memory-lane-loading"),
+                                        child: CircularProgressIndicator(
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    },
                                   ),
-                                  _ => const Center(
-                                    key: ValueKey("memory-lane-loading"),
-                                    child: CircularProgressIndicator(
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                },
+                                ),
                               ),
                             ),
                           ),
                         ),
                       ),
                     ),
-                  ),
-                  ConstrainedBox(
-                    constraints: BoxConstraints(
-                      minHeight: screenSize.height * 0.2,
-                    ),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        if (captionValue != null) ...[
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 48),
-                            child: Align(
-                              alignment: Alignment.bottomCenter,
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                crossAxisAlignment: CrossAxisAlignment.baseline,
-                                textBaseline: TextBaseline.alphabetic,
-                                spacing: screenSize.width * 0.02,
-                                children: [
-                                  for (
-                                    var index = 0;
-                                    index < captionParts.length;
-                                    index++
-                                  ) ...[
-                                    if (index > 0)
-                                      _MemoryLaneAnimatedDigit(
-                                        value: captionValue,
+                    ConstrainedBox(
+                      constraints: BoxConstraints(
+                        minHeight: screenSize.height * 0.1,
+                      ),
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          if (caption != null) ...[
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 48),
+                              child: Align(
+                                alignment: Alignment.bottomCenter,
+                                child: Row(
+                                  mainAxisSize: MainAxisSize.min,
+                                  crossAxisAlignment:
+                                      CrossAxisAlignment.baseline,
+                                  textBaseline: TextBaseline.alphabetic,
+                                  spacing: screenSize.width * 0.02,
+                                  children: [
+                                    for (
+                                      var index = 0;
+                                      index < captionParts.length;
+                                      index++
+                                    ) ...[
+                                      if (index > 0 && captionValue != null)
+                                        _MemoryLaneAnimatedDigit(
+                                          value: captionValue,
+                                        ),
+                                      Flexible(
+                                        child: Text(
+                                          captionParts[index],
+                                          style: darkTheme.textTheme.bodyMuted,
+                                          textAlign: TextAlign.center,
+                                          softWrap: false,
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
+                                        ),
                                       ),
-                                    Flexible(
-                                      child: Text(
-                                        captionParts[index],
-                                        style: darkTheme.textTheme.bodyMuted,
-                                        textAlign: TextAlign.center,
-                                        softWrap: false,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                    ),
+                                    ],
                                   ],
-                                ],
+                                ),
                               ),
                             ),
-                          ),
-                          SizedBox(height: screenSize.height * 0.02),
-                        ],
-                        if (_entries.isNotEmpty)
-                          ConstrainedBox(
-                            constraints: const BoxConstraints(minHeight: 48),
-                            child: Padding(
-                              padding: EdgeInsets.symmetric(
-                                horizontal: screenSize.width * 0.16,
-                              ),
-                              child: Row(
-                                mainAxisAlignment: .center,
-                                children: [
-                                  // TODO: Replace with an Ente component.
-                                  IconButton(
-                                    style: ButtonStyle(
-                                      fixedSize: const WidgetStatePropertyAll(
-                                        Size.square(48),
-                                      ),
-                                      shape: const WidgetStatePropertyAll(
-                                        CircleBorder(),
-                                      ),
-                                      foregroundColor:
-                                          const WidgetStatePropertyAll(
-                                            Colors.white,
-                                          ),
-                                      overlayColor:
-                                          const WidgetStatePropertyAll(
-                                            Colors.transparent,
-                                          ),
-                                      backgroundColor:
-                                          WidgetStateProperty.resolveWith(
-                                            (states) => Colors.white.withValues(
-                                              alpha:
-                                                  states.contains(
-                                                    WidgetState.disabled,
-                                                  )
-                                                  ? 0.16
-                                                  : states.contains(
-                                                      WidgetState.pressed,
-                                                    )
-                                                  ? 0.36
-                                                  : states.contains(
-                                                      WidgetState.hovered,
-                                                    )
-                                                  ? 0.30
-                                                  : 0.24,
-                                            ),
-                                          ),
-                                    ),
-                                    tooltip: _playbackToken != null
-                                        ? context
-                                              .strings
-                                              .facesTimelinePlaybackPause
-                                        : context
-                                              .strings
-                                              .facesTimelinePlaybackPlay,
-                                    onPressed: _onPlayPauseTap,
-                                    icon: HugeIcon(
-                                      icon: _playbackToken != null
-                                          ? HugeIcons.strokeRoundedPause
-                                          : HugeIcons.strokeRoundedPlay,
-                                      size: 18,
-                                      color: Colors.white,
-                                    ),
-                                  ),
-                                  SizedBox(width: screenSize.width * 0.03),
-                                  Expanded(
-                                    child: LayoutBuilder(
-                                      builder: (context, constraints) {
-                                        const maxDotSize = 15.0;
-                                        const dotSpacing = 5.0;
-                                        final dotCount =
-                                            ((constraints.maxWidth +
-                                                        dotSpacing) /
-                                                    (maxDotSize + dotSpacing))
-                                                .floor()
-                                                .clamp(1, _entries.length);
-                                        final activeDot =
-                                            i * dotCount ~/ _entries.length;
-                                        return GestureDetector(
-                                          behavior: HitTestBehavior.opaque,
-                                          onTapUp: (details) {
-                                            if (constraints.maxWidth <= 0) {
-                                              return;
-                                            }
-                                            final index =
-                                                (details.localPosition.dx /
-                                                        constraints.maxWidth *
-                                                        _entries.length)
-                                                    .floor()
-                                                    .clamp(
-                                                      0,
-                                                      _entries.length - 1,
-                                                    );
-                                            if (_playbackToken != null) {
+                            SizedBox(height: screenSize.height * 0.01),
+                          ],
+                          if (_entries.isNotEmpty &&
+                              !widget.isFromMemoriesStrip)
+                            ConstrainedBox(
+                              constraints: const BoxConstraints(minHeight: 32),
+                              child: Padding(
+                                padding: EdgeInsets.symmetric(
+                                  horizontal: screenSize.width * 0.16,
+                                ),
+                                child: Row(
+                                  mainAxisAlignment: .center,
+                                  children: [
+                                    Expanded(
+                                      child: LayoutBuilder(
+                                        builder: (context, constraints) {
+                                          const maxDotSize = 15.0;
+                                          const dotSpacing = 5.0;
+                                          final dotCount =
+                                              ((constraints.maxWidth +
+                                                          dotSpacing) /
+                                                      (maxDotSize + dotSpacing))
+                                                  .floor()
+                                                  .clamp(1, _entries.length);
+                                          final activeDot =
+                                              i * dotCount ~/ _entries.length;
+                                          return GestureDetector(
+                                            behavior: HitTestBehavior.opaque,
+                                            onTapUp: (details) {
+                                              if (constraints.maxWidth <= 0) {
+                                                return;
+                                              }
+                                              final index =
+                                                  (details.localPosition.dx /
+                                                          constraints.maxWidth *
+                                                          _entries.length)
+                                                      .floor()
+                                                      .clamp(
+                                                        0,
+                                                        _entries.length - 1,
+                                                      );
                                               unawaited(
                                                 _play(
                                                   index,
                                                   fastTransition: true,
                                                 ),
                                               );
-                                            } else {
-                                              setState(
-                                                () => _selectEntry(
-                                                  index,
-                                                  fastTransition: true,
-                                                ),
-                                              );
-                                            }
-                                          },
-                                          onHorizontalDragStart: (details) {
-                                            _wasPlayingBeforeSeek =
-                                                _playbackToken != null;
-                                            _seekFromPosition(
-                                              details.localPosition.dx,
-                                              constraints.maxWidth,
-                                            );
-                                          },
-                                          onHorizontalDragUpdate: (details) =>
+                                            },
+                                            onHorizontalDragStart: (details) {
                                               _seekFromPosition(
                                                 details.localPosition.dx,
                                                 constraints.maxWidth,
-                                              ),
-                                          onHorizontalDragEnd: (_) =>
-                                              _onSeekEnd(),
-                                          onHorizontalDragCancel: _onSeekEnd,
-                                          child: Row(
-                                            spacing: dotSpacing,
-                                            children: List.generate(dotCount, (
-                                              index,
-                                            ) {
-                                              final distance =
-                                                  (index - activeDot).abs();
-                                              final double size =
-                                                  switch (distance) {
-                                                    0 => maxDotSize,
-                                                    1 => 10,
-                                                    2 => 7.5,
-                                                    _ => 5,
-                                                  };
-                                              return Expanded(
-                                                child: SizedBox(
-                                                  height: 40,
-                                                  child: Center(
-                                                    child: AnimatedContainer(
-                                                      duration: const Duration(
-                                                        milliseconds: 200,
-                                                      ),
-                                                      width: size,
-                                                      height: size,
-                                                      decoration: BoxDecoration(
-                                                        shape: BoxShape.circle,
-                                                        color: Colors.white
-                                                            .withValues(
-                                                              alpha:
-                                                                  distance == 0
-                                                                  ? 1
-                                                                  : 0.5,
+                                              );
+                                            },
+                                            onHorizontalDragUpdate: (details) =>
+                                                _seekFromPosition(
+                                                  details.localPosition.dx,
+                                                  constraints.maxWidth,
+                                                ),
+                                            onHorizontalDragEnd: (_) =>
+                                                unawaited(_play(i)),
+                                            onHorizontalDragCancel: () =>
+                                                unawaited(_play(i)),
+                                            child: Row(
+                                              spacing: dotSpacing,
+                                              children: List.generate(dotCount, (
+                                                index,
+                                              ) {
+                                                final distance =
+                                                    (index - activeDot).abs();
+                                                final double size =
+                                                    switch (distance) {
+                                                      0 => maxDotSize,
+                                                      1 => 10,
+                                                      2 => 7.5,
+                                                      _ => 5,
+                                                    };
+                                                return Expanded(
+                                                  child: SizedBox(
+                                                    height: 40,
+                                                    child: Center(
+                                                      child: AnimatedContainer(
+                                                        duration:
+                                                            const Duration(
+                                                              milliseconds: 200,
                                                             ),
+                                                        width: size,
+                                                        height: size,
+                                                        decoration: BoxDecoration(
+                                                          shape:
+                                                              BoxShape.circle,
+                                                          color: Colors.white
+                                                              .withValues(
+                                                                alpha:
+                                                                    distance ==
+                                                                        0
+                                                                    ? 1
+                                                                    : 0.5,
+                                                              ),
+                                                        ),
                                                       ),
                                                     ),
                                                   ),
-                                                ),
-                                              );
-                                            }),
-                                          ),
-                                        );
-                                      },
+                                                );
+                                              }),
+                                            ),
+                                          );
+                                        },
+                                      ),
                                     ),
-                                  ),
-                                ],
+                                  ],
+                                ),
                               ),
                             ),
-                          ),
-                        SizedBox(height: screenSize.height * 0.055),
-                      ],
+                          SizedBox(height: screenSize.height * 0.055),
+                        ],
+                      ),
                     ),
-                  ),
-                ],
+                  ],
+                ),
               ),
             ),
           ],

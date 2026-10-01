@@ -13,49 +13,10 @@ import "package:photos/services/contacts.dart";
 class PhotosContactsService {
   PhotosContactsService._privateConstructor()
     : _store = contacts.ContactDirectory(
-        contactsServiceFactory: () {
-          final session = authenticatedSession();
-          return contacts.ContactsService(
-            preferences: ServiceLocator.instance.prefs,
-            createContact: (key, data) => createContact(
-              session: session,
-              wrappedRootContactKey: key,
-              data: data,
-            ),
-            getDiff: (key, sinceTime, limit) => getDiff(
-              session: session,
-              wrappedRootContactKey: key,
-              sinceTime: sinceTime,
-              limit: limit,
-            ),
-            updateContact: (key, contactId, data) => updateContact(
-              session: session,
-              wrappedRootContactKey: key,
-              contactId: contactId,
-              data: data,
-            ),
-            deleteContact: (contactId) =>
-                deleteContact(session: session, contactId: contactId),
-            setAttachment: (key, contactId, type, bytes) => setAttachment(
-              session: session,
-              wrappedRootContactKey: key,
-              contactId: contactId,
-              attachmentType: type,
-              attachmentBytes: bytes,
-            ),
-            deleteAttachment: (key, contactId, type) => deleteAttachment(
-              session: session,
-              wrappedRootContactKey: key,
-              contactId: contactId,
-              attachmentType: type,
-            ),
-            getProfilePicture: (key, contactId) => getProfilePicture(
-              session: session,
-              wrappedRootContactKey: key,
-              contactId: contactId,
-            ),
-          );
-        },
+        contactsServiceFactory: () => contacts.ContactsService(
+          preferences: ServiceLocator.instance.prefs,
+          api: PhotosContactsApi(authenticatedSession()),
+        ),
         onContactsChanged: _notifyContactsChanged,
         profilePictureFailureTtl: Duration.zero,
       ) {
@@ -187,13 +148,8 @@ class PhotosContactsService {
   }) => _store.ensureReady(baseUrl: baseUrl, userId: userId);
 
   @visibleForTesting
-  void debugHydrateContacts(
-    List<contacts.ContactRecord> records, {
-    bool markHydrated = false,
-  }) => _store.debugHydrateContacts(records, markHydrated: markHydrated);
-
-  @visibleForTesting
-  void debugReset({bool notify = false}) => _store.clearSession(notify: notify);
+  void debugHydrateContacts(List<contacts.ContactRecord> records) =>
+      _store.debugHydrateContacts(records);
 
   Future<void> close() => _store.close();
 

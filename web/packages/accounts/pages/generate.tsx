@@ -1,14 +1,7 @@
-import { Divider } from "@mui/material";
-import {
-    AccountsPageContents,
-    AccountsPageFooter,
-    AccountsPageTitle,
-} from "ente-accounts/components/layouts/centered-paper";
-import {
-    RecoveryKey,
-    RecoveryKeyContents,
-    type RecoveryKeyPresentationProps,
-} from "ente-accounts/components/RecoveryKey";
+import { useAuthPageConfig } from "ente-accounts/components/auth/AuthPageProvider";
+import { RecoveryKeyForm } from "ente-accounts/components/auth/RecoveryKeyForm";
+import { SetPasswordForm } from "ente-accounts/components/auth/SetPasswordForm";
+import { RecoveryKeyContents } from "ente-accounts/components/RecoveryKey";
 import {
     savedJustSignedUp,
     savedOriginalKeyAttributes,
@@ -18,7 +11,6 @@ import {
 import { saveMasterKeyInSessionAndSafeStore } from "ente-accounts/services/prelogin-session";
 import { getPreloginRecoveryKeyMnemonic } from "ente-accounts/services/recovery-key";
 import { appHomeRoute } from "ente-accounts/services/redirect";
-import { haveMasterKeyInSession } from "ente-accounts/services/session-storage";
 import {
     generateSRPSetupAttributes,
     getAndSaveSRPAttributes,
@@ -29,31 +21,21 @@ import {
     generateKeysAndAttributes,
     putUserKeyAttributes,
 } from "ente-accounts/services/user";
-import { LinkButton } from "ente-base/components/LinkButton";
 import { LoadingIndicator } from "ente-base/components/loaders";
 import { useBaseContext } from "ente-base/context";
 import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
+import { haveMasterKeyInSession } from "ente-base/session-storage";
 import { t } from "i18next";
 import { useRouter } from "next/router";
-import { useCallback, useEffect, useState, type ComponentType } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
     NewPasswordForm,
     type NewPasswordFormProps,
-    type NewPasswordPresentationProps,
 } from "../components/NewPasswordForm";
 
-export interface GeneratePageProps {
-    passwordPresentation?: ComponentType<NewPasswordPresentationProps>;
-    recoveryKeyPresentation?: ComponentType<RecoveryKeyPresentationProps>;
-    onRecoveryKeyClose?: () => void;
-}
-
-const Page: React.FC<GeneratePageProps> = ({
-    passwordPresentation,
-    recoveryKeyPresentation,
-    onRecoveryKeyClose,
-}) => {
+const Page: React.FC = () => {
+    const { Shell, recoveryKeyCloseDestination } = useAuthPageConfig();
     const { logout, showMiniDialog } = useBaseContext();
 
     const [userEmail, setUserEmail] = useState("");
@@ -107,53 +89,33 @@ const Page: React.FC<GeneratePageProps> = ({
     );
 
     function handleRecoveryKeyClose() {
-        if (onRecoveryKeyClose) {
-            onRecoveryKeyClose();
-        } else {
-            void router.push(appHomeRoute);
-        }
+        void router.push(recoveryKeyCloseDestination ?? appHomeRoute);
     }
 
-    if (openRecoveryKey && recoveryKeyPresentation) {
+    if (openRecoveryKey) {
         return (
-            <RecoveryKeyContents
-                open
-                onClose={handleRecoveryKeyClose}
-                getRecoveryKeyMnemonic={getPreloginRecoveryKeyMnemonic}
-                showMiniDialog={showMiniDialog}
-                presentation={recoveryKeyPresentation}
-            />
+            <Shell key="recovery-key">
+                <RecoveryKeyContents
+                    open
+                    onClose={handleRecoveryKeyClose}
+                    getRecoveryKeyMnemonic={getPreloginRecoveryKeyMnemonic}
+                    showMiniDialog={showMiniDialog}
+                    presentation={RecoveryKeyForm}
+                />
+            </Shell>
         );
     }
 
-    return openRecoveryKey ? (
-        <RecoveryKey
-            open
-            onClose={handleRecoveryKeyClose}
-            getRecoveryKeyMnemonic={getPreloginRecoveryKeyMnemonic}
-            showMiniDialog={showMiniDialog}
-        />
-    ) : userEmail && passwordPresentation ? (
-        <NewPasswordForm
-            userEmail={userEmail}
-            submitButtonTitle={t("set_password")}
-            onSubmit={handleSubmit}
-            onBack={logout}
-            presentation={passwordPresentation}
-        />
-    ) : userEmail ? (
-        <AccountsPageContents>
-            <AccountsPageTitle>{t("set_password")}</AccountsPageTitle>
+    return userEmail ? (
+        <Shell>
             <NewPasswordForm
                 userEmail={userEmail}
                 submitButtonTitle={t("set_password")}
                 onSubmit={handleSubmit}
+                onBack={logout}
+                presentation={SetPasswordForm}
             />
-            <Divider sx={{ mt: 1 }} />
-            <AccountsPageFooter>
-                <LinkButton onClick={logout}>{t("go_back")}</LinkButton>
-            </AccountsPageFooter>
-        </AccountsPageContents>
+        </Shell>
     ) : (
         <LoadingIndicator />
     );

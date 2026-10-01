@@ -20,23 +20,31 @@ import {
 import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceButtonSpinner } from "components/ButtonSpinner";
 import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
+import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
-    SpaceViewerPostBackdrop,
     type SpaceViewerPhoto,
     type SpaceViewerPostActionMode,
 } from "components/FileViewer";
-import { SpacePostFloatingActionButton } from "components/PostFloatingActionButton";
-import { ProfileLatestPost } from "components/ProfileLatestPost";
+import { SpacePostComposer } from "components/PostComposer";
+import { SpacePostPhotoInput } from "components/PostPhotoInput";
+import {
+    SpacePostPhotosBadge,
+    SpacePostVideoBadge,
+} from "components/PostPhotosBadge";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareIcon } from "components/ShareInviteButton";
+import { SpaceSkipLink } from "components/SkipLink";
 import log from "ente-base/log";
 import { useBrowserBackClose } from "hooks/use-browser-back-close";
-import { useProfileStickyHeader } from "hooks/use-profile-sticky-header";
 import React, { useState } from "react";
 import type { SetupProfile } from "screens/SetupProfileScreen";
 import type { SpaceInviteIntent } from "services/invite";
-import { isSpaceContentError, type SpacePostAsset } from "services/space";
+import {
+    isSpaceContentError,
+    type SpacePostAsset,
+    type SpacePostPhoto,
+} from "services/space";
 import { spaceEmptyStateButtonSx } from "styles/buttons";
 import {
     spaceAppBackground,
@@ -49,17 +57,14 @@ import {
 } from "styles/colors";
 import { spaceProfilePostRadius } from "styles/tiles";
 import { spaceTouchTargetSize } from "styles/touch-targets";
-import { firstNameFrom, formatSpaceDate } from "utils/display";
-import { createLoadedLocalPostPhoto } from "utils/local-post-photo";
+import { firstNameFrom } from "utils/display";
 import {
-    canPreviewSpaceImageFile,
     spaceDefaultCoverImagePath,
-    spacePostImageErrorMessage,
-    spacePostImageInputAccept,
-    spacePostPreviewImageForFile,
     type SpaceDraftPostImage,
 } from "utils/post-image";
+import { viewerPhotosFromPost } from "utils/post-photos";
 import { profilePhotoGap, profilePhotoRows } from "utils/profile-photo-layout";
+import { profilePostSections } from "utils/profile-post-sections";
 import { thumbHashDataURLFromBase64 } from "utils/thumbhash";
 
 const green = "#08C225";
@@ -75,24 +80,18 @@ const profileCoverTopShadow =
     "linear-gradient(180deg, rgba(0, 0, 0, 0.26) 0%, rgba(0, 0, 0, 0.18) 36%, rgba(0, 0, 0, 0.08) 72%, rgba(0, 0, 0, 0) 100%)";
 const profileCoverSkeletonBackground = spaceSurface;
 const profileHeaderHeight = 56;
-const profileStickyHeaderHeight = 44;
 const profileAvatarTopOffset = 54;
 const profileAvatarSize = 132;
 const profileCoverHeight =
     profileHeaderHeight + profileAvatarTopOffset + profileAvatarSize / 2;
-const photoMasonryGap = `${profilePhotoGap}px`;
-const photoMasonryPlaceholderBackground = spaceSurface;
-const photoMasonryRadius = `${spaceProfilePostRadius}px`;
+const photoPlaceholderBackground = spaceSurface;
 const profileCoverRadius = "12px";
-const photoMasonryLoadRootMargin = "800px 0px";
-const publicPhotoMasonryLoadRootMargin = "400px 0px";
+const profilePostLoadRootMargin = "800px 0px";
+const publicProfilePostLoadRootMargin = "400px 0px";
 interface ProfilePhotoDimensions {
     height: number;
     width: number;
 }
-
-const photoAspectRatio = ({ height, width }: ProfilePhotoDimensions): number =>
-    height > 0 && width > 0 ? width / height : 1;
 
 export interface ProfilePostItem {
     avatarUrl?: string | null;
@@ -102,6 +101,7 @@ export interface ProfilePostItem {
     id: string;
     imageAsset?: SpacePostAsset;
     imageUrl?: string;
+    photos?: SpacePostPhoto[];
     isUnavailable?: boolean;
     name?: string;
     postId?: number;
@@ -113,80 +113,16 @@ export interface ProfilePostItem {
 }
 
 interface SelectedProfilePost {
-    draftFile?: File;
-    draftImageError?: string;
     id: string;
-    isDraftImagePreviewPending?: boolean;
-    localObjectUrl?: string;
     photo: SpaceViewerPhoto;
-    postIndex?: number;
-    postActionMode?: SpaceViewerPostActionMode;
+    photoIndex: number;
 }
 
-interface PostMasonryTile {
+interface ProfilePhotoTile {
     aspectRatio: number;
-    dimensions: ProfilePhotoDimensions;
     index: number;
     item: ProfilePostItem;
 }
-
-const buildPostMasonrySections = (
-    items: ProfilePostItem[],
-    loadedDimensionsByID: Record<string, ProfilePhotoDimensions>,
-    width: number,
-) => {
-    const now = new Date();
-    const dayMs = 24 * 60 * 60 * 1000;
-    const latestSection = {
-        title: "Latest",
-        tiles: new Array<PostMasonryTile>(),
-    };
-    const sections = [
-        {
-            title: "Today",
-            sinceMs: new Date(
-                now.getFullYear(),
-                now.getMonth(),
-                now.getDate(),
-            ).getTime(),
-        },
-        {
-            title: "Yesterday",
-            sinceMs: new Date(
-                now.getFullYear(),
-                now.getMonth(),
-                now.getDate() - 1,
-            ).getTime(),
-        },
-        { title: "Last 7 days", sinceMs: now.getTime() - 7 * dayMs },
-        { title: "Last 30 days", sinceMs: now.getTime() - 30 * dayMs },
-        { title: "Older", sinceMs: -Infinity },
-    ].map((section) => ({ ...section, tiles: new Array<PostMasonryTile>() }));
-
-    items.forEach((item, index) => {
-        const dimensions = loadedDimensionsByID[item.id] ?? {
-            height: item.height ?? 1,
-            width: item.width ?? 1,
-        };
-        const section =
-            index == 0
-                ? latestSection
-                : sections.find(({ sinceMs }) => item.timestampMs >= sinceMs)!;
-        section.tiles.push({
-            aspectRatio: photoAspectRatio(dimensions),
-            dimensions,
-            index,
-            item,
-        });
-    });
-
-    return [latestSection, ...sections]
-        .filter(({ tiles }) => tiles.length > 0)
-        .map(({ title, tiles }) => ({
-            title,
-            rows: profilePhotoRows(tiles, width),
-        }));
-};
 
 const profilePostImageCacheKey = (item: ProfilePostItem) =>
     [item.id, item.imageAsset?.objectKey ?? item.imageUrl ?? ""].join(":");
@@ -208,7 +144,7 @@ const ProfileStatsSkeleton: React.FC = () => (
         <Skeleton
             variant="rectangular"
             sx={{
-                bgcolor: photoMasonryPlaceholderBackground,
+                bgcolor: photoPlaceholderBackground,
                 borderRadius: "999px",
                 height: 18,
                 transform: "none",
@@ -228,7 +164,7 @@ const ProfileStatsSkeleton: React.FC = () => (
         <Skeleton
             variant="rectangular"
             sx={{
-                bgcolor: photoMasonryPlaceholderBackground,
+                bgcolor: photoPlaceholderBackground,
                 borderRadius: "999px",
                 height: 18,
                 transform: "none",
@@ -304,12 +240,10 @@ const ProfilePostLoadingIndicator: React.FC = () => (
 );
 
 interface ProfilePostTileProps {
-    dimensions: ProfilePhotoDimensions;
     displayName: string;
     flexGrow: number;
     imageUrl?: string;
     index: number;
-    isSingleItemRow: boolean;
     isUnavailable: boolean;
     item: ProfilePostItem;
     loadRootMargin: string;
@@ -320,12 +254,10 @@ interface ProfilePostTileProps {
 }
 
 const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
-    dimensions,
     displayName,
     flexGrow,
     imageUrl,
     index,
-    isSingleItemRow,
     isUnavailable: isPostUnavailable,
     item,
     loadRootMargin,
@@ -344,6 +276,7 @@ const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
     );
     const isCurrentImageReady = Boolean(imageUrl && readyImageUrl == imageUrl);
     const isUnavailable = isPostUnavailable || imageDecodeFailed;
+    const photoCount = item.photos?.length ?? 1;
 
     React.useEffect(() => {
         if (imageUrl) setShouldLoad(true);
@@ -391,7 +324,9 @@ const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
             aria-label={
                 isUnavailable
                     ? "Post unavailable"
-                    : `Open ${displayName} post ${index + 1}`
+                    : `Open ${displayName} post ${index + 1}${
+                          photoCount > 1 ? `, ${photoCount} photos` : ""
+                      }`
             }
             disabled={!imageUrl || isUnavailable}
             onClick={() => {
@@ -399,12 +334,13 @@ const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
             }}
             sx={{
                 appearance: "none",
-                aspectRatio: `${dimensions.width} / ${dimensions.height}`,
-                bgcolor: photoMasonryPlaceholderBackground,
+                bgcolor: photoPlaceholderBackground,
                 border: 0,
+                borderRadius: `${spaceProfilePostRadius}px`,
                 cursor: imageUrl && !isUnavailable ? "pointer" : "default",
                 display: "block",
-                flex: isSingleItemRow ? "0 0 100%" : `${flexGrow} 1 0`,
+                flex: `${flexGrow} 1 0px`,
+                height: "100%",
                 minWidth: 0,
                 opacity: 1,
                 overflow: "hidden",
@@ -471,6 +407,15 @@ const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
                     }}
                 />
             ) : null}
+            {!isUnavailable && (
+                <>
+                    <SpacePostPhotosBadge count={photoCount} inset={8} />
+                    <SpacePostVideoBadge
+                        durationMs={item.photos?.[0]?.video?.durationMs}
+                        size={18}
+                    />
+                </>
+            )}
             {isUnavailable && (
                 <Box
                     sx={{
@@ -494,7 +439,6 @@ const ProfilePostTile: React.FC<ProfilePostTileProps> = ({
 interface ProfileScreenProps {
     friendsCount?: number;
     headerVariant?: "friend" | "owner" | "public" | "public-anonymous";
-    initialSection?: "latest";
     isAddingFriend?: boolean;
     showAddingFriendSpinner?: boolean;
     isCoverLoading?: boolean;
@@ -508,12 +452,11 @@ interface ProfileScreenProps {
     onAddFriendForPostAction?: (intent: SpaceInviteIntent) => void;
     onCreateSpace?: () => void;
     onCreatePost?: (
-        image: SpaceDraftPostImage,
+        images: SpaceDraftPostImage[],
         caption: string,
     ) => Promise<void>;
     onDeletePost?: (postId: number) => Promise<void> | void;
     onOpenFriends?: () => void;
-    onOpenPost?: (post: ProfilePostItem) => void;
     onOpenProfileCover?: () => void;
     onOpenProfilePhoto?: () => void;
     onOpenSettings?: () => void;
@@ -523,6 +466,7 @@ interface ProfileScreenProps {
         postSpaceId: string,
         postId: number,
         text: string,
+        objectKey: string,
     ) => Promise<void>;
     onSetPostLiked?: (postId: number, liked: boolean) => Promise<void>;
     onUnfriend?: () => Promise<void> | void;
@@ -538,7 +482,6 @@ interface ProfileScreenProps {
 export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     friendsCount = 0,
     headerVariant = "owner",
-    initialSection,
     isAddingFriend = false,
     isCoverLoading = false,
     isNameLoading = false,
@@ -552,7 +495,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     onCreatePost,
     onDeletePost,
     onOpenFriends,
-    onOpenPost,
     onOpenProfileCover,
     onOpenProfilePhoto,
     onOpenSettings,
@@ -573,10 +515,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 }) => {
     const [selectedPost, setSelectedPost] =
         useState<SelectedProfilePost | null>(null);
-    const [isDraftPostExitAnimating, setIsDraftPostExitAnimating] =
-        useState(false);
-    const [isDraftPostExiting, setIsDraftPostExiting] = useState(false);
-    const [isPostPhotoOpening, setIsPostPhotoOpening] = useState(false);
+    const [draftFiles, setDraftFiles] = useState<File[] | null>(null);
+    const isPostPhotoOpening = Boolean(draftFiles);
     const [isInviteLinkCopied, setIsInviteLinkCopied] = useState(false);
     const [deletedPostIDs, setDeletedPostIDs] = useState<Set<string>>(
         () => new Set(),
@@ -600,15 +540,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     >({});
     const [loadedCoverUrl, setLoadedCoverUrl] = useState<string | null>(null);
     const [postGridWidth, setPostGridWidth] = useState(0);
-    const profileIdentityRef = React.useRef<HTMLDivElement | null>(null);
     const postGridRef = React.useRef<HTMLDivElement | null>(null);
-    const hasScrolledToLatestPost = React.useRef(false);
     const postInputRef = React.useRef<HTMLInputElement | null>(null);
     const postImageLoadsInFlightRef = React.useRef<
         Map<string, Promise<string | undefined>>
     >(new Map());
-    const localPostObjectUrlsRef = React.useRef<Set<string>>(new Set());
-    const activeLocalPostObjectUrlRef = React.useRef<string | null>(null);
     const isOwnerProfile = headerVariant == "owner";
     const isFriendProfile = headerVariant == "friend";
     const isAnonymousPublicProfile = headerVariant == "public-anonymous";
@@ -628,9 +564,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
           ? undefined
           : spaceDefaultCoverImagePath;
     const firstName = firstNameFrom(displayName);
-    const visiblePostItems = postItems.filter(
-        (item) => !deletedPostIDs.has(item.id),
-    );
+    const visiblePostItems = postItems
+        .filter((item) => !deletedPostIDs.has(item.id))
+        .sort((a, b) => b.timestampMs - a.timestampMs);
     const viewerPostItems = visiblePostItems.filter(
         (item) =>
             !item.isUnavailable &&
@@ -645,11 +581,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     const canOpenProfileCover = Boolean(onOpenProfileCover);
     const canOpenProfilePhoto = Boolean(onOpenProfilePhoto);
     const hasProfilePosts = postsSharedCount > 0;
-    const { isSticky, shouldAnimate, syncScroll } = useProfileStickyHeader(
-        !isPublicProfile,
-        profileIdentityRef,
-        profileStickyHeaderHeight,
-    );
     React.useLayoutEffect(() => {
         const grid = postGridRef.current;
         if (!grid) return;
@@ -661,28 +592,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         observer.observe(grid);
         return () => observer.disconnect();
     }, [hasProfilePosts]);
-    React.useLayoutEffect(() => {
-        if (
-            initialSection != "latest" ||
-            !postGridWidth ||
-            hasScrolledToLatestPost.current
-        ) {
-            return;
-        }
-        const grid = postGridRef.current;
-        if (!grid) return;
-
-        window.scrollTo({
-            top:
-                window.scrollY +
-                grid.getBoundingClientRect().top -
-                (isPublicProfile ? 0 : profileStickyHeaderHeight) -
-                16,
-            behavior: "instant",
-        });
-        if (!isPublicProfile) syncScroll();
-        hasScrolledToLatestPost.current = true;
-    }, [initialSection, isPublicProfile, postGridWidth, syncScroll]);
     const shouldShowPostLoadingIndicator =
         isPostsLoading && (showPostLoadingIndicator ?? true);
     const isCoverImageLoading = Boolean(
@@ -695,13 +604,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             ? "hidden"
             : "like-only";
     const postImageLoadRootMargin = isAnonymousPublicProfile
-        ? publicPhotoMasonryLoadRootMargin
-        : photoMasonryLoadRootMargin;
-    const masonrySections = buildPostMasonrySections(
-        visiblePostItems,
-        loadedPhotoDimensionsByID,
-        postGridWidth,
-    );
+        ? publicProfilePostLoadRootMargin
+        : profilePostLoadRootMargin;
     const closeFriendActions = () => setFriendActionsAnchor(null);
 
     const requestUnfriend = () => {
@@ -748,32 +652,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         setUnfriendErrorMessage(null);
     };
 
-    const revokeLocalPostObjectUrls = React.useCallback(() => {
-        localPostObjectUrlsRef.current.forEach((objectUrl) =>
-            URL.revokeObjectURL(objectUrl),
-        );
-        localPostObjectUrlsRef.current.clear();
-    }, []);
     const openPostPhotoPicker = () => {
-        if (isPostPhotoOpening) return;
-
-        postInputRef.current?.click();
+        if (!isPostPhotoOpening) postInputRef.current?.click();
     };
-    const closeSelectedPost = () => {
-        activeLocalPostObjectUrlRef.current = null;
-        setIsDraftPostExitAnimating(false);
-        setIsDraftPostExiting(false);
-        setSelectedPost(null);
-        revokeLocalPostObjectUrls();
-    };
-    const { clearBrowserBackState: clearSelectedPostHistory } =
-        useBrowserBackClose({
-            open: Boolean(selectedPost),
-            onClose: () => {
-                if (!isDraftPostExiting) closeSelectedPost();
-            },
-            stateKey: "space-profile-viewer",
-        });
+    const closeSelectedPost = () => setSelectedPost(null);
+    useBrowserBackClose({
+        open: Boolean(selectedPost),
+        onClose: closeSelectedPost,
+        stateKey: "space-profile-viewer",
+    });
     const rememberLoadedPhotoDimensions = (
         itemID: string,
         image: HTMLImageElement,
@@ -855,223 +742,38 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         [loadedPhotoDimensionsByID],
     );
 
-    const selectedPostForItem = React.useCallback(
-        (
-            item: ProfilePostItem,
-            postIndex: number,
-            imageUrl: string,
-        ): SelectedProfilePost => {
-            const dimensions = dimensionsForPost(item);
+    const photoSections = profilePostSections(
+        visiblePostItems.map((item, index) => {
+            const { width, height } = dimensionsForPost(item);
             return {
-                id: item.id,
-                photo: {
-                    alt: `${displayName} post ${postIndex + 1}`,
-                    avatarUrl: profile.avatarUrl,
-                    caption: item.caption,
-                    height: dimensions.height,
-                    imageUrl,
-                    name: displayName,
-                    postId: item.postId,
-                    spaceId: item.spaceId,
-                    timestampMs: item.timestampMs,
-                    viewerLiked: item.viewerLiked,
-                    width: dimensions.width,
-                },
-                postIndex,
+                aspectRatio: width > 0 && height > 0 ? width / height : 1,
+                index,
+                item,
+                timestampMs: item.timestampMs,
             };
-        },
-        [dimensionsForPost, displayName, profile.avatarUrl],
-    );
+        }),
+    ).map(({ id, title, items }) => ({
+        id,
+        title,
+        rows: profilePhotoRows(items, postGridWidth),
+    }));
 
-    const profileViewerPhotos = React.useMemo(
-        () =>
-            viewerPostItems.map((item, index) => {
-                const dimensions = dimensionsForPost(item);
-                return {
-                    alt: `${displayName} post ${index + 1}`,
-                    avatarUrl: profile.avatarUrl,
-                    caption: item.caption,
-                    height: dimensions.height,
-                    imageUrl:
-                        loadedPostImageURLFor(item) ??
-                        (selectedPost?.id == item.id
-                            ? selectedPost.photo.imageUrl
-                            : ""),
-                    name: displayName,
-                    postId: item.postId,
-                    spaceId: item.spaceId,
-                    timestampMs: item.timestampMs,
-                    viewerLiked: item.viewerLiked,
-                    width: dimensions.width,
-                };
-            }),
-        [
-            dimensionsForPost,
-            displayName,
-            loadedPostImageURLFor,
-            profile.avatarUrl,
-            selectedPost?.id,
-            selectedPost?.photo.imageUrl,
-            viewerPostItems,
-        ],
-    );
-
-    const handleSelectedPostIndexChange = React.useCallback(
-        (postIndex: number) => {
-            const item = viewerPostItems[postIndex];
-            if (!item) return;
-            onOpenPost?.(item);
-
-            const updateSelectedPost = (imageUrl: string) => {
-                setSelectedPost((currentPost) => {
-                    if (currentPost?.postIndex == undefined) {
-                        return currentPost;
-                    }
-                    if (
-                        currentPost.id == item.id &&
-                        currentPost.photo.imageUrl == imageUrl
-                    ) {
-                        return currentPost;
-                    }
-                    return selectedPostForItem(item, postIndex, imageUrl);
-                });
-            };
-
-            const imageUrl = loadedPostImageURLFor(item);
-            if (imageUrl) {
-                updateSelectedPost(imageUrl);
-                return;
-            }
-
-            void loadPostImage(item).then((loadedImageUrl) => {
-                if (loadedImageUrl) updateSelectedPost(loadedImageUrl);
-            });
-        },
-        [
-            loadPostImage,
-            loadedPostImageURLFor,
-            onOpenPost,
-            selectedPostForItem,
-            viewerPostItems,
-        ],
-    );
-
-    const selectedViewerPostIndex = selectedPost
-        ? viewerPostIndexByID.get(selectedPost.id)
-        : undefined;
-
-    React.useEffect(() => {
-        const currentPostIndex = selectedViewerPostIndex;
-        if (currentPostIndex == undefined) return;
-
-        for (const offset of [-1, 1]) {
-            const adjacentPost = viewerPostItems[currentPostIndex + offset];
-            if (!adjacentPost || loadedPostImageURLFor(adjacentPost)) continue;
-
-            void loadPostImage(adjacentPost);
-        }
-    }, [
-        loadPostImage,
-        loadedPostImageURLFor,
-        selectedViewerPostIndex,
-        viewerPostItems,
-    ]);
-
-    const prepareSelectedPostPhoto = async (file: File) => {
-        const canShowLocalPreview = canPreviewSpaceImageFile(file);
-        if (!canShowLocalPreview) {
-            const timestampMs = Date.now();
-            const draftKey = `pending-preview-${timestampMs}`;
-            activeLocalPostObjectUrlRef.current = draftKey;
-            setSelectedPost({
-                draftFile: file,
-                id: `local-${timestampMs}`,
-                isDraftImagePreviewPending: true,
-                localObjectUrl: draftKey,
-                photo: {
-                    alt: `${displayName || "You"} post`,
-                    avatarUrl: profile.avatarUrl,
-                    imageUrl: "",
-                    name: displayName || "You",
-                    timestampMs,
-                },
-                postActionMode: "draft-post",
-            });
-
-            window.setTimeout(() => {
-                if (activeLocalPostObjectUrlRef.current != draftKey) return;
-
-                void spacePostPreviewImageForFile(file)
-                    .then((preview) => {
-                        if (activeLocalPostObjectUrlRef.current != draftKey) {
-                            URL.revokeObjectURL(preview.url);
-                            return;
-                        }
-
-                        localPostObjectUrlsRef.current.add(preview.url);
-                        activeLocalPostObjectUrlRef.current = preview.url;
-                        setSelectedPost((currentPost) => {
-                            if (currentPost?.localObjectUrl != draftKey)
-                                return currentPost;
-
-                            return {
-                                ...currentPost,
-                                isDraftImagePreviewPending: false,
-                                localObjectUrl: preview.url,
-                                photo: {
-                                    ...currentPost.photo,
-                                    height: preview.height,
-                                    imageUrl: preview.url,
-                                    width: preview.width,
-                                },
-                            };
-                        });
-                    })
-                    .catch((error: unknown) => {
-                        log.error("Failed to prepare post preview", error);
-                        const message = spacePostImageErrorMessage(error);
-                        setSelectedPost((currentPost) => {
-                            if (currentPost?.localObjectUrl != draftKey)
-                                return currentPost;
-
-                            return { ...currentPost, draftImageError: message };
-                        });
-                    });
-            }, 0);
-            return;
-        }
-
-        const localPost = await createLoadedLocalPostPhoto({
+    const profileViewerPhotos = viewerPostItems.flatMap((item) =>
+        viewerPhotosFromPost({
+            ...item,
+            ...dimensionsForPost(item),
             avatarUrl: profile.avatarUrl,
-            file,
-            name: displayName || "You",
-        });
-        localPostObjectUrlsRef.current.add(localPost.objectUrl);
-        activeLocalPostObjectUrlRef.current = localPost.objectUrl;
-        setSelectedPost({
-            draftFile: file,
-            id: `local-${localPost.photo.timestampMs}`,
-            localObjectUrl: localPost.objectUrl,
-            photo: localPost.photo,
-            postActionMode: "draft-post",
-        });
-    };
-
-    const handlePostPhotoSelect: React.ChangeEventHandler<HTMLInputElement> = (
-        event,
-    ) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (!file) return;
-
-        setIsPostPhotoOpening(true);
-        void prepareSelectedPostPhoto(file)
-            .catch((error: unknown) => {
-                log.error("Failed to open post photo draft", error);
-            })
-            .finally(() => {
-                setIsPostPhotoOpening(false);
-            });
+            imageUrl: loadedPostImageURLFor(item),
+            name: displayName,
+        }),
+    );
+    const handleSelectedPostIndexChange = (photoIndex: number) => {
+        const photo = profileViewerPhotos[photoIndex];
+        if (!photo) return;
+        const item = viewerPostItems.find(
+            (item) => item.postId == photo.postId,
+        );
+        if (item) setSelectedPost({ id: item.id, photo, photoIndex });
     };
 
     const shareInvite = async () => {
@@ -1106,41 +808,19 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         });
     };
 
-    React.useEffect(
-        () => () => {
-            activeLocalPostObjectUrlRef.current = null;
-            revokeLocalPostObjectUrls();
-        },
-        [revokeLocalPostObjectUrls],
-    );
-
     const renderPostTile = (
-        { aspectRatio, dimensions, index, item }: PostMasonryTile,
-        isSingleItemRow: boolean,
+        { aspectRatio, index, item }: ProfilePhotoTile,
         rowAspectRatio: number,
     ) => {
         const imageUrl = loadedPostImageURLFor(item);
-        const isLatestPost = index == 0 && !isPublicProfile;
         const isUnavailable = !viewerPostIndexByID.has(item.id);
-        const tile = (
+        return (
             <ProfilePostTile
-                key={`${item.id}-${index}`}
+                key={item.id}
                 flexGrow={aspectRatio / rowAspectRatio}
-                dimensions={
-                    isLatestPost
-                        ? {
-                              width: dimensions.width,
-                              height: Math.min(
-                                  dimensions.height,
-                                  (dimensions.width * 4) / 3,
-                              ),
-                          }
-                        : dimensions
-                }
                 displayName={displayName}
                 imageUrl={imageUrl}
                 index={index}
-                isSingleItemRow={isSingleItemRow}
                 isUnavailable={isUnavailable}
                 item={item}
                 loadRootMargin={postImageLoadRootMargin}
@@ -1154,47 +834,27 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 onOpen={(openedImageUrl) => {
                     const postIndex = viewerPostIndexByID.get(item.id);
                     if (postIndex == undefined) return;
-                    onOpenPost?.(item);
-                    setSelectedPost(
-                        selectedPostForItem(item, postIndex, openedImageUrl),
+                    const photoIndex = profileViewerPhotos.findIndex(
+                        (photo) => photo.postId == item.postId,
                     );
+                    setSelectedPost({
+                        id: item.id,
+                        photoIndex,
+                        photo: {
+                            ...profileViewerPhotos[photoIndex]!,
+                            imageUrl: openedImageUrl,
+                        },
+                    });
                 }}
                 onRememberDimensions={rememberLoadedPhotoDimensions}
             />
         );
-        if (!isLatestPost) return tile;
-
-        const postId = item.postId;
-        const spaceId = item.spaceId;
-        return (
-            <ProfileLatestPost
-                key={item.id}
-                caption={item.caption}
-                disabled={isUnavailable}
-                liked={item.viewerLiked ?? false}
-                onReply={
-                    isFriendProfile && onReplyToPost && postId && spaceId
-                        ? (text) => onReplyToPost(spaceId, postId, text)
-                        : undefined
-                }
-                onSetLiked={
-                    isFriendProfile && onSetPostLiked && postId
-                        ? (liked) => onSetPostLiked(postId, liked)
-                        : undefined
-                }
-            >
-                {tile}
-            </ProfileLatestPost>
-        );
     };
 
-    const renderHeader = (compact = false) => {
+    const renderHeader = () => {
         return (
             <Box
-                component={compact ? "nav" : "header"}
-                aria-label={compact ? "Profile navigation" : undefined}
-                aria-hidden={compact && !isSticky ? true : undefined}
-                inert={compact && !isSticky}
+                component="header"
                 sx={{
                     alignItems: "center",
                     color: coverForeground,
@@ -1202,44 +862,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     gridTemplateColumns: isPublicProfile
                         ? undefined
                         : `${spaceTouchTargetSize}px minmax(0, 1fr) ${spaceTouchTargetSize}px`,
-                    height: compact
-                        ? profileStickyHeaderHeight
-                        : profileHeaderHeight,
-                    bgcolor: compact ? profileCoverBackground : undefined,
-                    backgroundImage:
-                        compact && coverImageUrl
-                            ? `linear-gradient(rgba(0, 0, 0, 0.4), rgba(0, 0, 0, 0.4)), url("${coverImageUrl}")`
-                            : undefined,
-                    backgroundSize: "cover",
-                    backgroundPosition: "center",
-                    borderBottomLeftRadius: compact
-                        ? profileCoverRadius
-                        : undefined,
-                    borderBottomRightRadius: compact
-                        ? profileCoverRadius
-                        : undefined,
-                    boxShadow: compact
-                        ? "0 2px 10px rgba(0, 0, 0, 0.16)"
-                        : undefined,
-                    insetInline: compact ? 0 : undefined,
+                    height: profileHeaderHeight,
                     justifyContent: isPublicProfile
                         ? "space-between"
                         : undefined,
                     mx: "auto",
-                    opacity: compact && !isSticky ? 0 : 1,
-                    pointerEvents: compact && !isSticky ? "none" : undefined,
-                    position: compact ? "fixed" : "relative",
+                    position: "relative",
                     px: 2,
                     py: 0,
-                    top: compact ? 0 : undefined,
-                    transition:
-                        compact && shouldAnimate
-                            ? isSticky
-                                ? "opacity 240ms ease-in-out"
-                                : "opacity 160ms ease-out"
-                            : "none",
                     width: "100%",
-                    zIndex: compact ? 10 : 3,
+                    zIndex: 3,
                     "@media (min-width: 600px)": { maxWidth: 390 },
                 }}
             >
@@ -1428,9 +1060,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 position: "relative",
             }}
         >
-            {selectedPost && (
-                <SpaceViewerPostBackdrop exiting={isDraftPostExitAnimating} />
-            )}
+            {!isPublicProfile && <SpaceSkipLink />}
             <Box
                 sx={{
                     bgcolor: "transparent",
@@ -1446,13 +1076,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 }}
             >
                 {isOwnerProfile && (
-                    <Box
-                        ref={postInputRef}
-                        component="input"
-                        type="file"
-                        accept={spacePostImageInputAccept}
-                        onChange={handlePostPhotoSelect}
-                        sx={{ display: "none" }}
+                    <SpacePostPhotoInput
+                        inputRef={postInputRef}
+                        onSelect={setDraftFiles}
                     />
                 )}
                 <Box
@@ -1540,9 +1166,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     />
                 )}
                 {renderHeader()}
-                {!isPublicProfile && renderHeader(true)}
                 <Box
-                    ref={profileIdentityRef}
+                    component={isPublicProfile ? "div" : "section"}
+                    id={isPublicProfile ? undefined : "space-main-content"}
+                    aria-label={
+                        isPublicProfile ? undefined : `${displayName}'s profile`
+                    }
+                    tabIndex={isPublicProfile ? undefined : -1}
                     sx={{
                         alignItems: "center",
                         display: "flex",
@@ -1662,8 +1292,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                     <Skeleton
                                         variant="rounded"
                                         sx={{
-                                            bgcolor:
-                                                photoMasonryPlaceholderBackground,
+                                            bgcolor: photoPlaceholderBackground,
                                             height: 26,
                                             transform: "none",
                                             width: 112,
@@ -1846,90 +1475,97 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                 </Menu>
                             )}
                         </Box>
-                        {isStatsLoading ? (
-                            <ProfileStatsSkeleton />
-                        ) : (
-                            <Box
-                                sx={{
-                                    color: profileStatsColor,
-                                    display: "flex",
-                                    gap: "5px",
-                                    alignItems: "baseline",
-                                    flexWrap: "wrap",
-                                    justifyContent: "center",
-                                    fontFamily:
-                                        '"Inter Variable", Inter, sans-serif',
-                                    fontSize: 16,
-                                    fontWeight: 550,
-                                    lineHeight: "20px",
-                                    mt: "2px",
-                                    maxWidth: "100%",
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                    whiteSpace: "nowrap",
-                                }}
-                            >
+                        {!isFriendProfile &&
+                            (isStatsLoading ? (
+                                <ProfileStatsSkeleton />
+                            ) : (
                                 <Box
-                                    component="span"
-                                    sx={{ color: profileStatsValueColor }}
-                                >
-                                    {displayedPostsCount}
-                                </Box>
-                                <Box component="span">
-                                    {displayedPostsCount == 1
-                                        ? "post"
-                                        : "posts"}
-                                </Box>
-                                <Box component="span">·</Box>
-                                <Box
-                                    component={
-                                        canOpenFriends ? "button" : "span"
-                                    }
-                                    type={canOpenFriends ? "button" : undefined}
-                                    aria-label={
-                                        canOpenFriends
-                                            ? "Open friends"
-                                            : undefined
-                                    }
-                                    onClick={
-                                        canOpenFriends
-                                            ? onOpenFriends
-                                            : undefined
-                                    }
                                     sx={{
-                                        alignItems: "baseline",
-                                        bgcolor: "transparent",
-                                        border: 0,
-                                        color: "inherit",
-                                        cursor: canOpenFriends
-                                            ? "pointer"
-                                            : "default",
-                                        display: "inline-flex",
+                                        color: profileStatsColor,
+                                        display: "flex",
                                         gap: "5px",
-                                        font: "inherit",
-                                        lineHeight: "inherit",
-                                        p: 0,
-                                        "&:focus-visible": {
-                                            borderRadius: "6px",
-                                            outline: `2px solid ${green}`,
-                                            outlineOffset: 2,
-                                        },
+                                        alignItems: "baseline",
+                                        flexWrap: "wrap",
+                                        justifyContent: "center",
+                                        fontFamily:
+                                            '"Inter Variable", Inter, sans-serif',
+                                        fontSize: 16,
+                                        fontWeight: 550,
+                                        lineHeight: "20px",
+                                        mt: "2px",
+                                        maxWidth: "100%",
+                                        overflow: "hidden",
+                                        textOverflow: "ellipsis",
+                                        whiteSpace: "nowrap",
                                     }}
                                 >
                                     <Box
                                         component="span"
                                         sx={{ color: profileStatsValueColor }}
                                     >
-                                        {friendsCount}
+                                        {displayedPostsCount}
                                     </Box>
                                     <Box component="span">
-                                        {friendsCount == 1
-                                            ? "friend"
-                                            : "friends"}
+                                        {displayedPostsCount == 1
+                                            ? "post"
+                                            : "posts"}
+                                    </Box>
+                                    <Box component="span">·</Box>
+                                    <Box
+                                        component={
+                                            canOpenFriends ? "button" : "span"
+                                        }
+                                        type={
+                                            canOpenFriends
+                                                ? "button"
+                                                : undefined
+                                        }
+                                        aria-label={
+                                            canOpenFriends
+                                                ? "Open friends"
+                                                : undefined
+                                        }
+                                        onClick={
+                                            canOpenFriends
+                                                ? onOpenFriends
+                                                : undefined
+                                        }
+                                        sx={{
+                                            alignItems: "baseline",
+                                            bgcolor: "transparent",
+                                            border: 0,
+                                            color: "inherit",
+                                            cursor: canOpenFriends
+                                                ? "pointer"
+                                                : "default",
+                                            display: "inline-flex",
+                                            gap: "5px",
+                                            font: "inherit",
+                                            lineHeight: "inherit",
+                                            p: 0,
+                                            "&:focus-visible": {
+                                                borderRadius: "6px",
+                                                outline: `2px solid ${green}`,
+                                                outlineOffset: 2,
+                                            },
+                                        }}
+                                    >
+                                        <Box
+                                            component="span"
+                                            sx={{
+                                                color: profileStatsValueColor,
+                                            }}
+                                        >
+                                            {friendsCount}
+                                        </Box>
+                                        <Box component="span">
+                                            {friendsCount == 1
+                                                ? "friend"
+                                                : "friends"}
+                                        </Box>
                                     </Box>
                                 </Box>
-                            </Box>
-                        )}
+                            ))}
                         {isPublicProfile && publicNotificationControl && (
                             <Box
                                 sx={{
@@ -1968,79 +1604,53 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                 width: "calc(100% - 32px)",
                             }}
                         >
-                            {masonrySections.map(({ title, rows }) => (
-                                <Box component="section" key={title}>
+                            {photoSections.map(({ id, title, rows }) => (
+                                <Box
+                                    component="section"
+                                    key={id}
+                                    aria-label={title}
+                                >
                                     <Box
                                         component="h2"
                                         sx={{
-                                            alignItems: "baseline",
                                             color: textSoft,
-                                            display: "flex",
                                             fontFamily:
                                                 '"Inter Variable", Inter, sans-serif',
                                             fontSize: 13,
                                             fontWeight: 700,
-                                            gap: "4px",
                                             lineHeight: "18px",
                                             m: 0,
                                             pb: "8px",
                                         }}
                                     >
                                         {title}
-                                        {title == "Latest" && (
-                                            <Box
-                                                component="span"
-                                                sx={{
-                                                    color: "#85858D",
-                                                    display: "inline-flex",
-                                                    fontSize: 12,
-                                                    fontWeight: 500,
-                                                    gap: "4px",
-                                                }}
-                                            >
-                                                <span aria-hidden>·</span>
-                                                {formatSpaceDate(
-                                                    rows[0]!.tiles[0]!.item
-                                                        .timestampMs,
-                                                )}
-                                            </Box>
-                                        )}
                                     </Box>
                                     <Box
                                         sx={{
-                                            borderRadius: photoMasonryRadius,
                                             display: "flex",
                                             flexDirection: "column",
-                                            gap: photoMasonryGap,
-                                            overflow:
-                                                title == "Latest" &&
-                                                !isPublicProfile
-                                                    ? "visible"
-                                                    : "hidden",
+                                            gap: `${profilePhotoGap}px`,
                                         }}
                                     >
-                                        {rows.map((row) => {
-                                            const isSingleItemRow =
-                                                row.tiles.length == 1;
-                                            return (
-                                                <Box
-                                                    key={row.tiles[0]!.item.id}
-                                                    sx={{
-                                                        display: "flex",
-                                                        gap: photoMasonryGap,
-                                                        width: "100%",
-                                                    }}
-                                                >
-                                                    {row.tiles.map((tile) =>
-                                                        renderPostTile(
-                                                            tile,
-                                                            isSingleItemRow,
-                                                            row.aspectRatio,
-                                                        ),
-                                                    )}
-                                                </Box>
-                                            );
-                                        })}
+                                        {rows.map((row) => (
+                                            <Box
+                                                key={row.tiles[0]!.item.id}
+                                                sx={{
+                                                    display: "flex",
+                                                    flexShrink: 0,
+                                                    gap: `${profilePhotoGap}px`,
+                                                    height: row.height,
+                                                    width: row.width,
+                                                }}
+                                            >
+                                                {row.tiles.map((tile) =>
+                                                    renderPostTile(
+                                                        tile,
+                                                        row.aspectRatio,
+                                                    ),
+                                                )}
+                                            </Box>
+                                        ))}
                                     </Box>
                                 </Box>
                             ))}
@@ -2080,6 +1690,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                         lineHeight: "20px",
                                         m: 0,
                                         maxWidth: 250,
+                                        textWrap: "balance",
                                     }}
                                 >
                                     {`${firstName} hasn't posted anything yet.`}
@@ -2123,78 +1734,40 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     )}
                 </Box>
                 {isOwnerProfile && hasProfilePosts && (
-                    <SpacePostFloatingActionButton
+                    <SpaceFeedPostButton
                         disabled={isPostPhotoOpening}
                         onClick={openPostPhotoPicker}
+                    />
+                )}
+                {draftFiles && onCreatePost && (
+                    <SpacePostComposer
+                        files={draftFiles}
+                        onClose={() => setDraftFiles(null)}
+                        onPublish={onCreatePost}
+                        onPublished={onPostSubmitted}
+                        profile={profile}
                     />
                 )}
                 {selectedPost && (
                     <SpaceFileViewer
                         photo={selectedPost.photo}
-                        draftPostPreparationError={selectedPost.draftImageError}
-                        isDraftPostPreviewPending={
-                            selectedPost.isDraftImagePreviewPending
-                        }
-                        postActionMode={
-                            selectedPost.postActionMode ??
-                            selectedPostActionMode
-                        }
-                        photos={
-                            selectedViewerPostIndex == undefined
-                                ? undefined
-                                : profileViewerPhotos
-                        }
-                        photoIndex={selectedViewerPostIndex}
-                        onPhotoIndexChange={
-                            selectedViewerPostIndex == undefined
-                                ? undefined
-                                : handleSelectedPostIndexChange
-                        }
+                        photos={profileViewerPhotos}
+                        photoIndex={selectedPost.photoIndex}
+                        onPhotoIndexChange={handleSelectedPostIndexChange}
+                        onLoadPhoto={onLoadPostImage}
+                        postActionMode={selectedPostActionMode}
                         onClose={closeSelectedPost}
                         onAddFriendForPostAction={
                             isPublicProfile
                                 ? onAddFriendForPostAction
                                 : undefined
                         }
-                        onDraftPostExitAnimationStart={() => {
-                            setIsDraftPostExitAnimating(true);
-                        }}
-                        onDraftPostExitStart={() => setIsDraftPostExiting(true)}
-                        onDraftPostPublished={() => {
-                            void clearSelectedPostHistory("back").then(() =>
-                                onPostSubmitted?.(),
-                            );
-                        }}
                         onDeletePost={
                             isOwnerProfile ? deleteSelectedPost : undefined
                         }
                         onOpenProfile={closeSelectedPost}
                         onReplyToPost={
                             isFriendProfile ? onReplyToPost : undefined
-                        }
-                        onPublishDraftPost={
-                            selectedPost.draftFile && onCreatePost
-                                ? (caption, edit) => {
-                                      const previewUrl =
-                                          selectedPost.photo.imageUrl;
-                                      const publishPromise = onCreatePost(
-                                          {
-                                              cropArea: edit.cropArea,
-                                              file: selectedPost.draftFile!,
-                                              height: edit.height,
-                                              previewUrl,
-                                              rotationDegrees:
-                                                  edit.rotationDegrees,
-                                              width: edit.width,
-                                          },
-                                          caption,
-                                      );
-                                      localPostObjectUrlsRef.current.delete(
-                                          previewUrl,
-                                      );
-                                      return publishPromise;
-                                  }
-                                : undefined
                         }
                         onSetPostLiked={onSetPostLiked}
                         onUpdatePostCaption={
@@ -2210,7 +1783,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                     icon={
                         <HugeiconsIcon
                             icon={Tick02Icon}
-                            size={22}
+                            size={20}
                             strokeWidth={1.8}
                         />
                     }

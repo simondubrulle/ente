@@ -8,11 +8,9 @@ struct ModelSettingsView: View {
     @ObservedObject private var settings = ModelSettingsStore.shared
     @State private var selectedModelId: String = defaultOptionId
     @State private var contextLength: String = ""
-    @State private var maxTokens: String = ""
     @State private var temperature: String = ""
 
     @State private var contextError: String?
-    @State private var maxTokensError: String?
     @State private var temperatureError: String?
     @State private var isSaving = false
     @State private var showAdvancedLimits = false
@@ -24,9 +22,10 @@ struct ModelSettingsView: View {
         let defaultModel = policy.defaultModel
         return [
             ModelChoice(id: Self.defaultOptionId, name: defaultModel.title, isDefault: true)
-        ] + policy.visibleModels.filter { $0.id != defaultModel.id }.map { preset in
-            ModelChoice(id: preset.id, name: preset.title)
-        }
+        ]
+            + policy.visibleModels.filter { $0.id != defaultModel.id }.map { preset in
+                ModelChoice(id: preset.id, name: preset.title)
+            }
     }()
 
     init(embeddedInNavigation: Bool = false) {
@@ -65,9 +64,9 @@ struct ModelSettingsView: View {
         .onAppear {
             selectedModelId = initialSelectionId()
             contextLength = settings.contextLength
-            maxTokens = settings.maxTokens
             temperature = settings.temperature
-            showAdvancedLimits = !settings.contextLength.isEmpty || !settings.maxTokens.isEmpty || !settings.temperature.isEmpty
+            showAdvancedLimits =
+                !settings.contextLength.isEmpty || !settings.temperature.isEmpty
         }
         .overlay(alignment: .bottom) {
             if let toastMessage {
@@ -101,7 +100,7 @@ struct ModelSettingsView: View {
 
                 sectionToggle(
                     title: "Advanced limits",
-                    collapsedHint: "Context length, output, temperature",
+                    collapsedHint: "Context length and temperature",
                     expanded: showAdvancedLimits
                 ) {
                     showAdvancedLimits.toggle()
@@ -109,23 +108,18 @@ struct ModelSettingsView: View {
 
                 if showAdvancedLimits {
                     VStack(spacing: EnsuSpacing.sm) {
-                        HStack(spacing: EnsuSpacing.md) {
-                            field(
-                                label: "Context length",
-                                hint: "8192",
-                                text: $contextLength,
-                                error: contextError,
-                                keyboardType: .numberPad
-                            )
+                        field(
+                            label: "Context length",
+                            hint: "8192",
+                            text: $contextLength,
+                            error: contextError,
+                            keyboardType: .numberPad
+                        )
 
-                            field(
-                                label: "Max output",
-                                hint: "2048",
-                                text: $maxTokens,
-                                error: maxTokensError,
-                                keyboardType: .numberPad
-                            )
-                        }
+                        Text("Response length adjusts automatically to the context length.")
+                            .font(EnsuTypography.small)
+                            .foregroundStyle(EnsuColor.textMuted)
+                            .frame(maxWidth: .infinity, alignment: .leading)
 
                         Text("Leave blank to use model defaults")
                             .font(EnsuTypography.small)
@@ -145,7 +139,9 @@ struct ModelSettingsView: View {
                 Divider().background(EnsuColor.border)
 
                 VStack(spacing: EnsuSpacing.md) {
-                    PrimaryButton(text: "Save Model Settings", isLoading: isSaving, isEnabled: !isSaving) {
+                    PrimaryButton(
+                        text: "Save Model Settings", isLoading: isSaving, isEnabled: !isSaving
+                    ) {
                         saveTapped()
                     }
 
@@ -228,7 +224,6 @@ struct ModelSettingsView: View {
 
     private func saveTapped() {
         contextError = nil
-        maxTokensError = nil
         temperatureError = nil
 
         guard validate() else { return }
@@ -239,7 +234,6 @@ struct ModelSettingsView: View {
             settings.saveModel(
                 id: selectedModel.isDefault ? "" : selectedModel.id,
                 contextLength: contextLength,
-                maxTokens: maxTokens,
                 temperature: temperature
             )
             isSaving = false
@@ -254,7 +248,6 @@ struct ModelSettingsView: View {
         settings.resetToDefault()
         selectedModelId = Self.defaultOptionId
         contextLength = ""
-        maxTokens = ""
         temperature = ""
         toastTask?.cancel()
         toastTask = presentToast("Model settings reset") { message in
@@ -265,23 +258,21 @@ struct ModelSettingsView: View {
     private func validate() -> Bool {
         var isValid = true
 
-        if !contextLength.isEmpty, Int(contextLength) == nil {
-            contextError = "Enter a valid integer"
-            isValid = false
-        }
-
-        if !maxTokens.isEmpty, Int(maxTokens) == nil {
-            maxTokensError = "Enter a valid integer"
-            isValid = false
+        if !contextLength.isEmpty {
+            if let value = Int32(contextLength) {
+                if Int(value) <= 256 + automaticMaxOutputTokens(contextLength: Int(value)) {
+                    contextError =
+                        "Increase context length to leave room for the conversation and response."
+                    isValid = false
+                }
+            } else {
+                contextError = "Enter a valid integer"
+                isValid = false
+            }
         }
 
         if !temperature.isEmpty, Float(temperature) == nil {
             temperatureError = "Enter a valid number"
-            isValid = false
-        }
-
-        if let contextValue = Int(contextLength), let maxValue = Int(maxTokens), maxValue > contextValue {
-            maxTokensError = "Must be <= context length"
             isValid = false
         }
 

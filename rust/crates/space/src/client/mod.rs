@@ -7,6 +7,7 @@ mod media;
 mod messages;
 mod posts;
 mod profiles;
+mod reactions;
 
 #[cfg(test)]
 mod test_support;
@@ -46,7 +47,8 @@ const MESSAGE_KIND_REGULAR: &str = "regular";
 const MESSAGE_KIND_POKE: &str = "poke";
 const MESSAGE_KIND_POST_REPLY: &str = "post_reply";
 const ONLY_PHOTOS_UPLOAD_MESSAGE: &str = "only photos can be uploaded";
-pub const MAX_SPACE_POST_UPLOAD_BYTES: usize = 5 * 1024 * 1024;
+
+pub const MAX_SPACE_POST_UPLOAD_BYTES: usize = 15 * 1024 * 1024;
 pub const MAX_SPACE_AVATAR_UPLOAD_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_SPACE_COVER_UPLOAD_BYTES: usize = 2 * 1024 * 1024;
 pub const MAX_SPACE_POST_PLAINTEXT_BYTES: usize =
@@ -61,12 +63,24 @@ pub const MAX_SPACE_MESSAGE_CIPHER_DECODED_BYTES: usize = 6 * 1024;
 pub const MAX_SPACE_MESSAGE_PAYLOAD_BYTES: usize =
     MAX_SPACE_MESSAGE_CIPHER_DECODED_BYTES - SECRETBOX_PAYLOAD_OVERHEAD_BYTES;
 
+fn retain_content_error<T>(result: Result<T>) -> Result<Result<T>> {
+    match result {
+        Err(error) if !error.is_content_error() => Err(error),
+        result => Ok(result),
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct PostPhotoAssetOptions {
     pub width: Option<i32>,
     pub height: Option<i32>,
     pub media_type: Option<String>,
     pub thumb_hash: Option<String>,
+}
+
+pub struct PostPhotoInput {
+    pub bytes: Vec<u8>,
+    pub options: PostPhotoAssetOptions,
 }
 
 fn profile_object_id_from_key(object_key: &str) -> Result<String> {
@@ -666,7 +680,7 @@ fn encrypt_post_object_metadata(post_key: &[u8], metadata: &PostObjectMetadata) 
     )?))
 }
 
-pub fn decrypt_post_object_metadata(
+fn decrypt_post_object_metadata(
     post_key: &[u8],
     object: &PostObjectPayload,
 ) -> Result<Option<PostObjectMetadata>> {
@@ -679,12 +693,29 @@ pub fn decrypt_post_object_metadata(
         .map_err(|err| Error::InvalidInput(format!("invalid post object metadata: {err}")))
 }
 
-fn ensure_post_objects_are_photos(objects: &[PostObjectPayload], post_key: &[u8]) -> Result<()> {
+fn ensure_post_objects_supported(objects: &[PostObjectPayload], post_key: &[u8]) -> Result<()> {
+    if objects.len() > 10 {
+        return Err(Error::InvalidInput("Choose between 1 and 10 items".into()));
+    }
     for object in objects {
         let metadata = decrypt_post_object_metadata(post_key, object)?
             .ok_or_else(|| Error::InvalidInput("post object metadata is required".into()))?;
         if ensure_supported_photo_media_type(metadata.media_type.as_deref())?.is_none() {
             return Err(Error::InvalidInput(ONLY_PHOTOS_UPLOAD_MESSAGE.into()));
+        }
+        if let Some(video) = &object.video {
+            let metadata = decrypt_post_object_metadata(post_key, video)?
+                .ok_or_else(|| Error::InvalidInput("video metadata is required".into()))?;
+            if video.video.is_some()
+                || metadata.media_type.as_deref() != Some("video/mp4")
+                || !metadata
+                    .duration_ms
+                    .is_some_and(|duration| (1..=10_000).contains(&duration))
+            {
+                return Err(Error::InvalidInput(
+                    "Videos must be MP4 and at most 10 seconds".into(),
+                ));
+            }
         }
     }
     Ok(())
@@ -779,7 +810,11 @@ pub(super) fn decrypt_space_profile(
         space_slug: profile.space_slug.clone(),
         version: profile.version,
         friends: profile.friends,
-        profile: profile_bytes,
+        profile: if profile_bytes.is_empty() {
+            None
+        } else {
+            Some(crate::SpaceProfile::from_bytes(&profile_bytes)?)
+        },
         avatar: profile.avatar.clone(),
         cover: profile.cover.clone(),
         updated_at: if profile.updated_at.is_empty() {
@@ -798,7 +833,7 @@ pub(super) fn space_profile_without_payload(
         space_slug: profile.space_slug.clone(),
         version: profile.version,
         friends: profile.friends,
-        profile: Vec::new(),
+        profile: None,
         avatar: profile.avatar.clone(),
         cover: profile.cover.clone(),
         updated_at: if profile.updated_at.is_empty() {

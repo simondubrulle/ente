@@ -3,7 +3,7 @@
 
 mod support;
 
-use ente_space::{AccountSpaceCtx, PostPhotoAssetOptions};
+use ente_space::{AccountSpaceCtx, PostPhotoAssetOptions, PostPhotoInput};
 use ente_test_support::{Museum, TestResult};
 
 use crate::support::{auth, space};
@@ -94,7 +94,10 @@ async fn space_bootstrap_posts_and_friend_share_suite(endpoint: &str) {
         .get_space_profile_decrypted(&owner_space.space_id, None, None)
         .await
         .expect("owner should decrypt profile");
-    assert_eq!(decrypted_profile.profile, owner_profile);
+    assert_eq!(
+        decrypted_profile.profile,
+        Some(ente_space::SpaceProfile::from_bytes(&owner_profile).unwrap())
+    );
     assert_eq!(decrypted_profile.space_slug, owner_slug);
 
     space::assert_http_status(
@@ -121,43 +124,44 @@ async fn space_bootstrap_posts_and_friend_share_suite(endpoint: &str) {
     assert_eq!(looked_up.space_id, owner_space.space_id);
     assert_eq!(looked_up.space_slug, updated_slug);
 
-    let post_key = owner_ctx.generate_post_key();
-    let object = owner_ctx
-        .upload_post_photo_asset(
+    let post = owner_ctx
+        .create_photo_post(
             &owner_space.space_id,
-            &post_key,
-            TEST_WEBP_BYTES,
-            PostPhotoAssetOptions {
-                width: Some(320),
-                height: Some(240),
-                media_type: Some("image/webp".to_owned()),
-                thumb_hash: None,
-            },
-        )
-        .await
-        .expect("post asset upload should succeed");
-    let (post_id, _post_key) = owner_ctx
-        .create_post(
-            &owner_space.space_id,
-            &[object],
-            Some(br#"{"caption":"hello world"}"#),
-            Some(&post_key),
+            std::iter::once(PostPhotoInput {
+                bytes: TEST_WEBP_BYTES.to_vec(),
+                options: PostPhotoAssetOptions {
+                    width: Some(320),
+                    height: Some(240),
+                    media_type: Some("image/webp".to_owned()),
+                    thumb_hash: None,
+                },
+            }),
+            Some(r#"{"caption":"hello world"}"#),
         )
         .await
         .expect("post creation should succeed");
+    let post_id = post.post_id;
     let owner_post = owner_ctx
-        .fetch_post_decrypted(&owner_space.space_id, post_id, None)
+        .get_post(&owner_space.space_id, post_id, None)
         .await
         .expect("owner should decrypt post");
+    let owner_content = owner_post.content.as_ref().expect("owner post content");
     assert_eq!(
-        owner_post.caption_plaintext.as_deref(),
-        Some(br#"{"caption":"hello world"}"#.as_slice())
+        owner_content.caption.as_deref(),
+        Some(r#"{"caption":"hello world"}"#)
     );
-    let owner_home_posts = owner_ctx
-        .list_home_posts(&owner_space.space_id, None, None, Some(10))
+    let owner_feed = owner_ctx
+        .list_feed(&owner_space.space_id, None, Some(10))
         .await
-        .expect("owner home posts should load");
-    assert!(owner_home_posts.items.is_empty());
+        .expect("owner feed should load");
+    assert_eq!(owner_feed.items.len(), 1);
+    assert_eq!(owner_feed.items[0].post_id, post_id);
+    let own_feed_post = owner_feed.items[0]
+        .content
+        .as_ref()
+        .expect("own feed post should decrypt");
+    assert_eq!(own_feed_post.caption, owner_content.caption);
+
     space::assert_http_status(
         owner_ctx
             .like_post(&owner_space.space_id, post_id, true)
@@ -204,40 +208,44 @@ async fn space_bootstrap_posts_and_friend_share_suite(endpoint: &str) {
         .get_space_profile_decrypted(&owner_space.space_id, Some(&friend_space.space_id), None)
         .await
         .expect("approved friend should decrypt profile");
-    assert_eq!(friend_profile.profile, updated_profile);
+    assert_eq!(
+        friend_profile.profile,
+        Some(ente_space::SpaceProfile::from_bytes(&updated_profile).unwrap())
+    );
     assert_eq!(friend_profile.space_slug, updated_slug);
 
     let owner_view_of_friend = owner_ctx
         .get_space_profile_decrypted(&friend_space.space_id, Some(&owner_space.space_id), None)
         .await
         .expect("approved owner should decrypt friend profile");
-    assert_eq!(owner_view_of_friend.profile, friend_profile_payload);
+    assert_eq!(
+        owner_view_of_friend.profile,
+        Some(ente_space::SpaceProfile::from_bytes(&friend_profile_payload).unwrap())
+    );
     assert_eq!(owner_view_of_friend.space_slug, friend_slug);
 
-    let home_posts = friend_ctx
-        .list_home_posts(&friend_space.space_id, None, None, Some(10))
+    let friend_feed = friend_ctx
+        .list_feed(&friend_space.space_id, None, Some(10))
         .await
-        .expect("home posts should load after friend approval");
-    assert_eq!(home_posts.items.len(), 1);
-    assert_eq!(home_posts.items[0].post_id, post_id);
-    assert_eq!(home_posts.items[0].author.space_id, owner_space.space_id);
-    assert_eq!(home_posts.items[0].author.space_slug, updated_slug);
-    let home_post_author_profile = friend_ctx
-        .decrypt_actor_profile(&home_posts.items[0].author)
-        .await
-        .expect("friend should decrypt home post author profile");
+        .expect("friend feed should load");
+    assert_eq!(friend_feed.items.len(), 1);
+    assert_eq!(friend_feed.items[0].post_id, post_id);
+    assert_eq!(friend_feed.items[0].author.space_id, owner_space.space_id);
+    assert_eq!(friend_feed.items[0].author.space_slug, updated_slug);
+    let feed_post_author_profile = friend_feed.items[0]
+        .author
+        .profile
+        .as_ref()
+        .expect("friend should decrypt feed post author profile");
     assert_eq!(
-        home_post_author_profile.as_deref(),
-        Some(updated_profile.as_slice())
+        feed_post_author_profile.as_ref(),
+        Some(&ente_space::SpaceProfile::from_bytes(&updated_profile).unwrap())
     );
-    let home_post = friend_ctx
-        .decrypt_post_for_space(&home_posts.items[0].space_id, &home_posts.items[0])
-        .await
-        .expect("home post should decrypt");
-    assert_eq!(
-        home_post.caption_plaintext.as_deref(),
-        Some(br#"{"caption":"hello world"}"#.as_slice())
-    );
+    let friend_feed_post = friend_feed.items[0]
+        .content
+        .as_ref()
+        .expect("friend feed post should decrypt");
+    assert_eq!(friend_feed_post.caption, owner_content.caption);
 
     let liked = friend_ctx
         .like_post(&friend_space.space_id, post_id, true)
@@ -266,7 +274,7 @@ async fn space_bootstrap_posts_and_friend_share_suite(endpoint: &str) {
 
     space::assert_http_status(
         outsider_ctx
-            .fetch_post_decrypted(&owner_space.space_id, post_id, None)
+            .get_post(&owner_space.space_id, post_id, None)
             .await,
         403,
     );
@@ -292,30 +300,23 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
         .await
         .expect("friend space creation failed");
 
-    let post_key = owner_ctx.generate_post_key();
-    let object = owner_ctx
-        .upload_post_photo_asset(
+    let post = owner_ctx
+        .create_photo_post(
             &owner_space.space_id,
-            &post_key,
-            TEST_WEBP_BYTES,
-            PostPhotoAssetOptions {
-                width: Some(320),
-                height: Some(240),
-                media_type: Some("image/webp".to_owned()),
-                thumb_hash: None,
-            },
-        )
-        .await
-        .expect("post asset upload should succeed");
-    let (post_id, _post_key) = owner_ctx
-        .create_post(
-            &owner_space.space_id,
-            &[object],
-            Some(br#"{"caption":"before unfriend"}"#),
-            Some(&post_key),
+            std::iter::once(PostPhotoInput {
+                bytes: TEST_WEBP_BYTES.to_vec(),
+                options: PostPhotoAssetOptions {
+                    width: Some(320),
+                    height: Some(240),
+                    media_type: Some("image/webp".to_owned()),
+                    thumb_hash: None,
+                },
+            }),
+            Some(r#"{"caption":"before unfriend"}"#),
         )
         .await
         .expect("post creation should succeed");
+    let post_id = post.post_id;
 
     request_and_confirm_friend(
         &friend_ctx,
@@ -330,17 +331,23 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
         .get_space_profile_decrypted(&owner_space.space_id, Some(&friend_space.space_id), None)
         .await
         .expect("friend should decrypt owner profile before unfriend");
-    assert_eq!(friend_owner_profile.profile, owner_profile);
+    assert_eq!(
+        friend_owner_profile.profile,
+        Some(ente_space::SpaceProfile::from_bytes(&owner_profile).unwrap())
+    );
     let owner_friend_profile = owner_ctx
         .get_space_profile_decrypted(&friend_space.space_id, Some(&owner_space.space_id), None)
         .await
         .expect("owner should decrypt friend profile before unfriend");
-    assert_eq!(owner_friend_profile.profile, friend_profile);
-    let home_posts = friend_ctx
-        .list_home_posts(&friend_space.space_id, None, None, Some(10))
+    assert_eq!(
+        owner_friend_profile.profile,
+        Some(ente_space::SpaceProfile::from_bytes(&friend_profile).unwrap())
+    );
+    let friend_feed = friend_ctx
+        .list_feed(&friend_space.space_id, None, Some(10))
         .await
-        .expect("friend home posts should load before unfriend");
-    assert!(home_posts.items.iter().any(|item| item.post_id == post_id));
+        .expect("friend feed should load before unfriend");
+    assert!(friend_feed.items.iter().any(|item| item.post_id == post_id));
     friend_ctx
         .like_post(&friend_space.space_id, post_id, true)
         .await
@@ -367,11 +374,10 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
         .iter()
         .find(|message| message.message_id == direct_message.message_id)
         .expect("direct message should be in owner thread before unfriend");
-    let decrypted_message = owner_ctx
-        .decrypt_message(&owner_space.space_id, owner_thread_message)
-        .await
-        .expect("owner should decrypt direct message before unfriend");
-    assert_eq!(decrypted_message.payload.text, "hello before unfriend");
+    assert!(matches!(
+        &owner_thread_message.content,
+        Ok(Some(content)) if content.text == "hello before unfriend"
+    ));
     owner_ctx
         .like_message(&owner_space.space_id, &direct_message.message_id, true)
         .await
@@ -420,12 +426,12 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
         .expect("friend space keys should hydrate after unfriend");
     assert_eq!(hydrated.owned.len(), 1);
     assert!(hydrated.friends.is_empty());
-    let home_posts = friend_ctx
-        .list_home_posts(&friend_space.space_id, None, None, Some(10))
+    let friend_feed = friend_ctx
+        .list_feed(&friend_space.space_id, None, Some(10))
         .await
-        .expect("friend home posts should load after unfriend");
+        .expect("friend feed should load after unfriend");
     assert!(
-        home_posts
+        friend_feed
             .items
             .iter()
             .all(|item| item.space_id != owner_space.space_id)
@@ -444,11 +450,10 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
         .iter()
         .find(|message| message.message_id == direct_message.message_id)
         .expect("direct message should remain in owner thread after unfriend");
-    let decrypted_message = owner_ctx
-        .decrypt_message(&owner_space.space_id, owner_thread_message)
-        .await
-        .expect("owner should still decrypt old direct message after unfriend");
-    assert_eq!(decrypted_message.payload.text, "hello before unfriend");
+    assert!(matches!(
+        &owner_thread_message.content,
+        Ok(Some(content)) if content.text == "hello before unfriend"
+    ));
     space::assert_invalid_input_contains(
         friend_ctx
             .send_message(&friend_space.space_id, &owner_space.space_id, "should fail")
@@ -493,7 +498,7 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
     );
     space::assert_http_status(
         friend_ctx
-            .fetch_post_decrypted(&owner_space.space_id, post_id, Some(&friend_space.space_id))
+            .get_post(&owner_space.space_id, post_id, Some(&friend_space.space_id))
             .await,
         403,
     );
@@ -510,6 +515,7 @@ async fn space_unfriend_revokes_reciprocal_account_access_suite(endpoint: &str) 
                 &owner_space.space_id,
                 post_id,
                 "should fail",
+                None,
             )
             .await,
         403,

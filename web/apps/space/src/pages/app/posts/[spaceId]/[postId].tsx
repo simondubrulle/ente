@@ -4,19 +4,17 @@ import { SpaceRouteFallback } from "components/RouteFallback";
 import log from "ente-base/log";
 import React from "react";
 import {
-    markSpaceHomePostRead,
-    patchCachedSpaceHomePost,
-} from "services/home-posts";
-import {
     loadCurrentSpacePost,
+    loadCurrentSpacePostAssetURL,
     replyToCurrentPost,
     setCurrentPostLiked,
     type SpacePost,
 } from "services/space";
 import { useSpaceAppState } from "state/app-state";
 import { spaceAppBackgroundColor } from "styles/colors";
+import { viewerPhotosFromPost } from "utils/post-photos";
 import { hasPreviousSpaceRoute, useSpaceRouter } from "utils/route-transitions";
-import { spaceRoutes } from "utils/routes";
+import { postPhotoIdFromObjectKey, spaceRoutes } from "utils/routes";
 
 const postBackground = "#000000";
 
@@ -55,6 +53,7 @@ const viewerPhotoFromPost = (post: SpacePost) => ({
     caption: post.caption,
     friendID: post.friendID,
     height: post.height,
+    photos: post.photos,
     imageUrl: post.imageUrl ?? "",
     name: post.name,
     postId: post.postId,
@@ -71,6 +70,12 @@ const Page: React.FC = () => {
     const spaceId =
         valueFromQuery(router.query.spaceId) ?? pathParams.spaceId ?? "";
     const postId = postIdFromQuery(router.query.postId) ?? pathParams.postId;
+    const photoId =
+        valueFromQuery(router.query.photo) ??
+        (typeof window == "undefined"
+            ? undefined
+            : (new URLSearchParams(window.location.search).get("photo") ??
+              undefined));
     const [post, setPost] = React.useState<SpacePost | null>(null);
     const [postLoadError, setPostLoadError] = React.useState<string>();
     const [isPostLoading, setIsPostLoading] = React.useState(false);
@@ -107,15 +112,6 @@ const Page: React.FC = () => {
                     return;
                 }
                 setPost(nextPost);
-                if (nextPost.spaceId != viewerSpaceId) {
-                    void markSpaceHomePostRead(viewerSpaceId, nextPost).catch(
-                        (error: unknown) =>
-                            log.warn(
-                                "Failed to mark Space post as read",
-                                error,
-                            ),
-                    );
-                }
             })
             .catch((error: unknown) => {
                 log.error("Failed to load space post", error);
@@ -178,30 +174,51 @@ const Page: React.FC = () => {
         );
     }
 
+    const photos = viewerPhotosFromPost(viewerPhotoFromPost(post));
+    const photoIndex =
+        photoId === undefined
+            ? 0
+            : photos.findIndex(
+                  (photo) =>
+                      photo.imageAsset &&
+                      postPhotoIdFromObjectKey(photo.imageAsset.objectKey) ==
+                          photoId,
+              );
+    if (photoIndex < 0) {
+        return (
+            <SpaceRouteFallback
+                background={spaceAppBackgroundColor}
+                message="Photo unavailable."
+            />
+        );
+    }
+
     return (
         <>
             <SpacePageMeta themeColor={postBackground} />
             <SpaceFileViewer
+                key={`${post.postId}:${photoId ?? ""}`}
                 photo={viewerPhotoFromPost(post)}
+                photos={photos}
+                initialPhotoIndex={photoIndex}
+                onLoadPhoto={loadCurrentSpacePostAssetURL}
                 postActionMode={isOwnPost ? "hidden" : "like-only"}
                 onClose={closePost}
                 onOpenProfile={openOwnerProfile}
                 onReplyToPost={
                     isOwnPost
                         ? undefined
-                        : (postSpaceId, nextPostId, text) =>
+                        : (postSpaceId, nextPostId, text, objectKey) =>
                               replyToCurrentPost(
                                   actorSpaceId,
                                   postSpaceId,
                                   nextPostId,
                                   text,
+                                  objectKey,
                               )
                 }
                 onSetPostLiked={async (nextPostId, liked) => {
                     await setCurrentPostLiked(actorSpaceId, nextPostId, liked);
-                    void patchCachedSpaceHomePost(actorSpaceId, nextPostId, {
-                        viewerLiked: liked,
-                    });
                 }}
             />
         </>

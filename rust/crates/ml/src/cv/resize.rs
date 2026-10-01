@@ -6,38 +6,29 @@ use fast_image_resize::{
 };
 
 use crate::cv::OpResult;
-use crate::cv::image::{ImageF32, ImageU8};
+use crate::cv::image::ImageU8;
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub(crate) enum Interp {
     Bilinear,
     Area,
-    Bicubic,
 }
 
 impl Interp {
     fn alg(self, upscaling: bool) -> ResizeAlg {
         match self {
             Interp::Bilinear => ResizeAlg::Interpolation(FilterType::Bilinear),
-            Interp::Bicubic => ResizeAlg::Interpolation(FilterType::CatmullRom),
             Interp::Area if upscaling => ResizeAlg::Interpolation(FilterType::Bilinear),
             Interp::Area => ResizeAlg::Convolution(FilterType::Box),
         }
     }
 }
 
-fn pixel_type(channels: i32, is_f32: bool) -> OpResult<PixelType> {
-    Ok(match (is_f32, channels) {
-        (false, 1) => PixelType::U8,
-        (false, 3) => PixelType::U8x3,
-        (true, 1) => PixelType::F32,
-        (true, 3) => PixelType::F32x3,
-        (is_f32, n) => {
-            return Err(format!(
-                "resize: unsupported {n}-channel {} image",
-                if is_f32 { "f32" } else { "u8" }
-            ));
-        }
+fn pixel_type(channels: i32) -> OpResult<PixelType> {
+    Ok(match channels {
+        1 => PixelType::U8,
+        3 => PixelType::U8x3,
+        n => return Err(format!("resize: unsupported {n}-channel u8 image")),
     })
 }
 
@@ -73,37 +64,10 @@ pub(crate) fn resize_u8(
     let data = run(
         &src.data,
         (src.width, src.height),
-        pixel_type(src.channels, false)?,
+        pixel_type(src.channels)?,
         width,
         height,
         interp.alg(width >= src.width && height >= src.height),
     )?;
     ImageU8::new(width, height, src.channels, data)
-}
-
-pub(crate) fn resize_f32(
-    src: &ImageF32,
-    width: i32,
-    height: i32,
-    interp: Interp,
-) -> OpResult<ImageF32> {
-    if width == src.width && height == src.height {
-        return Ok(src.clone());
-    }
-    let bytes: Vec<u8> = src.data.iter().flat_map(|v| v.to_ne_bytes()).collect();
-    let out = run(
-        &bytes,
-        (src.width, src.height),
-        pixel_type(src.channels, true)?,
-        width,
-        height,
-        interp.alg(width >= src.width && height >= src.height),
-    )?;
-    let data = out
-        .as_chunks::<4>()
-        .0
-        .iter()
-        .map(|b| f32::from_ne_bytes([b[0], b[1], b[2], b[3]]))
-        .collect();
-    ImageF32::new(width, height, src.channels, data)
 }

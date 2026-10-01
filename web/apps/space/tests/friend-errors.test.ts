@@ -1,5 +1,5 @@
 import {
-    encryptSpaceRootEntityKey,
+    encryptBox,
     openSpaceAccountContext,
     type SpaceAccountCtxHandle,
 } from "ente-space-wasm";
@@ -8,7 +8,6 @@ import {
     friendRequestErrorMessage,
     isFriendRequestCanceledError,
 } from "../src/utils/friend-errors";
-import { spaceFriendLimitMessage } from "../src/utils/friend-limits";
 
 let ctx: SpaceAccountCtxHandle;
 const publicKey = Buffer.from([9, ...new Array<number>(31).fill(0)]).toString(
@@ -17,6 +16,7 @@ const publicKey = Buffer.from([9, ...new Array<number>(31).fill(0)]).toString(
 
 beforeEach(async () => {
     const key = Buffer.alloc(32, 1).toString("base64");
+    const { encryptedData, nonce } = await encryptBox(key, key);
     ctx = await openSpaceAccountContext({
         baseUrl: "http://localhost",
         clientPackage: "io.ente.space.web",
@@ -27,7 +27,10 @@ beforeEach(async () => {
                 spaceId: "self",
                 spaceSlug: "self",
                 keyVersion: 1,
-                rootWrappedSpaceKey: await encryptSpaceRootEntityKey(key, key),
+                rootWrappedSpaceKey: Buffer.concat([
+                    Buffer.from(nonce, "base64"),
+                    Buffer.from(encryptedData, "base64"),
+                ]).toString("base64"),
             },
         ],
     });
@@ -97,7 +100,11 @@ test.each([
         409,
         "@friend can't receive more friend requests right now.",
     ],
-    ["SPACE_FRIEND_LIMIT_REACHED", 409, spaceFriendLimitMessage],
+    [
+        "SPACE_SENT_FRIEND_REQUEST_LIMIT_REACHED",
+        409,
+        "You have too many pending friend requests. Cancel a sent request or wait for someone to respond.",
+    ],
     ["CONFLICT", 409, "Couldn't send the friend request. Please try again."],
 ] as const)(
     "%s reaches the add-friend message",

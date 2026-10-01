@@ -12,7 +12,7 @@ import type { CreateProfileSource } from "utils/routes";
 
 export type OnboardingEntrySource = "direct" | "add-friend-link";
 export type SpaceProfileLoadStatus = "error" | "loading" | "ready";
-export type SpacePostPublishPhase = "failed" | "posted" | "posting";
+type SpacePostPublishPhase = "failed" | "posted" | "posting";
 export interface SpacePostPublication {
     phase: SpacePostPublishPhase;
     post: SpacePost;
@@ -27,14 +27,57 @@ export interface RefreshSpaceProfileOptions {
     throwOnError?: boolean;
 }
 
+interface PendingSpaceFeedPost {
+    avatarUrl?: string | null;
+    caption?: string;
+    friendID: string;
+    height?: number;
+    id: string;
+    imageUrl: string;
+    name: string;
+    spaceId: string;
+    photoCount: number;
+    postId?: number;
+    status: "pending";
+    timestampMs: number;
+    width?: number;
+}
+
+export type FailedSpaceFeedPost = Omit<PendingSpaceFeedPost, "status"> & {
+    reason?: "post-limit";
+    status: "failed";
+};
+
+interface PostedSpaceFeedPost {
+    id: string;
+    post: SpacePost;
+    status: "posted";
+}
+
+interface ReadySpaceFeedPost {
+    id: string;
+    post: SpacePost;
+    status: "ready";
+}
+
+export type LocalSpaceFeedPost =
+    | FailedSpaceFeedPost
+    | PendingSpaceFeedPost
+    | PostedSpaceFeedPost
+    | ReadySpaceFeedPost;
+
 export interface SpaceAppState {
     cachedProfileAvatarUrl?: string;
     friends: FriendProfile[];
+    localFeedPosts: LocalSpaceFeedPost[];
+    setLocalFeedPosts: React.Dispatch<
+        React.SetStateAction<LocalSpaceFeedPost[]>
+    >;
     isLiveSignupVerification: boolean;
     onboardingEntrySource: OnboardingEntrySource;
     pendingLoginCredentials: SpaceLoginCredentials | null;
     pendingPasskeyVerification: PendingSpacePasskeyVerification | null;
-    pendingPostPhotoFile: File | null;
+    pendingPostPhotoFiles: File[] | null;
     pendingProfileAvatarFile: File | null;
     pendingProfileCoverFile: File | null;
     pendingCreateProfile: PendingCreateProfile | null;
@@ -47,7 +90,7 @@ export interface SpaceAppState {
         React.SetStateAction<SpacePostPublication | null>
     >;
     publishPost: (
-        image: SpaceDraftPostImage,
+        images: SpaceDraftPostImage[],
         caption: string,
     ) => Promise<SpacePost>;
     refreshProfile: (
@@ -65,7 +108,9 @@ export interface SpaceAppState {
     setPendingPasskeyVerification: React.Dispatch<
         React.SetStateAction<PendingSpacePasskeyVerification | null>
     >;
-    setPendingPostPhotoFile: React.Dispatch<React.SetStateAction<File | null>>;
+    setPendingPostPhotoFiles: React.Dispatch<
+        React.SetStateAction<File[] | null>
+    >;
     setPendingProfileAvatarFile: React.Dispatch<
         React.SetStateAction<File | null>
     >;
@@ -75,7 +120,7 @@ export interface SpaceAppState {
     setPendingCreateProfile: React.Dispatch<
         React.SetStateAction<PendingCreateProfile | null>
     >;
-    setProfile: (profile: SetupProfile | null) => void;
+    setProfile: React.Dispatch<React.SetStateAction<SetupProfile | null>>;
     setSignupEmail: React.Dispatch<React.SetStateAction<string>>;
 }
 

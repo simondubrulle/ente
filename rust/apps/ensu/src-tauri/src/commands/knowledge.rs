@@ -203,6 +203,8 @@ impl From<GroundedSourceDto> for retrieval::GroundedSource {
 pub struct GroundedPromptContextDto {
     text: String,
     sources: Vec<GroundedSourceDto>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    candidates: Option<ente_ensu::conversation::GroundingCandidates>,
 }
 
 impl From<retrieval::GroundedPromptContext> for GroundedPromptContextDto {
@@ -210,6 +212,7 @@ impl From<retrieval::GroundedPromptContext> for GroundedPromptContextDto {
         Self {
             text: value.text,
             sources: value.sources.into_iter().map(Into::into).collect(),
+            candidates: None,
         }
     }
 }
@@ -263,6 +266,37 @@ fn select_verified_mixed_grounding(
         verified.push(excerpt);
     }
     Ok(verified)
+}
+
+fn select_grounding(
+    app: &AppHandle,
+    pack_hits: &[retrieval::KnowledgePromptHit],
+    note_hits: &[ente_ensu::notes::NotesSearchHit],
+    notes: Option<&super::notes::RetrievalHandle>,
+    mut check_cancelled: impl FnMut() -> Result<(), ApiError>,
+) -> Result<Vec<retrieval::GroundedExcerpt>, ApiError> {
+    let mut excerpts = select_verified_mixed_grounding(pack_hits, note_hits, |reference| {
+        check_cancelled()?;
+        let Some(notes) = notes else { return Ok(false) };
+        let valid = notes.verify_source_reference(reference);
+        if !valid {
+            super::notes::mark_reference_stale(
+                app,
+                &reference.collection_id,
+                reference.document_id.clone(),
+            );
+        }
+        Ok(valid)
+    })?;
+    for excerpt in &mut excerpts {
+        if let (Some(notes), retrieval::GroundedSource::LocalNote { reference }) =
+            (notes, &mut excerpt.source)
+        {
+            reference.collection_label = notes.collection_label(&reference.collection_id);
+        }
+    }
+    check_cancelled()?;
+    Ok(excerpts)
 }
 
 fn reconcile_and_open(
@@ -634,36 +668,112 @@ pub async fn knowledge_retrieve(
         check_cancelled()?;
 
         let context_budget = max_context_utf8_bytes.min(embedding.max_context_utf8_bytes);
-        let mut excerpts = select_verified_mixed_grounding(&pack_hits, &note_hits, |reference| {
-            check_cancelled()?;
-            let Some(notes) = &notes else {
-                return Ok(false);
-            };
-            let verified = notes.verify_source_reference(reference);
-            if !verified {
-                crate::commands::notes::mark_reference_stale(
-                    &app,
-                    &reference.collection_id,
-                    reference.document_id.clone(),
-                );
-            }
-            Ok(verified)
-        })?;
-        for excerpt in &mut excerpts {
-            if let (Some(notes), retrieval::GroundedSource::LocalNote { reference }) =
-                (&notes, &mut excerpt.source)
-            {
-                reference.collection_label = notes.collection_label(&reference.collection_id);
-            }
-        }
-        check_cancelled()?;
+        let excerpts = select_grounding(&app, &pack_hits, &note_hits, notes.as_ref(), check_cancelled)?;
 
-        retrieval::build_grounded_prompt_context(&excerpts, context_budget as usize)
-            .map(|context| context.map(Into::into))
-            .map_err(retrieval_error)
+        let candidates = ente_ensu::conversation::GroundingCandidates::new(vec![], excerpts, context_budget as usize)
+            .map_err(|error| ApiError::new("conversation", error.to_string()))?;
+        candidates.pack(context_budget as usize)
+            .map(|context| context.map(|context| {
+                let mut result = GroundedPromptContextDto::from(context);
+                result.candidates = Some(candidates);
+                result
+            }))
+            .map_err(|error| ApiError::new("conversation", error.to_string()))
     })
     .await
     .map_err(|_| ApiError::new("llm_thread", "Knowledge retrieval task failed"))?
+}
+
+pub(crate) async fn reload_for_followup(
+    app: &AppHandle,
+    reference: retrieval::IncludedPassage,
+    enabled_stable_ids: Vec<String>,
+    retrieval_epoch: u64,
+) -> Result<Option<retrieval::ReferencedPassage>, ApiError> {
+    let app = app.clone();
+    let indexes = Arc::clone(&app.state::<State>().indexes);
+    let (collection_ids, notes) = app
+        .try_state::<crate::commands::notes::State>()
+        .map_or_else(
+            || (Vec::new(), None),
+            |state| {
+                (
+                    state.available_index_collection_ids(),
+                    Some(state.retrieval_handle()),
+                )
+            },
+        );
+    let cancellation_epoch = app.state::<crate::commands::llm::State>().retrieval_epoch();
+    async_runtime::spawn_blocking(move || {
+        let check_cancelled = || {
+            if cancellation_epoch.load(Ordering::Relaxed) == retrieval_epoch {
+                Ok(())
+            } else {
+                Err(ApiError::new("cancelled", "Knowledge reload cancelled"))
+            }
+        };
+        check_cancelled()?;
+        let mut packs = Vec::new();
+        let mut note_hits = Vec::new();
+        match &reference.locator {
+            retrieval::PassageLocator::EnsuPack { dataset_id, .. } => {
+                if !enabled_stable_ids.contains(dataset_id) {
+                    return Ok(None);
+                }
+                let indexes = indexes.lock().unwrap_or_else(PoisonError::into_inner);
+                let Some(open) = indexes.get(dataset_id) else {
+                    return Ok(None);
+                };
+                let Some(hit) = open
+                    .index
+                    .reload_passage(&reference.locator)
+                    .map_err(retrieval_error)?
+                else {
+                    return Ok(None);
+                };
+                packs.push(retrieval::KnowledgePromptHit {
+                    dataset_id: dataset_id.clone(),
+                    hit,
+                });
+            }
+            retrieval::PassageLocator::LocalNote(locator) => {
+                let collection_id = &locator.collection_id;
+                if !collection_ids.contains(collection_id) {
+                    return Ok(None);
+                }
+                let Some(notes) = &notes else { return Ok(None) };
+                match notes.reload_passage(locator) {
+                    Ok(Some(hit)) => note_hits.push(hit),
+                    Ok(None) => return Ok(None),
+                    Err(error) => {
+                        crate::commands::notes::mark_index_unreadable(&app, collection_id);
+                        logging::log(
+                            "Knowledge",
+                            format!("Notes passage reload unavailable: {error}"),
+                        );
+                        return Ok(None);
+                    }
+                }
+            }
+        }
+        check_cancelled()?;
+        let Some(excerpt) =
+            select_grounding(&app, &packs, &note_hits, notes.as_ref(), check_cancelled)?.pop()
+        else {
+            return Ok(None);
+        };
+        let Some(passages) = reference.verified_spans(&excerpt.text) else {
+            return Ok(None);
+        };
+        check_cancelled()?;
+        Ok(Some(retrieval::ReferencedPassage {
+            reference,
+            source: excerpt.source,
+            passages,
+        }))
+    })
+    .await
+    .map_err(|_| ApiError::new("retrieval_thread", "Knowledge reload task failed"))?
 }
 
 pub(crate) fn clear_for_exit(app: &AppHandle) {
@@ -694,6 +804,13 @@ mod tests {
 
     fn note(index: usize) -> NotesSearchHit {
         NotesSearchHit {
+            locator: ente_ensu::notes::NotePassageLocator {
+                collection_id: COLLECTION_ID.to_owned(),
+                document_id: format!("note-{index}.md"),
+                indexed_revision: "a".repeat(64),
+                shard_sha256: "b".repeat(64),
+                chunk_index: 0,
+            },
             collection_id: COLLECTION_ID.to_string(),
             document_id: format!("note-{index}.md"),
             revision: "a".repeat(64),

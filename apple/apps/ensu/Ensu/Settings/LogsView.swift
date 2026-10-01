@@ -45,7 +45,7 @@ struct LogsView: View {
             }
         }
         .task {
-            refreshEntries()
+            entries = await Self.loadEntries()
         }
         .sheet(item: $shareArchive) { archive in
             ActivityView(activityItems: [archive.url])
@@ -124,23 +124,24 @@ struct LogsView: View {
         }
     }
 
-    private func refreshEntries() {
-        entries = parseLogText(EnsuLogging.shared.readLogText())
-    }
-
-    private func parseLogText(_ text: String) -> [EnsuLogEntry] {
+    @concurrent
+    private static func loadEntries() async -> [EnsuLogEntry] {
+        let text = EnsuLogging.shared.readLogText()
         var entries: [EnsuLogEntry] = []
         for line in text.components(separatedBy: .newlines) {
             guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
 
-            if let match = logLineRegex.firstMatch(in: line, options: [], range: NSRange(line.startIndex..., in: line)),
-               let tagRange = Range(match.range(at: 1), in: line),
-               let levelRange = Range(match.range(at: 2), in: line),
-               let timestampRange = Range(match.range(at: 3), in: line),
-               let messageRange = Range(match.range(at: 4), in: line) {
+            if let match = logLineRegex?.firstMatch(
+                in: line, range: NSRange(line.startIndex..., in: line)),
+                let tagRange = Range(match.range(at: 1), in: line),
+                let levelRange = Range(match.range(at: 2), in: line),
+                let timestampRange = Range(match.range(at: 3), in: line),
+                let messageRange = Range(match.range(at: 4), in: line)
+            {
                 entries.append(
                     EnsuLogEntry(
-                        timestamp: logLineFormatter.date(from: String(line[timestampRange])) ?? Date(),
+                        timestamp: logLineFormatter.date(from: String(line[timestampRange]))
+                            ?? Date(),
                         level: EnsuLogLevel(rawValue: String(line[levelRange])) ?? .info,
                         tag: String(line[tagRange]),
                         message: String(line[messageRange]),
@@ -157,7 +158,8 @@ struct LogsView: View {
                 )
             } else {
                 entries.append(
-                    EnsuLogEntry(timestamp: Date(), level: .info, tag: "Log", message: line, details: nil)
+                    EnsuLogEntry(
+                        timestamp: Date(), level: .info, tag: "Log", message: line, details: nil)
                 )
             }
         }
@@ -306,6 +308,9 @@ private struct LogDetailView: View {
     }
 }
 
+private let logLineRegex = try? NSRegularExpression(
+    pattern: #"^\[(.+?)\]\[(.+?)\] \[(.+?)\] (.*)$"#)
+
 private let logTimestampFormatter: DateFormatter = {
     let formatter = DateFormatter()
     formatter.locale = Locale.current
@@ -318,11 +323,6 @@ private let logLineFormatter: DateFormatter = {
     formatter.locale = Locale(identifier: "en_US_POSIX")
     formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
     return formatter
-}()
-
-private let logLineRegex: NSRegularExpression = {
-    let pattern = "^\\[(.+?)\\]\\[(.+?)\\] \\[(.+?)\\] (.*)$"
-    return try! NSRegularExpression(pattern: pattern, options: [])
 }()
 
 import UIKit
@@ -346,6 +346,7 @@ struct ExportDocumentPicker: UIViewControllerRepresentable {
         return picker
     }
 
-    func updateUIViewController(_ uiViewController: UIDocumentPickerViewController, context: Context) {}
+    func updateUIViewController(
+        _ uiViewController: UIDocumentPickerViewController, context: Context
+    ) {}
 }
-

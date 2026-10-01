@@ -5,8 +5,11 @@ import {
     type BranchSwitcher,
 } from "@/services/chat/branching";
 import type { ChatAttachment, ChatMessage } from "@/services/chat/store";
+import {
+    handleExternalLinkClick,
+    safeExternalUrl,
+} from "@/services/external-links";
 import { noteSourceErrorMessage, openNoteDocument } from "@/services/notes";
-import { isTauriRuntime } from "@/services/tauri-runtime";
 import {
     ArrowLeft01Icon,
     ArrowRight01Icon,
@@ -31,6 +34,7 @@ import {
 } from "@mui/material";
 import type { SxProps, Theme } from "@mui/material/styles";
 import type { SystemStyleObject } from "@mui/system";
+import { useBaseContext } from "ente-base/context";
 import React, { memo, useCallback, useEffect, useMemo, useState } from "react";
 
 interface DocumentAttachment {
@@ -44,23 +48,6 @@ interface IconProps {
     size: number;
     strokeWidth: number;
 }
-
-const openExternalUrl = async (url: string) => {
-    if (isTauriRuntime()) {
-        const opened = await import("@tauri-apps/plugin-opener")
-            .then(async ({ openUrl }) => {
-                await openUrl(url);
-                return true;
-            })
-            .catch(() => false);
-        if (opened) return;
-    }
-
-    if (typeof window !== "undefined") {
-        const popup = window.open(url, "_blank", "noopener,noreferrer");
-        if (!popup) window.location.href = url;
-    }
-};
 
 const sourceLinkSx = {
     border: 0,
@@ -90,7 +77,7 @@ const sourceChipSx = {
 const sourceChipLabel = (label: string, sourceCount: number) =>
     sourceCount > 1 ? `${label} +${sourceCount - 1}` : label;
 
-export interface ParsedDocuments {
+interface ParsedDocuments {
     text: string;
     documents: DocumentAttachment[];
 }
@@ -100,6 +87,7 @@ export interface ChatMessageListProps {
     attachmentPreviews: Record<string, string>;
     branchSwitchers: Record<string, BranchSwitcher>;
     loadingPhrase: string | null;
+    preparationStatus: string | null;
     loadingDots: number;
     isGenerating: boolean;
     isStreamingOutro: boolean;
@@ -239,6 +227,7 @@ type LocalNoteSource = Extract<MessageSource, { type: "localNote" }>;
 
 const PackSourceCard = memo(
     ({ source, number }: { source: PackSource; number: number }) => {
+        const { showMiniDialog } = useBaseContext();
         const { citation } = source;
         return (
             <Stack
@@ -260,20 +249,24 @@ const PackSourceCard = memo(
                 </Typography>
                 <Stack direction="row" sx={{ gap: 2, flexWrap: "wrap" }}>
                     <Link
-                        component="button"
-                        type="button"
+                        href={safeExternalUrl(citation.sourceUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         underline="hover"
-                        onClick={() => void openExternalUrl(citation.sourceUrl)}
+                        onClick={(event) =>
+                            handleExternalLinkClick(event, showMiniDialog)
+                        }
                         sx={sourceLinkSx}
                     >
                         Open source ↗
                     </Link>
                     <Link
-                        component="button"
-                        type="button"
+                        href={safeExternalUrl(citation.licenseUrl)}
+                        target="_blank"
+                        rel="noopener noreferrer"
                         underline="hover"
-                        onClick={() =>
-                            void openExternalUrl(citation.licenseUrl)
+                        onClick={(event) =>
+                            handleExternalLinkClick(event, showMiniDialog)
                         }
                         sx={sourceLinkSx}
                     >
@@ -414,6 +407,7 @@ interface MessageRowProps {
     isLastMessage: boolean;
     branchSwitchers: Record<string, BranchSwitcher>;
     loadingPhrase: string | null;
+    preparationStatus: string | null;
     loadingDots: number;
     isGenerating: boolean;
     isStreamingOutro: boolean;
@@ -449,6 +443,7 @@ const MessageRow = memo(
         isLastMessage,
         branchSwitchers,
         loadingPhrase,
+        preparationStatus,
         loadingDots,
         isGenerating,
         isStreamingOutro,
@@ -655,6 +650,7 @@ const MessageRow = memo(
                                         }
                                         isOutroPhase={isStreamingOutro}
                                         fallbackText={`${loadingPhrase ?? "Generating your reply"}${dots}`}
+                                        status={preparationStatus}
                                     />
                                 </Stack>
                             ) : (
@@ -929,6 +925,7 @@ export const ChatMessageList = memo(
         attachmentPreviews,
         branchSwitchers,
         loadingPhrase,
+        preparationStatus,
         loadingDots,
         isGenerating,
         isStreamingOutro,
@@ -996,6 +993,9 @@ export const ChatMessageList = memo(
                         isLastMessage={message.messageUuid === lastMessageUuid}
                         branchSwitchers={branchSwitchers}
                         loadingPhrase={isStreaming ? loadingPhrase : null}
+                        preparationStatus={
+                            isStreaming ? preparationStatus : null
+                        }
                         loadingDots={isStreaming ? loadingDots : 0}
                         isGenerating={isGenerating}
                         isStreamingOutro={isStreamingOutro}
@@ -1037,6 +1037,7 @@ export const ChatMessageList = memo(
                 isStreamingOutro,
                 loadingDots,
                 loadingPhrase,
+                preparationStatus,
                 onCopyMessage,
                 onEditMessage,
                 onNextBranch,

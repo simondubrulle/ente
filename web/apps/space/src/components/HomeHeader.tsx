@@ -14,6 +14,7 @@ import { spaceTouchTargetSize } from "styles/touch-targets";
 
 const green = "#08C225";
 const dangerColor = "#F63A3A";
+const headerBackground = "#2C2C2E";
 const headerActionSize = spaceTouchTargetSize;
 const headerAvatarImageSize = 28;
 const headerChatCircleSize = 36;
@@ -25,8 +26,8 @@ const avatarFadeSx = {
     "@media (prefers-reduced-motion: reduce)": { animation: "none" },
 } as const;
 
-export const spaceHomeHeaderHeight = 64;
-export const spaceHomeHeaderBarHeight = 44;
+const spaceHomeHeaderHeight = 64;
+const spaceHomeHeaderBarHeight = 44;
 
 interface SpaceHomeHeaderProps {
     children?: React.ReactNode;
@@ -64,8 +65,8 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
             width: "100%",
             zIndex: 4,
             "&::after": {
-                bgcolor: spaceSurface,
-                borderRadius: "12px",
+                bgcolor: headerBackground,
+                borderRadius: "16px",
                 content: '""',
                 height: spaceHomeHeaderBarHeight,
                 left: "16px",
@@ -217,13 +218,22 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
                 <HugeiconsIcon
                     icon={BubbleChatIcon}
                     size={headerIconSize}
-                    strokeWidth={2.5}
+                    strokeWidth={2.2}
                 />
                 {showUnreadIndicator && (
                     <Box
                         sx={{
+                            "@keyframes spaceUnreadBadgePing": {
+                                "75%, 100%": {
+                                    opacity: 0,
+                                    transform: "scale(2.5)",
+                                },
+                            },
+                            "@media (prefers-reduced-motion: reduce)": {
+                                "&::after": { display: "none" },
+                            },
                             bgcolor: dangerColor,
-                            border: `2px solid ${spaceSurface}`,
+                            border: `2px solid ${headerBackground}`,
                             borderRadius: "50%",
                             boxSizing: "border-box",
                             height: 12.5,
@@ -232,6 +242,18 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
                             top: 5,
                             width: 12.5,
                             zIndex: 1,
+                            "&::after": {
+                                animation:
+                                    "spaceUnreadBadgePing 1.25s cubic-bezier(0, 0, 0.2, 1) 1 forwards",
+                                bgcolor: dangerColor,
+                                borderRadius: "50%",
+                                content: '""',
+                                inset: 0,
+                                opacity: 0.75,
+                                pointerEvents: "none",
+                                position: "absolute",
+                                zIndex: -1,
+                            },
                         }}
                     />
                 )}

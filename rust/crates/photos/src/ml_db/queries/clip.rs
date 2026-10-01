@@ -1,6 +1,8 @@
 use std::collections::HashMap;
+use std::num::NonZeroUsize;
 
-use crate::db::pair;
+use super::helpers::pair;
+use crate::db::{self, Row};
 use crate::ml_db::schema;
 use crate::ml_db::vector_encoding::{decode_f32, encode_f32};
 use crate::ml_db::{MlDb, Result};
@@ -32,8 +34,7 @@ pub struct ClipRow {
 impl MlDb {
     pub fn get_all_clip_vectors(&self) -> Result<Vec<EmbeddingVector>> {
         let rows: Vec<(i64, Vec<u8>)> =
-            self.db
-                .read_all("SELECT file_id, embedding FROM clip", (), pair)?;
+            self.read_all("SELECT file_id, embedding FROM clip", (), pair)?;
         Ok(rows
             .into_iter()
             .map(|(file_id, embedding)| EmbeddingVector {
@@ -45,82 +46,94 @@ impl MlDb {
     }
 
     pub fn clip_indexed_file_with_version(&self) -> Result<HashMap<i64, i64>> {
-        self.db
-            .read_all("SELECT file_id , ml_version FROM clip", (), pair)
-            .map_err(Into::into)
+        self.read_all("SELECT file_id , ml_version FROM clip", (), pair)
     }
 
     pub fn get_clip_indexed_file_count(&self, minimum_ml_version: i64) -> Result<i64> {
-        self.db
-            .read_value(
-                "SELECT COUNT(DISTINCT file_id) as count FROM clip WHERE ml_version >= ?",
-                [minimum_ml_version],
-            )
-            .map_err(Into::into)
+        self.read_value(
+            "SELECT COUNT(DISTINCT file_id) as count FROM clip WHERE ml_version >= ?",
+            [minimum_ml_version],
+        )
     }
 
     pub fn get_clip_vectorizable_file_count(&self, minimum_ml_version: i64) -> Result<i64> {
-        self.db
-            .read_value(
-                r#"
+        self.read_value(
+            r#"
                 SELECT COUNT(DISTINCT file_id) as count
                 FROM clip
                 WHERE ml_version >= ?
                     AND LENGTH(embedding) = ?
                 "#,
-                [minimum_ml_version, CLIP_EMBEDDING_BYTES_LENGTH],
-            )
-            .map_err(Into::into)
+            [minimum_ml_version, CLIP_EMBEDDING_BYTES_LENGTH],
+        )
     }
 
     pub fn insert_clip_rows(&self, embeddings: &[ClipEmbedding]) -> Result<()> {
         if let [embedding] = embeddings {
-            self.db.execute(
+            self.execute(
                 "INSERT OR REPLACE INTO clip (file_id, embedding, ml_version) VALUES (?, ?, ?)",
                 clip_row(embedding),
             )?;
             return Ok(());
         }
-        self.db
-            .write_batch_atomic(
-                "INSERT OR REPLACE INTO clip (file_id, embedding, ml_version) values(?, ?, ?)",
-                embeddings.iter().map(clip_row),
-            )
-            .map_err(Into::into)
+        self.write_batch_atomic(
+            "INSERT OR REPLACE INTO clip (file_id, embedding, ml_version) values(?, ?, ?)",
+            embeddings.iter().map(clip_row),
+        )
     }
 
     pub fn delete_clip_rows(&self, file_ids: &[i64]) -> Result<()> {
-        self.db
-            .execute_chunked_in("DELETE FROM clip WHERE file_id IN ({})", file_ids)
-            .map_err(Into::into)
+        self.execute_chunked_in("DELETE FROM clip WHERE file_id IN ({})", file_ids)
     }
 
     pub fn delete_all_clip_rows(&self) -> Result<()> {
-        self.db
-            .execute_statements([schema::DELETE_CLIP_EMBEDDINGS])
-            .map_err(Into::into)
+        self.execute_statements([schema::DELETE_CLIP_EMBEDDINGS])
     }
 
     pub fn count_clip_rows(&self) -> Result<i64> {
-        self.db
-            .read_value("SELECT COUNT(file_id) as total FROM clip", ())
-            .map_err(Into::into)
+        self.read_value("SELECT COUNT(file_id) as total FROM clip", ())
     }
 
     pub fn get_clip_rows_page(&self, limit: i64, offset: i64) -> Result<Vec<ClipRow>> {
-        self.db
-            .read_all(
-                "SELECT file_id, embedding FROM clip ORDER BY file_id DESC LIMIT ? OFFSET ?",
-                [limit, offset],
-                |row| {
-                    Ok(ClipRow {
-                        file_id: row.get(0)?,
-                        embedding: row.get(1)?,
-                    })
-                },
-            )
-            .map_err(Into::into)
+        self.read_all(
+            "SELECT file_id, embedding FROM clip ORDER BY file_id DESC LIMIT ? OFFSET ?",
+            [limit, offset],
+            read_clip_row,
+        )
     }
+
+    pub fn get_clip_rows_before(
+        &self,
+        before_file_id: Option<i64>,
+        limit: NonZeroUsize,
+    ) -> Result<Vec<ClipRow>> {
+        let limit = limit.get() as i64;
+        match before_file_id {
+            None => self.read_all(
+                "SELECT file_id, embedding FROM clip ORDER BY file_id DESC LIMIT ?",
+                [limit],
+                read_clip_row,
+            ),
+            Some(before_file_id) => self.read_all(
+                r#"
+                SELECT file_id, embedding
+                FROM clip
+                WHERE file_id < ?
+                ORDER BY file_id DESC
+                LIMIT ?
+                "#,
+                (before_file_id, limit),
+                read_clip_row,
+            ),
+        }
+    }
+}
+
+fn read_clip_row(row: &Row<'_>) -> db::Result<ClipRow> {
+    Ok(ClipRow {
+        file_id: row.get(0)?,
+        embedding: row.get(1)?,
+    })
 }
 
 fn clip_row(embedding: &ClipEmbedding) -> (i64, Vec<u8>, i64) {
@@ -134,6 +147,7 @@ fn clip_row(embedding: &ClipEmbedding) -> (i64, Vec<u8>, i64) {
 #[cfg(test)]
 pub(in crate::ml_db) mod tests {
     use std::collections::HashMap;
+    use std::num::NonZeroUsize;
 
     use super::{CLIP_EMBEDDING_DIMENSIONS, ClipEmbedding, ClipRow, MlDb};
     use crate::ml_db::tests::{cases, check, open};
@@ -227,6 +241,24 @@ pub(in crate::ml_db) mod tests {
                 clip_row(3, vec![1.0, 2.0]),
                 clip_row(2, vec![0.25; CLIP_EMBEDDING_DIMENSIONS])
             ]
+        );
+    }
+
+    #[test]
+    fn clip_rows_page_by_keyset() {
+        let (_directory, db) = seeded();
+        let page_size = NonZeroUsize::new(2).unwrap();
+        let file_ids =
+            |page: &[ClipRow]| -> Vec<i64> { page.iter().map(|row| row.file_id).collect() };
+        let first_page = db.get_clip_rows_before(None, page_size).unwrap();
+        assert_eq!(file_ids(&first_page), [4, 3]);
+        assert_eq!(first_page[1].embedding, encode_f32([1.0, 2.0]));
+        let next_page = db.get_clip_rows_before(Some(3), page_size).unwrap();
+        assert_eq!(file_ids(&next_page), [2, 1]);
+        assert!(
+            db.get_clip_rows_before(Some(1), page_size)
+                .unwrap()
+                .is_empty()
         );
     }
 

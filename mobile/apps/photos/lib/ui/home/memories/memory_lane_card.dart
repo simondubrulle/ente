@@ -2,11 +2,13 @@ import "dart:typed_data";
 
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
+import "package:ente_ui/theme/colors.dart";
 import "package:flutter/material.dart";
 import "package:photos/ui/home/memories/memory_card_constants.dart";
 
 class MemoryLaneCardWidget extends StatelessWidget {
-  final String id;
+  final String personId;
+  final bool isSeen;
   final Uint8List oldestFace;
   final Uint8List face;
   final String personName;
@@ -14,7 +16,8 @@ class MemoryLaneCardWidget extends StatelessWidget {
   final VoidCallback onTap;
 
   const MemoryLaneCardWidget({
-    required this.id,
+    required this.personId,
+    required this.isSeen,
     required this.oldestFace,
     required this.face,
     required this.personName,
@@ -37,9 +40,15 @@ class MemoryLaneCardWidget extends StatelessWidget {
       padding: const EdgeInsets.symmetric(horizontal: kMemoryCardStripGap / 2),
       child: GestureDetector(
         onTap: onTap,
-        child: SizedBox(
+        child: Container(
           width: size.width,
           height: size.height,
+          foregroundDecoration: isSeen
+              ? const BoxDecoration(
+                  color: Color(0xFFBFBFBF),
+                  backgroundBlendMode: BlendMode.saturation,
+                )
+              : null,
           child: Stack(
             clipBehavior: Clip.none,
             children: [
@@ -85,7 +94,7 @@ class MemoryLaneCardWidget extends StatelessWidget {
                 bottom: 16,
                 width: size.width * 0.837837837838,
                 child: Hero(
-                  tag: 'memory-lane-title-$id',
+                  tag: 'memory-lane-title-$personId',
                   child: Text(
                     title,
                     maxLines: 2,
@@ -94,7 +103,7 @@ class MemoryLaneCardWidget extends StatelessWidget {
                       inherit: false,
                       height: 16 / 14,
                       fontFamily: TextStyles.outfitFontFamily,
-                      color: Colors.white,
+                      color: isSeen ? textFaintDark : Colors.white,
                       fontWeight: FontWeight.w700,
                     ),
                     textAlign: TextAlign.left,

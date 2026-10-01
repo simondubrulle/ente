@@ -4,7 +4,11 @@ import { isNamedError } from "ente-base/error";
 import { apiOrigin, apiURL } from "ente-base/origins";
 import {
     openSpaceAccountContext,
+    type DecryptedSpaceProfile,
+    type ProfileAvatarResponse,
     type SpaceAccountCtxHandle,
+    type SpaceKeyResponse,
+    type UpdateSpaceProfileResponse,
 } from "ente-space-wasm";
 import type {
     SetupProfile,
@@ -23,50 +27,16 @@ import {
     savedSpaceSessionToken,
     saveSpaceOwnedSpaces,
     saveSpaceProfileAvatar,
-    type OwnedSpace,
 } from "services/persistent-session";
-import {
-    parseSpaceProfilePayload,
-    spaceProfileTextField,
-} from "services/profile-payload";
 import { spaceRootKeyFromSpaceSession } from "services/secure-session-storage";
 
 const usernamePattern = /^[a-z0-9][a-z0-9._]*$/;
 const minUsernameLength = 4;
 const maxUsernameLength = 30;
 
-interface SpaceAvatar {
-    keyVersion: number;
-    objectID: string;
-    size?: number;
-    updatedAt?: string;
-}
+type SpaceAvatar = Pick<ProfileAvatarResponse, "objectID" | "keyVersion">;
 
 type SpaceCover = SpaceAvatar;
-
-interface CreatedSpace {
-    spaceId: string;
-    spaceSlug: string;
-}
-
-interface SpaceLookup {
-    spaceId: string;
-    spaceSlug: string;
-}
-
-interface DecryptedSpaceProfile {
-    spaceId: string;
-    spaceSlug: string;
-    profile: string;
-    avatar?: SpaceAvatar;
-    cover?: SpaceCover;
-    updatedAt?: string;
-}
-
-interface UpdateSpaceProfileResponse {
-    avatar?: SpaceAvatar;
-    cover?: SpaceCover;
-}
 
 export type UsernameAvailability = "available" | "taken";
 
@@ -100,7 +70,7 @@ const spaceProfilePayloadFor = (profile: SetupProfileInput) =>
 export const isSpaceSessionUnauthorized = (error: unknown) =>
     isNamedError(error, "session_unauthorized");
 
-const defaultOwnedSpace = (spaces: OwnedSpace[]) => spaces[0];
+const defaultOwnedSpace = (spaces: SpaceKeyResponse[]) => spaces[0];
 
 const currentSpaceContextConfig = async () => {
     const sessionRestore = restoreSpaceBrowserSessionIfNeeded();
@@ -131,9 +101,11 @@ let currentSpaceContext:
 let pendingCurrentSpaceContext:
     | { cacheKey: string; promise: Promise<SpaceAccountCtxHandle> }
     | undefined;
-let currentOwnedSpace: { cacheKey: string; space: OwnedSpace } | undefined;
+let currentOwnedSpace:
+    | { cacheKey: string; space: SpaceKeyResponse }
+    | undefined;
 let pendingCurrentOwnedSpace:
-    | { cacheKey: string; promise: Promise<OwnedSpace | undefined> }
+    | { cacheKey: string; promise: Promise<SpaceKeyResponse | undefined> }
     | undefined;
 let currentSpaceProfile:
     | { cacheKey: string; profile: SetupProfile | null }
@@ -146,10 +118,10 @@ let currentSpaceContextGeneration = 0;
 const cloneSetupProfile = (profile: SetupProfile | null) =>
     profile ? { ...profile } : null;
 
-const cloneOwnedSpace = (space: OwnedSpace | undefined) =>
+const cloneOwnedSpace = (space: SpaceKeyResponse | undefined) =>
     space ? { ...space } : undefined;
 
-export const openCurrentSpaceContext = async () => {
+const openCurrentSpaceContext = async () => {
     const config = await currentSpaceContextConfig();
     if (!config) return undefined;
 
@@ -218,7 +190,7 @@ const loadAndPersistOwnedSpaces = async (
     ctx: SpaceAccountCtxHandle,
     sessionToken: string,
 ) => {
-    const spaces = (await ctx.listOwnedSpaces()) as OwnedSpace[];
+    const spaces = await ctx.listOwnedSpaces();
     saveSpaceOwnedSpaces(sessionToken, spaces);
     return spaces;
 };
@@ -279,11 +251,9 @@ const coverURLForRemoteCover = async (
 const profileFromDecryptedSpaceProfile = (
     spaceProfile: DecryptedSpaceProfile,
 ): SetupProfile => {
-    const payload = parseSpaceProfilePayload(spaceProfile.profile);
+    const payload = spaceProfile.profile;
     const fullName =
-        spaceProfileTextField(payload.fullName) ||
-        spaceProfileTextField(payload.displayName) ||
-        spaceProfile.spaceSlug;
+        payload?.fullName || payload?.displayName || spaceProfile.spaceSlug;
 
     return {
         avatarKeyVersion: spaceProfile.avatar?.keyVersion,
@@ -375,10 +345,10 @@ export const loadExistingSpaceProfile = async (options?: {
         // Give the home screen, which shares this lookup, the first request slot.
         await new Promise<void>((resolve) => setTimeout(resolve, 0));
         const ctx = await ensureCurrentSpaceContext();
-        const spaceProfile = (await ctx.getSpaceProfile(
+        const spaceProfile = await ctx.getSpaceProfile(
             space.spaceId,
             space.spaceId,
-        )) as DecryptedSpaceProfile;
+        );
         await persistCurrentOwnedSpaces(ctx);
         const profile = profileFromDecryptedSpaceProfile(spaceProfile);
         persistSpaceProfileAvatar(profile);
@@ -403,7 +373,6 @@ export const loadExistingSpaceProfile = async (options?: {
 export const loadCachedCurrentSpaceAvatar = async () => {
     const avatar = savedSpaceProfileAvatar();
     if (!avatar) return undefined;
-    await restoreSpaceBrowserSessionIfNeeded();
     const avatarUrl = await cachedSpaceMediaBlobURLIfPresent(
         spaceProfileMediaCacheKey(
             avatar.spaceId,
@@ -477,12 +446,13 @@ export const spaceUsernameAvailability = async (
 export const saveSpaceProfile = async (
     profile: SetupProfileInput,
     referredBySpaceId?: string,
+    options?: { removeImage?: "avatar" | "cover" },
 ): Promise<SetupProfile> => {
     const username = normalizeSpaceUsername(profile.username);
 
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const spaces = (await ctx.listOwnedSpaces()) as OwnedSpace[];
+        const spaces = await ctx.listOwnedSpaces();
         const sessionToken = savedSpaceSessionToken();
         if (sessionToken) saveSpaceOwnedSpaces(sessionToken, spaces);
         const existingSpace =
@@ -505,21 +475,21 @@ export const saveSpaceProfile = async (
             spaceId = existingSpace.spaceId;
             spaceSlug = existingSpace.spaceSlug;
             if (normalizeSpaceUsername(spaceSlug) != username) {
-                const updatedSlug = (await ctx.updateSpaceSlug(
+                const updatedSlug = await ctx.updateSpaceSlug(
                     spaceId,
                     username,
-                )) as SpaceLookup;
+                );
                 spaceSlug = updatedSlug.spaceSlug;
             }
         } else {
-            const created = (await ctx.createSpace(
+            const created = await ctx.createSpace(
                 username,
                 profilePayload,
                 referredBySpaceId?.trim() || undefined,
-            )) as CreatedSpace;
+            );
             spaceId = created.spaceId;
             spaceSlug = created.spaceSlug;
-            const createdSpaces = (await ctx.listOwnedSpaces()) as OwnedSpace[];
+            const createdSpaces = await ctx.listOwnedSpaces();
             if (sessionToken) {
                 saveSpaceOwnedSpaces(sessionToken, createdSpaces);
             }
@@ -531,11 +501,11 @@ export const saveSpaceProfile = async (
             const avatarBytes = new Uint8Array(
                 await profile.avatarFile.arrayBuffer(),
             );
-            updateResponse = (await ctx.updateSpaceProfileWithAvatar(
+            updateResponse = await ctx.updateSpaceProfileWithAvatar(
                 spaceId,
                 profilePayload,
                 avatarBytes,
-            )) as UpdateSpaceProfileResponse;
+            );
             avatarUrl = updateResponse.avatar?.objectID
                 ? await rememberCachedSpaceMediaBlobURL(
                       spaceProfileMediaCacheKey(
@@ -551,11 +521,11 @@ export const saveSpaceProfile = async (
             const coverBytes = new Uint8Array(
                 await profile.coverFile.arrayBuffer(),
             );
-            updateResponse = (await ctx.updateSpaceProfileWithCover(
+            updateResponse = await ctx.updateSpaceProfileWithCover(
                 spaceId,
                 profilePayload,
                 coverBytes,
-            )) as UpdateSpaceProfileResponse;
+            );
             coverUrl = updateResponse.cover?.objectID
                 ? await rememberCachedSpaceMediaBlobURL(
                       spaceProfileMediaCacheKey(
@@ -567,27 +537,57 @@ export const saveSpaceProfile = async (
                       profile.coverFile,
                   )
                 : URL.createObjectURL(profile.coverFile);
-        } else if (existingSpace) {
-            updateResponse = (await ctx.updateSpaceProfile(
+        } else if (options?.removeImage == "avatar" && existingSpace) {
+            updateResponse = await ctx.removeSpaceProfileAvatar(
                 spaceId,
                 profilePayload,
-            )) as UpdateSpaceProfileResponse;
+            );
+            avatarUrl = null;
+        } else if (options?.removeImage == "cover" && existingSpace) {
+            updateResponse = await ctx.removeSpaceProfileCover(
+                spaceId,
+                profilePayload,
+            );
+            coverUrl = null;
+        } else if (existingSpace) {
+            updateResponse = await ctx.updateSpaceProfile(
+                spaceId,
+                profilePayload,
+            );
         }
 
         const savedProfile = {
             avatarKeyVersion:
-                updateResponse?.avatar?.keyVersion ?? profile.avatarKeyVersion,
+                options?.removeImage == "avatar"
+                    ? undefined
+                    : (updateResponse?.avatar?.keyVersion ??
+                      profile.avatarKeyVersion),
             avatarObjectID:
-                updateResponse?.avatar?.objectID ?? profile.avatarObjectID,
+                options?.removeImage == "avatar"
+                    ? undefined
+                    : (updateResponse?.avatar?.objectID ??
+                      profile.avatarObjectID),
             avatarUpdatedAt:
-                updateResponse?.avatar?.updatedAt ?? profile.avatarUpdatedAt,
+                options?.removeImage == "avatar"
+                    ? undefined
+                    : (updateResponse?.avatar?.updatedAt ??
+                      profile.avatarUpdatedAt),
             avatarUrl,
             coverKeyVersion:
-                updateResponse?.cover?.keyVersion ?? profile.coverKeyVersion,
+                options?.removeImage == "cover"
+                    ? undefined
+                    : (updateResponse?.cover?.keyVersion ??
+                      profile.coverKeyVersion),
             coverObjectID:
-                updateResponse?.cover?.objectID ?? profile.coverObjectID,
+                options?.removeImage == "cover"
+                    ? undefined
+                    : (updateResponse?.cover?.objectID ??
+                      profile.coverObjectID),
             coverUpdatedAt:
-                updateResponse?.cover?.updatedAt ?? profile.coverUpdatedAt,
+                options?.removeImage == "cover"
+                    ? undefined
+                    : (updateResponse?.cover?.updatedAt ??
+                      profile.coverUpdatedAt),
             coverUrl,
             fullName: profile.fullName.trim(),
             username: spaceSlug,
@@ -603,9 +603,18 @@ export const saveSpaceProfile = async (
     }
 };
 
-export const spaceProfileErrorMessage = (error: unknown) => {
+export const removeSpaceProfileCover = async (profile: SetupProfile) =>
+    await saveSpaceProfile(profile, undefined, { removeImage: "cover" });
+
+export const removeSpaceProfileAvatar = async (profile: SetupProfile) =>
+    await saveSpaceProfile(profile, undefined, { removeImage: "avatar" });
+
+export const spaceProfileErrorMessage = (
+    error: unknown,
+    fallbackMessage = "Couldn't save your profile. Please try again.",
+) => {
     if (!(error instanceof Error)) {
-        return "Couldn't save your profile. Please try again.";
+        return fallbackMessage;
     }
     if (error.name == "space_slug_already_exists")
         return "This username is already taken.";
@@ -623,5 +632,5 @@ export const spaceProfileErrorMessage = (error: unknown) => {
     if (error.name == "permission_denied") {
         return "You do not have access to update this profile.";
     }
-    return "Couldn't save your profile. Please try again.";
+    return fallbackMessage;
 };

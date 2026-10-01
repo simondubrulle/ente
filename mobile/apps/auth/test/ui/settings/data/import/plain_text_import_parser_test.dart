@@ -1,11 +1,46 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:ente_auth/models/code.dart';
 import 'package:ente_auth/ui/settings/data/import/plain_text_import_parser.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:logging/logging.dart';
 
 void main() {
   group('plain text import parser', () {
+    const secret = 'JBSWY3DPEHPK3PXP';
+    const validUri = 'otpauth://totp/Example:valid?secret=$secret';
+    const invalidUri = 'otpauth://totp:invalid/Example?secret=$secret';
+    final imports = {
+      'OTP URLs': '$invalidUri\n$validUri',
+      'export JSON': jsonEncode({
+        'items': [
+          {'rawData': invalidUri},
+          {'rawData': validUri},
+        ],
+      }),
+    };
+
+    for (final input in imports.entries) {
+      test('logs a safe warning for a skipped entry in ${input.key}', () {
+        final records = <LogRecord>[];
+        final subscription = Logger.root.onRecord.listen(records.add);
+        addTearDown(subscription.cancel);
+
+        final codes = parsePlainTextImport(input.value);
+
+        expect(codes.map((code) => code.rawData), [validUri]);
+        final record = records.single;
+        expect(record.level, Level.WARNING);
+        expect(
+          record.message,
+          'Skipping malformed import entry (FormatException)',
+        );
+        expect(record.error, isNull);
+        expect(record.stackTrace, isNotNull);
+      });
+    }
+
     test('parses the offline Maestro fixture', () async {
       final content = await File(
         'test/ui/settings/data/import/fixtures/plain_text_import.txt',
@@ -33,6 +68,29 @@ not-an-otp-uri
 
       expect(codes, hasLength(1));
       expect(codes.single.account, 'valid@example.com');
+    });
+
+    test('preserves commas inside newline-delimited OTP entries', () {
+      const content = '''
+otpauth://totp/alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example,%20Inc
+otpauth://totp/bob@example.com?secret=GEZDGNBVGY3TQOJQ&issuer=Example
+''';
+
+      final codes = parsePlainTextImport(content);
+
+      expect(codes, hasLength(2));
+      expect(codes.first.issuer, 'Example, Inc');
+      expect(codes.last.account, 'bob@example.com');
+    });
+
+    test('parses comma-delimited OTP entries', () {
+      const content =
+          'otpauth://totp/alice@example.com?secret=JBSWY3DPEHPK3PXP&issuer=Example,'
+          'otpauth://totp/bob@example.com?secret=GEZDGNBVGY3TQOJQ&issuer=Example';
+
+      final codes = parsePlainTextImport(content);
+
+      expect(codes, hasLength(2));
     });
 
     test('preserves display properties from the rich fixture', () async {

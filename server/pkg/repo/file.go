@@ -50,11 +50,11 @@ func (repo *FileRepository) Create(
 	defer tx.Rollback()
 	var fileID int64
 	err = tx.QueryRowContext(ctx, `INSERT INTO files
-			(owner_id, encrypted_metadata,
+			(owner_id, app, encrypted_metadata,
 			file_decryption_header, thumbnail_decryption_header, metadata_decryption_header,
 			magic_metadata, pub_magic_metadata, info, updation_time)
-			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING file_id`,
-		file.OwnerID, file.Metadata.EncryptedData, file.File.DecryptionHeader,
+			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING file_id`,
+		file.OwnerID, app, file.Metadata.EncryptedData, file.File.DecryptionHeader,
 		file.Thumbnail.DecryptionHeader, file.Metadata.DecryptionHeader,
 		file.MagicMetadata, file.PubicMagicMetadata, file.Info,
 		file.UpdationTime).Scan(&fileID)
@@ -137,11 +137,11 @@ func (repo *FileRepository) CreateMetaFile(
 		ThumbnailSize: 0,
 	}
 	err = tx.QueryRowContext(ctx, `INSERT INTO files
-			(owner_id, encrypted_metadata,
+			(owner_id, app, encrypted_metadata,
 			file_decryption_header, thumbnail_decryption_header, metadata_decryption_header,
 			magic_metadata, pub_magic_metadata, info, updation_time)
-			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9) RETURNING file_id`,
-		metaFile.OwnerID, metaFile.Metadata.EncryptedData, "",
+			VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10) RETURNING file_id`,
+		metaFile.OwnerID, app, metaFile.Metadata.EncryptedData, "",
 		"", metaFile.Metadata.DecryptionHeader,
 		metaFile.MagicMetadata, metaFile.PubicMagicMetadata, info,
 		metaFile.UpdationTime).Scan(&fileID)
@@ -302,13 +302,17 @@ func (repo *FileRepository) Update(file ente.File, fileSize int64, thumbnailSize
 		return stacktrace.Propagate(err, "")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE object_keys 
-			SET object_key = $1, size = $2, datacenters = $3 WHERE file_id = $4 AND o_type = $5`,
+			SET object_key = $1, size = $2,
+				datacenters = CASE WHEN object_key = $1 THEN datacenters ELSE $3 END
+			WHERE file_id = $4 AND o_type = $5`,
 		file.File.ObjectKey, fileSize, dcsForNewEntry, file.ID, ente.FILE)
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
 	_, err = tx.ExecContext(ctx, `UPDATE object_keys 
-			SET object_key = $1, size = $2, datacenters = $3 WHERE file_id = $4 AND o_type = $5`,
+			SET object_key = $1, size = $2,
+				datacenters = CASE WHEN object_key = $1 THEN datacenters ELSE $3 END
+			WHERE file_id = $4 AND o_type = $5`,
 		file.Thumbnail.ObjectKey, thumbnailSize, dcsForNewEntry, file.ID, ente.THUMBNAIL)
 	if err != nil {
 		return stacktrace.Propagate(err, "")

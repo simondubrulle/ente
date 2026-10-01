@@ -24,7 +24,11 @@ import {
     filterNonEmptyUploadItems,
     uploadQueueItemKey,
 } from "./file-upload-helpers";
-import { getRequiredFields } from "./item-form-fields-utils";
+import {
+    getRequiredFields,
+    hasUnsavedItemChanges,
+    itemFormDataForSave,
+} from "./item-form-fields-utils";
 import { useUploadQueue, type LockerUploadCallbacks } from "./use-upload-queue";
 
 export type CreateOption = LockerItemType;
@@ -137,6 +141,10 @@ export const useCreateItemDialogState = ({
         editFormData(editItem),
     );
     const [showPassword, setShowPassword] = useState(false);
+    const [collectionName, setCollectionName] = useState("");
+    const [pendingExit, setPendingExit] = useState<"close" | "back" | null>(
+        null,
+    );
     const [selectedUploadItems, setSelectedUploadItems] = useState<
         LockerUploadCandidate[]
     >(filterNonEmptyUploadItems(initialItems ?? []));
@@ -193,6 +201,7 @@ export const useCreateItemDialogState = ({
     );
 
     useEffect(() => {
+        setPendingExit(null);
         if (!open) {
             return;
         }
@@ -223,6 +232,7 @@ export const useCreateItemDialogState = ({
                   ),
         );
         setFormData(editFormData(editItem));
+        setCollectionName("");
         setShowPassword(false);
         const filteredInitialItems = filterNonEmptyUploadItems(
             initialItems ?? [],
@@ -295,25 +305,96 @@ export const useCreateItemDialogState = ({
         selectedCollectionIDs.length,
     ]);
 
-    const handleClose = useCallback(() => {
-        if (saving || uploading) {
-            return;
-        }
+    const handleSelectOption = useCallback(
+        (option: CreateOption | null) => {
+            setSelectedOption(option);
+            setFormData({});
+            setCollectionName("");
+            setSelectedUploadItems([]);
+            setCustomCollectionNames([]);
+            setSelectedCollectionNamesByFileKey({});
+            resetUploadState();
+            setError(null);
+            setUpgradeCTAType(null);
+        },
+        [resetUploadState],
+    );
 
-        onClose();
-    }, [onClose, saving, uploading]);
-
-    const handleStepBackToOptions = useCallback(() => {
-        if (isEditMode || saving || uploading) {
-            return;
-        }
-
-        setSelectedOption(null);
-        setFormData({});
+    const resetToOptions = useCallback(() => {
+        handleSelectOption(null);
+        setSelectedCollectionIDs(
+            normalizeSelectedCollectionIDs(
+                defaultCollectionID !== null &&
+                    defaultCollectionID !== undefined
+                    ? [defaultCollectionID]
+                    : [],
+            ),
+        );
         setShowPassword(false);
-        setError(null);
-        setUpgradeCTAType(null);
-    }, [isEditMode, saving, uploading]);
+    }, [
+        defaultCollectionID,
+        handleSelectOption,
+        normalizeSelectedCollectionIDs,
+    ]);
+
+    const pendingUploads = selectedUploadItems.some(
+        (item) => !completedFileKeys.has(uploadQueueItemKey(item)),
+    );
+    let initialCollectionIDs: number[] = [];
+    if (isEditMode) {
+        initialCollectionIDs = editCollectionIDs;
+    } else if (
+        defaultCollectionID !== null &&
+        defaultCollectionID !== undefined
+    ) {
+        initialCollectionIDs = [defaultCollectionID];
+    }
+
+    const initialFormData = editFormData(editItem);
+    const initialSelectedCollectionIDs =
+        normalizeSelectedCollectionIDs(initialCollectionIDs);
+
+    let hasUnsavedChanges: boolean;
+    if (isFileMode && !isEditMode) {
+        hasUnsavedChanges = pendingUploads;
+    } else {
+        hasUnsavedChanges = hasUnsavedItemChanges(
+            formData,
+            initialFormData,
+            selectedCollectionIDs,
+            initialSelectedCollectionIDs,
+            collectionName,
+        );
+    }
+
+    const requestExit = useCallback(
+        (action: "close" | "back") => {
+            if (saving || uploading) return;
+            if (hasUnsavedChanges) {
+                setPendingExit(action);
+            } else if (action === "back") {
+                resetToOptions();
+            } else {
+                onClose();
+            }
+        },
+        [hasUnsavedChanges, onClose, resetToOptions, saving, uploading],
+    );
+
+    const handleClose = useCallback(() => requestExit("close"), [requestExit]);
+    const handleStepBackToOptions = useCallback(() => {
+        if (!isEditMode) requestExit("back");
+    }, [isEditMode, requestExit]);
+    const handleKeepEditing = useCallback(() => setPendingExit(null), []);
+    const handleDiscard = useCallback(() => {
+        if (saving || uploading || !pendingExit) return;
+        setPendingExit(null);
+        if (pendingExit === "back") {
+            resetToOptions();
+        } else {
+            onClose();
+        }
+    }, [onClose, pendingExit, resetToOptions, saving, uploading]);
 
     const handleDialogClose = useCallback(
         (_event: object, reason?: "backdropClick" | "escapeKeyDown") => {
@@ -329,20 +410,6 @@ export const useCreateItemDialogState = ({
             handleClose();
         },
         [handleClose, handleStepBackToOptions, isEditMode, selectedType],
-    );
-
-    const handleSelectOption = useCallback(
-        (option: CreateOption) => {
-            setSelectedOption(option);
-            setFormData({});
-            setSelectedUploadItems([]);
-            setCustomCollectionNames([]);
-            setSelectedCollectionNamesByFileKey({});
-            resetUploadState();
-            setError(null);
-            setUpgradeCTAType(null);
-        },
-        [resetUploadState],
     );
 
     const handleFieldChange = useCallback((field: string, value: string) => {
@@ -402,16 +469,9 @@ export const useCreateItemDialogState = ({
         setError(null);
         setUpgradeCTAType(null);
         try {
-            const cleanData = Object.fromEntries(
-                Object.entries(formData)
-                    .filter(
-                        ([, value]) =>
-                            typeof value === "string" && value.trim(),
-                    )
-                    .map(([key, value]) => [key, value.trim()]),
-            );
+            const cleanData = itemFormDataForSave(formType, formData);
             await onSave(formType, cleanData, selectedCollectionIDs);
-            handleClose();
+            onClose();
         } catch (error) {
             log.error("Failed to save Locker item", error);
             setError(await formatLockerMutationError(error, "createItem"));
@@ -419,12 +479,9 @@ export const useCreateItemDialogState = ({
         } finally {
             setSaving(false);
         }
-    }, [formData, formType, handleClose, onSave, selectedCollectionIDs]);
+    }, [formData, formType, onClose, onSave, selectedCollectionIDs]);
 
-    const handleUpload = useCallback(
-        () => upload(handleClose),
-        [upload, handleClose],
-    );
+    const handleUpload = useCallback(() => upload(onClose), [upload, onClose]);
 
     const canSave =
         formType !== null &&
@@ -432,12 +489,7 @@ export const useCreateItemDialogState = ({
             (field) =>
                 typeof formData[field] === "string" && formData[field].trim(),
         );
-    const canUpload =
-        isFileMode &&
-        selectedUploadItems.length > 0 &&
-        selectedUploadItems.some(
-            (item) => !completedFileKeys.has(uploadQueueItemKey(item)),
-        );
+    const canUpload = isFileMode && pendingUploads;
     const savedUploadCount = completedFileKeys.size;
     const totalUploadCount = selectedUploadItems.length;
     const showUploadCounter = isFileMode && totalUploadCount > 0;
@@ -448,6 +500,7 @@ export const useCreateItemDialogState = ({
         canSave,
         canUpload,
         completedFileKeys,
+        collectionName,
         customCollectionNames,
         displayCollections,
         error,
@@ -455,6 +508,8 @@ export const useCreateItemDialogState = ({
         formType,
         handleClose,
         handleDialogClose,
+        handleDiscard,
+        handleKeepEditing,
         handleFieldChange,
         handleFileSelect,
         handleSave,
@@ -463,6 +518,7 @@ export const useCreateItemDialogState = ({
         handleUpload,
         isEditMode,
         isFileMode,
+        pendingExit,
         saving,
         savedUploadCount,
         selectedCollectionIDs,
@@ -471,6 +527,7 @@ export const useCreateItemDialogState = ({
         selectedType,
         selectedUploadItems,
         setCustomCollectionNames,
+        setCollectionName,
         setSelectedCollectionIDs,
         setSelectedCollectionNamesByFileKey,
         setSelectedUploadItems,

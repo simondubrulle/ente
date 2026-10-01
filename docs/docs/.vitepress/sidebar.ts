@@ -397,12 +397,16 @@ export const sidebar = [
                 collapsed: true,
                 items: [
                     {
+                        text: "Offline codes unavailable",
+                        link: "/auth/troubleshooting/offline-codes-unavailable",
+                    },
+                    {
                         text: "Linux system authentication",
                         link: "/auth/troubleshooting/linux-system-auth",
                     },
                     {
-                        text: "Windows login",
-                        link: "/auth/troubleshooting/windows-login",
+                        text: "Windows",
+                        link: "/auth/troubleshooting/windows",
                     },
                 ],
             },

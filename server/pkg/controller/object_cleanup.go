@@ -162,51 +162,49 @@ func (c *ObjectCleanupController) removeUnreportedObject(tx *sql.Tx, t ente.Temp
 	return nil
 }
 
-func (c *ObjectCleanupController) AddTempObjectKey(objectKey string, dc string) error {
-	expiry := time.Microseconds() + (2 * PreSignedRequestValidityDuration.Microseconds())
-	return c.addCleanupEntryForObjectKey(objectKey, dc, expiry)
-}
-
-func (c *ObjectCleanupController) addCleanupEntryForObjectKey(objectKey string, dc string, expirationTime int64) error {
-	err := c.Repo.AddTempObject(ente.TempObject{
-		ObjectKey:   objectKey,
-		IsMultipart: false,
-		BucketId:    dc,
-	}, expirationTime)
-	return stacktrace.Propagate(err, "")
-}
-
-func (c *ObjectCleanupController) AddMultipartTempObjectKey(objectKey string, uploadID string, dc string) error {
-	expiry := time.Microseconds() + (2 * PreSignedPartUploadRequestDuration.Microseconds())
-	err := c.Repo.AddTempObject(ente.TempObject{
-		ObjectKey:   objectKey,
-		IsMultipart: true,
-		UploadID:    uploadID,
-		BucketId:    dc,
-	}, expiry)
+func (c *ObjectCleanupController) AddTempObject(object ente.TempObject) error {
+	validity := PreSignedRequestValidityDuration
+	if object.IsMultipart {
+		validity = PreSignedPartUploadRequestDuration
+	}
+	expiry := time.Microseconds() + 2*validity.Microseconds()
+	err := c.Repo.AddTempObject(object, expiry)
 	return stacktrace.Propagate(err, "")
 }
 
 func (c *ObjectCleanupController) DeleteAllObjectsWithPrefix(prefix string, dc string) error {
 	s3Client := c.S3Config.GetS3Client(dc)
 	bucket := c.S3Config.GetBucket(dc)
-	output, err := s3Client.ListObjectsV2(&s3.ListObjectsV2Input{
-		Bucket: bucket,
-		Prefix: &prefix,
-	})
-	if err != nil {
-		log.WithFields(log.Fields{
-			"prefix": prefix,
-			"dc":     dc,
-		}).WithError(err).Error("Failed to list objects")
-		return stacktrace.Propagate(err, "")
-	}
 	var keys []string
-	for _, obj := range output.Contents {
-		keys = append(keys, *obj.Key)
+	var continuationToken *string
+	for {
+		output, err := s3Client.ListObjectsV2(&s3.ListObjectsV2Input{
+			Bucket:            bucket,
+			Prefix:            &prefix,
+			ContinuationToken: continuationToken,
+		})
+		if err != nil {
+			log.WithFields(log.Fields{
+				"prefix": prefix,
+				"dc":     dc,
+			}).WithError(err).Error("Failed to list objects")
+			return stacktrace.Propagate(err, "")
+		}
+		for _, obj := range output.Contents {
+			keys = append(keys, *obj.Key)
+		}
+		if !aws.BoolValue(output.IsTruncated) {
+			break
+		}
+		nextContinuationToken := output.NextContinuationToken
+		if aws.StringValue(nextContinuationToken) == "" ||
+			aws.StringValue(nextContinuationToken) == aws.StringValue(continuationToken) {
+			return errors.New("truncated object listing did not provide a new continuation token")
+		}
+		continuationToken = nextContinuationToken
 	}
 	for _, key := range keys {
-		err = c.DeleteObjectFromDataCenter(key, dc)
+		err := c.DeleteObjectFromDataCenter(key, dc)
 		if err != nil {
 			log.WithFields(log.Fields{
 				"object_key": key,

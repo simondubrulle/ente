@@ -127,14 +127,29 @@ pub struct LlmContext {
 
 #[uniffi::export]
 impl LlmContext {
+    pub fn context_size(&self) -> u32 {
+        self.handle.context_size()
+    }
+
     pub fn embed(&self, text: String) -> Result<Vec<f32>, LlmError> {
         self.handle.embed(&text).map_err(LlmError::from)
+    }
+
+    pub fn truncate_text_chat_messages(
+        &self,
+        messages: Vec<LlmChatMessage>,
+        max_tokens: u32,
+    ) -> Result<Vec<LlmChatMessage>, LlmError> {
+        self.handle
+            .truncate_text_chat_messages(messages.into_iter().map(Into::into).collect(), max_tokens)
+            .map(|messages| messages.into_iter().map(Into::into).collect())
+            .map_err(LlmError::from)
     }
 
     pub fn generate_chat_stream(
         &self,
         request: LlmChatRequest,
-        callback: Box<dyn LlmGenerationEventCallback>,
+        callback: Arc<dyn LlmGenerationEventCallback>,
     ) -> Result<LlmGenerationSummary, LlmError> {
         let mut sink = CallbackSink { callback };
         self.handle
@@ -154,7 +169,7 @@ impl LlmContext {
     }
 }
 
-#[uniffi::export(callback_interface)]
+#[uniffi::export(foreign)]
 pub trait LlmGenerationEventCallback: Send + Sync {
     fn on_event(&self, event: LlmGenerationEvent);
 }
@@ -182,6 +197,15 @@ impl From<LlmContextParams> for llm::ContextParams {
 
 impl From<LlmChatMessage> for llm::ChatMessage {
     fn from(value: LlmChatMessage) -> Self {
+        Self {
+            role: value.role,
+            content: value.content,
+        }
+    }
+}
+
+impl From<llm::ChatMessage> for LlmChatMessage {
+    fn from(value: llm::ChatMessage) -> Self {
         Self {
             role: value.role,
             content: value.content,
@@ -243,7 +267,7 @@ impl From<llm::GenerationEvent> for LlmGenerationEvent {
 }
 
 struct CallbackSink {
-    callback: Box<dyn LlmGenerationEventCallback>,
+    callback: Arc<dyn LlmGenerationEventCallback>,
 }
 
 impl llm::EventSink for CallbackSink {

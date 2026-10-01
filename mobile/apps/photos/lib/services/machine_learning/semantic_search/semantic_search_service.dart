@@ -114,14 +114,14 @@ class SemanticSearchService {
     try {
       if (!_shouldUseVectorDbApproximateSearch) return;
       if (!flagService.hasGrantedMLConsent) return;
-      if (!await _vectorDB.checkIfMigrationDone()) {
+      if (!await _vectorDB.isReady()) {
         await Future.delayed(_vectorDbMigrationDelay);
         if (!_shouldUseVectorDbApproximateSearch) return;
         if (!flagService.hasGrantedMLConsent) return;
         await _mlDataDB.checkMigrateFillClipVectorDB();
       }
-      if (await _vectorDB.checkIfMigrationDone()) {
-        await _vectorDB.warmupApproxSearch();
+      if (await _vectorDB.isReady()) {
+        await _vectorDB.warmup();
       }
     } catch (e, s) {
       _logger.severe("Failed to prepare VectorDB for search", e, s);
@@ -144,18 +144,27 @@ class SemanticSearchService {
     if (_searchScreenRequest != null) {
       _latestPendingQuery = query;
       return _searchScreenRequest!;
-    } else {
-      _searchScreenRequest = getMatchingFiles(query).then((result) {
-        _searchScreenRequest = null;
-        if (_latestPendingQuery != null) {
-          final String newQuery = _latestPendingQuery!;
-          _latestPendingQuery = null;
-          return searchScreenQuery(newQuery);
-        }
-        return (query, result);
-      });
-      return _searchScreenRequest!;
     }
+    _searchScreenRequest = _runSearchScreenQuery(query);
+    return _searchScreenRequest!;
+  }
+
+  Future<(String, List<EnteFile>)> _runSearchScreenQuery(String query) async {
+    try {
+      final result = await getMatchingFiles(query);
+      if (_latestPendingQuery == null) {
+        return (query, result);
+      }
+    } catch (_) {
+      if (_latestPendingQuery == null) {
+        rethrow;
+      }
+    } finally {
+      _searchScreenRequest = null;
+    }
+    final newQuery = _latestPendingQuery!;
+    _latestPendingQuery = null;
+    return searchScreenQuery(newQuery);
   }
 
   Future<void> clearIndexes() async {
@@ -202,8 +211,9 @@ class SemanticSearchService {
     bool showThreshold = false;
     if (query.startsWith(RegExp(r"0\.\d+"))) {
       final parts = query.split(" ");
-      if (parts.length > 1) {
-        similarityThreshold = double.parse(parts[0]);
+      final threshold = double.tryParse(parts[0]);
+      if (parts.length > 1 && threshold != null) {
+        similarityThreshold = threshold;
         query = parts.sublist(1).join(" ");
         showThreshold = true;
       }
@@ -463,7 +473,7 @@ class SemanticSearchService {
       final query = entry.key;
       final minimumSimilarity = minimumSimilarityMap[query]!;
       final textEmbedding = entry.value;
-      final results = await _vectorDB.searchApproxSimilaritiesWithinThreshold(
+      final results = await _vectorDB.searchSimilaritiesWithinThreshold(
         textEmbedding,
         minimumSimilarity,
       );
@@ -479,7 +489,7 @@ class SemanticSearchService {
   Future<bool> _canUseVectorDbForSearch() async {
     if (!_shouldUseVectorDbApproximateSearch) return false;
     if (!flagService.hasGrantedMLConsent) return false;
-    if (await _vectorDB.checkIfMigrationDone()) return true;
+    if (await _vectorDB.isReady()) return true;
     // Keep interactive search responsive: prepare/migrate in the background and
     // immediately fall back to in-memory similarity search for this request.
     unawaited(_prepareVectorDbForSearch());

@@ -2,7 +2,7 @@ use std::{
     collections::BTreeMap,
     env,
     fs::{self, File, OpenOptions},
-    io::{self, ErrorKind},
+    io::ErrorKind,
     path::{Path, PathBuf},
 };
 
@@ -15,7 +15,7 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 use zeroize::{ZeroizeOnDrop, Zeroizing};
 
-use crate::{args::Product, parse_json};
+use crate::{args::Product, home, parse_json};
 
 const SCHEMA_VERSION: u8 = 1;
 const VAULT_FILE: &str = "vault.json";
@@ -53,6 +53,7 @@ struct EncryptedVault {
 #[derive(Serialize, Deserialize)]
 pub struct Account {
     pub storage_id: Uuid,
+    pub db_key: DbKey,
     pub name: String,
     pub email: String,
     pub origin: String,
@@ -60,6 +61,9 @@ pub struct Account {
     pub identity: AccountKeys,
     pub sessions: BTreeMap<Product, StoredSession>,
 }
+
+#[derive(Serialize, Deserialize, ZeroizeOnDrop)]
+pub struct DbKey(pub [u8; Key::BYTES]);
 
 #[derive(Serialize, Deserialize, ZeroizeOnDrop)]
 pub struct AccountKeys {
@@ -76,8 +80,8 @@ pub struct StoredSession {
 impl Vault {
     pub fn open() -> Result<Self> {
         let override_key = environment_key()?;
-        let home = application_home()?;
-        create_home(&home).context("cannot create private CLI home")?;
+        let home = home::application_home()?;
+        home::create(&home).context("cannot create private CLI home")?;
         let home = fs::canonicalize(home)?;
         let lock = lock(&home)?;
         let encrypted = read_vault(&home)?;
@@ -85,7 +89,7 @@ impl Vault {
             keyring::Entry::new("io.ente.cli", &home.to_string_lossy())
         })?;
         let state = match encrypted {
-            Some(bytes) => decrypt(&bytes, &key)?,
+            Some(bytes) => decrypt(&bytes, &key, &home)?,
             None => State::default(),
         };
         Ok(Self {
@@ -140,7 +144,7 @@ impl VaultAccess {
         let Self { home, key } = self;
         let lock = lock(&home)?;
         let state = match read_vault(&home)? {
-            Some(bytes) => decrypt(&bytes, &key)?,
+            Some(bytes) => decrypt(&bytes, &key, &home)?,
             None => State::default(),
         };
         Ok(Vault {
@@ -155,7 +159,7 @@ impl VaultAccess {
 impl State {
     pub fn load() -> Result<Self> {
         let override_key = environment_key()?;
-        let home = application_home()?;
+        let home = home::application_home()?;
         // Atomic replacement makes the file a complete snapshot without a read lock.
         let Some(bytes) = read_vault(&home)? else {
             return Ok(Self::default());
@@ -164,7 +168,7 @@ impl State {
         let key = load_key(override_key, true, || {
             keyring::Entry::new("io.ente.cli", &home.to_string_lossy())
         })?;
-        decrypt(&bytes, &key)
+        decrypt(&bytes, &key, &home)
     }
 
     pub fn named(&self, name: &str) -> Result<usize> {
@@ -227,20 +231,6 @@ fn read_vault(home: &Path) -> Result<Option<Vec<u8>>> {
     }
 }
 
-fn create_home(path: &Path) -> io::Result<()> {
-    #[cfg(unix)]
-    use std::os::unix::fs::{DirBuilderExt, PermissionsExt};
-
-    let mut builder = fs::DirBuilder::new();
-    builder.recursive(true);
-    #[cfg(unix)]
-    builder.mode(0o700);
-    builder.create(path)?;
-    #[cfg(unix)]
-    fs::set_permissions(path, fs::Permissions::from_mode(0o700))?;
-    Ok(())
-}
-
 fn lock(home: &Path) -> Result<File> {
     let mut options = OpenOptions::new();
     options.read(true).write(true).create(true);
@@ -252,16 +242,6 @@ fn lock(home: &Path) -> Result<File> {
     let lock = options.open(home.join("vault.lock"))?;
     lock.lock().context("cannot lock the CLI vault")?;
     Ok(lock)
-}
-
-fn application_home() -> Result<PathBuf> {
-    if let Some(home) = env::var_os("ENTE_CLI_HOME") {
-        ensure!(!home.is_empty(), "ENTE_CLI_HOME cannot be empty");
-        return Ok(home.into());
-    }
-    Ok(dirs::data_local_dir()
-        .context("cannot find the application data directory; set ENTE_CLI_HOME")?
-        .join("ente-cli"))
 }
 
 fn environment_key() -> Result<Option<Key>> {
@@ -325,7 +305,7 @@ fn keyring_error(error: keyring::Error, exists: bool) -> anyhow::Error {
     }
 }
 
-fn decrypt(bytes: &[u8], key: &Key) -> Result<State> {
+fn decrypt(bytes: &[u8], key: &Key, home: &Path) -> Result<State> {
     let unlock_error =
         || anyhow::anyhow!("cannot unlock CLI vault: wrong key or damaged ciphertext");
     let encrypted: EncryptedVault =
@@ -338,7 +318,9 @@ fn decrypt(bytes: &[u8], key: &Key) -> Result<State> {
         parse_json(&plaintext).context("invalid CLI vault contents")?;
     ensure!(
         version.schema_version == SCHEMA_VERSION,
-        "unsupported CLI vault schema"
+        "unsupported CLI vault schema {}; this build supports {SCHEMA_VERSION}.\nTo start fresh, move {} aside, then log in again.",
+        version.schema_version,
+        home.join(VAULT_FILE).display(),
     );
     let stored: VersionedState<State> =
         parse_json(&plaintext).context("invalid CLI vault contents")?;

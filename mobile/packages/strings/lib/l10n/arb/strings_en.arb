@@ -44,28 +44,9 @@
     "description": "Title for active sessions page"
   },
   "add": "Add",
-  "addAdmin": "Add admin",
-  "addAdmins": "{count, plural, =0{Add admin} one{Add admin} other{Add admins}}",
-  "@addAdmins": {
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "2"
-      }
-    },
-    "description": "Button text to add admins"
-  },
   "addAlbumWidgetPrompt": "Add an album widget to your home screen to customize it here.",
   "addANameAndPhoto": "Add a name and photo",
-  "addANewEmail": "Add a new email",
   "addCode": "Add code",
-  "addCollaborator": "Add collaborator",
-  "addCollaborators": "{count, plural, =0{Add collaborator} one{Add collaborator} other{Add collaborators}}",
-  "@addCollaborators": {
-    "placeholders": {
-      "count": {}
-    }
-  },
   "addedAMemoryTo": "added a memory to {albumName}",
   "@addedAMemoryTo": {
     "description": "Social notification action text shown after a person's name, for example 'John added a memory to Recents'. Make sure the translation reads naturally with a name before it, and do not capitalize the first letter.",
@@ -75,7 +56,6 @@
       }
     }
   },
-  "addedAs": "Added as",
   "addedBy": "Added by {emailOrName}",
   "@addedBy": {
     "placeholders": {
@@ -142,7 +122,6 @@
   "addMember": "Add member",
   "addMemoriesWidgetPrompt": "Add a memories widget to your home screen to customize it here.",
   "addMore": "Add more",
-  "addMoreAdmins": "Add more admins",
   "addName": "Add name",
   "addNew": "Add new",
   "@addNew": {
@@ -162,7 +141,6 @@
   "@addPage": {
     "description": "Button to capture another page in the document scanner"
   },
-  "addParticipants": "Add participants",
   "addPeopleWidgetPrompt": "Add a people widget to your home screen to customize it here.",
   "addPerson": "Add person",
   "@addPerson": {
@@ -183,30 +161,10 @@
   "addTrustedContact": "Add trusted contact",
   "addTrustedPerson": "Add a trusted person",
   "addUpTo5MembersFree": "Add up to 5 members free",
-  "addViewer": "Add viewer",
-  "addViewers": "{count, plural, =0{Add viewer} one{Add viewer} other{Add viewers}}",
-  "@addViewers": {
-    "placeholders": {
-      "count": {}
-    }
-  },
   "addYourPhotosNow": "Add your photos now",
   "adjust": "Adjust",
   "adjustCrop": "Adjust crop",
   "admin": "Admin",
-  "admins": "Admins",
-  "adminsAndCollaboratorsCanAddPhotosDescription": "Admins and collaborators can add photos. Admins can also manage photos & participants.",
-  "adminsCanManagePhotosAndParticipants": "Admins can manage photos & participants.",
-  "adminsSuccessfullyAdded": "{count, plural, =0{No admins were added} one{{count} admin successfully added} other{{count} admins successfully added}}",
-  "@adminsSuccessfullyAdded": {
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "2"
-      }
-    },
-    "description": "Number of admins that were successfully added."
-  },
   "admiringThem": "Admiring {name}",
   "@admiringThem": {
     "placeholders": {
@@ -224,20 +182,6 @@
   "albumEditsWillNotBeSaved": "Your edits to this album won't be saved.",
   "albumLayout": "Album layout",
   "albumName": "Album name",
-  "albumOwner": "Owner",
-  "@albumOwner": {
-    "description": "Role of the album owner"
-  },
-  "albumParticipantsCount": "{count, plural, =0{No Participants} one{{count} Participant} other{{count} Participants}}",
-  "@albumParticipantsCount": {
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "5"
-      }
-    },
-    "description": "Number of participants in an album, including the album owner."
-  },
   "albums": "Albums",
   "albumsCount": "{count, plural, one{{count} album} other{{count} albums}}",
   "@albumsCount": {
@@ -281,7 +225,9 @@
   },
   "allowAppToOpenSharedAlbumLinks": "Allow app to open shared album links",
   "allowDownloads": "Allow downloads",
+  "allowJoining": "Allow joining",
   "allowJoiningAlbum": "Allow joining album",
+  "allowJoiningDescription": "Viewers with an Ente account can join your album and stay updated",
   "allowPermBody": "Please allow access to your photos from Settings so Ente can display and backup your library.",
   "allowPermTitle": "Allow access to photos",
   "allPersonGroupingWillReset": "All groupings for this person will be reset, and you will lose all suggestions made for this person",
@@ -581,12 +527,6 @@
       }
     }
   },
-  "cannotAddMorePhotosAfterBecomingViewer": "{user} will not be able to add more photos to this album\n\nThey will still be able to remove existing photos added by them",
-  "@cannotAddMorePhotosAfterBecomingViewer": {
-    "placeholders": {
-      "user": {}
-    }
-  },
   "cannotDeleteSharedFiles": "Cannot delete shared files",
   "cannotMoveToSharedAlbums": "Can't move to shared albums",
   "cannotMoveToSharedAlbumsMessage": "Items can only be added to shared albums, not moved. Would you like to add instead?",
@@ -623,7 +563,6 @@
     "description": "Change password title"
   },
   "changePermissions": "Change permissions",
-  "changePermissionsQuestion": "Change permissions?",
   "changeYourReferralCode": "Change your code",
   "checkForUpdates": "Check for updates",
   "checkInboxAndSpamFolder": "Please check your inbox (and spam) to complete verification",
@@ -682,17 +621,6 @@
   "codeIssuerHint": "Issuer",
   "collabLinkSectionDescription": "Let people add photos without an Ente account",
   "collaborator": "Collaborator",
-  "collaboratorsCanAddPhotosAndVideosToTheSharedAlbum": "Collaborators can add photos and videos to the shared album.",
-  "collaboratorsSuccessfullyAdded": "{count, plural, =0{Added 0 collaborator} one{Added {count} collaborator} other{Added {count} collaborators}}",
-  "@collaboratorsSuccessfullyAdded": {
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "2"
-      }
-    },
-    "description": "Number of collaborators that were successfully added."
-  },
   "collageLayout": "Layout",
   "collageSaved": "Collage saved to gallery",
   "collectionCannotBeDeleted": "This collection cannot be deleted",
@@ -717,6 +645,7 @@
   "collectPhotos": "Collect photos",
   "color": "Color",
   "colorfulMarkets": "Vibrant markets",
+  "commentAndReact": "Comment and react",
   "commentedOnAPhoto": "commented on a photo",
   "@commentedOnAPhoto": {
     "description": "Social notification action text shown after a person's name, for example 'John commented on a photo'. Make sure the translation reads naturally with a name before it, and do not capitalize the first letter."
@@ -901,6 +830,7 @@
   "credentialNotesHint": "Recovery methods, security questions, ...",
   "criticalUpdateAvailable": "Critical update available",
   "crop": "Crop",
+  "cropAndRotate": "Crop & rotate",
   "curatedMemories": "Curated memories",
   "currentBackupFolder": "Current backup folder:",
   "currentlyRunning": "currently running",
@@ -1031,16 +961,6 @@
   "deleteMultipleCollectionsDialogBody": "{count, plural, one{{count} collection} other{{count} collections}} will be deleted permanently.",
   "@deleteMultipleCollectionsDialogBody": {
     "description": "Confirmation message body for deleting multiple collections",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "deleteMultipleFilesDialogBody": "{count, plural, one{{count} item} other{{count} items}} will be deleted permanently.",
-  "@deleteMultipleFilesDialogBody": {
-    "description": "Confirmation message body for deleting multiple items",
     "placeholders": {
       "count": {
         "type": "int",
@@ -1202,6 +1122,7 @@
       }
     }
   },
+  "downloadPhotos": "Download photos",
   "downloadSkippedAlreadyAvailableOnDevice": "{fileName} is already available in the {albumName} album on your device",
   "@downloadSkippedAlreadyAvailableOnDevice": {
     "description": "Toast shown in single-file download flow when the file already exists locally",
@@ -1383,6 +1304,7 @@
   "enableAutomaticBackups": "Automatic backups",
   "enableBackupsIosInstruction": "To enable backups on iOS, choose a folder in Files (for example \"On My iPhone\").",
   "enableComment": "Comments and reactions",
+  "enableDownloadsToAllowJoining": "Enable downloads to allow joining.",
   "enabled": "Enabled",
   "enableMaps": "Enable maps",
   "encrypted": "Encrypted",
@@ -1501,7 +1423,7 @@
   "@facesTimelineBannerTitle": {
     "description": "Title for the Memory Lane suggestion banner shown on a person's page"
   },
-  "facesTimelineCaptionYearsAgo": "{count, plural, one{# year ago} other{# years ago}}",
+  "facesTimelineCaptionYearsAgo": "{count, plural, zero{now} one{# year ago} other{# years ago}}",
   "@facesTimelineCaptionYearsAgo": {
     "description": "Caption for frames when birthdate is unknown, expressing time difference",
     "placeholders": {
@@ -1538,6 +1460,79 @@
       "age": {
         "type": "String",
         "description": "Placeholder for the separately styled age number; retain this placeholder in every plural form."
+      }
+    }
+  },
+  "memoryLaneCaptionYearsAgo": "{name} {count, plural, one{{number} year ago} other{{number} years ago}}",
+  "@memoryLaneCaptionYearsAgo": {
+    "description": "Memory Lane caption in elapsed years. Always keep the number, including for one.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "number": {
+        "type": "String",
+        "description": "Placeholder rendered as a separate, larger number; retain in every plural form."
+      }
+    }
+  },
+  "memoryLaneCaptionMonthsAgo": "{name} {count, plural, one{{number} month ago} other{{number} months ago}}",
+  "@memoryLaneCaptionMonthsAgo": {
+    "description": "Memory Lane caption in elapsed months. Always keep the number, including for one.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "number": {
+        "type": "String",
+        "description": "Placeholder rendered as a separate, larger number; retain in every plural form."
+      }
+    }
+  },
+  "memoryLaneCaptionWeeksAgo": "{name} {count, plural, one{{number} week ago} other{{number} weeks ago}}",
+  "@memoryLaneCaptionWeeksAgo": {
+    "description": "Memory Lane caption in elapsed weeks. Always keep the number, including for one.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "number": {
+        "type": "String",
+        "description": "Placeholder rendered as a separate, larger number; retain in every plural form."
+      }
+    }
+  },
+  "memoryLaneCaptionDaysAgo": "{name} {count, plural, one{{number} day ago} other{{number} days ago}}",
+  "@memoryLaneCaptionDaysAgo": {
+    "description": "Memory Lane caption in elapsed days. Always keep the number, including for one.",
+    "placeholders": {
+      "name": {
+        "type": "String"
+      },
+      "count": {
+        "type": "int"
+      },
+      "number": {
+        "type": "String",
+        "description": "Placeholder rendered as a separate, larger number; retain in every plural form."
+      }
+    }
+  },
+  "memoryLaneCaptionToday": "{name} today",
+  "@memoryLaneCaptionToday": {
+    "description": "Memory Lane caption for a photo taken today, without a number.",
+    "placeholders": {
+      "name": {
+        "type": "String"
       }
     }
   },
@@ -1678,6 +1673,10 @@
   "fileDeletedSuccessfully": "Item deleted successfully",
   "fileInfoAddDescHint": "Add a description...",
   "fileMarkedAsImportant": "Item marked as important",
+  "fileNameTooLong": "File name is too long. Try a shorter name.",
+  "@fileNameTooLong": {
+    "description": "Validation error when a renamed file exceeds the filesystem filename length limit"
+  },
   "fileNotUploadedYet": "File not uploaded yet",
   "fileRemovedFromImportant": "Item removed from important",
   "files": "Files",
@@ -1958,10 +1957,9 @@
   "imageEditorExposure": "Exposure",
   "imageEditorFade": "Fade",
   "imageEditorHue": "Hue",
-  "imageEditorLuminance": "Luminance",
   "imageEditorSaturation": "Saturation",
-  "imageEditorSharpness": "Sharpness",
   "imageEditorTemperature": "Temperature",
+  "imageEditorTint": "Tint",
   "imageNotAnalyzed": "Image not analyzed",
   "immediate": "Immediate",
   "immediately": "Immediately",
@@ -1980,6 +1978,15 @@
   "importEnteEncGuide": "Select the encrypted JSON file exported from Ente",
   "importEnterSetupKey": "Enter a setup key",
   "importFailureDesc": "Could not parse the selected file.",
+  "importFileTooLarge": "The selected file is too large. Maximum size: {size}.",
+  "@importFileTooLarge": {
+    "placeholders": {
+      "size": {
+        "type": "String",
+        "example": "10 MiB"
+      }
+    }
+  },
   "importFromGallery": "Import from gallery",
   "importGoogleAuthConfirmation": "{codeCount, plural, one{Import 1 code from Google Authenticator?} other{Import {codeCount} codes from Google Authenticator?}}",
   "@importGoogleAuthConfirmation": {
@@ -1995,6 +2002,7 @@
   "importInstruction": "Please select a file that contains a list of your codes in the following format",
   "importLabel": "Import",
   "importLastpassGuide": "Use the \"Transfer accounts\" option within Lastpass Authenticator Settings and press \"Export accounts to file\". Import the JSON downloaded.",
+  "importOpenAuthenticatorGuide": "Use the options under \"Backups\" in Open Authenticator's Settings to create a backup, then share or export it.\n\nYou will need to enter the backup password you set when creating it.",
   "importOtpAuthGuide": "Export an encrypted backup from OTP Auth, then select the .otpauthdb or .otpauthdp file. Single-account .otpauth exports are also supported.",
   "importProtonAuthGuide": "Use the \"Export\" option in Proton Authenticator Settings to export your codes.\n\nIf your export is password protected, you will need to enter the password to decrypt it.",
   "importRaivoGuide": "Use the \"Export OTPs to Zip archive\" option in Raivo's Settings.\n\nExtract the zip file and import the JSON file.",
@@ -2091,6 +2099,7 @@
       "count": {}
     }
   },
+  "itemWillBeRemovedFromThisAlbum": "This item will be removed from this album",
   "items": "{count} items",
   "@items": {
     "description": "Number of items in a collection",
@@ -2103,6 +2112,15 @@
   },
   "itemsShowTheNumberOfDaysRemainingBeforePermanentDeletion": "Items show the number of days remaining before permanent deletion",
   "itemsStored": "Items stored",
+  "itemsWillBeDeletedFromAllCollections": "{count, plural, one{This item will be deleted from all collections. You can recover it from Trash.} other{These items will be deleted from all collections. You can recover them from Trash.}}",
+  "@itemsWillBeDeletedFromAllCollections": {
+    "description": "Confirmation message explaining that deleted items leave every collection and remain recoverable from Trash.",
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
   "itemsWillBeRemovedFromAlbum": "Selected items will be removed from this album",
   "itLooksLikeSomethingWentWrongPleaseRetryAfterSome": "It looks like something went wrong. Please retry after some time. If the error persists, please contact our support team.",
   "@itLooksLikeSomethingWentWrongPleaseRetryAfterSome": {
@@ -2374,6 +2392,7 @@
   "linkLabel": "Link",
   "linkNeverExpires": "Never",
   "linkRequestLimitExceeded": "This album has been viewed on too many devices",
+  "linkSettings": "Link settings",
   "links": "Links",
   "list": "List",
   "livePhotos": "Live Photos",
@@ -2487,12 +2506,10 @@
   "@magic": {
     "description": "Section header for magic search results"
   },
-  "manage": "Manage",
   "manageDeviceStorage": "Manage device cache",
   "manageDeviceStorageDesc": "Review and clear local storage",
   "manageFamily": "Manage family",
   "manageLink": "Manage link",
-  "manageParticipants": "Manage",
   "managePaymentMethod": "Manage payment method",
   "manageSubscription": "Manage subscription",
   "manualSort": "Custom",
@@ -2512,6 +2529,10 @@
   "@mediaManagementHintTitle": {
     "description": "Title of a sheet prompting Android users to enable media management permission."
   },
+  "meetEnteLocker": "Meet Ente Locker",
+  "@meetEnteLocker": {
+    "description": "Button in the Photos changelog that opens the Ente Locker website"
+  },
   "members": "Members",
   "memberStorageUsed": "{amount} used",
   "@memberStorageUsed": {
@@ -2523,6 +2544,8 @@
     }
   },
   "memories": "Memories",
+  "memoriesReadyNotificationTitle": "Rediscover your memories ✨",
+  "memoriesReadyNotificationBody": "Tailored for you, crafted on your phone.",
   "memoriesWidgetDesc": "Select the kinds of memories you want to see on your home screen.",
   "memoryCount": "{count, plural, =0{no memories} one{{formattedCount} memory} other{{formattedCount} memories}}",
   "@memoryCount": {
@@ -2583,6 +2606,15 @@
   "message": "Message",
   "minimizeAppOnCopy": "Minimize app on copy",
   "minimizeToTrayOnClose": "Minimize to tray on close",
+  "minutesCountShort": "{count}m",
+  "@minutesCountShort": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
   "mixedGrouping": "Mixed grouping?",
   "mlConsent": "Enable machine learning",
   "mlConsentConfirmation": "I understand, and wish to enable machine learning",
@@ -2675,6 +2707,7 @@
   "moveSelectedPhotosToOneDate": "Move selected photos to one date",
   "moveToAlbum": "Move to album",
   "moveToHiddenAlbum": "Move to hidden album",
+  "moveToTrashQuestion": "Move to Trash?",
   "movingFilesToAlbum": "Moving files to album...",
   "muteAudio": "Mute audio",
   "name": "Name",
@@ -2782,6 +2815,7 @@
   },
   "noResult": "No result",
   "noResultsFound": "No results found",
+  "noMatchingResultsFound": "No matching results found",
   "noSessionsFound": "No sessions found!",
   "noSimilarImagesFound": "No similar images found",
   "noSuggestionsForPerson": "No suggestions for {personName}",
@@ -2816,6 +2850,7 @@
     }
   },
   "nothingToSeeHere": "Nothing to see here",
+  "nothingToCleanUp": "Nothing to clean up",
   "nothingToTidyUpHere": "Nothing to tidy up here",
   "notifications": "Notifications",
   "notifyMe": "Notify me",
@@ -2844,6 +2879,7 @@
   "offlineHomeSignupBannerAction": "Back up now",
   "offlineHomeSignupBannerDescription": "Encrypted backups across 3 locations to keep your memories safe.",
   "offlineHomeSignupBannerTitle": "Protect your memories forever",
+  "offlineKeyUnavailableMessage": "Ente Auth cannot access the key for your offline codes.",
   "offlineModeWarning": "You have chosen to proceed without backups. Please take manual backups to make sure your codes are safe.",
   "offlineNameFaceBannerSubtitle": "Sign up to tag them and easily find their photos later.",
   "offlineNameFaceBannerTitle": "Give this face a name",
@@ -2896,7 +2932,6 @@
   "optionalAsShortAsYouLike": "Optional, as short as you like...",
   "organization": "Organization",
   "organizationDesc": "Collections, favorites, search, and ways to keep items organized",
-  "orPickAnExistingOne": "Or pick an existing one",
   "orRemoveYourself": "Or remove yourself as {email}'s trusted contact",
   "@orRemoveYourself": {
     "description": "Text shown before remove contact button in ready state",
@@ -3188,7 +3223,11 @@
       "folderName": {}
     }
   },
+  "publicLink": "Public link",
+  "publicLinkAccessDescription": "Anyone with the link can open the album without an Ente account.",
+  "publicLinkCollectDescription": "Anyone with this link can add photos to your album.",
   "publicLinkEnabled": "Public link enabled",
+  "publicLinkViewDescription": "Anyone with this link can access your album.",
   "qr": "QR",
   "qrCode": "QR code",
   "questionmark": "?",
@@ -3402,12 +3441,6 @@
   "remoteVideos": "Remote videos",
   "remove": "Remove",
   "removeAccess": "Remove access",
-  "removeAlbumParticipantBody": "{userEmail} will be removed from this shared album\n\nAny photos added by them will also be removed from the album",
-  "@removeAlbumParticipantBody": {
-    "placeholders": {
-      "userEmail": {}
-    }
-  },
   "removeCollectionParticipantBody": "{userEmail} will be removed from this shared collection\n\nAny items added by them will also be removed from the collection",
   "@removeCollectionParticipantBody": {
     "placeholders": {
@@ -3423,6 +3456,14 @@
     "description": "Description for remove contact confirmation dialog"
   },
   "removeContactPhoto": "Remove contact photo",
+  "removedItems": "{count, plural, one{Removed {count} item} other{Removed {count} items}}",
+  "@removedItems": {
+    "placeholders": {
+      "count": {
+        "type": "num"
+      }
+    }
+  },
   "removeDuplicates": "Duplicates",
   "removeDuplicatesDesc": "Remove exact duplicates",
   "removeFromAlbum": "Remove from album",
@@ -3545,6 +3586,7 @@
   "restoringFiles": "Restoring files...",
   "restoringItems": "Restoring...",
   "resumableUploads": "Resumable uploads",
+  "retake": "Retake",
   "retry": "Retry",
   "review": "Review",
   "reviewSuggestions": "Review suggestions",
@@ -3815,6 +3857,15 @@
       }
     }
   },
+  "secondsCountShort": "{count}s",
+  "@secondsCountShort": {
+    "placeholders": {
+      "count": {
+        "type": "int",
+        "example": "5"
+      }
+    }
+  },
   "secret": "Secret",
   "secretCanNotBeEmpty": "Secret can not be empty",
   "security": "Security",
@@ -4007,7 +4058,6 @@
   "shareCodesDuration": "Select the duration for which you want to share codes.",
   "shareCollection": "Share collection",
   "shared": "Shared",
-  "sharedAlbumSectionDescription": "Create shared and collaborative albums with other Ente users, including users on free plans.",
   "sharedAlbumsLabel": "Shared",
   "@sharedAlbumsLabel": {
     "description": "Albums tab label for albums shared by you"
@@ -4063,15 +4113,6 @@
   },
   "shareThisLink": "This link allows anyone who receives it to access your item. You can remove access at any time by deleting the link.",
   "shareWithNonenteUsers": "Share with non-Ente users",
-  "shareWithPeopleSectionTitle": "{numberOfPeople, plural, =0{Share with specific people} one{Shared with {numberOfPeople} person} other{Shared with {numberOfPeople} people}}",
-  "@shareWithPeopleSectionTitle": {
-    "placeholders": {
-      "numberOfPeople": {
-        "type": "int",
-        "example": "2"
-      }
-    }
-  },
   "shareYourFeedbackHere": "Share your feedback here",
   "@shareYourFeedbackHere": {
     "description": "Placeholder for optional account deletion feedback"
@@ -4189,6 +4230,7 @@
   "sortNewestFirst": "Newest first",
   "sortOldestFirst": "Oldest first",
   "sortZToA": "Z-A",
+  "speed": "Speed",
   "sportsAction": "Game on",
   "sportsWithThem": "Sports with {name}",
   "@sportsWithThem": {
@@ -4252,6 +4294,7 @@
       }
     }
   },
+  "straighten": "Straighten",
   "streamDetails": "Stream details",
   "streetArt": "Street art stories",
   "streetFood": "Street food bites",
@@ -4514,6 +4557,7 @@
       }
     }
   },
+  "unableToAccessYourCodes": "Unable to access your codes",
   "unableToCheckForUpdatesRightNow": "Unable to check for updates right now",
   "unableToExtractFileInformation": "Unable to extract information from this file",
   "unarchive": "Unarchive",
@@ -4722,16 +4766,6 @@
   "viewAllExifData": "View all EXIF data",
   "viewAllHelpTopics": "View all help topics",
   "viewer": "Viewer",
-  "viewersSuccessfullyAdded": "{count, plural, =0{Added 0 viewers} one{Added {count} viewer} other{Added {count} viewers}}",
-  "@viewersSuccessfullyAdded": {
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "2"
-      }
-    },
-    "description": "Number of viewers that were successfully added."
-  },
   "viewLargeFiles": "Large files",
   "viewLargeFilesDesc": "Identify items using the most space",
   "viewLogs": "View logs",
@@ -4827,16 +4861,6 @@
   "yesDeleteCollections": "Yes, delete {count, plural, one{collection} other{collections}}",
   "@yesDeleteCollections": {
     "description": "Button label for confirming deletion of one or more collections",
-    "placeholders": {
-      "count": {
-        "type": "int",
-        "example": "3"
-      }
-    }
-  },
-  "yesDeleteFiles": "Yes, delete {count, plural, one{item} other{items}}",
-  "@yesDeleteFiles": {
-    "description": "Button label for confirming deletion of one or more items",
     "placeholders": {
       "count": {
         "type": "int",
@@ -4983,5 +5007,86 @@
   "personShareFailedTitle": "Could not share photos",
   "personShareFailedBody": "The shared album could not be created. Your photos and selection are unchanged. Please try again.",
   "personShareRollbackFailed": "The share did not finish, and the album “{name}” could not be removed. It remains in Albums and may have an active public link. Review or delete it there before trying again. Your original photos are safe.",
-  "@personShareRollbackFailed": {"placeholders": {"name": {"type": "String"}}}
+  "@personShareRollbackFailed": {"placeholders": {"name": {"type": "String"}}},
+  "sharedByYou": "Shared by you",
+  "sharedByOwner": "Shared by {owner}",
+  "@sharedByOwner": {
+    "placeholders": {
+      "owner": {
+        "type": "String"
+      }
+    }
+  },
+  "youAreViewer": "You are a viewer",
+  "youAreCollaborator": "You are a collaborator",
+  "youAreAdmin": "You are an admin",
+  "emptyAlbumShareMessage": "Add a person to\nshare your album with them",
+  "addPeople": "Add people",
+  "fromYourContacts": "From your contacts",
+  "chooseAccess": "Choose access",
+  "permissions": "Permissions",
+  "viewerRoleDescription": "View and download photos",
+  "collaboratorRoleDescription": "Plus add their own photos",
+  "adminRoleDescription": "Plus add and remove people",
+  "addAsViewers": "{count, plural, one{Add as viewer} other{Add as viewers}}",
+  "@addAsViewers": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addAsCollaborators": "{count, plural, one{Add as collaborator} other{Add as collaborators}}",
+  "@addAsCollaborators": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "addAsAdmins": "{count, plural, one{Add as admin} other{Add as admins}}",
+  "@addAsAdmins": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "noEnteAccountWithThisEmail": "No Ente account with this email.",
+  "shareALinkInline": "Share a link.",
+  "personAlreadyHasAccess": "This person already has access.",
+  "removePersonTitle": "Remove {name}?",
+  "@removePersonTitle": {
+    "placeholders": {
+      "name": {
+        "type": "String"
+      }
+    }
+  },
+  "removePersonBody": "{count, plural, =0{They lose access to this album straight away.} one{They lose access to this album straight away. The {count} photo they added will be removed.} other{They lose access to this album straight away. The {count} photos they added will be removed.}}",
+  "@removePersonBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "leaveAlbumTitle": "Leave {album}?",
+  "@leaveAlbumTitle": {
+    "placeholders": {
+      "album": {
+        "type": "String"
+      }
+    }
+  },
+  "leaveAlbumBody": "{count, plural, =0{You will lose access to this album straight away.} one{You will lose access to this album straight away. The {count} photo you added will be removed.} other{You will lose access to this album straight away. The {count} photos you added will be removed.}}",
+  "@leaveAlbumBody": {
+    "placeholders": {
+      "count": {
+        "type": "int"
+      }
+    }
+  },
+  "notEnoughStorageTitle": "Not enough storage",
+  "notEnoughStorageBody": "You do not have enough free space on Ente to add new photos. Free up space or upgrade to keep adding."
 }

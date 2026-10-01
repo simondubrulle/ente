@@ -100,7 +100,7 @@ const hasFileViewerBackStateMarker = (state: unknown, marker: string) =>
     typeof state == "object" &&
     (state as Record<string, unknown>)[fileViewerBackStateKey] == marker;
 
-export interface FileViewerFileAnnotation {
+interface FileViewerFileAnnotation {
     fileID: number;
     isOwnFile: boolean;
     showFavorite: boolean;
@@ -111,7 +111,7 @@ export interface FileViewerFileAnnotation {
     showEditImage: boolean;
 }
 
-export interface FileViewerAnnotatedFile {
+interface FileViewerAnnotatedFile {
     file: EnteFile;
     annotation: FileViewerFileAnnotation;
     itemData: ItemData;
@@ -1861,7 +1861,9 @@ export const FileViewer: React.FC<FileViewerProps> = ({
                     !isInTrashSection &&
                     onSendLink && (
                         <MoreMenuItem onClick={handleSendLinkMenuAction}>
-                            <MoreMenuItemTitle>Send link</MoreMenuItemTitle>
+                            <MoreMenuItemTitle>
+                                {t("send_link")}
+                            </MoreMenuItemTitle>
                             <HugeiconsIcon icon={Navigation03Icon} size={20} />
                         </MoreMenuItem>
                     )}

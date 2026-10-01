@@ -3,12 +3,28 @@ import { clientPackageName, desktopAppVersion, isDesktop } from "ente-base/app";
 import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
 import { apiOrigin } from "ente-base/origins";
+import type { UploadedPostAsset } from "ente-space-wasm";
 import {
     openSpaceLinkContext,
+    type DecryptedSpaceProfile,
+    type MessageConversationActivity,
+    type MessageResponse,
+    type PostAsset,
+    type PostPage,
+    type PostPhoto,
+    type PostResponse,
+    type ProfileAvatarResponse,
     type SpaceAccountCtxHandle,
+    type SpaceActorResponse,
     type SpaceLinkCtxHandle,
 } from "ente-space-wasm";
-import { clearCachedSpaceHomeItems } from "services/home-items";
+import {
+    invalidateCachedSpaceFeed,
+    patchCachedSpaceFeedPost,
+    prependCachedSpaceFeedPost,
+    removeCachedSpaceFeedPost,
+    removeCachedSpaceFeedPostsBySpace,
+} from "services/feed-cache";
 import type { PendingSpaceInvite } from "services/invite";
 import {
     cachedSpaceMediaBlobURL,
@@ -19,171 +35,20 @@ import {
     spaceProfileMediaCacheKey,
 } from "services/media-cache";
 import {
-    cacheOwnLatestPost,
-    patchCachedOwnLatestPost,
-} from "services/post-cache";
-import {
     ensureCurrentSpaceContext,
     loadExistingSpaceProfile,
     persistCurrentOwnedSpaces,
     releaseCurrentSpaceContext,
 } from "services/profile";
-import {
-    parseSpaceProfilePayload,
-    spaceProfileTextField,
-} from "services/profile-payload";
-import { isFriendRequestCanceledError } from "utils/friend-errors";
 import { normalizeSpaceMessageText } from "utils/message-limits";
+import { spacePostDeletedEvent } from "utils/post-events";
+import { postQuoteErrorState, postQuotePhotoIndex } from "utils/post-quote";
 
 export { clearSpaceMediaURLCache } from "services/media-cache";
 
-const currentHomePostsPageSize = 100;
-
-interface SpaceAvatar {
-    keyVersion: number;
-    objectID: string;
-    size?: number;
-    updatedAt?: string;
-}
+type SpaceAvatar = Pick<ProfileAvatarResponse, "objectID" | "keyVersion">;
 
 type SpaceCover = SpaceAvatar;
-
-interface SpaceProfileResponse {
-    avatar?: SpaceAvatar;
-    cover?: SpaceCover;
-    friends?: number;
-    posts?: number;
-    profile: string;
-    updatedAt?: string;
-    version?: number;
-    spaceId: string;
-    spaceSlug: string;
-}
-
-interface SpaceActor {
-    avatar?: SpaceAvatar;
-    profile?: string;
-    publicKey?: string;
-    spaceId: string;
-    spaceSlug: string;
-}
-
-interface SpacePostObject {
-    height?: number;
-    mediaType?: string;
-    objectKey: string;
-    size?: number;
-    thumbHash?: string;
-    width?: number;
-}
-
-interface SpacePostResponse {
-    author: SpaceActor;
-    caption?: string;
-    createdAt: string;
-    encryptedPostKey: string;
-    keyVersion: number;
-    objects?: SpacePostObject[];
-    postId: number;
-    viewerLiked: boolean;
-    spaceId: string;
-    spaceSlug: string;
-    isUnavailable?: boolean;
-}
-
-interface SpacePostPageResponse {
-    items?: SpacePostResponse[];
-    nextCursor?: string;
-}
-
-interface SpaceHomePostPageResponse extends SpacePostPageResponse {
-    syncCursor: string;
-}
-
-type SpaceMessageConversationActivityType =
-    | "empty"
-    | "friend_request"
-    | "friend_added"
-    | "message"
-    | "message_like"
-    | "post_like"
-    | "post_reply";
-
-interface SpaceMessageConversationActivity {
-    createdAt: string;
-    id: string;
-    kind?: SpaceMessageKindResponse;
-    messageId?: string;
-    outgoing?: boolean;
-    postId?: number;
-    postSpaceId?: string;
-    text?: string;
-    type: SpaceMessageConversationActivityType;
-    isUnavailable?: boolean;
-}
-
-interface SpaceFriend {
-    createdAt: string;
-    friend: SpaceActor;
-    shareKeyVersion: number;
-}
-
-type SpaceMessageKindResponse =
-    | "friend_added"
-    | "poke"
-    | "post_like"
-    | "post_reply"
-    | "regular";
-
-interface SpaceMessageResponse {
-    createdAt: string;
-    id?: string;
-    isDeleted?: boolean;
-    kind: SpaceMessageKindResponse;
-    liked?: boolean;
-    messageId: string;
-    recipientSpaceId: string;
-    replyMessageId?: string;
-    replyPostId?: number;
-    senderSpaceId: string;
-    text: string;
-    viewerLiked?: boolean;
-    updatedAt: string;
-    isUnavailable?: boolean;
-}
-
-interface SpaceMessagePageResponse {
-    items?: SpaceMessageResponse[];
-    nextCursor?: string;
-}
-
-interface SpaceFriendRequestResponse {
-    requestId: number;
-    requester: SpaceActor;
-    createdAt: string;
-}
-
-interface SpaceSentFriendRequestResponse {
-    requestId: number;
-    target: SpaceActor;
-    createdAt: string;
-}
-
-interface SpaceConversationChatSummaryResponse {
-    latestActivity: SpaceMessageConversationActivity;
-    unreadActivities?: SpaceMessageConversationActivity[];
-}
-
-type SpaceConversationChatSummaries =
-    | Record<string, SpaceConversationChatSummaryResponse>
-    | Map<string, SpaceConversationChatSummaryResponse>;
-
-interface SpaceConversationsResponse {
-    chatSummaries?: SpaceConversationChatSummaries;
-    friends?: SpaceFriend[];
-    latestPostCreatedAt?: string | null;
-    pendingRequests?: SpaceFriendRequestResponse[];
-}
 
 interface SpacePostBase {
     avatarKeyVersion?: number;
@@ -205,30 +70,36 @@ interface SpacePostBase {
     isUnavailable?: boolean;
 }
 
-export interface SpacePostAsset {
-    encryptedPostKey: string;
-    keyVersion: number;
-    mediaType?: string;
-    objectKey: string;
-    postId: number;
-    spaceId: string;
+export type SpacePostAsset = PostAsset & { mediaType?: string };
+
+export interface SpacePostVideo {
+    asset?: SpacePostAsset;
+    url?: string;
+    durationMs: number;
+    start?: number;
+    end?: number;
+    muted?: boolean;
 }
 
-export interface SpacePost extends SpacePostBase {
+export interface SpacePostPhoto {
+    video?: SpacePostVideo;
+    height?: number;
     imageAsset?: SpacePostAsset;
     imageUrl?: string;
+    thumbHash?: string;
+    width?: number;
 }
 
-export interface SpaceHomePostPage {
+export interface SpacePost extends SpacePostBase, SpacePostPhoto {
+    photos?: SpacePostPhoto[];
+}
+
+export interface SpacePostPage {
     items: SpacePost[];
     nextCursor?: string;
-    syncCursor: string;
 }
 
-export interface SpaceProfilePost extends SpacePostBase {
-    imageAsset?: SpacePostAsset;
-    imageUrl?: string;
-}
+export type SpaceProfilePost = SpacePost;
 
 export interface SpaceProfilePostPage {
     items: SpaceProfilePost[];
@@ -253,12 +124,6 @@ export interface PublicSpaceLinkSession {
     unsubscribeWebPush: (endpoint: string) => Promise<void>;
 }
 
-export interface CurrentSpaceLink {
-    accessKey: string;
-    spaceId: string;
-    spaceSlug: string;
-}
-
 export type SpacePostAssetURLLoader = (
     asset: SpacePostAsset,
 ) => Promise<string>;
@@ -277,11 +142,15 @@ interface PublicSpaceIdentityResponse {
     spaceSlug?: string;
 }
 
-export type SpaceMessageKind = SpaceMessageKindResponse;
+type SpaceMessageKind = MessageResponse["kind"];
 
 export interface SpaceMessageQuote {
+    durationMs?: number;
     imageUrl?: string;
     isUnavailable?: boolean;
+    hasLoadError?: boolean;
+    objectKey?: string;
+    photoCount?: number;
     postId: number;
     spaceId: string;
 }
@@ -292,10 +161,12 @@ export interface SpaceMessage {
     isDeleted: boolean;
     kind: SpaceMessageKind;
     liked: boolean;
+    reaction?: string;
     quote?: SpaceMessageQuote;
     recipient: FriendProfile;
     replyMessageId?: string;
     replyPostId?: number;
+    replyObjectKey?: string;
     sender: FriendProfile;
     text: string;
     updatedAtMs: number;
@@ -303,14 +174,9 @@ export interface SpaceMessage {
     isUnavailable?: boolean;
 }
 
-export type SpaceMessageActivityType = SpaceMessageConversationActivityType;
+type SpaceMessageActivityType = MessageConversationActivity["type"];
 
-export interface SpaceMessageActivityPost {
-    imageUrl?: string;
-    isDeleted?: boolean;
-    postId: number;
-    spaceId: string;
-}
+export type SpaceMessageActivityPost = SpaceMessageQuote;
 
 export interface SpaceMessageActivity {
     createdAtMs: number;
@@ -321,6 +187,7 @@ export interface SpaceMessageActivity {
     post?: SpaceMessageActivityPost;
     text?: string;
     type: SpaceMessageActivityType;
+    reaction?: string;
     isUnavailable?: boolean;
 }
 
@@ -358,32 +225,6 @@ export interface SpaceUnreadStatus {
     messagesUnread: boolean;
 }
 
-interface SpaceUnreadStatusResponse {
-    notificationsUnread: boolean;
-}
-
-interface SpaceFriendRequestContext {
-    confirmFriendRequest: (
-        spaceId: string,
-        requestId: bigint,
-    ) => Promise<unknown>;
-    deleteFriendRequest: (spaceId: string, requestId: bigint) => Promise<void>;
-    listFriendRequests: (
-        spaceId: string,
-    ) => Promise<SpaceFriendRequestResponse[]>;
-    listSentFriendRequests: (
-        spaceId: string,
-    ) => Promise<SpaceSentFriendRequestResponse[]>;
-    requestFriendByUsername: (
-        spaceId: string,
-        username: string,
-    ) => Promise<unknown>;
-}
-
-interface SpaceConversationsContext {
-    listConversations: (spaceId: string) => Promise<SpaceConversationsResponse>;
-}
-
 export const isSpaceContentError = (error: unknown) =>
     isNamedError(error, "content_unavailable");
 
@@ -415,14 +256,6 @@ const placeholderMessageActor = (spaceId: string): FriendProfile => ({
 
 const friendSpaceId = (friend: FriendProfile) => friend.spaceId || friend.id;
 
-const conversationSummaryForFriend = (
-    summaries: SpaceConversationChatSummaries | undefined,
-    friendSpaceID: string,
-) =>
-    summaries instanceof Map
-        ? summaries.get(friendSpaceID)
-        : summaries?.[friendSpaceID];
-
 const messageActorForSpace = (
     spaceId: string,
     actors: SpaceMessageHydrationActors,
@@ -432,12 +265,10 @@ const messageActorForSpace = (
     return placeholderMessageActor(spaceId);
 };
 
-const actorProfile = (actor: SpaceActor): FriendProfile => {
-    const payload = parseSpaceProfilePayload(actor.profile ?? "");
+const actorProfile = (actor: SpaceActorResponse): FriendProfile => {
+    const payload = actor.profile;
     const fullName =
-        spaceProfileTextField(payload.fullName) ||
-        spaceProfileTextField(payload.displayName) ||
-        actor.spaceSlug;
+        payload?.fullName || payload?.displayName || actor.spaceSlug;
     const username = actor.spaceSlug;
 
     return {
@@ -456,13 +287,11 @@ const actorProfile = (actor: SpaceActor): FriendProfile => {
 };
 
 const profileFromSpaceProfile = (
-    spaceProfile: SpaceProfileResponse,
+    spaceProfile: DecryptedSpaceProfile,
 ): FriendProfile => {
-    const payload = parseSpaceProfilePayload(spaceProfile.profile);
+    const payload = spaceProfile.profile;
     const fullName =
-        spaceProfileTextField(payload.fullName) ||
-        spaceProfileTextField(payload.displayName) ||
-        spaceProfile.spaceSlug;
+        payload?.fullName || payload?.displayName || spaceProfile.spaceSlug;
 
     return {
         avatarKeyVersion: spaceProfile.avatar?.keyVersion,
@@ -474,7 +303,7 @@ const profileFromSpaceProfile = (
         coverObjectID: spaceProfile.cover?.objectID,
         coverUpdatedAt: spaceProfile.cover?.updatedAt,
         coverUrl: null,
-        friendsCount: spaceProfile.friends ?? 0,
+        friendsCount: spaceProfile.friends,
         fullName,
         id: spaceProfile.spaceId || spaceProfile.spaceSlug,
         username: spaceProfile.spaceSlug,
@@ -558,16 +387,9 @@ const cachedAccountAvatarURLIfPresent = async (
     );
 };
 
-const postAssetFrom = (
-    post: SpacePostResponse,
-    object: SpacePostObject,
-): SpacePostAsset => ({
-    encryptedPostKey: post.encryptedPostKey,
-    keyVersion: post.keyVersion,
-    mediaType: object.mediaType,
-    objectKey: object.objectKey,
-    postId: post.postId,
-    spaceId: post.spaceId,
+const postAssetFrom = (photo: PostPhoto): SpacePostAsset => ({
+    ...photo.asset,
+    mediaType: photo.mediaType,
 });
 
 const postAssetCacheKey = (asset: SpacePostAsset) =>
@@ -580,43 +402,40 @@ const accountPostAssetURLFromAsset = (
 ) =>
     cachedSpaceMediaBlobURL(
         postAssetCacheKey(asset),
-        () =>
-            ctx.downloadPostAssetWithKey(
-                asset.spaceId,
-                asset.encryptedPostKey,
-                asset.keyVersion,
-                viewerSpaceId ?? null,
-                asset.objectKey,
-            ),
+        () => ctx.downloadPostAsset(asset, viewerSpaceId ?? null),
         asset.mediaType,
     );
 
 const accountPostAssetURL = (
     ctx: SpaceAccountCtxHandle,
-    post: SpacePostResponse,
-    object: SpacePostObject,
+    photo: PostPhoto,
     viewerSpaceId?: string,
-) =>
-    accountPostAssetURLFromAsset(
-        ctx,
-        postAssetFrom(post, object),
-        viewerSpaceId,
-    );
+) => accountPostAssetURLFromAsset(ctx, postAssetFrom(photo), viewerSpaceId);
 
-const cacheAccountPostAssetURL = async (
-    post: SpacePostResponse,
-    object: SpacePostObject,
-    blob: Blob,
-) => {
-    const key = postAssetCacheKey(postAssetFrom(post, object));
-    await rememberCachedSpaceMediaBlobURL(key, blob);
+const cacheAccountPostAssetURL = async (photo: PostPhoto, blob: Blob) => {
+    const key = postAssetCacheKey(postAssetFrom(photo));
+    return rememberCachedSpaceMediaBlobURL(key, blob);
 };
 
-const firstObject = (post: { objects?: SpacePostObject[] }) =>
-    post.objects?.find((object) => object.objectKey.trim()) ?? null;
+const postVideoFrom = (photo: PostPhoto): SpacePostVideo | undefined =>
+    photo.video
+        ? {
+              asset: { ...photo.video.asset, mediaType: "video/mp4" },
+              durationMs: photo.video.durationMs,
+          }
+        : undefined;
+
+const postPhotosFromResponse = (post: PostResponse): SpacePostPhoto[] =>
+    post.photos.map((photo) => ({
+        video: postVideoFrom(photo),
+        height: photo.height,
+        imageAsset: postAssetFrom(photo),
+        thumbHash: photo.thumbHash,
+        width: photo.width,
+    }));
 
 const postBaseFromResponse = (
-    post: SpacePostResponse,
+    post: PostResponse,
     author: FriendProfile,
 ): SpacePostBase => ({
     avatarKeyVersion: author.avatarKeyVersion,
@@ -637,16 +456,16 @@ const postBaseFromResponse = (
 
 const postFromAccountPost = async (
     ctx: SpaceAccountCtxHandle,
-    post: SpacePostResponse,
+    post: PostResponse,
     loadMedia = true,
     viewerSpaceId?: string,
 ): Promise<SpacePost> => {
-    const object = firstObject(post);
     const author = actorProfile(post.author);
     const base = postBaseFromResponse(post, author);
-    if (post.isUnavailable || !object) {
+    if (post.isUnavailable) {
         return { ...base, isUnavailable: true };
     }
+    const photo = post.photos[0]!;
     if (loadMedia) {
         author.avatarUrl = await accountAvatarURL(
             ctx,
@@ -657,58 +476,42 @@ const postFromAccountPost = async (
     }
 
     const imageUrl = loadMedia
-        ? await accountPostAssetURL(ctx, post, object, viewerSpaceId)
+        ? await accountPostAssetURL(ctx, photo, viewerSpaceId)
         : undefined;
     return {
         ...base,
         avatarUrl: author.avatarUrl,
-        height: object.height,
-        imageAsset: postAssetFrom(post, object),
+        video: postVideoFrom(photo),
+        height: photo.height,
+        imageAsset: postAssetFrom(photo),
         imageUrl,
-        thumbHash: object.thumbHash,
-        width: object.width,
+        photos: postPhotosFromResponse(post),
+        thumbHash: photo.thumbHash,
+        width: photo.width,
     };
 };
 
-const profilePostFromPost = (post: SpacePostResponse): SpaceProfilePost => {
-    const object = firstObject(post);
+const profilePostFromPost = (post: PostResponse): SpaceProfilePost => {
     const author = actorProfile(post.author);
     const base = postBaseFromResponse(post, author);
-    if (post.isUnavailable || !object) {
+    if (post.isUnavailable) {
         return { ...base, avatarUrl: null, isUnavailable: true };
     }
+    const photo = post.photos[0]!;
     return {
         ...base,
         avatarUrl: null,
-        height: object.height,
-        imageAsset: postAssetFrom(post, object),
-        thumbHash: object.thumbHash,
-        width: object.width,
+        video: postVideoFrom(photo),
+        height: photo.height,
+        imageAsset: postAssetFrom(photo),
+        photos: postPhotosFromResponse(post),
+        thumbHash: photo.thumbHash,
+        width: photo.width,
     };
 };
 
-const homePostPageFromAccountPage = async (
-    ctx: SpaceAccountCtxHandle,
-    page: SpaceHomePostPageResponse,
-    loadMedia = true,
-    viewerSpaceId?: string,
-): Promise<SpaceHomePostPage> => {
-    const items = await Promise.all(
-        (page.items ?? []).map((post) =>
-            postFromAccountPost(ctx, post, loadMedia, viewerSpaceId),
-        ),
-    );
-    return {
-        items,
-        nextCursor: page.nextCursor || undefined,
-        syncCursor: page.syncCursor,
-    };
-};
-
-const profilePostPageFromPage = (
-    page: SpacePostPageResponse,
-): SpaceProfilePostPage => ({
-    items: (page.items ?? []).map(profilePostFromPost),
+const profilePostPageFromPage = (page: PostPage): SpaceProfilePostPage => ({
+    items: page.items.map(profilePostFromPost),
     nextCursor: page.nextCursor || undefined,
 });
 
@@ -750,19 +553,14 @@ export const openPublicSpaceLink = async (
         spaceUsername,
     });
     try {
-        const response = ctx.getProfile() as SpaceProfileResponse;
+        const response = ctx.getProfile();
         const profile = profileFromSpaceProfile(response);
         return {
             close: () => ctx.free(),
             loadPostImage: (asset) =>
                 cachedSpaceMediaBlobURL(
                     postAssetCacheKey(asset),
-                    () =>
-                        ctx.downloadPostAsset(
-                            asset.encryptedPostKey,
-                            asset.keyVersion,
-                            asset.objectKey,
-                        ),
+                    () => ctx.downloadPostAsset(asset),
                     asset.mediaType,
                 ),
             loadProfileMedia: async () => {
@@ -783,9 +581,7 @@ export const openPublicSpaceLink = async (
                 return { avatarUrl, coverUrl };
             },
             loadPosts: async () =>
-                profilePostPageFromPage(
-                    (await ctx.listPosts()) as SpacePostPageResponse,
-                ).items,
+                profilePostPageFromPage(await ctx.listPosts()).items,
             profile: { ...profile, avatarUrl: profile.avatarUrl ?? null },
             postsCount: response.posts ?? 0,
             subscribeWebPush: (endpoint, p256dh, auth) =>
@@ -811,38 +607,30 @@ const withCurrentSpaceContext = async <T>(
     }
 };
 
-export const getOrCreateCurrentSpaceLink = () =>
-    withCurrentSpaceContext(
-        async (ctx, spaceId) =>
-            (await ctx.getOrCreateSpaceLink(spaceId)) as CurrentSpaceLink,
-    );
-
-export const rotateCurrentSpaceLink = () =>
-    withCurrentSpaceContext(
-        async (ctx, spaceId) =>
-            (await ctx.rotateSpaceLink(spaceId)) as CurrentSpaceLink,
-    );
-
 const messageQuoteFromPostResponse = async (
     ctx: SpaceAccountCtxHandle,
-    post: SpacePostResponse,
+    post: PostResponse,
     includeImage: boolean,
     viewerSpaceId?: string,
+    objectKey?: string,
 ): Promise<SpaceMessageQuote> => {
-    const object = firstObject(post);
+    const photoIndex = postQuotePhotoIndex(
+        post.photos.map((photo) => photo.asset),
+        objectKey,
+    );
+    const photo = post.photos[photoIndex];
     const quote: SpaceMessageQuote = {
+        durationMs: photo?.video?.durationMs,
+        objectKey,
+        photoCount: post.photos.length,
         postId: post.postId,
         spaceId: post.spaceId,
     };
-    if (!includeImage || !object) return quote;
+    if (!photo || post.isUnavailable) return { ...quote, isUnavailable: true };
+    if (!includeImage) return quote;
 
     try {
-        const imageUrl = await accountPostAssetURL(
-            ctx,
-            post,
-            object,
-            viewerSpaceId,
-        );
+        const imageUrl = await accountPostAssetURL(ctx, photo, viewerSpaceId);
         if (!imageUrl) {
             quote.isUnavailable = true;
             return quote;
@@ -850,14 +638,14 @@ const messageQuoteFromPostResponse = async (
         quote.imageUrl = imageUrl;
     } catch (error) {
         log.warn("Failed to load quoted post image", error);
-        quote.isUnavailable = true;
+        Object.assign(quote, postQuoteErrorState(error));
     }
     return quote;
 };
 
 const messageQuoteFromReplyPost = async (
     ctx: SpaceAccountCtxHandle,
-    message: SpaceMessageResponse,
+    message: MessageResponse,
     includeImage: boolean,
     viewerSpaceId?: string,
 ): Promise<SpaceMessageQuote | undefined> => {
@@ -866,32 +654,34 @@ const messageQuoteFromReplyPost = async (
     }
 
     const fallbackQuote: SpaceMessageQuote = {
+        objectKey: message.replyObjectKey,
         postId: message.replyPostId,
         spaceId: message.recipientSpaceId,
     };
     if (!includeImage) return fallbackQuote;
 
     try {
-        const post = (await ctx.getPost(
+        const post = await ctx.getPost(
             message.recipientSpaceId,
             BigInt(message.replyPostId),
             viewerSpaceId ?? null,
-        )) as SpacePostResponse;
+        );
         return await messageQuoteFromPostResponse(
             ctx,
             post,
             includeImage,
             viewerSpaceId,
+            message.replyObjectKey,
         );
     } catch (error) {
         log.warn("Failed to load quoted post", error);
-        return { ...fallbackQuote, isUnavailable: true };
+        return { ...fallbackQuote, ...postQuoteErrorState(error) };
     }
 };
 
 const messageQuoteFromSpaceMessage = async (
     ctx: SpaceAccountCtxHandle,
-    message: SpaceMessageResponse,
+    message: MessageResponse,
     includeImage: boolean,
     viewerSpaceId?: string,
 ): Promise<SpaceMessageQuote | undefined> =>
@@ -899,7 +689,7 @@ const messageQuoteFromSpaceMessage = async (
 
 const messageFromSpaceMessage = async (
     ctx: SpaceAccountCtxHandle,
-    message: SpaceMessageResponse,
+    message: MessageResponse,
     includeQuoteImage: boolean,
     viewerSpaceId?: string,
     actors?: SpaceMessageHydrationActors,
@@ -920,62 +710,62 @@ const messageFromSpaceMessage = async (
           );
     return {
         createdAtMs: timestampMsFromSpaceDate(message.createdAt),
-        id: message.messageId || message.id || message.createdAt,
-        isDeleted: Boolean(message.isDeleted),
+        id: message.messageId || message.createdAt,
+        isDeleted: message.isDeleted,
         isUnavailable: message.isUnavailable,
         kind: message.kind,
-        liked: Boolean(message.liked),
+        liked: message.liked,
+        reaction: message.reaction ?? undefined,
         quote,
         recipient,
         replyMessageId: message.replyMessageId,
         replyPostId: message.replyPostId,
+        replyObjectKey: message.replyObjectKey,
         sender,
         text: message.text,
         updatedAtMs: timestampMsFromSpaceDate(message.updatedAt),
-        viewerLiked: Boolean(message.viewerLiked),
+        viewerLiked: message.viewerLiked,
     };
 };
 
 const messageActivityPostFromActivity = (
-    activity: SpaceMessageConversationActivity,
+    activity: MessageConversationActivity,
 ): SpaceMessageActivityPost | undefined => {
     if (typeof activity.postId != "number" || !activity.postSpaceId) {
         return undefined;
     }
-    return { postId: activity.postId, spaceId: activity.postSpaceId };
+    return {
+        postId: activity.postId,
+        spaceId: activity.postSpaceId,
+        objectKey: activity.replyObjectKey,
+    };
 };
 
 export const loadCurrentMessageActivityPostPreview = async (
     post: SpaceMessageActivityPost,
     viewerSpaceId?: string,
 ): Promise<SpaceMessageActivityPost | undefined> => {
-    if (post.isDeleted) return post;
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = (await ctx.getPost(
+        const response = await ctx.getPost(
             post.spaceId,
             BigInt(post.postId),
             viewerSpaceId ?? null,
-        )) as SpacePostResponse | null;
-        if (!response) return post;
-        const quote = await messageQuoteFromPostResponse(
+        );
+        return await messageQuoteFromPostResponse(
             ctx,
             response,
             true,
             viewerSpaceId,
+            post.objectKey,
         );
-        return {
-            ...post,
-            imageUrl: quote.imageUrl,
-            isDeleted: quote.isUnavailable,
-        };
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
 };
 
 const messageActivityFromSpaceActivity = (
-    activity: SpaceMessageConversationActivity,
+    activity: MessageConversationActivity,
 ): SpaceMessageActivity => {
     const post = messageActivityPostFromActivity(activity);
     return {
@@ -983,10 +773,11 @@ const messageActivityFromSpaceActivity = (
         id: activity.id,
         kind: activity.kind || undefined,
         messageId: activity.messageId,
-        outgoing: Boolean(activity.outgoing),
+        outgoing: activity.outgoing,
         post,
         text: activity.text?.trim() || undefined,
         type: activity.type,
+        reaction: activity.reaction ?? undefined,
         isUnavailable: activity.isUnavailable,
     };
 };
@@ -1031,12 +822,10 @@ export const requestFriendByUsername = async ({
     if (!spaceId) throw new Error("Missing space.");
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = (await (
-            ctx as SpaceFriendRequestContext
-        ).requestFriendByUsername(spaceId, spaceUsername)) as {
-            status?: string;
-        };
-        await clearCachedSpaceHomeItems(spaceId);
+        const response = await ctx.requestFriendByUsername(
+            spaceId,
+            spaceUsername,
+        );
         return response.status == "friend" ? "friend" : "requested";
     } finally {
         releaseCurrentSpaceContext(ctx);
@@ -1045,10 +834,7 @@ export const requestFriendByUsername = async ({
 
 export const loadCurrentSpaceRelationship = (targetSpaceId: string) =>
     withCurrentSpaceContext(async (ctx, spaceId) => {
-        const response = (await ctx.getRelationship(
-            spaceId,
-            targetSpaceId,
-        )) as { relationship?: string };
+        const response = await ctx.getRelationship(spaceId, targetSpaceId);
         return response.relationship == "self"
             ? "self"
             : response.relationship == "friend"
@@ -1077,7 +863,7 @@ export const loadCurrentSpaceFriends = async (spaceId: string) => {
 
     const ctx = await ensureCurrentSpaceContext();
     const promise = (async () => {
-        const friends = (await ctx.listSpaceFriends(spaceId)) as SpaceFriend[];
+        const friends = await ctx.listSpaceFriends(spaceId);
         return friends.map(({ friend }) => actorProfile(friend));
     })();
     spaceFriendsCache.set(spaceId, promise);
@@ -1097,11 +883,8 @@ export const loadCurrentSpaceFriends = async (spaceId: string) => {
 export const loadCurrentSpaceFriendsCount = async (spaceId: string) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const spaceProfile = (await ctx.getSpaceProfile(
-            spaceId,
-            spaceId,
-        )) as SpaceProfileResponse;
-        return spaceProfile.friends ?? 0;
+        const spaceProfile = await ctx.getSpaceProfile(spaceId, spaceId);
+        return spaceProfile.friends;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1112,10 +895,9 @@ export const loadCurrentFriendRequests = async (
 ): Promise<SpaceFriendRequest[]> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const requestContext = ctx as SpaceFriendRequestContext;
         const [receivedRequests, sentRequests] = await Promise.all([
-            requestContext.listFriendRequests(spaceId),
-            requestContext.listSentFriendRequests(spaceId),
+            ctx.listFriendRequests(spaceId),
+            ctx.listSentFriendRequests(spaceId),
         ]);
         return [
             ...receivedRequests.map((request) => ({
@@ -1140,10 +922,10 @@ export const loadCurrentSpaceProfile = async (
 ): Promise<FriendProfile> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const spaceProfile = (await ctx.getSpaceProfile(
+        const spaceProfile = await ctx.getSpaceProfile(
             spaceId,
             viewerSpaceId ?? null,
-        )) as SpaceProfileResponse;
+        );
         const profile = profileFromSpaceProfile(spaceProfile);
         const [avatarUrl, coverUrl] = await Promise.all([
             accountAvatarURL(
@@ -1174,7 +956,7 @@ export const removeCurrentSpaceFriend = async (
     const ctx = await ensureCurrentSpaceContext();
     try {
         await ctx.removeFriendBySpace(actorSpaceId, spaceId);
-        await clearCachedSpaceHomeItems(actorSpaceId);
+        await removeCachedSpaceFeedPostsBySpace(actorSpaceId, spaceId);
         await clearSpaceMediaCache();
         clearSpaceFriendsCache();
     } finally {
@@ -1182,21 +964,22 @@ export const removeCurrentSpaceFriend = async (
     }
 };
 
-export const loadCurrentHomePostsPage = async (
+export const loadCurrentFeedPage = async (
     spaceId: string,
-    after?: string,
     cursor?: string,
-): Promise<SpaceHomePostPage> => {
+): Promise<SpacePostPage> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const page = (await ctx.listHomePosts(
-            spaceId,
-            after ?? null,
-            cursor ?? null,
-            currentHomePostsPageSize,
-        )) as SpaceHomePostPageResponse;
+        const page = await ctx.listFeed(spaceId, cursor ?? null, 10);
         await persistCurrentOwnedSpaces(ctx);
-        return await homePostPageFromAccountPage(ctx, page, false, spaceId);
+        return {
+            items: await Promise.all(
+                page.items.map((post) =>
+                    postFromAccountPost(ctx, post, false, spaceId),
+                ),
+            ),
+            nextCursor: page.nextCursor || undefined,
+        };
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1207,10 +990,20 @@ export const loadCurrentUnreadStatus = async (
 ): Promise<SpaceUnreadStatus> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const status = (await ctx.unreadStatus(
-            spaceId,
-        )) as SpaceUnreadStatusResponse;
+        const status = await ctx.unreadStatus(spaceId);
         return { messagesUnread: status.notificationsUnread };
+    } finally {
+        releaseCurrentSpaceContext(ctx);
+    }
+};
+
+export const hasCurrentSpacePosts = async (
+    spaceId: string,
+): Promise<boolean> => {
+    const ctx = await ensureCurrentSpaceContext();
+    try {
+        const page = await ctx.listPosts(spaceId, spaceId, null, 1);
+        return page.items.length > 0;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1224,16 +1017,13 @@ export const loadCurrentSpaceProfilePostsPage = async (
     const ctx = await ensureCurrentSpaceContext();
     try {
         const page = profilePostPageFromPage(
-            (await ctx.listPosts(
+            await ctx.listPosts(
                 spaceId,
                 viewerSpaceId ?? null,
                 cursor ?? null,
-                60,
-            )) as SpacePostPageResponse,
+                250,
+            ),
         );
-        if (!cursor && spaceId == viewerSpaceId) {
-            await cacheOwnLatestPost(spaceId, page.items[0]);
-        }
         return page;
     } finally {
         releaseCurrentSpaceContext(ctx);
@@ -1247,12 +1037,11 @@ export const loadCurrentSpacePost = async (
 ): Promise<SpacePost | null> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = (await ctx.getPost(
+        const response = await ctx.getPost(
             spaceId,
             BigInt(postId),
             viewerSpaceId ?? null,
-        )) as SpacePostResponse | null;
-        if (!response) return null;
+        );
         const post = await postFromAccountPost(
             ctx,
             response,
@@ -1289,18 +1078,22 @@ export const loadCurrentSpacePostAvatarURL: SpacePostAvatarURLLoader = async (
         return null;
     }
 
+    const avatar = {
+        keyVersion: post.avatarKeyVersion,
+        objectID: post.avatarObjectID,
+    };
+    const cachedAvatarURL = await cachedAccountAvatarURLIfPresent(
+        post.spaceId,
+        avatar,
+    );
+    if (cachedAvatarURL) return cachedAvatarURL;
     const profile = await loadExistingSpaceProfile();
     const ctx = await ensureCurrentSpaceContext();
     try {
         return await accountAvatarURL(
             ctx,
             post.spaceId,
-            {
-                keyVersion: post.avatarKeyVersion,
-                objectID: post.avatarObjectID,
-                size: post.avatarSize,
-                updatedAt: post.avatarUpdatedAt,
-            },
+            avatar,
             profile?.spaceId,
         );
     } finally {
@@ -1318,8 +1111,6 @@ export const loadCurrentFriendAvatarURL = async (
     const avatar = {
         keyVersion: friend.avatarKeyVersion,
         objectID: friend.avatarObjectID,
-        size: friend.avatarSize,
-        updatedAt: friend.avatarUpdatedAt,
     };
     const cachedAvatarURL = await cachedAccountAvatarURLIfPresent(
         friend.spaceId,
@@ -1341,51 +1132,120 @@ export const loadCurrentFriendAvatarURL = async (
     }
 };
 
-export const createCurrentPhotoPost = async ({
-    caption,
-    file,
-    height,
-    spaceId,
-    thumbHash,
-    width,
-}: {
-    caption?: string;
+export interface PreparedSpacePostMedia {
     file: File;
-    height?: number;
-    spaceId: string;
+    height: number;
+    width: number;
     thumbHash: string;
-    width?: number;
+    video?: { file: File; durationMs: number };
+}
+
+export interface SpacePostUploadSession {
+    requestId?: string;
+    key?: Uint8Array;
+    postId?: number;
+    uploads: {
+        preview?: UploadedPostAsset;
+        video?: UploadedPostAsset;
+        expiresAt: number;
+    }[];
+}
+
+export const createCurrentMediaPost = async ({
+    images,
+    caption,
+    spaceId,
+    session,
+    signal,
+}: {
+    images: PreparedSpacePostMedia[];
+    caption: string;
+    spaceId: string;
+    session: SpacePostUploadSession;
+    signal?: AbortSignal;
 }) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const bytes = new Uint8Array(await file.arrayBuffer());
-        const normalizedWidth = normalizedImageDimension(width);
-        const normalizedHeight = normalizedImageDimension(height);
-        const created = (await ctx.createPhotoPost(
-            spaceId,
-            bytes,
-            caption?.trim() || null,
-            {
-                width: normalizedWidth,
-                height: normalizedHeight,
-                mediaType: file.type || null,
-                thumbHash: thumbHash || null,
-            },
-        )) as SpacePostResponse;
-        const object = firstObject(created);
-        if (object) await cacheAccountPostAssetURL(created, object, file);
-        const post = await postFromAccountPost(ctx, created, true, spaceId);
-        await cacheOwnLatestPost(spaceId, post);
-        return post;
+        if (!session.postId) {
+            session.key ??= ctx.generatePostKey();
+            session.requestId ??= crypto.randomUUID();
+            for (const [index, image] of images.entries()) {
+                signal?.throwIfAborted();
+                let upload = session.uploads[index];
+                if (!upload || upload.expiresAt < Date.now()) {
+                    upload = { expiresAt: Date.now() + 25 * 60 * 1000 };
+                    session.uploads[index] = upload;
+                }
+                upload.preview ??= await ctx.uploadPostPhotoAsset(
+                    spaceId,
+                    session.key,
+                    new Uint8Array(await image.file.arrayBuffer()),
+                    {
+                        width: image.width,
+                        height: image.height,
+                        mediaType: image.file.type,
+                        thumbHash: image.thumbHash,
+                    },
+                    signal,
+                );
+                signal?.throwIfAborted();
+                if (image.video)
+                    upload.video ??= await ctx.uploadPostVideoAsset(
+                        spaceId,
+                        session.key,
+                        new Uint8Array(await image.video.file.arrayBuffer()),
+                        {
+                            width: image.width,
+                            height: image.height,
+                            durationMs: image.video.durationMs,
+                        },
+                        signal,
+                    );
+            }
+            signal?.throwIfAborted();
+            session.postId = Number(
+                await ctx.createMediaPost(
+                    spaceId,
+                    session.key,
+                    session.uploads.map((upload) => ({
+                        preview: upload.preview!,
+                        video: upload.video,
+                    })),
+                    session.requestId,
+                    caption.trim() || undefined,
+                ),
+            );
+        }
+        return session.postId;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
 };
 
-const normalizedImageDimension = (dimension: number | undefined) =>
-    typeof dimension == "number" && Number.isFinite(dimension) && dimension > 0
-        ? Math.round(dimension)
-        : null;
+export const loadCurrentCreatedPost = async (
+    spaceId: string,
+    postId: number,
+    previews: File[],
+) => {
+    const ctx = await ensureCurrentSpaceContext();
+    try {
+        const created = await ctx.getPost(spaceId, BigInt(postId), spaceId);
+        const imageURLs = await Promise.all(
+            created.photos.map((photo, index) =>
+                cacheAccountPostAssetURL(photo, previews[index]!),
+            ),
+        );
+        const post = await postFromAccountPost(ctx, created, false, spaceId);
+        post.imageUrl = imageURLs[0];
+        post.photos?.forEach((photo, index) => {
+            photo.imageUrl = imageURLs[index];
+        });
+        await prependCachedSpaceFeedPost(spaceId, post);
+        return post;
+    } finally {
+        releaseCurrentSpaceContext(ctx);
+    }
+};
 
 export const setCurrentPostLiked = async (
     spaceId: string,
@@ -1395,6 +1255,7 @@ export const setCurrentPostLiked = async (
     const ctx = await ensureCurrentSpaceContext();
     try {
         await ctx.likePost(spaceId, BigInt(postId), liked);
+        await patchCachedSpaceFeedPost(spaceId, postId, { viewerLiked: liked });
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1405,6 +1266,7 @@ export const replyToCurrentPost = async (
     postSpaceId: string,
     postId: number,
     text: string,
+    objectKey: string,
 ) => {
     const messageText = normalizeSpaceMessageText(text);
     const ctx = await ensureCurrentSpaceContext();
@@ -1414,6 +1276,7 @@ export const replyToCurrentPost = async (
             postSpaceId,
             BigInt(postId),
             messageText,
+            objectKey,
         );
     } finally {
         releaseCurrentSpaceContext(ctx);
@@ -1432,11 +1295,7 @@ export const sendCurrentMessage = async (
     try {
         return await messageFromSpaceMessage(
             ctx,
-            (await ctx.sendMessage(
-                senderSpaceId,
-                spaceId,
-                messageText,
-            )) as SpaceMessageResponse,
+            await ctx.sendMessage(senderSpaceId, spaceId, messageText),
             true,
             senderSpaceId,
             { friend: recipient, viewer: sender },
@@ -1456,10 +1315,7 @@ export const sendCurrentPoke = async (
     try {
         return await messageFromSpaceMessage(
             ctx,
-            (await ctx.sendPoke(
-                senderSpaceId,
-                spaceId,
-            )) as SpaceMessageResponse,
+            await ctx.sendPoke(senderSpaceId, spaceId),
             true,
             senderSpaceId,
             { friend: recipient, viewer: sender },
@@ -1482,12 +1338,12 @@ export const replyToCurrentMessage = async (
     try {
         return await messageFromSpaceMessage(
             ctx,
-            (await ctx.replyToMessage(
+            await ctx.replyToMessage(
                 senderSpaceId,
                 spaceId,
                 messageId,
                 messageText,
-            )) as SpaceMessageResponse,
+            ),
             true,
             senderSpaceId,
             { friend: recipient, viewer: sender },
@@ -1497,14 +1353,20 @@ export const replyToCurrentMessage = async (
     }
 };
 
-export const setCurrentMessageLiked = async (
+export const setCurrentMessageReaction = async (
     spaceId: string,
+    senderSpaceId: string,
     messageId: string,
-    liked: boolean,
+    emoji: string | undefined,
 ) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        await ctx.likeMessage(spaceId, messageId, liked);
+        await ctx.setMessageReaction(
+            spaceId,
+            senderSpaceId,
+            messageId,
+            emoji ?? null,
+        );
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1527,34 +1389,24 @@ export const loadCurrentMessageConversations = async (
 ): Promise<SpaceMessageConversationList> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = await (
-            ctx as unknown as SpaceConversationsContext
-        ).listConversations(spaceId);
+        const response = await ctx.listConversations(spaceId);
         const summaries = response.chatSummaries;
         const friendItems = await Promise.all(
-            (response.friends ?? []).map(async (conversation) => {
+            response.friends.map(async (conversation) => {
                 const friend = actorProfile(conversation.friend);
                 const friendSpaceID = friendSpaceId(friend);
                 friend.avatarUrl = await cachedAccountAvatarURLIfPresent(
                     friendSpaceID,
                     conversation.friend.avatar,
                 );
-                const summary = conversationSummaryForFriend(
-                    summaries,
-                    friendSpaceID,
-                );
+                const summary = summaries.get(friendSpaceID);
                 const latestActivity = summary
                     ? messageActivityFromSpaceActivity(summary.latestActivity)
                     : undefined;
                 const unreadActivities = summary
-                    ? (summary.unreadActivities ?? [])
-                          .map(messageActivityFromSpaceActivity)
-                          .map((activity) =>
-                              activity.id == latestActivity?.id &&
-                              isPokeMessageActivity(latestActivity)
-                                  ? { ...activity, kind: "poke" as const }
-                                  : activity,
-                          )
+                    ? summary.unreadActivities.map(
+                          messageActivityFromSpaceActivity,
+                      )
                     : [];
                 const unreadCount =
                     messageConversationUnreadCount(unreadActivities);
@@ -1577,21 +1429,19 @@ export const loadCurrentMessageConversations = async (
                 };
             }),
         );
-        const requestItems = (response.pendingRequests ?? []).map(
-            (request) => ({
-                friend: actorProfile(request.requester),
-                latestActivity: {
-                    createdAtMs: timestampMsFromSpaceDate(request.createdAt),
-                    id: `friend_request:${request.requestId}`,
-                    outgoing: false,
-                    type: "friend_request" as const,
-                },
-                notificationUnread: true,
-                unread: true,
-                unreadActivities: [],
-                unreadCount: 1,
-            }),
-        );
+        const requestItems = response.pendingRequests.map((request) => ({
+            friend: actorProfile(request.requester),
+            latestActivity: {
+                createdAtMs: timestampMsFromSpaceDate(request.createdAt),
+                id: `friend_request:${request.requestId}`,
+                outgoing: false,
+                type: "friend_request" as const,
+            },
+            notificationUnread: true,
+            unread: true,
+            unreadActivities: [],
+            unreadCount: 1,
+        }));
         return {
             items: [...requestItems, ...friendItems],
             latestPostCreatedAtMs: response.latestPostCreatedAt
@@ -1623,8 +1473,6 @@ export const loadCurrentMessageConversationAvatar = async (
             {
                 keyVersion: friend.avatarKeyVersion,
                 objectID: friend.avatarObjectID,
-                size: friend.avatarSize,
-                updatedAt: friend.avatarUpdatedAt,
             },
             viewerSpaceId,
         );
@@ -1639,17 +1487,9 @@ export const confirmCurrentFriendRequest = async (
 ) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        await (ctx as SpaceFriendRequestContext).confirmFriendRequest(
-            spaceId,
-            BigInt(requestId),
-        );
+        await ctx.confirmFriendRequest(spaceId, BigInt(requestId));
         clearSpaceFriendsCache();
-        await clearCachedSpaceHomeItems(spaceId);
-    } catch (error) {
-        if (isFriendRequestCanceledError(error)) {
-            await clearCachedSpaceHomeItems(spaceId);
-        }
-        throw error;
+        await invalidateCachedSpaceFeed(spaceId);
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1661,16 +1501,7 @@ export const deleteCurrentFriendRequest = async (
 ) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        await (ctx as SpaceFriendRequestContext).deleteFriendRequest(
-            spaceId,
-            BigInt(requestId),
-        );
-        await clearCachedSpaceHomeItems(spaceId);
-    } catch (error) {
-        if (isFriendRequestCanceledError(error)) {
-            await clearCachedSpaceHomeItems(spaceId);
-        }
-        throw error;
+        await ctx.deleteFriendRequest(spaceId, BigInt(requestId));
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1684,15 +1515,15 @@ export const loadCurrentMessageThread = async (
 ): Promise<SpaceMessagePage> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const page = (await ctx.listMessageThread(
+        const page = await ctx.listMessageThread(
             viewerSpaceId,
             spaceId,
             null,
             100,
-        )) as SpaceMessagePageResponse;
+        );
         const items = (
             await Promise.all(
-                (page.items ?? []).map((message) =>
+                page.items.map((message) =>
                     messageFromSpaceMessage(
                         ctx,
                         message,
@@ -1726,7 +1557,8 @@ export const deleteCurrentPost = async (spaceId: string, postId: number) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
         await ctx.deletePost(spaceId, BigInt(postId));
-        await patchCachedOwnLatestPost(spaceId, postId, undefined);
+        window.dispatchEvent(new Event(spacePostDeletedEvent));
+        await removeCachedSpaceFeedPost(spaceId, postId);
     } finally {
         releaseCurrentSpaceContext(ctx);
     }
@@ -1744,7 +1576,7 @@ export const updateCurrentPostCaption = async (
             BigInt(postId),
             caption.trim() || null,
         );
-        await patchCachedOwnLatestPost(spaceId, postId, {
+        await patchCachedSpaceFeedPost(spaceId, postId, {
             caption: caption.trim() || undefined,
         });
     } finally {

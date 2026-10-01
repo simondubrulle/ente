@@ -329,7 +329,7 @@ class SettingsSearchRegistry {
     if (showJustifiedLayout) {
       items.add(
         SettingsSearchItem(
-          title: l10n.layout,
+          title: "${l10n.layout} (i)",
           subtitle: l10n.gallery,
           sectionPath: "${l10n.appearance} > ${l10n.gallery}",
           icon: HugeIcons.strokeRoundedDashboardSquare02,
@@ -720,6 +720,15 @@ class SettingsSearchRegistry {
     );
 
     items.addAll([
+      SettingsSearchItem(
+        title: l10n.whatsNew,
+        subtitle: l10n.about,
+        sectionPath: l10n.about,
+        icon: HugeIcons.strokeRoundedParty,
+        routeBuilder: (_) => const AboutUsPage(),
+        isSubPage: true,
+        keywords: ["changelog", "updates", "new"],
+      ),
       SettingsSearchItem(
         title: l10n.weAreOpenSource,
         subtitle: l10n.about,

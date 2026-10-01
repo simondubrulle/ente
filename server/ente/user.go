@@ -15,6 +15,8 @@ const (
 	ExpectedKDFStrength = int64(1073741824 * 4)
 )
 
+const MaxPublicKeyBatchSize = 10
+
 type User struct {
 	ID                 int64
 	Email              string `json:"email"`
@@ -64,7 +66,6 @@ type EmailAuthorizationResponse struct {
 
 type KeyAttributes struct {
 	KEKSalt                           string `json:"kekSalt" binding:"required"`
-	KEKHash                           string `json:"kekHash"`
 	EncryptedKey                      string `json:"encryptedKey" binding:"required"`
 	KeyDecryptionNonce                string `json:"keyDecryptionNonce" binding:"required"`
 	PublicKey                         string `json:"publicKey" binding:"required"`

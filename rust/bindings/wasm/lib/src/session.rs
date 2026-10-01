@@ -6,6 +6,7 @@ use ente_core::{
     http::{ApiConfig, Auth},
 };
 use serde::Deserialize;
+use serde_wasm_bindgen as swb;
 use tsify::{Ts, Tsify};
 use wasm_bindgen::prelude::*;
 
@@ -17,6 +18,8 @@ pub enum Error {
     Accounts(#[from] ente_accounts::Error),
     #[error(transparent)]
     Input(#[from] tsify::Error),
+    #[error(transparent)]
+    Serde(#[from] swb::Error),
     #[error(transparent)]
     Http(#[from] ente_core::http::Error),
     #[error(transparent)]
@@ -34,19 +37,11 @@ impl Error {
             _ => None,
         }
     }
-
-    fn message(&self) -> String {
-        ente_core::error::chain(self)
-    }
 }
 
 impl From<Error> for JsValue {
     fn from(error: Error) -> Self {
-        let js_error = js_sys::Error::new(&error.message());
-        if let Some(name) = error.name() {
-            js_error.set_name(name);
-        }
-        js_error.into()
+        crate::js_error(&error, error.name())
     }
 }
 
@@ -139,19 +134,27 @@ impl Session {
 
 #[wasm_bindgen]
 impl Session {
-    #[wasm_bindgen(js_name = encryptWithRecoveryKey)]
-    pub fn encrypt_with_recovery_key(&self, data_b64: &str) -> Result<EncryptedBox, Error> {
-        Ok(crypto::secretbox::encrypt(&b64::decode(data_b64)?, &self.0.recovery_key).into())
-    }
-
-    #[wasm_bindgen(js_name = recoveryKeyMnemonic)]
-    pub fn recovery_key_mnemonic(&self) -> Result<String, Error> {
-        ente_accounts::auth::recovery_key_to_mnemonic(self.0.recovery_key.as_bytes())
-            .map_err(Into::into)
-    }
-
     #[wasm_bindgen(js_name = updateAuthToken)]
     pub fn update_auth_token(&self, auth_token: String) {
         self.0.api.set_auth(Some(Auth::User(auth_token)));
     }
+}
+
+#[wasm_bindgen(js_name = authEncryptWithRecoveryKey)]
+pub fn auth_encrypt_with_recovery_key(
+    session: &Session,
+    data_b64: &str,
+) -> Result<<EncryptedBox as Tsify>::JsType, Error> {
+    EncryptedBox::from(crypto::secretbox::encrypt(
+        &b64::decode(data_b64)?,
+        &session.inner().recovery_key,
+    ))
+    .into_js()
+    .map_err(Into::into)
+}
+
+#[wasm_bindgen(js_name = authRecoveryKeyMnemonic)]
+pub fn auth_recovery_key_mnemonic(session: &Session) -> Result<String, Error> {
+    ente_accounts::auth::recovery_key_to_mnemonic(session.inner().recovery_key.as_bytes())
+        .map_err(Into::into)
 }

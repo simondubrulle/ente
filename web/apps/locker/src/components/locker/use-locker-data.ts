@@ -1,5 +1,8 @@
 import { masterKeyFromSession } from "@/services/account-keys";
-import { openAuthenticatedSession } from "@/services/authenticated-session";
+import {
+    ensureAuthenticatedSession,
+    openAuthenticatedSession,
+} from "@/services/authenticated-session";
 import type { LockerUploadLimitState } from "@/services/locker-limits";
 import {
     loadPersistedLockerState,
@@ -20,7 +23,7 @@ import { isNamedError } from "ente-base/error";
 import { authenticatedRequestHeaders, isHTTP401Error } from "ente-base/http";
 import log from "ente-base/log";
 import { savedAuthToken } from "ente-base/token";
-import { ensureContactsReady } from "ente-contacts";
+import { initContacts, pullContacts } from "ente-contacts";
 import { contactsGetDiff, contactsGetProfilePicture } from "ente-locker-wasm";
 import { t } from "i18next";
 import type { NextRouter } from "next/router";
@@ -82,24 +85,13 @@ export const useLockerData = ({
     }, [userDetails]);
 
     const warmContacts = useCallback(async () => {
-        const [authToken, masterKey] = await Promise.all([
-            savedAuthToken(),
-            masterKeyFromSession(),
-        ]);
-        if (!authToken || !masterKey) return;
-
-        const userID = ensureLocalUser().id;
-        const session = await openAuthenticatedSession(
-            userID,
-            authToken,
-            masterKey,
-        );
-        await ensureContactsReady(
-            userID,
-            session,
+        await initContacts(
+            ensureLocalUser().id,
+            ensureAuthenticatedSession,
             contactsGetDiff,
             contactsGetProfilePicture,
         );
+        await pullContacts();
     }, []);
 
     const loadUserDetails = useCallback(async (): Promise<boolean> => {

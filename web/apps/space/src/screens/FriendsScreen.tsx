@@ -3,14 +3,15 @@ import {
     BubbleChatIcon,
     Cancel01Icon,
     MoreVerticalIcon,
+    Search01Icon,
     UserAdd02Icon,
     UserRemove01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Menu, MenuItem, Skeleton } from "@mui/material";
 import {
-    SpaceActionFeedbackIcon,
     spaceActionDoneDurationMs,
+    SpaceActionFeedbackIcon,
     type SpaceActionPhase,
 } from "components/ActionFeedback";
 import { SpaceAddFriendDialog } from "components/AddFriendDialog";
@@ -18,6 +19,7 @@ import { SpaceAvatarImage } from "components/AvatarImage";
 import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareInviteButton } from "components/ShareInviteButton";
+import { SpaceSkipLink } from "components/SkipLink";
 import type { FriendProfile } from "data/friends";
 import log from "ente-base/log";
 import React, { useState } from "react";
@@ -622,6 +624,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
     onUnfriend,
 }) => {
     const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
+    const [searchQuery, setSearchQuery] = React.useState("");
     const [friendToUnfriend, setFriendToUnfriend] =
         React.useState<FriendProfile | null>(null);
     const [unfriendActionPhase, setUnfriendActionPhase] =
@@ -637,6 +640,14 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
         Map<string, Promise<string | null | undefined>>
     >(new Map());
     const isUnfriendActionRunning = unfriendActionPhase != null;
+    const searchTerm = searchQuery.trim().toLowerCase();
+    const matchesSearch = (friend: FriendProfile) =>
+        friend.fullName.toLowerCase().includes(searchTerm) ||
+        `@${friend.username}`.toLowerCase().includes(searchTerm);
+    const visibleFriendRequests = searchTerm
+        ? friendRequests.filter((request) => matchesSearch(request.friend))
+        : friendRequests;
+    const visibleFriends = searchTerm ? friends.filter(matchesSearch) : friends;
 
     const loadedAvatarURLFor = React.useCallback(
         (friend: FriendProfile) =>
@@ -731,6 +742,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                 placeItems: { xs: "stretch", sm: "start center" },
             }}
         >
+            <SpaceSkipLink />
             <Box
                 sx={{
                     bgcolor: "transparent",
@@ -841,91 +853,204 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                     username={username}
                 />
 
-                {isLoading ? (
-                    <Box
-                        sx={{
-                            display: "grid",
-                            inset: 0,
-                            placeItems: "center",
-                            position: "absolute",
-                            pointerEvents: "none",
-                        }}
-                    >
-                        <SpaceLoadingSpinner ariaLabel="Loading friends" />
-                    </Box>
-                ) : friendRequests.length > 0 || friends.length > 0 ? (
-                    <Box
-                        component="ul"
-                        sx={{
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "4px",
-                            m: 0,
-                            mt: "8px",
-                            p: 0,
-                            width: "100%",
-                        }}
-                    >
-                        {friendRequests.map((request) => (
-                            <FriendRequestRow
-                                key={`request-${request.requestId}`}
-                                request={request}
-                                onAccept={onAcceptFriendRequest}
-                                onDelete={onDeleteFriendRequest}
-                            />
-                        ))}
-                        {friends.map((friend) => (
-                            <FriendRow
-                                key={friend.id}
-                                avatarUrl={loadedAvatarURLFor(friend)}
-                                friend={friend}
-                                onLoadAvatar={() => loadFriendAvatar(friend)}
-                                onMessage={onMessage}
-                                onOpenFriend={onOpenFriend}
-                                onUnfriend={() => {
-                                    setUnfriendErrorMessage(null);
-                                    setFriendToUnfriend(friend);
+                <Box
+                    component="section"
+                    id="space-main-content"
+                    aria-label="Friends"
+                    tabIndex={-1}
+                >
+                    {!isLoading &&
+                        (friendRequests.length > 0 ||
+                            friends.length > 0 ||
+                            Boolean(searchTerm)) && (
+                            <Box
+                                sx={{
+                                    alignItems: "center",
+                                    bgcolor: spaceSurface,
+                                    borderRadius: "14px",
+                                    display: "flex",
+                                    height: 48,
+                                    mx: "18px",
+                                    mt: "12px",
+                                    px: "14px",
+                                    "&:focus-within": {
+                                        outline: `2px solid ${green}`,
+                                    },
                                 }}
-                            />
-                        ))}
-                    </Box>
-                ) : (
-                    <Box
-                        sx={{
-                            alignItems: "center",
-                            color: textSoft,
-                            display: "flex",
-                            flexDirection: "column",
-                            gap: "22px",
-                            inset: 0,
-                            justifyContent: "center",
-                            fontFamily: '"Inter Variable", Inter, sans-serif',
-                            fontSize: 14,
-                            fontWeight: 500,
-                            lineHeight: "20px",
-                            pointerEvents: "none",
-                            position: "absolute",
-                            px: "24px",
-                            textAlign: "center",
-                        }}
-                    >
-                        <Box component="p" sx={{ m: 0, maxWidth: 260 }}>
-                            Invite your close friends and family. Share everyday
-                            photos and keep up with each other.
+                            >
+                                <HugeiconsIcon
+                                    icon={Search01Icon}
+                                    size={20}
+                                    color={textSoft}
+                                    strokeWidth={1.8}
+                                />
+                                <Box
+                                    component="input"
+                                    type="text"
+                                    inputMode="search"
+                                    aria-label="Search friends"
+                                    autoComplete="off"
+                                    onChange={(event) =>
+                                        setSearchQuery(event.target.value)
+                                    }
+                                    placeholder="Search"
+                                    value={searchQuery}
+                                    sx={{
+                                        bgcolor: "transparent",
+                                        border: 0,
+                                        color: textBase,
+                                        flex: 1,
+                                        fontFamily:
+                                            '"Inter Variable", Inter, sans-serif',
+                                        fontSize: 14,
+                                        fontWeight: 500,
+                                        height: "100%",
+                                        minWidth: 0,
+                                        ml: "10px",
+                                        outline: 0,
+                                        p: 0,
+                                        "&::placeholder": {
+                                            color: textSoft,
+                                            opacity: 1,
+                                        },
+                                    }}
+                                />
+                                {searchQuery && (
+                                    <Box
+                                        component="button"
+                                        type="button"
+                                        aria-label="Clear search"
+                                        onClick={() => setSearchQuery("")}
+                                        sx={{
+                                            alignItems: "center",
+                                            bgcolor: "transparent",
+                                            border: 0,
+                                            color: textSoft,
+                                            cursor: "pointer",
+                                            display: "flex",
+                                            height: spaceTouchTargetSize,
+                                            justifyContent: "center",
+                                            mr: "-14px",
+                                            p: 0,
+                                            width: spaceTouchTargetSize,
+                                        }}
+                                    >
+                                        <HugeiconsIcon
+                                            icon={Cancel01Icon}
+                                            size={18}
+                                            strokeWidth={1.8}
+                                        />
+                                    </Box>
+                                )}
+                            </Box>
+                        )}
+                    {isLoading ? (
+                        <Box
+                            sx={{
+                                display: "grid",
+                                inset: 0,
+                                placeItems: "center",
+                                position: "absolute",
+                                pointerEvents: "none",
+                            }}
+                        >
+                            <SpaceLoadingSpinner ariaLabel="Loading friends" />
                         </Box>
-                        <SpaceShareInviteButton
-                            profileLink={profileLink}
-                            sharing={isInviteSharing}
-                            onShareError={(error) =>
-                                log.error(
-                                    "Failed to share Space invite link",
-                                    error,
-                                )
-                            }
-                            onSharingChange={setIsInviteSharing}
-                        />
-                    </Box>
-                )}
+                    ) : visibleFriendRequests.length > 0 ||
+                      visibleFriends.length > 0 ? (
+                        <Box
+                            component="ul"
+                            sx={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                                m: 0,
+                                mt: "18px",
+                                p: 0,
+                                width: "100%",
+                            }}
+                        >
+                            {visibleFriendRequests.map((request) => (
+                                <FriendRequestRow
+                                    key={`request-${request.requestId}`}
+                                    request={request}
+                                    onAccept={onAcceptFriendRequest}
+                                    onDelete={onDeleteFriendRequest}
+                                />
+                            ))}
+                            {visibleFriends.map((friend) => (
+                                <FriendRow
+                                    key={friend.id}
+                                    avatarUrl={loadedAvatarURLFor(friend)}
+                                    friend={friend}
+                                    onLoadAvatar={() =>
+                                        loadFriendAvatar(friend)
+                                    }
+                                    onMessage={onMessage}
+                                    onOpenFriend={onOpenFriend}
+                                    onUnfriend={() => {
+                                        setUnfriendErrorMessage(null);
+                                        setFriendToUnfriend(friend);
+                                    }}
+                                />
+                            ))}
+                        </Box>
+                    ) : searchTerm ? (
+                        <Box
+                            role="status"
+                            sx={{
+                                color: textSoft,
+                                display: "grid",
+                                fontFamily:
+                                    '"Inter Variable", Inter, sans-serif',
+                                fontSize: 14,
+                                lineHeight: "20px",
+                                minHeight: "max(0px, calc(100svh - 116px))",
+                                placeItems: "center",
+                                textAlign: "center",
+                            }}
+                        >
+                            No results found.
+                        </Box>
+                    ) : (
+                        <Box
+                            sx={{
+                                alignItems: "center",
+                                color: textSoft,
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "22px",
+                                inset: 0,
+                                justifyContent: "center",
+                                fontFamily:
+                                    '"Inter Variable", Inter, sans-serif',
+                                fontSize: 14,
+                                fontWeight: 500,
+                                lineHeight: "20px",
+                                pointerEvents: "none",
+                                position: "absolute",
+                                px: "24px",
+                                textAlign: "center",
+                            }}
+                        >
+                            <Box component="p" sx={{ m: 0, maxWidth: 260 }}>
+                                Invite your friends and family. Share everyday
+                                photos and keep up with each other.
+                            </Box>
+                            <SpaceShareInviteButton
+                                profileLink={profileLink}
+                                sharing={isInviteSharing}
+                                onShareError={(error) =>
+                                    log.error(
+                                        "Failed to share Space invite link",
+                                        error,
+                                    )
+                                }
+                                onSharingChange={setIsInviteSharing}
+                            />
+                        </Box>
+                    )}
+                </Box>
             </Box>
             <ConfirmationActionSheet
                 open={Boolean(friendToUnfriend)}

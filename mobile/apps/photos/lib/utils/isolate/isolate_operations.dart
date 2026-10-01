@@ -1,10 +1,10 @@
 import 'dart:typed_data' show Float32List, Uint8List;
 
-import "package:flutter_rust_bridge/flutter_rust_bridge.dart" show Uint64List;
 import "package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart"
     show Int64List;
 import "package:ml_linalg/linalg.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
+import "package:photos/db/ml/usearch_clip_vector_db.dart";
 import "package:photos/models/ml/face/box.dart";
 import "package:photos/models/ml/vector.dart";
 import "package:photos/services/machine_learning/face_ml/face_clustering/face_clustering_service.dart";
@@ -65,12 +65,14 @@ Future<dynamic> isolateFunction(
   switch (function) {
     case IsolateOperation.bulkVectorSearchWithKeys:
       await _ensureRustLoaded();
-      final potentialKeys = args["potentialKeys"] as Uint64List;
+      final fileIDs = args["fileIDs"] as List<int>;
+      final maxDistance = args["maxDistance"] as double;
       final exact = args["exact"] as bool;
 
-      return ClipVectorDB.instance.bulkSearchWithKeys(
-        potentialKeys,
-        BigInt.from(100),
+      return ClipVectorDB.instance.bulkSearchNearestForFiles(
+        fileIDs,
+        count: 100,
+        maxDistance: maxDistance,
         exact: exact,
       );
 
@@ -79,7 +81,7 @@ Future<dynamic> isolateFunction(
       final clipFloat32 = args["clipFloat32"] as List<Float32List>;
       final exact = args["exact"] as bool;
 
-      return ClipVectorDB.instance.bulkSearchVectors(
+      return UsearchClipVectorDB.instance.bulkSearchVectors(
         clipFloat32,
         BigInt.from(100),
         exact: exact,

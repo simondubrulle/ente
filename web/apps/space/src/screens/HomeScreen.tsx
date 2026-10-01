@@ -1,123 +1,138 @@
-import { Cancel01Icon, UserAdd02Icon } from "@hugeicons/core-free-icons";
+import {
+    FavouriteIcon,
+    MultiplicationSignIcon,
+    UserAdd02Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Box } from "@mui/material";
-import { SpaceActionFeedbackIcon } from "components/ActionFeedback";
+import { Box, Skeleton } from "@mui/material";
+import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
-import { SpaceAddFriendTile } from "components/AddFriendTile";
 import { SpaceAvatarImage } from "components/AvatarImage";
+import { SpaceCaptionText } from "components/CaptionText";
+import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
-    SpaceViewerPostBackdrop,
     type SpaceViewerPhoto,
     type SpaceViewerPostActionMode,
 } from "components/FileViewer";
-import { FriendQuickActionsDialog } from "components/FriendQuickActionsDialog";
-import { SpaceHomeHeader, spaceHomeHeaderHeight } from "components/HomeHeader";
-import { SpaceOwnPostTile } from "components/OwnPostTile";
+import { SpaceHomeHeader } from "components/HomeHeader";
+import { SpaceInlinePostVideo } from "components/InlinePostVideo";
 import {
-    SpacePostBadge,
-    SpacePostUnreadBadge,
-} from "components/PostUnreadBadge";
+    spacePostLikeButtonPop,
+    spacePostLikeHeartPop,
+    spacePostLikePopDurationMs,
+    spacePostLikePopTiming,
+} from "components/post-like-animation";
+import { SpacePostPhotoInput } from "components/PostPhotoInput";
+import { SpacePostPhotosCounter } from "components/PostPhotosCounter";
+import { SpacePostPhotosDots } from "components/PostPhotosDots";
 import { SpacePWAInstallPrompt } from "components/PWAInstallPrompt";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
-import type { FriendProfile } from "data/friends";
+import { SpaceShareInviteButton } from "components/ShareInviteButton";
+import { SpaceSkipLink } from "components/SkipLink";
 import log from "ente-base/log";
 import { useBrowserBackClose } from "hooks/use-browser-back-close";
 import React, { useState } from "react";
 import type { SetupProfile } from "screens/SetupProfileScreen";
-import { markSpaceHomePostRead } from "services/home-posts";
 import {
     isSpaceContentError,
-    type SpaceFriendRequest,
     type SpacePost,
     type SpacePostAssetURLLoader,
+    type SpacePostAvatarURLLoader,
+    type SpacePostPhoto,
+    type SpacePostVideo,
 } from "services/space";
+import type { LocalSpaceFeedPost } from "state/app-state";
+import { spaceEmptyStateButtonSx } from "styles/buttons";
 import {
-    spaceAppBackground,
-    spaceOnAccent,
+    spaceAppBackgroundColor,
+    spaceControlBackground,
+    spaceControlBackgroundHover,
     spaceSurface,
     spaceSurfaceHover,
     spaceText,
+    spaceTextMuted,
 } from "styles/colors";
-import {
-    spacePostTileRadius,
-    spaceTileAvatarSize,
-    spaceTileCircleInset,
-    spaceTileCornerStyles,
-    spaceTileInnerRadius,
-} from "styles/tiles";
-import { firstNameFrom } from "utils/display";
-import {
-    homeTileGap,
-    homeTileLayout,
-    maximumHomeTileCount,
-    minimumHomeTileCanvasHeight,
-    type HomeTilePlacement,
-} from "utils/home-tile-layout";
-import { createLoadedLocalPostPhoto } from "utils/local-post-photo";
-import {
-    canPreviewSpaceImageFile,
-    spaceDefaultCoverImagePath,
-    spacePostImageErrorMessage,
-    spacePostImageInputAccept,
-    spacePostPreviewImageForFile,
-    type SpaceDraftPostImage,
-} from "utils/post-image";
+import { minimumPostPhotoFrameAspectRatio } from "styles/tiles";
+import { spaceTouchTargetSize } from "styles/touch-targets";
+import { firstNameFrom, formatSpaceDate } from "utils/display";
+import { spacePostPhotos, viewerPhotosFromPost } from "utils/post-photos";
 import { thumbHashDataURLFromBase64 } from "utils/thumbhash";
 
+const homeBackground = spaceAppBackgroundColor;
+
 const green = "#08C225";
+const feedAccentBackground = "#263D2C";
+const feedAccentBackgroundHover = "#2C4B32";
+const feedActionBackground = "#363639";
+const feedActionForeground = "#DEDEDE";
+const feedTimestampForeground = "#C8C8C8";
+const feedSkeletonElementBackground = spaceSurfaceHover;
 const textBase = spaceText;
-const avatarFallbackColor = spaceSurfaceHover;
-const avatarFallbackTextColor = "#FFFFFF";
-const mediaPlaceholderColor = spaceSurface;
-const tileBadgeBackground = "rgba(0, 0, 0, 0.22)";
-const tileBadgeText = "rgba(255, 255, 255, 0.9)";
-const homeHorizontalPadding = "16px";
-const postTileMediaLoadRootMargin = "640px 0px";
+const textSecondary = spaceTextMuted;
+const dangerColor = "#F63A3A";
+const feedAvatarSize = 38;
+const feedLikeActionSize = spaceTouchTargetSize;
+const feedActionIconSize = 20;
+const feedHorizontalPadding = "16px";
+const feedMediaLoadRootMargin = "640px 0px";
+const feedLoadMoreRootMargin = "0px 0px 160px 0px";
+const feedRowEnterDurationMs = 460;
+const feedRowEnterStaggerMs = 35;
+const feedRowEnterTiming = "cubic-bezier(0.2, 0.8, 0.2, 1)";
+const avatarFadeSx = {
+    "@keyframes spaceAvatarFade": { from: { opacity: 0 }, to: { opacity: 1 } },
+    animation: "spaceAvatarFade 320ms cubic-bezier(0.22, 1, 0.36, 1) both",
+    "@media (prefers-reduced-motion: reduce)": { animation: "none" },
+} as const;
+const feedPhotoCaptionTextSx = {
+    color: "#E6E6E6",
+    fontFamily: '"Inter Variable", Inter, sans-serif',
+    fontSize: 13,
+    fontWeight: 600,
+    lineHeight: "21px",
+    textAlign: "center",
+    textWrap: "balance",
+} as const;
 interface HomeScreenProps {
-    ownLatestPost?: SpacePost;
-    isOwnLatestPostLoading?: boolean;
-    isOwnLatestPostUnavailable?: boolean;
-    latestPosts: SpacePost[];
-    unreadPosts: SpacePost[];
+    feedItems: SpacePost[];
     friendRequestSentToastName?: string;
-    friendRequests: SpaceFriendRequest[];
-    friends: FriendProfile[];
+    hasFeedLoadMoreError?: boolean;
+    hasMoreFeedItems?: boolean;
     hasUnreadMessages?: boolean;
-    isLatestPostsLoading?: boolean;
-    isFriendsLoading?: boolean;
-    isFriendRequestsLoading?: boolean;
-    isHomeCacheLoading?: boolean;
+    isFeedLoading?: boolean;
+    isFeedLoadingMore?: boolean;
+    localFeedPosts?: LocalSpaceFeedPost[];
+    showFirstPostPrompt?: boolean;
     showInstallPrompt?: boolean;
-    onCreatePost?: (
-        image: SpaceDraftPostImage,
-        caption: string,
-    ) => Promise<void>;
-    onLoadFriendAvatar?: (friend: FriendProfile) => Promise<string | null>;
+    showInviteFriendsToast?: boolean;
+    onAddFriend: () => void;
+    onPostPhotoSelect: (files: File[]) => void;
+    onDeletePost?: (postId: number) => Promise<void> | void;
+    onLoadMoreFeedItems?: () => Promise<void> | void;
+    onLoadPostAvatar?: SpacePostAvatarURLLoader;
     onLoadPostImage?: SpacePostAssetURLLoader;
     onFriendRequestSentToastClose?: () => void;
-    onAcceptFriendRequest?: (requestID: number) => Promise<void>;
-    onAddFriend: () => void;
-    onDiscardFriendRequest?: (requestID: number) => Promise<void>;
-    onOpenFriend?: (
-        friendID: string,
-        username?: string,
-        section?: "latest",
-    ) => void;
-    onOpenFriendRequests?: () => void;
+    onInviteFriendsToastClose?: () => void;
+    onOpenFriend?: (friendID: string, username?: string) => void;
     onOpenMessages?: () => void;
-    onMessageFriend: (friend: FriendProfile) => void;
-    onPokeFriend: (friend: FriendProfile) => Promise<void>;
-    onOpenOwnPost?: () => void;
     onOpenProfile?: () => void;
     onReplyToPost?: (
         postSpaceId: string,
         postId: number,
         text: string,
+        objectKey: string,
     ) => Promise<void>;
     onSetPostLiked?: (postId: number, liked: boolean) => Promise<void>;
+    onUpdatePostCaption?: (postId: number, caption: string) => Promise<void>;
+    profileLink?: string;
     profile: SetupProfile | null;
     viewerSpaceId?: string;
+}
+
+interface FeedPhotoDimensions {
+    height: number;
+    width: number;
 }
 
 interface DecodedImageState {
@@ -128,24 +143,260 @@ interface DecodedImageState {
     width?: number;
 }
 
-interface PostTileCanvasSize {
-    height: number;
-    width: number;
+interface SelectedHomeViewer {
+    photoIndex: number;
+    photos: SpaceViewerPhoto[];
+    focusReplyOnOpen?: boolean;
+    photo: SpaceViewerPhoto;
+    postActionMode?: SpaceViewerPostActionMode;
 }
 
-interface SelectedHomeViewer {
-    avatarUrl?: string | null;
-    draftFile?: File;
-    draftImageError?: string;
-    focusReplyOnOpen?: boolean;
-    friend?: FriendProfile;
-    isDraftImagePreviewPending?: boolean;
-    localObjectUrl?: string;
-    photo: SpaceViewerPhoto;
-    postIndex?: number;
-    postActionMode?: SpaceViewerPostActionMode;
-    posts?: SpacePost[];
-    sessionId?: symbol;
+type HomeFeedEntry =
+    | {
+          identity: string;
+          item: LocalSpaceFeedPost;
+          kind: "local";
+          renderKey: string;
+      }
+    | { identity: string; item: SpacePost; kind: "remote"; renderKey: string };
+
+interface FeedLayoutSnapshot {
+    enteringKeys: Set<string>;
+    previousTops: Map<string, number>;
+}
+
+interface FeedMotionListProps {
+    entries: HomeFeedEntry[];
+    renderEntry: (entry: HomeFeedEntry) => React.ReactNode;
+}
+
+class FeedMotionList extends React.Component<FeedMotionListProps> {
+    private animations = new Map<string, Animation>();
+    private identityKeys = new Map<string, string>();
+    private rowElements = new Map<string, HTMLDivElement>();
+    private rowRefs = new Map<
+        string,
+        (element: HTMLDivElement | null) => void
+    >();
+    private sourceKeys = new Map<string, string>();
+
+    private stableKeyFor = (entry: HomeFeedEntry) => {
+        const stableKey =
+            this.identityKeys.get(entry.identity) ??
+            this.sourceKeys.get(entry.renderKey) ??
+            entry.renderKey;
+        this.identityKeys.set(entry.identity, stableKey);
+        this.sourceKeys.set(entry.renderKey, stableKey);
+        return stableKey;
+    };
+
+    private rowRefFor = (key: string) => {
+        let rowRef = this.rowRefs.get(key);
+        if (!rowRef) {
+            rowRef = (element) => {
+                if (element) this.rowElements.set(key, element);
+                else this.rowElements.delete(key);
+            };
+            this.rowRefs.set(key, rowRef);
+        }
+        return rowRef;
+    };
+
+    private cancelAnimations = () => {
+        this.animations.forEach((animation) => animation.cancel());
+        this.animations.clear();
+        this.rowElements.forEach((element) => {
+            element.style.zIndex = "";
+            element.style.willChange = "";
+        });
+    };
+
+    getSnapshotBeforeUpdate(
+        previousProps: FeedMotionListProps,
+    ): FeedLayoutSnapshot | null {
+        const previousIdentityOrder = previousProps.entries.map(
+            (entry) => entry.identity,
+        );
+        const identityOrder = this.props.entries.map((entry) => entry.identity);
+        if (
+            previousIdentityOrder.length == identityOrder.length &&
+            previousIdentityOrder.every(
+                (identity, index) => identity == identityOrder[index],
+            )
+        )
+            return null;
+
+        const previousIdentities = new Set(previousIdentityOrder);
+        const addedEntries = this.props.entries.filter(
+            (entry) => !previousIdentities.has(entry.identity),
+        );
+        if (
+            previousProps.entries.length == 0 ||
+            addedEntries.some((entry) => entry.kind == "local")
+        )
+            return null;
+
+        const firstRetainedIndex = this.props.entries.findIndex((entry) =>
+            previousIdentities.has(entry.identity),
+        );
+        const enteringKeys = new Set(
+            firstRetainedIndex > 0
+                ? this.props.entries
+                      .slice(0, firstRetainedIndex)
+                      .filter((entry) => entry.kind == "remote")
+                      .map(this.stableKeyFor)
+                : [],
+        );
+        const previousTops = new Map<string, number>();
+        this.rowElements.forEach((element, key) => {
+            previousTops.set(key, element.getBoundingClientRect().top);
+        });
+        return { enteringKeys, previousTops };
+    }
+
+    componentDidUpdate(
+        _previousProps: FeedMotionListProps,
+        _previousState: unknown,
+        snapshot: FeedLayoutSnapshot | null,
+    ) {
+        if (
+            !snapshot ||
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches
+        )
+            return;
+
+        this.cancelAnimations();
+        let enteringIndex = 0;
+        for (const entry of this.props.entries) {
+            const key = this.stableKeyFor(entry);
+            const element = this.rowElements.get(key);
+            if (!element) continue;
+
+            let animation: Animation | undefined;
+            if (snapshot.enteringKeys.has(key)) {
+                const delay = enteringIndex * feedRowEnterStaggerMs;
+                const height = element.getBoundingClientRect().height;
+                const paddingBottom =
+                    window.getComputedStyle(element).paddingBottom;
+                element.style.zIndex = String(3 - enteringIndex++);
+                element.style.willChange = "height, padding-bottom, transform";
+                animation = element.animate(
+                    [
+                        {
+                            height: "0px",
+                            paddingBottom: "0px",
+                            transform: `translate3d(0, -${height}px, 0)`,
+                        },
+                        {
+                            height: `${height}px`,
+                            paddingBottom,
+                            transform: "translate3d(0, 0, 0)",
+                        },
+                    ],
+                    {
+                        delay,
+                        duration: feedRowEnterDurationMs,
+                        easing: feedRowEnterTiming,
+                        fill: "both",
+                    },
+                );
+            } else if (snapshot.enteringKeys.size == 0) {
+                const previousTop = snapshot.previousTops.get(key);
+                if (previousTop == undefined) continue;
+                const offsetY =
+                    previousTop - element.getBoundingClientRect().top;
+                if (!offsetY) continue;
+                animation = element.animate(
+                    [
+                        { transform: `translate3d(0, ${offsetY}px, 0)` },
+                        { transform: "translate3d(0, 0, 0)" },
+                    ],
+                    {
+                        duration: feedRowEnterDurationMs,
+                        easing: feedRowEnterTiming,
+                        fill: "both",
+                    },
+                );
+            }
+            if (!animation) continue;
+
+            this.animations.set(key, animation);
+            void animation.finished.then(
+                () => {
+                    if (this.animations.get(key) != animation) return;
+                    animation.cancel();
+                    this.animations.delete(key);
+                    element.style.zIndex = "";
+                    element.style.willChange = "";
+                },
+                () => undefined,
+            );
+        }
+    }
+
+    componentWillUnmount() {
+        this.cancelAnimations();
+    }
+
+    render() {
+        return this.props.entries.map((entry) => {
+            const key = this.stableKeyFor(entry);
+            return (
+                <Box
+                    key={key}
+                    ref={this.rowRefFor(key)}
+                    sx={{
+                        boxSizing: "border-box",
+                        minWidth: 0,
+                        pb: "24px",
+                        position: "relative",
+                        width: "100%",
+                    }}
+                >
+                    {this.props.renderEntry(entry)}
+                </Box>
+            );
+        });
+    }
+}
+
+type FeedTimestampStatus = "failed" | "post-limit" | "posted" | "posting";
+
+interface FeedPostPhoto extends SpacePostPhoto {
+    isUnavailable?: boolean;
+}
+
+type FeedPhotoSource = SpacePostPhoto & Pick<SpacePost, "postId" | "spaceId">;
+
+interface FeedItemProps {
+    photoCount?: number;
+    photoIndex?: number;
+    photos?: FeedPostPhoto[];
+    onPhotoIndexChange?: (index: number) => void;
+    aspectRatio: number;
+    avatarUrl: string | null;
+    caption?: string;
+    friendID: string;
+    imageUrl?: string;
+    isAvatarPending: boolean;
+    isOwnPost: boolean;
+    isViewerOpen?: boolean;
+    isUnavailable?: boolean;
+    name: string;
+    onLoadAvatar?: () => Promise<string | null | undefined>;
+    onLoadImage?: (index: number) => Promise<string | undefined>;
+    onLoadVideo?: SpacePostAssetURLLoader;
+    onOpenFriend?: (friendID: string, username?: string) => void;
+    onOpenPhoto?: (photo: SpaceViewerPhoto, focusReplyOnOpen?: boolean) => void;
+    onOpenProfile?: () => void;
+    onSetPostLiked?: (postId: number, liked: boolean) => Promise<void>;
+    postId: number;
+    spaceId?: string;
+    thumbHash?: string;
+    timestampStatus?: FeedTimestampStatus;
+    timestampMs: number;
+    username?: string;
+    viewerLiked: boolean;
 }
 
 interface AddedFriendToastProps {
@@ -153,44 +404,37 @@ interface AddedFriendToastProps {
     onClose?: () => void;
 }
 
-const viewerPhotoForPost = (
-    post: SpacePost,
-    friend: FriendProfile,
-    avatarUrl: string | null | undefined,
-    imageUrl: string,
-): SpaceViewerPhoto => {
-    const displayName = friend.fullName.trim() || friend.username.trim();
-    return {
-        alt: `${displayName} post`,
-        avatarUrl,
-        caption: post.caption,
-        friendID: post.friendID,
-        height: post.height,
-        imageUrl,
-        name: displayName,
-        postId: post.postId,
-        spaceId: post.spaceId,
-        timestampMs: post.timestampMs,
-        username: friend.username,
-        viewerLiked: post.viewerLiked,
-        width: post.width,
-    };
+interface InviteFriendsToastProps {
+    profileLink?: string;
+    sharing: boolean;
+    onClose?: () => void;
+    onSharingChange: (sharing: boolean) => void;
+}
+
+const dimensionsFromAspectRatio = (
+    aspectRatio: number,
+): FeedPhotoDimensions => {
+    const safeAspectRatio =
+        Number.isFinite(aspectRatio) && aspectRatio > 0 ? aspectRatio : 1;
+    const height = 1000;
+
+    return { height, width: Math.round(safeAspectRatio * height) };
 };
 
-const postImageCacheKey = (item: SpacePost) =>
+const feedPostImageCacheKey = (item: FeedPhotoSource) =>
     [
         item.postId,
         item.imageAsset?.spaceId ?? item.spaceId,
         item.imageAsset?.objectKey ?? item.imageUrl ?? "",
     ].join(":");
 
-const friendAvatarCacheKey = (friend: FriendProfile) =>
+const feedPostAvatarCacheKey = (item: SpacePost) =>
     [
-        friend.spaceId ?? friend.id,
-        friend.avatarKeyVersion ?? "",
-        friend.avatarObjectID ?? "",
-        friend.avatarUpdatedAt ?? "",
-        friend.avatarSize ?? "",
+        item.spaceId,
+        item.avatarKeyVersion ?? "",
+        item.avatarObjectID ?? "",
+        item.avatarUpdatedAt ?? "",
+        item.avatarSize ?? "",
     ].join(":");
 
 const useDecodedImage = (
@@ -256,122 +500,610 @@ const useDecodedImage = (
     return { ready: !src, src };
 };
 
-interface FriendPostTileProps {
-    avatarUrl?: string | null;
-    friend: FriendProfile;
-    imageUrl?: string;
-    isAvatarPending: boolean;
-    isLoading: boolean;
-    isRead: boolean;
-    friendRequestDirection?: SpaceFriendRequest["direction"];
-    isUnavailable: boolean;
-    onLoadAvatar?: () => Promise<string | null | undefined>;
-    onLoadImage?: () => Promise<string | undefined>;
-    onAcceptFriendRequest?: () => Promise<void>;
-    onDiscardFriendRequest?: () => Promise<void>;
-    onOpenFriend?: HomeScreenProps["onOpenFriend"];
-    onOpenAvatar?: (anchorRect: DOMRect) => void;
-    onOpenFriendRequest?: () => void;
-    onOpenPosts: (
-        friend: FriendProfile,
-        posts: SpacePost[],
-        photo: SpaceViewerPhoto,
-    ) => void;
-    isNineTileLayout?: boolean;
-    isTwoTileLayout?: boolean;
-    placement: HomeTilePlacement;
-    posts: SpacePost[];
-    showFriendRequestDetails?: boolean;
+const scrollPageToTop = () => {
+    const behavior = window.matchMedia("(prefers-reduced-motion: reduce)")
+        .matches
+        ? "auto"
+        : "smooth";
+    window.scrollTo({ behavior, top: 0 });
+};
+
+const scheduleScrollPageToTop = () => {
+    let scrollFrame = 0;
+    const closeFrame = window.requestAnimationFrame(() => {
+        scrollFrame = window.requestAnimationFrame(scrollPageToTop);
+    });
+    return () => {
+        window.cancelAnimationFrame(closeFrame);
+        window.cancelAnimationFrame(scrollFrame);
+    };
+};
+
+const usePostingDotCount = (isPosting: boolean) => {
+    const [dotCount, setDotCount] = useState(1);
+
+    React.useEffect(() => {
+        if (!isPosting) {
+            setDotCount(1);
+            return;
+        }
+
+        const intervalID = window.setInterval(() => {
+            setDotCount((count) => (count % 3) + 1);
+        }, 500);
+
+        return () => window.clearInterval(intervalID);
+    }, [isPosting]);
+
+    return dotCount;
+};
+
+interface FeedLikeButtonProps {
+    isLiked: boolean;
+    onClick: () => void;
+    popID: number;
 }
 
-export const FriendPostTile: React.FC<FriendPostTileProps> = ({
+const FeedLikeButton: React.FC<FeedLikeButtonProps> = ({
+    isLiked,
+    onClick,
+    popID,
+}) => {
+    const isPopping = isLiked && popID > 0;
+
+    return (
+        <Box
+            component="button"
+            type="button"
+            aria-label="Like post"
+            aria-pressed={isLiked}
+            onClick={onClick}
+            sx={{
+                alignItems: "center",
+                animation: isPopping
+                    ? `${spacePostLikeButtonPop} ${spacePostLikePopDurationMs}ms ${spacePostLikePopTiming} both`
+                    : undefined,
+                appearance: "none",
+                bgcolor: isLiked ? feedAccentBackground : feedActionBackground,
+                border: 0,
+                borderRadius: "50%",
+                color: isLiked ? green : feedActionForeground,
+                cursor: "pointer",
+                display: "inline-flex",
+                flexShrink: 0,
+                height: feedLikeActionSize,
+                justifyContent: "center",
+                p: 0,
+                position: "relative",
+                transition:
+                    "background-color 160ms ease, color 120ms ease, transform 120ms ease",
+                width: feedLikeActionSize,
+                "&:active": { transform: "scale(0.94)" },
+                "&:focus-visible": {
+                    outline: `2px solid ${green}`,
+                    outlineOffset: 2,
+                },
+                "&:hover": {
+                    bgcolor: isLiked
+                        ? feedAccentBackgroundHover
+                        : spaceControlBackgroundHover,
+                },
+                "@media (prefers-reduced-motion: reduce)": {
+                    animation: "none",
+                    transition: "background-color 120ms ease, color 120ms ease",
+                },
+            }}
+        >
+            <Box
+                key={isPopping ? `heart-${popID}` : "heart"}
+                component="span"
+                sx={{
+                    animation: isPopping
+                        ? `${spacePostLikeHeartPop} ${spacePostLikePopDurationMs}ms ${spacePostLikePopTiming} both`
+                        : undefined,
+                    display: "flex",
+                    lineHeight: 0,
+                    position: "relative",
+                    transformOrigin: "50% 58%",
+                    zIndex: 1,
+                    "@media (prefers-reduced-motion: reduce)": {
+                        animation: "none",
+                    },
+                }}
+            >
+                <HugeiconsIcon
+                    fill={isLiked ? green : "none"}
+                    icon={FavouriteIcon}
+                    primaryColor={isLiked ? green : feedActionForeground}
+                    size={feedActionIconSize}
+                    strokeWidth={2.2}
+                />
+            </Box>
+        </Box>
+    );
+};
+
+const FeedPhotoOverlay: React.FC<{
+    caption?: string;
+    photoIndex: number;
+    photoCount: number;
+}> = ({ caption, photoIndex, photoCount }) => {
+    return (
+        <Box
+            sx={{
+                ...feedPhotoCaptionTextSx,
+                bottom: 20,
+                display: "grid",
+                gap: "16px",
+                justifyItems: "center",
+                left: "50%",
+                maxWidth: "78%",
+                pointerEvents: "none",
+                position: "absolute",
+                transform: "translateX(-50%)",
+                width: "max-content",
+                zIndex: 2,
+            }}
+        >
+            <SpacePostPhotosDots index={photoIndex} count={photoCount} />
+            {caption && (
+                <Box title={caption} sx={{ minWidth: 0, width: "100%" }}>
+                    <SpaceCaptionText caption={caption} lineClamp={2} />
+                </Box>
+            )}
+        </Box>
+    );
+};
+
+const FeedPhoto: React.FC<{
+    video?: SpacePostVideo;
+    imageUrl?: string;
+    isActive: boolean;
+    isUnavailable: boolean;
+    name: string;
+    onLoadImage?: () => Promise<string | undefined>;
+    onLoadVideo?: SpacePostAssetURLLoader;
+    onOpenPhoto?: () => void;
+    shouldLoad: boolean;
+    thumbHash?: string;
+}> = ({
+    imageUrl,
+    isActive,
+    isUnavailable,
+    name,
+    onLoadImage,
+    onLoadVideo,
+    onOpenPhoto,
+    shouldLoad,
+    thumbHash,
+    video,
+}) => {
+    const decodedPhoto = useDecodedImage(imageUrl, true);
+    const isPostUnavailable = isUnavailable || Boolean(decodedPhoto.failed);
+    const displayImageUrl = decodedPhoto.src ?? undefined;
+    const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
+    const canOpenPhoto =
+        !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
+    const [showResolvedPhoto, setShowResolvedPhoto] = useState(false);
+    const thumbHashDataURL = React.useMemo(
+        () => thumbHashDataURLFromBase64(thumbHash),
+        [thumbHash],
+    );
+
+    React.useEffect(() => {
+        if (shouldLoad && !imageUrl && !isUnavailable) void onLoadImage?.();
+    }, [imageUrl, isUnavailable, onLoadImage, shouldLoad]);
+
+    React.useEffect(() => {
+        if (!isPhotoReady || showResolvedPhoto) return;
+        if (!thumbHashDataURL) {
+            setShowResolvedPhoto(true);
+            return;
+        }
+        const frameID = window.requestAnimationFrame(() =>
+            setShowResolvedPhoto(true),
+        );
+        return () => window.cancelAnimationFrame(frameID);
+    }, [isPhotoReady, showResolvedPhoto, thumbHashDataURL]);
+
+    return (
+        <Box
+            component={video ? "div" : "button"}
+            type={video ? undefined : "button"}
+            aria-label={
+                isPostUnavailable
+                    ? "Post unavailable"
+                    : video
+                      ? undefined
+                      : `Open ${name} photo`
+            }
+            disabled={video ? undefined : !canOpenPhoto}
+            tabIndex={!video && isActive ? 0 : -1}
+            onClick={video ? undefined : onOpenPhoto}
+            onFocus={(event: React.FocusEvent<HTMLElement>) => {
+                if (video && event.target == event.currentTarget)
+                    event.currentTarget
+                        .querySelector("video")
+                        ?.focus({ preventScroll: true });
+            }}
+            sx={{
+                appearance: "none",
+                bgcolor: "transparent",
+                border: 0,
+                cursor: canOpenPhoto ? "pointer" : "default",
+                display: "block",
+                height: "100%",
+                flex: "0 0 100%",
+                scrollSnapAlign: "start",
+                scrollSnapStop: "always",
+                maxWidth: "100%",
+                minWidth: 0,
+                overflow: "hidden",
+                p: 0,
+                position: "relative",
+                width: "100%",
+                "&:focus-visible": {
+                    outline: `2px solid ${green}`,
+                    outlineOffset: -2,
+                },
+            }}
+        >
+            {!isPostUnavailable && !thumbHashDataURL && !isPhotoReady && (
+                <Skeleton
+                    variant="rectangular"
+                    sx={{
+                        bgcolor: feedSkeletonElementBackground,
+                        display: "block",
+                        height: "100%",
+                        transform: "none",
+                        width: "100%",
+                    }}
+                />
+            )}
+            {!isPostUnavailable && thumbHashDataURL ? (
+                <Box
+                    component="img"
+                    alt=""
+                    aria-hidden
+                    src={thumbHashDataURL}
+                    sx={{
+                        display: "block",
+                        filter: "blur(14px)",
+                        height: "100%",
+                        inset: 0,
+                        objectFit: "cover",
+                        objectPosition: "center",
+                        position: "absolute",
+                        transform: "scale(1.08)",
+                        width: "100%",
+                    }}
+                />
+            ) : null}
+            {!isPostUnavailable && isPhotoReady && (
+                <Box
+                    component="img"
+                    alt={`${name} post`}
+                    src={displayImageUrl}
+                    draggable={false}
+                    sx={{
+                        display: "block",
+                        height: "100%",
+                        inset: 0,
+                        maxWidth: "100%",
+                        minWidth: 0,
+                        objectFit: "cover",
+                        objectPosition: "center",
+                        opacity: showResolvedPhoto ? 1 : 0,
+                        position: "absolute",
+                        transition: thumbHashDataURL
+                            ? "opacity 220ms ease"
+                            : "none",
+                        width: "100%",
+                        zIndex: 1,
+                        "@media (prefers-reduced-motion: reduce)": {
+                            opacity: 1,
+                            transition: "none",
+                        },
+                    }}
+                />
+            )}
+            {!isPostUnavailable && isPhotoReady && video && (
+                <SpaceInlinePostVideo
+                    imageUrl={displayImageUrl!}
+                    video={video}
+                    isActive={isActive}
+                    onLoadVideo={onLoadVideo}
+                />
+            )}
+            {isPostUnavailable && (
+                <Box
+                    sx={{
+                        alignItems: "center",
+                        bgcolor: feedSkeletonElementBackground,
+                        color: spaceTextMuted,
+                        display: "flex",
+                        fontSize: 14,
+                        fontWeight: 600,
+                        height: "100%",
+                        justifyContent: "center",
+                        width: "100%",
+                    }}
+                >
+                    Post unavailable
+                </Box>
+            )}
+        </Box>
+    );
+};
+
+const FeedItem: React.FC<FeedItemProps> = ({
+    photoCount = 1,
+    photoIndex = 0,
+    photos,
+    onPhotoIndexChange,
+    aspectRatio,
     avatarUrl,
-    friend,
-    friendRequestDirection,
+    caption,
+    friendID,
     imageUrl,
     isAvatarPending,
-    isLoading,
-    isRead,
-    isUnavailable,
-    onAcceptFriendRequest,
-    onDiscardFriendRequest,
+    isOwnPost,
+    isViewerOpen,
+    isUnavailable = false,
+    name,
     onLoadAvatar,
     onLoadImage,
+    onLoadVideo,
     onOpenFriend,
-    onOpenAvatar,
-    onOpenFriendRequest,
-    onOpenPosts,
-    isNineTileLayout = false,
-    isTwoTileLayout = false,
-    placement,
-    posts,
-    showFriendRequestDetails = false,
+    onOpenPhoto,
+    onOpenProfile,
+    onSetPostLiked,
+    postId,
+    spaceId,
+    thumbHash,
+    timestampStatus,
+    timestampMs,
+    username,
+    viewerLiked,
 }) => {
-    const rootRef = React.useRef<HTMLLIElement | null>(null);
-    const [shouldLoadMedia, setShouldLoadMedia] = useState(Boolean(imageUrl));
-    const [friendRequestAction, setFriendRequestAction] = useState<
-        "accept" | "discard" | null
-    >(null);
-    const decodedPhoto = useDecodedImage(imageUrl, true);
-    const decodedAvatar = useDecodedImage(
-        avatarUrl ?? friend.avatarUrl ?? null,
-        true,
+    const [isLiked, setIsLiked] = useState(viewerLiked);
+    const [likePopID, setLikePopID] = useState(0);
+    const [shouldLoadMedia, setShouldLoadMedia] = useState(
+        !isUnavailable && Boolean(imageUrl) && !isAvatarPending,
     );
-    const post = posts[0];
-    const isRequestPending = Boolean(friendRequestDirection);
-    const isFriendRequestActionBusy = friendRequestAction != null;
-    const canOpenFriendRequest =
-        friendRequestDirection == "sent" && Boolean(onOpenFriendRequest);
-    const thumbHashDataURL = React.useMemo(
-        () => thumbHashDataURLFromBase64(post?.thumbHash),
-        [post?.thumbHash],
+    const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
+    const activePhoto = feedPhotos[photoIndex]!;
+    const carouselRef = React.useRef<HTMLDivElement | null>(null);
+    const photoAnimationRef = React.useRef<number | null>(null);
+    const swipeRef = React.useRef<{
+        pointerID: number;
+        index: number;
+        startLeft: number;
+        x: number;
+        y: number;
+        dragging: boolean;
+    } | null>(null);
+    const suppressPhotoClickRef = React.useRef(false);
+    const scrollToPhoto = React.useCallback(
+        (index: number) => {
+            const carousel = carouselRef.current;
+            if (!carousel) return;
+            if (photoAnimationRef.current != null) {
+                cancelAnimationFrame(photoAnimationRef.current);
+                photoAnimationRef.current = null;
+            }
+            const nextIndex = Math.max(
+                0,
+                Math.min(index, feedPhotos.length - 1),
+            );
+            const left = nextIndex * carousel.clientWidth;
+            const startLeft = carousel.scrollLeft;
+            carousel.style.scrollSnapType = "none";
+            if (
+                Math.abs(startLeft - left) < 1 ||
+                window.matchMedia("(prefers-reduced-motion: reduce)").matches
+            ) {
+                carousel.scrollLeft = left;
+                carousel.style.scrollSnapType = "";
+                return;
+            }
+            const startTime = performance.now();
+            const animate = (time: number) => {
+                const progress = Math.min(1, (time - startTime) / 280);
+                carousel.scrollLeft =
+                    startLeft + (left - startLeft) * (1 - (1 - progress) ** 3);
+                if (progress < 1) {
+                    photoAnimationRef.current = requestAnimationFrame(animate);
+                } else {
+                    photoAnimationRef.current = null;
+                    carousel.style.scrollSnapType = "";
+                }
+            };
+            photoAnimationRef.current = requestAnimationFrame(animate);
+        },
+        [feedPhotos.length],
     );
-    const displayName = friend.fullName.trim() || friend.username.trim();
-    const firstName = firstNameFrom(displayName);
-    const initial = firstName.charAt(0).toLocaleUpperCase();
-    const postUnavailable = isUnavailable || decodedPhoto.failed;
+    const finishPhotoSwipe = (event: React.PointerEvent<HTMLDivElement>) => {
+        const swipe = swipeRef.current;
+        if (swipe?.pointerID != event.pointerId) return;
+        swipeRef.current = null;
+        const dx = event.clientX - swipe.x;
+        const direction =
+            swipe.dragging &&
+            event.type != "pointercancel" &&
+            Math.abs(dx) >= 40
+                ? -Math.sign(dx)
+                : 0;
+        scrollToPhoto(swipe.index + direction);
+    };
+    React.useEffect(
+        () => () => {
+            if (photoAnimationRef.current != null)
+                cancelAnimationFrame(photoAnimationRef.current);
+        },
+        [],
+    );
+    React.useEffect(() => {
+        const carousel = carouselRef.current;
+        if (!carousel || feedPhotos.length < 2) return;
+        let delta = 0;
+        let advanced = false;
+        let wheelEndTimeout: ReturnType<typeof setTimeout>;
+        const handleWheel = (event: WheelEvent) => {
+            if (
+                event.ctrlKey ||
+                Math.abs(event.deltaX) <= Math.abs(event.deltaY)
+            )
+                return;
+            event.preventDefault();
+            clearTimeout(wheelEndTimeout);
+            wheelEndTimeout = setTimeout(() => {
+                delta = 0;
+                advanced = false;
+            }, 180);
+            if (advanced) return;
+            delta += event.deltaX;
+            if (Math.abs(delta) < 20) return;
+            advanced = true;
+            scrollToPhoto(
+                Math.round(carousel.scrollLeft / carousel.clientWidth) +
+                    Math.sign(delta),
+            );
+        };
+        carousel.addEventListener("wheel", handleWheel, { passive: false });
+        return () => {
+            clearTimeout(wheelEndTimeout);
+            carousel.removeEventListener("wheel", handleWheel);
+        };
+    }, [feedPhotos.length, scrollToPhoto]);
+    React.useEffect(() => {
+        const carousel = carouselRef.current;
+        if (!carousel) return;
+        if (
+            Math.round(carousel.scrollLeft / carousel.clientWidth) != photoIndex
+        ) {
+            if (photoAnimationRef.current != null) {
+                cancelAnimationFrame(photoAnimationRef.current);
+                photoAnimationRef.current = null;
+            }
+            carousel.style.scrollSnapType = "";
+            carousel.scrollTo({
+                left: photoIndex * carousel.clientWidth,
+                behavior: "instant",
+            });
+        }
+    }, [photoIndex]);
+    const rootRef = React.useRef<HTMLElement | null>(null);
+    const firstName = firstNameFrom(name);
+    const dateLabel = formatSpaceDate(timestampMs);
+    const postingDotCount = usePostingDotCount(timestampStatus == "posting");
+    const displayCaption = caption?.trim();
+    const canOpenAuthor = isOwnPost
+        ? Boolean(onOpenProfile)
+        : Boolean(onOpenFriend);
+    const authorProfileLabel = isOwnPost
+        ? "Open your profile"
+        : `Open ${firstName}'s profile`;
+    const openAuthor = () => {
+        if (isOwnPost) {
+            onOpenProfile?.();
+            return;
+        }
+        onOpenFriend?.(friendID, username);
+    };
+    const decodedPhoto = useDecodedImage(activePhoto.imageUrl);
+    const decodedAvatar = useDecodedImage(avatarUrl, true);
+    const isPostUnavailable =
+        isUnavailable || activePhoto.isUnavailable || decodedPhoto.failed;
+    const showFooter = !isOwnPost && !isPostUnavailable;
     const displayImageUrl =
         (decodedPhoto.failed
             ? undefined
             : decodedPhoto.ready
               ? decodedPhoto.src
-              : imageUrl) ?? undefined;
+              : activePhoto.imageUrl) ?? undefined;
     const displayAvatarUrl =
-        decodedAvatar.ready && !decodedAvatar.failed
-            ? (decodedAvatar.src ?? null)
-            : null;
+        (decodedAvatar.failed
+            ? undefined
+            : decodedAvatar.ready
+              ? decodedAvatar.src
+              : avatarUrl) ?? undefined;
+    const isAvatarReady = !isAvatarPending && decodedAvatar.ready;
+    const photoDimensions = {
+        height:
+            decodedPhoto.height ??
+            activePhoto.height ??
+            dimensionsFromAspectRatio(aspectRatio).height,
+        width:
+            decodedPhoto.width ??
+            activePhoto.width ??
+            dimensionsFromAspectRatio(aspectRatio).width,
+    };
+    const firstPhoto = feedPhotos[0]!;
+    const firstPhotoAspectRatio =
+        firstPhoto.width && firstPhoto.height
+            ? firstPhoto.width / firstPhoto.height
+            : aspectRatio;
+    const frameAspectRatio = Math.max(
+        minimumPostPhotoFrameAspectRatio,
+        feedPhotos.length > 1
+            ? firstPhotoAspectRatio
+            : photoDimensions.width / photoDimensions.height,
+    );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
-    const canOpenPost = Boolean(post) && !postUnavailable && isPhotoReady;
-    const isTileDisabled =
-        isLoading ||
-        isFriendRequestActionBusy ||
-        (isRequestPending && !canOpenFriendRequest) ||
-        Boolean(post && !isRead && !postUnavailable && !isPhotoReady);
-    const tileSize = Math.min(placement.width, placement.height);
-    const tileRadius = Math.min(spacePostTileRadius, tileSize * 0.2);
-    const avatarSize = spaceTileAvatarSize(placement, isNineTileLayout);
-    const requestActionSize = showFriendRequestDetails
-        ? Math.min(44, Math.max(40, tileSize * 0.13))
-        : Math.min(40, Math.max(26, tileSize * 0.14));
-    const requestUsernameTextSize = isTwoTileLayout
-        ? 14
-        : showFriendRequestDetails
-          ? Math.min(18, Math.max(15, tileSize * 0.05))
-          : 11;
-    const requestActionTextSize = isTwoTileLayout
-        ? 12
-        : showFriendRequestDetails
-          ? 13
-          : Math.min(13, Math.max(10, tileSize * 0.04));
-    const requestCloseIconSize = 14;
-    const requestButtonGap = 6;
-    const stackRequestActions = placement.height >= 176;
+    const canOpenPhoto =
+        !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
+    const openPhoto = (focusReplyOnOpen = false, index = photoIndex) => {
+        const selectedPhoto = feedPhotos[index]!;
+        if (!selectedPhoto.imageUrl || isUnavailable) return;
 
-    const hasMediaToLoad =
-        isAvatarPending || Boolean(post && !postUnavailable && !imageUrl);
+        onOpenPhoto?.(
+            {
+                ...selectedPhoto,
+                alt: `${name} post`,
+                avatarUrl: displayAvatarUrl ?? null,
+                caption,
+                friendID,
+                height:
+                    index == photoIndex
+                        ? photoDimensions.height
+                        : selectedPhoto.height,
+                imageUrl: selectedPhoto.imageUrl,
+                name,
+                postId,
+                postPhotoIndex: index,
+                postPhotoCount: photoCount,
+                spaceId,
+                timestampMs,
+                username,
+                viewerLiked: isLiked,
+                width:
+                    index == photoIndex
+                        ? photoDimensions.width
+                        : selectedPhoto.width,
+            },
+            focusReplyOnOpen,
+        );
+    };
+    const handleLikeClick = () => {
+        if (isOwnPost) return;
+
+        const nextLiked = !isLiked;
+        setIsLiked(nextLiked);
+        if (nextLiked) setLikePopID((id) => id + 1);
+        void onSetPostLiked?.(postId, nextLiked).catch((error: unknown) => {
+            log.error("Failed to update post like", error);
+            setIsLiked(!nextLiked);
+        });
+    };
 
     React.useEffect(() => {
-        if (!hasMediaToLoad || shouldLoadMedia) return;
+        setIsLiked(viewerLiked);
+    }, [viewerLiked]);
+
+    React.useEffect(() => {
+        if (isPostUnavailable) return;
+        if (shouldLoadMedia) return;
         const element = rootRef.current;
         if (!element) return;
         if (
@@ -389,583 +1121,510 @@ export const FriendPostTile: React.FC<FriendPostTileProps> = ({
                     observer.disconnect();
                 }
             },
-            { rootMargin: postTileMediaLoadRootMargin },
+            { rootMargin: feedMediaLoadRootMargin },
         );
         observer.observe(element);
         return () => observer.disconnect();
-    }, [hasMediaToLoad, shouldLoadMedia]);
+    }, [isPostUnavailable, shouldLoadMedia]);
 
     React.useEffect(() => {
+        if (isPostUnavailable) return;
         if (!shouldLoadMedia) return;
-        if (!imageUrl && !postUnavailable) void onLoadImage?.();
-        if (isAvatarPending) void onLoadAvatar?.();
-    }, [
-        imageUrl,
-        isAvatarPending,
-        onLoadAvatar,
-        onLoadImage,
-        postUnavailable,
-        shouldLoadMedia,
-    ]);
 
-    const updateFriendRequest = (
-        action: "accept" | "discard",
-        handler?: () => Promise<void>,
-    ) => {
-        if (isFriendRequestActionBusy || !handler) return;
-        setFriendRequestAction(action);
-        void handler()
-            .catch((error: unknown) =>
-                log.error("Failed to update friend request", error),
-            )
-            .finally(() => setFriendRequestAction(null));
-    };
+        if (isAvatarPending) {
+            void onLoadAvatar?.();
+        }
+    }, [isAvatarPending, isPostUnavailable, onLoadAvatar, shouldLoadMedia]);
 
-    const openTile = () => {
-        if (isRequestPending) {
-            if (friendRequestDirection == "sent") onOpenFriendRequest?.();
-            return;
-        }
-        if (!post || postUnavailable) {
-            onOpenFriend?.(friend.id, friend.username);
-            return;
-        }
-        if (isRead) {
-            onOpenFriend?.(friend.id, friend.username, "latest");
-            return;
-        }
-        if (!canOpenPost || !displayImageUrl) return;
+    React.useEffect(() => {
+        if (!decodedPhoto.failed) return;
+        log.warn(
+            `Post ${postId} is unavailable because the browser could not decode its image`,
+        );
+    }, [decodedPhoto.failed, postId]);
 
-        onOpenPosts(friend, posts, {
-            alt: `${displayName} post`,
-            avatarUrl: displayAvatarUrl,
-            caption: post.caption,
-            friendID: post.friendID,
-            height: decodedPhoto.height ?? post.height,
-            imageUrl: displayImageUrl,
-            name: displayName,
-            postId: post.postId,
-            spaceId: post.spaceId,
-            timestampMs: post.timestampMs,
-            username: friend.username,
-            viewerLiked: post.viewerLiked,
-            width: decodedPhoto.width ?? post.width,
-        });
-    };
+    React.useEffect(() => {
+        if (likePopID == 0) return;
 
-    const openAvatar = (event: React.MouseEvent<HTMLButtonElement>) => {
-        if (isRequestPending) {
-            onOpenFriendRequest?.();
-            return;
-        }
-        onOpenAvatar?.(event.currentTarget.getBoundingClientRect());
-    };
-    const canOpenAvatar = isRequestPending
-        ? canOpenFriendRequest
-        : Boolean(onOpenAvatar);
+        const timeoutID = window.setTimeout(
+            () => setLikePopID(0),
+            spacePostLikePopDurationMs,
+        );
+        return () => window.clearTimeout(timeoutID);
+    }, [likePopID]);
 
     return (
         <Box
             ref={rootRef}
-            component="li"
+            component="article"
             sx={{
-                ...spaceTileCornerStyles(tileRadius),
-                listStyle: "none",
+                WebkitTapHighlightColor: "transparent",
+                bgcolor: showFooter ? spaceSurface : "transparent",
+                borderRadius: "16px",
+                boxSizing: "border-box",
+                display: "flex",
+                flexDirection: "column",
+                maxWidth: "100%",
                 minWidth: 0,
-                position: "absolute",
-                transition:
-                    "left 420ms ease, top 420ms ease, width 420ms ease, height 420ms ease",
-                width: placement.width,
-                height: placement.height,
-                left: placement.x,
-                top: placement.y,
-                "@media (prefers-reduced-motion: reduce)": {
-                    transition: "none",
-                },
+                width: "100%",
             }}
         >
             <Box
-                component="button"
-                type="button"
-                aria-label={
-                    isLoading
-                        ? `Loading ${firstName}'s latest post`
-                        : friendRequestDirection == "received"
-                          ? `Review friend request from ${firstName}`
-                          : friendRequestDirection == "sent"
-                            ? `Manage friend request sent to ${firstName}`
-                            : post && !postUnavailable
-                              ? posts.length > 1
-                                  ? `Open ${posts.length} new posts from ${firstName}`
-                                  : isRead
-                                    ? `Open ${firstName}'s latest post`
-                                    : `Open ${firstName}'s new post`
-                              : `Open ${firstName}'s profile`
-                }
-                disabled={isTileDisabled}
-                onClick={openTile}
                 sx={{
-                    alignItems: "center",
-                    appearance: "none",
-                    bgcolor:
-                        !isLoading && (!post || postUnavailable)
-                            ? mediaPlaceholderColor
-                            : "transparent",
-                    backgroundImage:
-                        !isLoading && !post
-                            ? `linear-gradient(rgba(0, 0, 0, 0.3), rgba(0, 0, 0, 0.3)), url("${spaceDefaultCoverImagePath}")`
-                            : undefined,
-                    backgroundPosition: "center",
-                    backgroundSize: "cover",
-                    border: 0,
-                    borderRadius: "inherit",
-                    color: textBase,
-                    cursor: isTileDisabled ? "default" : "pointer",
-                    display: "flex",
-                    fontFamily: '"Inter Variable", Inter, sans-serif',
-                    height: "100%",
-                    justifyContent: "center",
+                    aspectRatio: frameAspectRatio,
+                    bgcolor: "transparent",
+                    borderRadius: showFooter ? "16px 16px 0 0" : "16px",
+                    maxWidth: "100%",
+                    minWidth: 0,
                     overflow: "hidden",
-                    p: 0,
                     position: "relative",
+                    transition: "aspect-ratio 220ms ease",
                     width: "100%",
-                    zIndex: 1,
+                    "@media (prefers-reduced-motion: reduce)": {
+                        transition: "none",
+                    },
                 }}
             >
-                {post && !postUnavailable && (
-                    <>
-                        {thumbHashDataURL && (
-                            <Box
-                                component="img"
-                                alt=""
-                                aria-hidden
-                                src={thumbHashDataURL}
-                                sx={{
-                                    filter: "blur(14px)",
-                                    height: "100%",
-                                    inset: 0,
-                                    objectFit: "cover",
-                                    position: "absolute",
-                                    transform: "scale(1.08)",
-                                    width: "100%",
-                                }}
-                            />
-                        )}
-                        {isPhotoReady && (
-                            <Box
-                                component="img"
-                                alt={`${displayName} post`}
-                                src={displayImageUrl}
-                                sx={{
-                                    animation: isRead
-                                        ? "none"
-                                        : "spaceNewPostImageFade 520ms cubic-bezier(0.16, 1, 0.3, 1) both",
-                                    height: "100%",
-                                    inset: 0,
-                                    objectFit: "cover",
-                                    position: "absolute",
-                                    width: "100%",
-                                    "@keyframes spaceNewPostImageFade": {
-                                        from: { opacity: 0 },
-                                        to: { opacity: 1 },
-                                    },
-                                    "@media (prefers-reduced-motion: reduce)": {
-                                        animation: "none",
-                                    },
-                                }}
-                            />
-                        )}
-                    </>
-                )}
-                {!isLoading &&
-                    !post &&
-                    friendRequestDirection != "received" &&
-                    !(
-                        friendRequestDirection == "sent" &&
-                        showFriendRequestDetails
-                    ) && (
-                        <SpacePostBadge
-                            backgroundColor={tileBadgeBackground}
-                            color={tileBadgeText}
-                            placement="center"
-                        >
-                            {friendRequestDirection == "sent"
-                                ? "Pending"
-                                : "No posts"}
-                        </SpacePostBadge>
-                    )}
-                {!isLoading &&
-                    friendRequestDirection == "sent" &&
-                    showFriendRequestDetails && (
-                        <Box
-                            aria-hidden
-                            component="span"
-                            title={`@${friend.username}’s posts will appear here`}
-                            sx={{
-                                bgcolor: tileBadgeBackground,
-                                borderRadius: "999px",
-                                boxSizing: "border-box",
-                                color: tileBadgeText,
-                                display: "inline-flex",
-                                fontFamily:
-                                    '"Inter Variable", Inter, sans-serif',
-                                fontSize: 11,
-                                fontWeight: 600,
-                                left: "50%",
-                                lineHeight: "17px",
-                                maxWidth:
-                                    "calc(100% - 2 * var(--space-tile-padding))",
-                                px: "12px",
-                                py: "7px",
-                                position: "absolute",
-                                textAlign: "center",
-                                top: "50%",
-                                transform: "translate(-50%, -50%)",
-                                whiteSpace: "nowrap",
-                                width: "fit-content",
-                            }}
-                        >
-                            <Box
-                                component="span"
-                                sx={{
-                                    minWidth: 0,
-                                    overflow: "hidden",
-                                    textOverflow: "ellipsis",
-                                }}
-                            >
-                                @{friend.username}
-                            </Box>
-                            <Box component="span" sx={{ flexShrink: 0 }}>
-                                ’s posts will appear here
-                            </Box>
-                        </Box>
-                    )}
-                {!isLoading && postUnavailable && (
-                    <SpacePostBadge
-                        backgroundColor={tileBadgeBackground}
-                        color={tileBadgeText}
-                    >
-                        Unavailable
-                    </SpacePostBadge>
-                )}
-                {!isLoading && post && !postUnavailable && !isRead && (
-                    <SpacePostUnreadBadge count={posts.length} />
-                )}
-            </Box>
-            {friendRequestDirection != "received" &&
-                !isAvatarPending &&
-                decodedAvatar.ready && (
+                {photoCount > 1 && (
                     <Box
-                        component="button"
-                        type="button"
-                        aria-label={
-                            friendRequestDirection == "sent"
-                                ? `Manage friend request sent to ${firstName}`
-                                : `Open actions for ${displayName}`
-                        }
-                        aria-haspopup={isRequestPending ? undefined : "dialog"}
-                        disabled={!canOpenAvatar || isFriendRequestActionBusy}
-                        onClick={openAvatar}
                         sx={{
-                            appearance: "none",
-                            backgroundClip: "padding-box",
-                            bgcolor: spaceAppBackground,
-                            border: "3px solid rgba(28, 28, 30, 0.75)",
-                            borderRadius: "50%",
-                            bottom: spaceTileCircleInset(avatarSize),
-                            boxSizing: "border-box",
-                            cursor: canOpenAvatar ? "pointer" : "default",
-                            height: avatarSize,
-                            left: spaceTileCircleInset(avatarSize),
-                            overflow: "hidden",
-                            p: 0,
+                            display: "flex",
                             position: "absolute",
-                            width: avatarSize,
-                            zIndex: 2,
+                            right: 16,
+                            top: 16,
+                            zIndex: 3,
+                            pointerEvents: "none",
                         }}
                     >
-                        {displayAvatarUrl ? (
-                            <SpaceAvatarImage
-                                aria-hidden
-                                src={displayAvatarUrl}
-                            />
-                        ) : (
-                            <Box
-                                aria-hidden
-                                sx={{
-                                    alignItems: "center",
-                                    bgcolor: avatarFallbackColor,
-                                    color: avatarFallbackTextColor,
-                                    display: "flex",
-                                    fontSize: 14,
-                                    fontWeight: 700,
-                                    height: "100%",
-                                    justifyContent: "center",
-                                    width: "100%",
-                                }}
-                            >
-                                {initial}
-                            </Box>
-                        )}
+                        <SpacePostPhotosCounter
+                            compact
+                            index={photoIndex}
+                            count={photoCount}
+                        />
                     </Box>
                 )}
-            {friendRequestDirection == "received" && (
                 <Box
+                    ref={carouselRef}
+                    role={photoCount > 1 ? "group" : undefined}
+                    aria-label={photoCount > 1 ? "Post photos" : undefined}
+                    onPointerDown={(event) => {
+                        suppressPhotoClickRef.current = false;
+                        if (
+                            !event.isPrimary ||
+                            event.button != 0 ||
+                            feedPhotos.length < 2
+                        )
+                            return;
+                        const carousel = event.currentTarget;
+                        if (photoAnimationRef.current != null) {
+                            cancelAnimationFrame(photoAnimationRef.current);
+                            photoAnimationRef.current = null;
+                        }
+                        const index = Math.round(
+                            carousel.scrollLeft / carousel.clientWidth,
+                        );
+                        swipeRef.current = {
+                            pointerID: event.pointerId,
+                            index,
+                            startLeft: carousel.scrollLeft,
+                            x: event.clientX,
+                            y: event.clientY,
+                            dragging: false,
+                        };
+                    }}
+                    onPointerMove={(event) => {
+                        const swipe = swipeRef.current;
+                        if (swipe?.pointerID != event.pointerId) return;
+                        const dx = event.clientX - swipe.x;
+                        const dy = event.clientY - swipe.y;
+                        if (!swipe.dragging) {
+                            if (Math.max(Math.abs(dx), Math.abs(dy)) < 8)
+                                return;
+                            if (Math.abs(dy) >= Math.abs(dx)) {
+                                swipeRef.current = null;
+                                scrollToPhoto(swipe.index);
+                                return;
+                            }
+                            swipe.dragging = true;
+                            suppressPhotoClickRef.current = true;
+                            event.currentTarget.setPointerCapture(
+                                event.pointerId,
+                            );
+                            event.currentTarget.style.scrollSnapType = "none";
+                        }
+                        const carousel = event.currentTarget;
+                        carousel.scrollLeft = Math.max(
+                            (swipe.index - 1) * carousel.clientWidth,
+                            Math.min(
+                                (swipe.index + 1) * carousel.clientWidth,
+                                swipe.startLeft - dx,
+                            ),
+                        );
+                    }}
+                    onPointerUp={finishPhotoSwipe}
+                    onPointerCancel={finishPhotoSwipe}
+                    onClickCapture={(event) => {
+                        if (!suppressPhotoClickRef.current || event.detail == 0)
+                            return;
+                        suppressPhotoClickRef.current = false;
+                        event.preventDefault();
+                        event.stopPropagation();
+                    }}
+                    onScroll={(event) => {
+                        const carousel = event.currentTarget;
+                        const index = Math.round(
+                            carousel.scrollLeft / carousel.clientWidth,
+                        );
+                        if (index != photoIndex) onPhotoIndexChange?.(index);
+                    }}
+                    onKeyDown={(event) => {
+                        if (
+                            event.key != "ArrowLeft" &&
+                            event.key != "ArrowRight"
+                        )
+                            return;
+                        event.preventDefault();
+                        const index = Math.max(
+                            0,
+                            Math.min(
+                                photoIndex +
+                                    (event.key == "ArrowLeft" ? -1 : 1),
+                                feedPhotos.length - 1,
+                            ),
+                        );
+                        (
+                            event.currentTarget.children[index] as HTMLElement
+                        ).focus({ preventScroll: true });
+                        scrollToPhoto(index);
+                    }}
                     sx={{
-                        boxSizing: "border-box",
                         display: "flex",
-                        flexDirection: "column",
-                        gap: `${requestButtonGap}px`,
                         height: "100%",
-                        inset: 0,
-                        p: "var(--space-tile-padding)",
-                        pt: showFriendRequestDetails
-                            ? "var(--space-tile-padding)"
-                            : `calc(var(--space-tile-padding) + ${requestActionSize + requestButtonGap}px)`,
+                        overflowX: "hidden",
+                        overscrollBehaviorX: "contain",
+                        scrollSnapType: "x mandatory",
+                        scrollbarWidth: "none",
+                        touchAction: "pan-y pinch-zoom",
+                        userSelect: "none",
+                        "&::-webkit-scrollbar": { display: "none" },
+                    }}
+                >
+                    {feedPhotos.map((photo, index) => (
+                        <FeedPhoto
+                            key={index}
+                            imageUrl={photo.imageUrl}
+                            isActive={index == photoIndex && !isViewerOpen}
+                            isUnavailable={
+                                isUnavailable || Boolean(photo.isUnavailable)
+                            }
+                            name={name}
+                            onLoadImage={
+                                onLoadImage
+                                    ? () => onLoadImage(index)
+                                    : undefined
+                            }
+                            onLoadVideo={onLoadVideo}
+                            onOpenPhoto={
+                                onOpenPhoto
+                                    ? () => openPhoto(false, index)
+                                    : undefined
+                            }
+                            shouldLoad={
+                                shouldLoadMedia &&
+                                Math.abs(index - photoIndex) <= 1
+                            }
+                            thumbHash={photo.thumbHash}
+                            video={photo.video}
+                        />
+                    ))}
+                </Box>
+                <Box
+                    aria-hidden
+                    sx={{
+                        background:
+                            "linear-gradient(180deg, rgba(0, 0, 0, 0.78), rgba(0, 0, 0, 0))",
+                        filter: "blur(12px)",
+                        height: 100,
+                        left: -12,
                         pointerEvents: "none",
                         position: "absolute",
-                        width: "100%",
+                        right: -12,
+                        top: -12,
+                        zIndex: 1,
+                    }}
+                />
+                <Box
+                    sx={{
+                        alignItems: "center",
+                        boxSizing: "border-box",
+                        color: "#FFFFFF",
+                        display: "grid",
+                        fontFamily: '"Inter Variable", Inter, sans-serif',
+                        gap: "8px",
+                        gridTemplateColumns: `${feedAvatarSize}px minmax(0, 1fr)`,
+                        left: 12,
+                        lineHeight: "20px",
+                        minHeight: 32,
+                        pointerEvents: "none",
+                        position: "absolute",
+                        right: photoCount > 1 ? 68 : 12,
+                        top: 12,
                         zIndex: 2,
                     }}
                 >
                     <Box
+                        component="button"
+                        type="button"
+                        aria-label={authorProfileLabel}
+                        onClick={openAuthor}
                         sx={{
                             alignItems: "center",
+                            appearance: "none",
+                            bgcolor: "transparent",
+                            border: 0,
+                            borderRadius: "50%",
+                            cursor: canOpenAuthor ? "pointer" : "default",
                             display: "flex",
-                            flex: 1,
-                            flexDirection: "column",
-                            gap: "8px",
+                            flexShrink: 0,
+                            height: spaceTouchTargetSize,
                             justifyContent: "center",
-                            minHeight: 0,
+                            mx: `${(feedAvatarSize - spaceTouchTargetSize) / 2}px`,
+                            overflow: "visible",
+                            p: 0,
+                            pointerEvents: "auto",
+                            position: "relative",
+                            width: spaceTouchTargetSize,
+                            "&:focus-visible": {
+                                outline: `2px solid ${green}`,
+                                outlineOffset: 2,
+                            },
                         }}
                     >
                         <Box
-                            component="span"
                             aria-hidden
-                            title={`@${friend.username}`}
                             sx={{
-                                bgcolor: tileBadgeBackground,
-                                borderRadius: "999px",
-                                boxSizing: "border-box",
-                                color: tileBadgeText,
-                                display: "block",
-                                fontFamily: '"Nunito", sans-serif',
-                                fontSize: requestUsernameTextSize,
-                                fontWeight: 800,
-                                height: showFriendRequestDetails
-                                    ? undefined
-                                    : 24,
-                                lineHeight: showFriendRequestDetails
-                                    ? "20px"
-                                    : "24px",
-                                flexShrink: 0,
-                                maxWidth: "100%",
-                                overflow: "hidden",
-                                px: showFriendRequestDetails ? "12px" : "8px",
-                                py: showFriendRequestDetails ? "6px" : 0,
-                                textOverflow: "ellipsis",
-                                textAlign: "center",
-                                whiteSpace: "nowrap",
+                                bgcolor: "rgba(255, 255, 255, 0.2)",
+                                borderRadius: "50%",
+                                height: feedAvatarSize,
+                                width: feedAvatarSize,
+                                position: "absolute",
+                                zIndex: 0,
                             }}
-                        >
-                            @{friend.username}
-                        </Box>
-                        {showFriendRequestDetails && !isTwoTileLayout && (
+                        />
+                        {isAvatarReady ? (
                             <Box
-                                component="span"
-                                aria-hidden
+                                key={displayAvatarUrl ?? "default-avatar"}
                                 sx={{
-                                    color: "rgba(255, 255, 255, 0.75)",
-                                    fontSize: 13,
-                                    fontWeight: 500,
-                                    lineHeight: 1.4,
-                                    textAlign: "center",
+                                    ...avatarFadeSx,
+                                    borderRadius: "50%",
+                                    height: feedAvatarSize,
+                                    overflow: "hidden",
+                                    position: "relative",
+                                    width: feedAvatarSize,
+                                    zIndex: 1,
                                 }}
                             >
-                                sent you a friend request
+                                <SpaceAvatarImage
+                                    src={displayAvatarUrl}
+                                    borderRadius="50%"
+                                />
                             </Box>
-                        )}
-                    </Box>
-                    <Box
-                        sx={{
-                            display: "flex",
-                            flexDirection:
-                                showFriendRequestDetails && !stackRequestActions
-                                    ? "row"
-                                    : "column",
-                            flexShrink: 0,
-                            gap: `${requestButtonGap}px`,
-                            pointerEvents: "auto",
-                        }}
-                    >
+                        ) : null}
                         <Box
-                            className="green-bg"
+                            aria-hidden
+                            sx={{
+                                border: "1px solid rgba(255, 255, 255, 0.16)",
+                                borderRadius: "50%",
+                                boxShadow: "0 1px 4px rgba(0, 0, 0, 0.24)",
+                                height: feedAvatarSize,
+                                width: feedAvatarSize,
+                                pointerEvents: "none",
+                                position: "absolute",
+                                zIndex: 2,
+                            }}
+                        />
+                    </Box>
+                    <Box sx={{ minWidth: 0 }}>
+                        <Box
                             component="button"
                             type="button"
-                            aria-label={`Accept friend request from ${displayName}`}
-                            disabled={
-                                isFriendRequestActionBusy ||
-                                !onAcceptFriendRequest
-                            }
-                            onClick={() =>
-                                updateFriendRequest(
-                                    "accept",
-                                    onAcceptFriendRequest,
-                                )
-                            }
+                            aria-label={authorProfileLabel}
+                            onClick={openAuthor}
                             sx={{
-                                alignItems: "center",
-                                bgcolor: green,
+                                appearance: "none",
+                                bgcolor: "transparent",
                                 border: 0,
-                                borderRadius: spaceTileInnerRadius,
-                                boxSizing: "border-box",
-                                color: spaceOnAccent,
-                                cursor: isFriendRequestActionBusy
-                                    ? "default"
-                                    : "pointer",
-                                display: "flex",
-                                fontFamily:
-                                    '"Inter Variable", Inter, sans-serif',
-                                fontSize: requestActionTextSize,
-                                fontWeight: 700,
-                                height: requestActionSize,
-                                justifyContent: "center",
+                                color: "inherit",
+                                cursor: canOpenAuthor ? "pointer" : "default",
+                                display: "block",
+                                fontFamily: "inherit",
+                                fontSize: 14,
+                                fontWeight: 650,
+                                lineHeight: "18px",
+                                maxWidth: "100%",
+                                minWidth: 0,
+                                overflow: "hidden",
                                 p: 0,
-                                width: "100%",
-                                "&:disabled": { opacity: 0.55 },
+                                pointerEvents: "auto",
+                                textAlign: "left",
+                                textOverflow: "ellipsis",
+                                whiteSpace: "nowrap",
                                 "&:focus-visible": {
+                                    borderRadius: "4px",
                                     outline: `2px solid ${green}`,
                                     outlineOffset: 2,
                                 },
-                                "&:hover": isFriendRequestActionBusy
-                                    ? undefined
-                                    : { bgcolor: "#07A820" },
                             }}
                         >
-                            {friendRequestAction == "accept" ? (
-                                <SpaceActionFeedbackIcon
-                                    phase="busy"
-                                    size={17}
-                                />
-                            ) : (
-                                "Accept"
-                            )}
+                            {firstName}
                         </Box>
-                        {showFriendRequestDetails && (
+                        {timestampStatus ? (
                             <Box
-                                component="button"
-                                type="button"
-                                aria-label={`Ignore friend request from ${displayName}`}
-                                disabled={
-                                    isFriendRequestActionBusy ||
-                                    !onDiscardFriendRequest
-                                }
-                                onClick={() =>
-                                    updateFriendRequest(
-                                        "discard",
-                                        onDiscardFriendRequest,
-                                    )
+                                component="span"
+                                role="status"
+                                aria-label={
+                                    timestampStatus == "posting"
+                                        ? "Posting"
+                                        : timestampStatus == "post-limit"
+                                          ? "Post limit reached. Please contact support."
+                                          : timestampStatus == "failed"
+                                            ? "Failed"
+                                            : "Posted"
                                 }
                                 sx={{
                                     alignItems: "center",
-                                    bgcolor: "rgba(255, 255, 255, 0.12)",
-                                    border: 0,
-                                    borderRadius: spaceTileInnerRadius,
-                                    boxSizing: "border-box",
-                                    color: "rgba(255, 255, 255, 0.85)",
-                                    cursor: isFriendRequestActionBusy
-                                        ? "default"
-                                        : "pointer",
+                                    color:
+                                        timestampStatus == "failed" ||
+                                        timestampStatus == "post-limit"
+                                            ? dangerColor
+                                            : feedTimestampForeground,
                                     display: "flex",
-                                    fontFamily:
-                                        '"Inter Variable", Inter, sans-serif',
-                                    fontSize: requestActionTextSize,
-                                    fontWeight: 600,
-                                    height: requestActionSize,
-                                    justifyContent: "center",
-                                    p: 0,
-                                    width: "100%",
-                                    "&:disabled": { opacity: 0.55 },
-                                    "&:focus-visible": {
-                                        outline: `2px solid ${green}`,
-                                        outlineOffset: 2,
-                                    },
-                                    "&:hover": isFriendRequestActionBusy
-                                        ? undefined
-                                        : {
-                                              bgcolor:
-                                                  "rgba(255, 255, 255, 0.18)",
-                                          },
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    lineHeight: "16px",
+                                    minHeight: 16,
+                                    whiteSpace:
+                                        timestampStatus == "post-limit"
+                                            ? "normal"
+                                            : "nowrap",
                                 }}
                             >
-                                {friendRequestAction == "discard" ? (
-                                    <SpaceActionFeedbackIcon
-                                        phase="busy"
-                                        size={17}
-                                    />
+                                {timestampStatus == "posted" ? (
+                                    <Box component="span">Posted</Box>
+                                ) : timestampStatus == "post-limit" ? (
+                                    <Box component="span">
+                                        Post limit reached. Please contact
+                                        support.
+                                    </Box>
+                                ) : timestampStatus == "failed" ? (
+                                    <Box component="span">Failed</Box>
                                 ) : (
-                                    "Ignore"
+                                    <>
+                                        <Box component="span">Posting</Box>
+                                        <Box
+                                            component="span"
+                                            aria-hidden
+                                            sx={{
+                                                display: "inline-block",
+                                                textAlign: "left",
+                                                width: 12,
+                                            }}
+                                        >
+                                            {".".repeat(postingDotCount)}
+                                        </Box>
+                                    </>
                                 )}
+                            </Box>
+                        ) : (
+                            <Box
+                                component="time"
+                                dateTime={new Date(timestampMs).toISOString()}
+                                sx={{
+                                    alignItems: "center",
+                                    color: feedTimestampForeground,
+                                    display: "flex",
+                                    fontSize: 12,
+                                    fontWeight: 500,
+                                    height: 16,
+                                    lineHeight: "16px",
+                                    whiteSpace: "nowrap",
+                                }}
+                            >
+                                {dateLabel}
                             </Box>
                         )}
                     </Box>
-                    {!showFriendRequestDetails && (
-                        <Box
-                            component="button"
-                            type="button"
-                            aria-label={`Ignore friend request from ${displayName}`}
-                            disabled={
-                                isFriendRequestActionBusy ||
-                                !onDiscardFriendRequest
-                            }
-                            onClick={() =>
-                                updateFriendRequest(
-                                    "discard",
-                                    onDiscardFriendRequest,
-                                )
-                            }
-                            sx={{
-                                alignItems: "center",
-                                bgcolor: "transparent",
-                                border: 0,
-                                borderRadius: "50%",
-                                color: "rgba(255, 255, 255, 0.65)",
-                                cursor: isFriendRequestActionBusy
-                                    ? "default"
-                                    : "pointer",
-                                display: "flex",
-                                height: requestActionSize,
-                                justifyContent: "center",
-                                p: 0,
-                                pointerEvents: "auto",
-                                position: "absolute",
-                                right: "calc(var(--space-tile-padding) / 2)",
-                                top: "calc(var(--space-tile-padding) / 2)",
-                                width: requestActionSize,
-                                "&:disabled": { opacity: 0.55 },
-                                "&:focus-visible": {
-                                    outline: `2px solid ${green}`,
-                                    outlineOffset: 2,
-                                },
-                                "&:hover": isFriendRequestActionBusy
-                                    ? undefined
-                                    : { color: "rgba(255, 255, 255, 0.85)" },
-                            }}
-                        >
-                            {friendRequestAction == "discard" ? (
-                                <SpaceActionFeedbackIcon
-                                    phase="busy"
-                                    size={requestCloseIconSize}
-                                />
-                            ) : (
-                                <HugeiconsIcon
-                                    icon={Cancel01Icon}
-                                    size={requestCloseIconSize}
-                                    strokeWidth={2.2}
-                                />
-                            )}
-                        </Box>
-                    )}
+                </Box>
+                {(photoCount > 1 || (!isPostUnavailable && displayCaption)) && (
+                    <FeedPhotoOverlay
+                        caption={isPostUnavailable ? undefined : displayCaption}
+                        photoIndex={photoIndex}
+                        photoCount={photoCount}
+                    />
+                )}
+            </Box>
+            {showFooter && (
+                <Box
+                    sx={{
+                        alignItems: "center",
+                        boxSizing: "border-box",
+                        display: "grid",
+                        gap: "6px",
+                        gridTemplateColumns: "minmax(0, 1fr) auto",
+                        minHeight: feedLikeActionSize,
+                        p: "8px",
+                        width: "100%",
+                    }}
+                >
+                    <Box
+                        component="button"
+                        type="button"
+                        aria-label={`Reply privately to ${firstName}'s post`}
+                        disabled={!canOpenPhoto}
+                        onClick={() => openPhoto(true)}
+                        sx={{
+                            appearance: "none",
+                            bgcolor: feedActionBackground,
+                            border: 0,
+                            borderRadius: "12px",
+                            color: "#C4C4C8",
+                            cursor: canOpenPhoto ? "pointer" : "default",
+                            fontFamily: '"Inter Variable", Inter, sans-serif',
+                            fontSize: 14,
+                            fontWeight: 500,
+                            height: feedLikeActionSize,
+                            lineHeight: "20px",
+                            minWidth: 0,
+                            overflow: "hidden",
+                            px: "16px",
+                            textAlign: "left",
+                            textOverflow: "ellipsis",
+                            transition:
+                                "background-color 120ms ease, transform 120ms ease",
+                            whiteSpace: "nowrap",
+                            "&:active": {
+                                transform: canOpenPhoto
+                                    ? "scale(0.99)"
+                                    : undefined,
+                            },
+                            "&:disabled": { color: textSecondary },
+                            "&:focus-visible": {
+                                outline: `2px solid ${green}`,
+                                outlineOffset: 2,
+                            },
+                            "&:not(:disabled):hover": {
+                                bgcolor: spaceControlBackgroundHover,
+                                color: textBase,
+                            },
+                        }}
+                    >
+                        Reply...
+                    </Box>
+                    <FeedLikeButton
+                        isLiked={isLiked}
+                        onClick={handleLikeClick}
+                        popID={likePopID}
+                    />
                 </Box>
             )}
         </Box>
@@ -976,253 +1635,300 @@ const AddedFriendToast: React.FC<AddedFriendToastProps> = ({
     message,
     onClose,
 }) => (
+    <Box
+        sx={{
+            boxSizing: "border-box",
+            left: "50%",
+            px: feedHorizontalPadding,
+            pointerEvents: "none",
+            position: "fixed",
+            top: "calc(env(safe-area-inset-top) + 12px)",
+            transform: "translateX(-50%)",
+            width: "100%",
+            zIndex: 20,
+            "@media (min-width: 600px)": { maxWidth: 390 },
+        }}
+    >
+        <Box
+            role="status"
+            aria-live="polite"
+            sx={{
+                alignItems: "center",
+                bgcolor: spaceSurface,
+                borderRadius: "22px",
+                boxShadow: "0 12px 32px rgba(0, 0, 0, 0.18)",
+                boxSizing: "border-box",
+                color: textBase,
+                display: "flex",
+                fontFamily: '"Inter Variable", Inter, sans-serif',
+                fontSize: 14,
+                fontWeight: 650,
+                gap: "10px",
+                lineHeight: "20px",
+                minHeight: spaceTouchTargetSize,
+                pointerEvents: "auto",
+                pl: "16px",
+                pr: "6px",
+                py: 0,
+                width: "100%",
+            }}
+        >
+            <Box component="span" sx={{ display: "flex", flexShrink: 0 }}>
+                <HugeiconsIcon
+                    icon={UserAdd02Icon}
+                    size={20}
+                    strokeWidth={1.8}
+                />
+            </Box>
+            <Box
+                component="span"
+                sx={{
+                    flex: "1 1 auto",
+                    minWidth: 0,
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    whiteSpace: "nowrap",
+                }}
+            >
+                {message}
+            </Box>
+            <Box
+                component="button"
+                type="button"
+                aria-label="Close"
+                onClick={onClose}
+                sx={{
+                    alignItems: "center",
+                    appearance: "none",
+                    bgcolor: "transparent",
+                    border: 0,
+                    color: textBase,
+                    cursor: onClose ? "pointer" : "default",
+                    display: "flex",
+                    flexShrink: 0,
+                    height: spaceTouchTargetSize,
+                    justifyContent: "center",
+                    opacity: 0.9,
+                    p: 0,
+                    width: spaceTouchTargetSize,
+                    "&:focus-visible": {
+                        outline: `2px solid ${spaceText}`,
+                        outlineOffset: 2,
+                    },
+                }}
+            >
+                <HugeiconsIcon
+                    icon={MultiplicationSignIcon}
+                    size={16}
+                    strokeWidth={2}
+                />
+            </Box>
+        </Box>
+    </Box>
+);
+
+const InviteFriendsToast: React.FC<InviteFriendsToastProps> = ({
+    profileLink,
+    sharing,
+    onClose,
+    onSharingChange,
+}) => (
     <SpaceActionToast
-        closeLabel="Dismiss friend request status"
-        icon={
-            <HugeiconsIcon icon={UserAdd02Icon} size={20} strokeWidth={1.8} />
+        action={
+            <SpaceShareInviteButton
+                profileLink={profileLink}
+                sharing={sharing}
+                variant="toast"
+                onShareError={(error) =>
+                    log.error("Failed to share space invite", error)
+                }
+                onSharingChange={onSharingChange}
+            />
         }
-        message={message}
+        animateEntrance
+        closeLabel="Close invite prompt"
+        icon={
+            <HugeiconsIcon icon={UserAdd02Icon} size={20} strokeWidth={1.9} />
+        }
+        message="Invite your friends"
         onClose={onClose}
     />
 );
 
 export const HomeScreen: React.FC<HomeScreenProps> = ({
-    ownLatestPost,
-    isOwnLatestPostLoading = false,
-    isOwnLatestPostUnavailable = false,
-    latestPosts,
-    unreadPosts,
+    feedItems,
     friendRequestSentToastName,
-    friendRequests,
-    friends,
+    hasFeedLoadMoreError = false,
+    hasMoreFeedItems = false,
     hasUnreadMessages,
-    isLatestPostsLoading = false,
-    isFriendsLoading = false,
-    isFriendRequestsLoading = false,
-    isHomeCacheLoading = false,
+    isFeedLoading = false,
+    isFeedLoadingMore = false,
+    localFeedPosts = [],
+    showFirstPostPrompt = false,
     showInstallPrompt = false,
-    onCreatePost,
-    onAcceptFriendRequest,
+    showInviteFriendsToast = false,
     onAddFriend,
-    onDiscardFriendRequest,
-    onLoadFriendAvatar,
+    onPostPhotoSelect,
+    onDeletePost,
+    onLoadMoreFeedItems,
+    onLoadPostAvatar,
     onLoadPostImage,
     onFriendRequestSentToastClose,
+    onInviteFriendsToastClose,
     onOpenFriend,
-    onOpenFriendRequests,
     onOpenMessages,
-    onMessageFriend,
-    onPokeFriend,
-    onOpenOwnPost,
     onOpenProfile,
     onReplyToPost,
     onSetPostLiked,
+    onUpdatePostCaption,
     profile,
+    profileLink,
     viewerSpaceId,
 }) => {
     const [selectedViewer, setSelectedViewer] =
         useState<SelectedHomeViewer | null>(null);
-    const [selectedContact, setSelectedContact] = useState<{
-        anchorRect: DOMRect;
-        friend: FriendProfile;
-        avatarUrl?: string | null;
-    } | null>(null);
-    const [openedPostIds, setOpenedPostIds] = useState<Set<number>>(new Set());
-    const [postTileCanvasSize, setPostTileCanvasSize] =
-        useState<PostTileCanvasSize>({ height: 0, width: 0 });
-    const [isDraftPostExitAnimating, setIsDraftPostExitAnimating] =
-        useState(false);
-    const [isDraftPostExiting, setIsDraftPostExiting] = useState(false);
-    const [isPostPhotoOpening, setIsPostPhotoOpening] = useState(false);
-    const [loadedFriendAvatarURLsByKey, setLoadedFriendAvatarURLsByKey] =
-        useState<Record<string, string | null>>({});
-    const [loadedPostImageURLsByKey, setLoadedPostImageURLsByKey] = useState<
+    const [feedPhotoIndices, setFeedPhotoIndices] = useState<
+        Record<number, number>
+    >({});
+    const [isInviteSharing, setIsInviteSharing] = useState(false);
+    const [loadedFeedAvatarURLsByKey, setLoadedFeedAvatarURLsByKey] = useState<
+        Record<string, string | null>
+    >({});
+    const [loadedFeedImageURLsByKey, setLoadedFeedImageURLsByKey] = useState<
         Record<string, string>
     >({});
-    const [unavailablePostsByKey, setUnavailablePostsByKey] = useState<
+    const [unavailableFeedPostsByKey, setUnavailableFeedPostsByKey] = useState<
         Record<string, true>
     >({});
-    const postTileCanvasRef = React.useRef<HTMLDivElement | null>(null);
+    const newestLocalPostID = localFeedPosts[0]?.id;
     const postInputRef = React.useRef<HTMLInputElement | null>(null);
-    const localPostObjectUrlsRef = React.useRef<Set<string>>(new Set());
-    const activeLocalPostObjectUrlRef = React.useRef<string | null>(null);
-    const avatarLoadsInFlightRef = React.useRef<
+    const feedLoadMoreRef = React.useRef<HTMLDivElement | null>(null);
+    const feedAvatarLoadsInFlightRef = React.useRef<
         Map<string, Promise<string | null>>
     >(new Map());
-    const imageLoadsInFlightRef = React.useRef<
+    const feedImageLoadsRef = React.useRef<
         Map<string, Promise<string | undefined>>
     >(new Map());
-    const isPostPhotoButtonDisabled =
-        isPostPhotoOpening || !viewerSpaceId || !onCreatePost;
     const selectedPhotoFriendID = selectedViewer?.photo.friendID;
     const selectedPhotoIsOwn =
         Boolean(viewerSpaceId) && selectedPhotoFriendID == viewerSpaceId;
-    const latestPostByFriendID = React.useMemo(() => {
-        const posts = new Map<string, SpacePost>();
-        for (const post of latestPosts) {
-            posts.set(post.friendID, post);
-            posts.set(post.spaceId, post);
-        }
-        return posts;
-    }, [latestPosts]);
-    const unreadPostsByFriendID = React.useMemo(() => {
-        const postsByFriendID = new Map<string, SpacePost[]>();
-        for (const post of unreadPosts) {
-            if (openedPostIds.has(post.postId)) continue;
-            for (const friendID of new Set([post.friendID, post.spaceId])) {
-                const posts = postsByFriendID.get(friendID) ?? [];
-                posts.push(post);
-                postsByFriendID.set(friendID, posts);
-            }
-        }
-        for (const posts of postsByFriendID.values()) {
-            posts.sort(
-                (a, b) => b.timestampMs - a.timestampMs || b.postId - a.postId,
-            );
-        }
-        return postsByFriendID;
-    }, [openedPostIds, unreadPosts]);
-    const orderedHomeItems = React.useMemo(() => {
-        const displayedFriends = friends.slice(0, maximumHomeTileCount);
-        const friendIDs = new Set(
-            friends.map((friend) => friend.spaceId ?? friend.id),
+    const desiredFeedEntries = React.useMemo<HomeFeedEntry[]>(() => {
+        const localResolvedPostIds = new Set(
+            localFeedPosts.map((item) =>
+                item.status == "posted" || item.status == "ready"
+                    ? item.post.postId
+                    : item.postId,
+            ),
         );
         return [
-            ...displayedFriends.map((friend) => ({
-                friend,
-                type: "friend" as const,
-            })),
-            ...friendRequests
-                .filter(
-                    (request) =>
-                        !friendIDs.has(
-                            request.friend.spaceId ?? request.friend.id,
-                        ),
-                )
-                .slice(0, maximumHomeTileCount - displayedFriends.length)
-                .map((request) => ({ request, type: "request" as const })),
-        ].sort((a, b) => {
-            const aFriend = a.type == "friend" ? a.friend : a.request.friend;
-            const bFriend = b.type == "friend" ? b.friend : b.request.friend;
-            return (aFriend.spaceId ?? aFriend.id).localeCompare(
-                bFriend.spaceId ?? bFriend.id,
-            );
-        });
-    }, [friendRequests, friends]);
-    React.useEffect(() => setOpenedPostIds(new Set()), [viewerSpaceId]);
-    React.useEffect(() => {
-        const canvas = postTileCanvasRef.current;
-        if (!canvas) return;
-
-        const updateSize = () => {
-            const { height, width } = canvas.getBoundingClientRect();
-            setPostTileCanvasSize({ height, width });
-        };
-        const observer = new ResizeObserver(updateSize);
-        observer.observe(canvas);
-        updateSize();
-        return () => observer.disconnect();
-    }, []);
-    const postLayout = homeTileLayout(
-        orderedHomeItems.length,
-        postTileCanvasSize.width,
-        postTileCanvasSize.height,
-    );
+            ...localFeedPosts.map(
+                (item): HomeFeedEntry => ({
+                    identity:
+                        item.status == "posted" || item.status == "ready"
+                            ? `post:${item.post.postId}`
+                            : item.postId
+                              ? `post:${item.postId}`
+                              : `local:${item.id}`,
+                    item,
+                    kind: "local",
+                    renderKey: `local:${item.id}`,
+                }),
+            ),
+            ...feedItems
+                .filter((item) => !localResolvedPostIds.has(item.postId))
+                .map(
+                    (item): HomeFeedEntry => ({
+                        identity: `post:${item.postId}`,
+                        item,
+                        kind: "remote",
+                        renderKey: `post:${item.postId}`,
+                    }),
+                ),
+        ];
+    }, [feedItems, localFeedPosts]);
+    const hasFeedItems = desiredFeedEntries.length > 0;
+    const isEmptyFeedLoading = !hasFeedItems && isFeedLoading;
+    const showFeedCards = hasFeedItems;
     const isInstallPromptEnabled =
-        showInstallPrompt && !friendRequestSentToastName && !selectedViewer;
-    const isHomeItemsLoading = isFriendsLoading || isFriendRequestsLoading;
+        showInstallPrompt &&
+        !friendRequestSentToastName &&
+        !showInviteFriendsToast &&
+        !selectedViewer;
     const showUnreadIndicator = hasUnreadMessages === true;
-    const profileDisplayName =
-        profile?.fullName.trim() || profile?.username.trim() || "";
-    const revokeLocalPostObjectUrls = React.useCallback(() => {
-        localPostObjectUrlsRef.current.forEach((objectUrl) =>
-            URL.revokeObjectURL(objectUrl),
-        );
-        localPostObjectUrlsRef.current.clear();
-    }, []);
     const openPostPhotoPicker = () => {
-        if (isPostPhotoButtonDisabled) return;
-
         postInputRef.current?.click();
     };
-    const markPostRead = React.useCallback(
-        (post: Pick<SpacePost, "postId" | "timestampMs">) => {
-            if (!viewerSpaceId) return;
-            setOpenedPostIds((current) => new Set(current).add(post.postId));
-            void markSpaceHomePostRead(viewerSpaceId, post).catch(
-                (error: unknown) =>
-                    log.warn("Failed to mark Space post as read", error),
-            );
-        },
-        [viewerSpaceId],
-    );
-    const openPostPhotos = (
-        friend: FriendProfile,
-        posts: SpacePost[],
+    const openFeedPhoto = (
+        post: SpacePost,
         photo: SpaceViewerPhoto,
+        focusReplyOnOpen = false,
     ) => {
-        if (photo.postId) {
-            markPostRead({
-                postId: photo.postId,
-                timestampMs: photo.timestampMs,
-            });
-        }
         const isOwnPost =
             Boolean(viewerSpaceId) && photo.friendID == viewerSpaceId;
-        setSelectedViewer({
+        const photoIndex = photo.postPhotoIndex ?? 0;
+        const photos = viewerPhotosFromPost({
+            ...post,
             avatarUrl: photo.avatarUrl,
-            friend,
+            viewerLiked: photo.viewerLiked,
+        });
+        photos[photoIndex] = { ...photos[photoIndex]!, ...photo };
+        setSelectedViewer({
+            photoIndex,
+            photos,
+            focusReplyOnOpen: isOwnPost ? false : focusReplyOnOpen,
             photo,
-            postIndex: 0,
             postActionMode: isOwnPost ? "hidden" : "like-only",
-            posts,
-            sessionId: Symbol(),
         });
     };
     const closeSelectedPhoto = () => {
-        activeLocalPostObjectUrlRef.current = null;
-        setIsDraftPostExitAnimating(false);
-        setIsDraftPostExiting(false);
         setSelectedViewer(null);
-        revokeLocalPostObjectUrls();
     };
     const { clearBrowserBackState: clearSelectedPhotoHistory } =
         useBrowserBackClose({
             open: Boolean(selectedViewer),
             onClose: () => {
-                if (!isDraftPostExiting) closeSelectedPhoto();
+                closeSelectedPhoto();
             },
-            stateKey: "space-home-viewer",
+            stateKey: "space-feed-viewer",
         });
-    const loadedPostImageURLFor = React.useCallback(
-        (item: SpacePost) =>
-            item.imageUrl ?? loadedPostImageURLsByKey[postImageCacheKey(item)],
-        [loadedPostImageURLsByKey],
+    const deleteSelectedPost = async () => {
+        const postId = selectedViewer?.photo.postId;
+        if (!postId || !onDeletePost) return;
+
+        await onDeletePost(postId);
+    };
+    const loadedFeedImageURLFor = React.useCallback(
+        (item: FeedPhotoSource) =>
+            item.imageUrl ??
+            loadedFeedImageURLsByKey[feedPostImageCacheKey(item)],
+        [loadedFeedImageURLsByKey],
     );
-    const loadedFriendAvatarURLFor = React.useCallback(
-        (friend: FriendProfile) =>
-            friend.avatarUrl ??
-            loadedFriendAvatarURLsByKey[friendAvatarCacheKey(friend)],
-        [loadedFriendAvatarURLsByKey],
-    );
-    const loadPostImage = React.useCallback(
+    const loadedFeedAvatarURLFor = React.useCallback(
         (item: SpacePost) => {
-            const loadedImageUrl = loadedPostImageURLFor(item);
+            if (item.avatarUrl) return item.avatarUrl;
+            if (!item.avatarObjectID) return null;
+            return loadedFeedAvatarURLsByKey[feedPostAvatarCacheKey(item)];
+        },
+        [loadedFeedAvatarURLsByKey],
+    );
+    const loadFeedPostImage = React.useCallback(
+        (item: FeedPhotoSource) => {
+            const loadedImageUrl = loadedFeedImageURLFor(item);
             if (loadedImageUrl) return Promise.resolve(loadedImageUrl);
             if (!item.imageAsset || !onLoadPostImage) {
                 return Promise.resolve(undefined);
             }
 
-            const cacheKey = postImageCacheKey(item);
-            if (unavailablePostsByKey[cacheKey]) {
+            const cacheKey = feedPostImageCacheKey(item);
+            if (unavailableFeedPostsByKey[cacheKey]) {
                 return Promise.resolve(undefined);
             }
-            const inFlight = imageLoadsInFlightRef.current.get(cacheKey);
-            if (inFlight) return inFlight;
+            const existingLoad = feedImageLoadsRef.current.get(cacheKey);
+            if (existingLoad) return existingLoad;
 
             const load = onLoadPostImage(item.imageAsset)
                 .then((imageUrl) => {
-                    setLoadedPostImageURLsByKey((currentURLs) =>
+                    setLoadedFeedImageURLsByKey((currentURLs) =>
                         currentURLs[cacheKey] == imageUrl
                             ? currentURLs
                             : { ...currentURLs, [cacheKey]: imageUrl },
@@ -1230,40 +1936,38 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     return imageUrl;
                 })
                 .catch((error: unknown) => {
-                    log.warn("Failed to load latest post image", error);
+                    feedImageLoadsRef.current.delete(cacheKey);
+                    log.warn("Failed to load feed post image", error);
                     if (isSpaceContentError(error)) {
-                        setUnavailablePostsByKey((current) => ({
+                        setUnavailableFeedPostsByKey((current) => ({
                             ...current,
                             [cacheKey]: true,
                         }));
                     }
                     return undefined;
-                })
-                .finally(() => {
-                    imageLoadsInFlightRef.current.delete(cacheKey);
                 });
-            imageLoadsInFlightRef.current.set(cacheKey, load);
+            feedImageLoadsRef.current.set(cacheKey, load);
             return load;
         },
-        [loadedPostImageURLFor, onLoadPostImage, unavailablePostsByKey],
+        [loadedFeedImageURLFor, onLoadPostImage, unavailableFeedPostsByKey],
     );
-    const loadFriendAvatar = React.useCallback(
-        (friend: FriendProfile) => {
-            const loadedAvatarUrl = loadedFriendAvatarURLFor(friend);
+    const loadFeedPostAvatar = React.useCallback(
+        (item: SpacePost) => {
+            const loadedAvatarUrl = loadedFeedAvatarURLFor(item);
             if (loadedAvatarUrl !== undefined) {
                 return Promise.resolve(loadedAvatarUrl);
             }
-            if (!friend.avatarObjectID || !onLoadFriendAvatar) {
+            if (!item.avatarObjectID || !onLoadPostAvatar) {
                 return Promise.resolve(null);
             }
 
-            const cacheKey = friendAvatarCacheKey(friend);
-            const inFlight = avatarLoadsInFlightRef.current.get(cacheKey);
+            const cacheKey = feedPostAvatarCacheKey(item);
+            const inFlight = feedAvatarLoadsInFlightRef.current.get(cacheKey);
             if (inFlight) return inFlight;
 
-            const load = onLoadFriendAvatar(friend)
+            const load = onLoadPostAvatar(item)
                 .then((avatarUrl) => {
-                    setLoadedFriendAvatarURLsByKey((currentURLs) =>
+                    setLoadedFeedAvatarURLsByKey((currentURLs) =>
                         currentURLs[cacheKey] == avatarUrl
                             ? currentURLs
                             : { ...currentURLs, [cacheKey]: avatarUrl },
@@ -1271,8 +1975,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     return avatarUrl;
                 })
                 .catch((error: unknown) => {
-                    log.warn("Failed to load friend avatar", error);
-                    setLoadedFriendAvatarURLsByKey((currentURLs) =>
+                    log.warn("Failed to load feed avatar", error);
+                    setLoadedFeedAvatarURLsByKey((currentURLs) =>
                         currentURLs[cacheKey] === null
                             ? currentURLs
                             : { ...currentURLs, [cacheKey]: null },
@@ -1280,352 +1984,191 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     return null;
                 })
                 .finally(() => {
-                    avatarLoadsInFlightRef.current.delete(cacheKey);
+                    feedAvatarLoadsInFlightRef.current.delete(cacheKey);
                 });
-            avatarLoadsInFlightRef.current.set(cacheKey, load);
+            feedAvatarLoadsInFlightRef.current.set(cacheKey, load);
             return load;
         },
-        [loadedFriendAvatarURLFor, onLoadFriendAvatar],
+        [loadedFeedAvatarURLFor, onLoadPostAvatar],
     );
-    const selectedViewerPostIndex = selectedViewer?.postIndex;
-    const selectedViewerPosts = selectedViewer?.posts;
-
-    const selectedViewerPhotos = React.useMemo(() => {
-        const friend = selectedViewer?.friend;
-        if (!selectedViewerPosts || !friend) return undefined;
-
-        return selectedViewerPosts.map((post) =>
-            viewerPhotoForPost(
-                post,
-                friend,
-                selectedViewer.avatarUrl,
-                loadedPostImageURLFor(post) ??
-                    (selectedViewer.photo.postId == post.postId
-                        ? selectedViewer.photo.imageUrl
-                        : ""),
+    const feedItemFor = (
+        item: SpacePost,
+        key: React.Key,
+        timestampStatus?: FeedTimestampStatus,
+    ) => {
+        const postPhotos = spacePostPhotos(item).map((photo, index) => ({
+            ...photo,
+            postId: item.postId,
+            spaceId: item.spaceId,
+            imageUrl:
+                photo.imageUrl ?? (index == 0 ? item.imageUrl : undefined),
+        }));
+        const photos = postPhotos.map((photo) => ({
+            ...photo,
+            imageUrl: loadedFeedImageURLFor(photo),
+            isUnavailable: Boolean(
+                unavailableFeedPostsByKey[feedPostImageCacheKey(photo)],
             ),
-        );
-    }, [loadedPostImageURLFor, selectedViewer, selectedViewerPosts]);
-    const handleSelectedViewerPostIndexChange = React.useCallback(
-        (postIndex: number) => {
-            const currentViewer = selectedViewer;
-            const post = currentViewer?.posts?.[postIndex];
-            const friend = currentViewer?.friend;
-            if (!post || !friend) return;
-
-            markPostRead(post);
-            const updateSelectedViewer = (
-                imageUrl: string,
-                requireActivePost = false,
-            ) => {
-                setSelectedViewer((viewer) => {
-                    if (
-                        !viewer?.posts ||
-                        viewer.sessionId !== currentViewer.sessionId ||
-                        (requireActivePost &&
-                            (viewer.postIndex != postIndex ||
-                                viewer.photo.postId != post.postId))
-                    ) {
-                        return viewer;
-                    }
-                    return {
-                        ...viewer,
-                        photo: viewerPhotoForPost(
-                            post,
-                            friend,
-                            viewer.avatarUrl,
-                            imageUrl,
-                        ),
-                        postIndex,
-                    };
-                });
-            };
-
-            const imageUrl = loadedPostImageURLFor(post);
-            if (imageUrl) {
-                updateSelectedViewer(imageUrl);
-                return;
-            }
-
-            updateSelectedViewer("");
-            void loadPostImage(post).then((loadedImageUrl) => {
-                if (loadedImageUrl) {
-                    updateSelectedViewer(loadedImageUrl, true);
-                }
-            });
-        },
-        [loadPostImage, loadedPostImageURLFor, markPostRead, selectedViewer],
-    );
-    const setSelectedViewerPostLiked = React.useCallback(
-        async (postId: number, liked: boolean) => {
-            await onSetPostLiked?.(postId, liked);
-            setSelectedViewer((viewer) =>
-                viewer
-                    ? {
-                          ...viewer,
-                          photo:
-                              viewer.photo.postId == postId
-                                  ? { ...viewer.photo, viewerLiked: liked }
-                                  : viewer.photo,
-                          posts: viewer.posts?.map((post) =>
-                              post.postId == postId
-                                  ? { ...post, viewerLiked: liked }
-                                  : post,
-                          ),
-                      }
-                    : viewer,
-            );
-        },
-        [onSetPostLiked],
-    );
-
-    React.useEffect(() => {
-        if (!selectedViewerPosts || selectedViewerPostIndex == undefined)
-            return;
-
-        for (const offset of [-1, 1]) {
-            const adjacentPost =
-                selectedViewerPosts[selectedViewerPostIndex + offset];
-            if (!adjacentPost || loadedPostImageURLFor(adjacentPost)) continue;
-            void loadPostImage(adjacentPost);
-        }
-    }, [
-        loadPostImage,
-        loadedPostImageURLFor,
-        selectedViewerPostIndex,
-        selectedViewerPosts,
-    ]);
-    const friendPostTileFor = (friend: FriendProfile, index: number) => {
-        const placement = postLayout!.friends[index]!;
-        const friendID = friend.spaceId ?? friend.id;
-        const unreadFriendPosts = (
-            unreadPostsByFriendID.get(friendID) ?? []
-        ).filter(
-            (post) =>
-                !post.isUnavailable &&
-                !unavailablePostsByKey[postImageCacheKey(post)],
-        );
-        const latestPost = latestPostByFriendID.get(friendID);
-        const posts =
-            unreadFriendPosts.length > 0
-                ? unreadFriendPosts
-                : latestPost
-                  ? [latestPost]
-                  : [];
-        const item = posts[0];
-        const imageUrl = item ? loadedPostImageURLFor(item) : undefined;
-        const avatarUrl = loadedFriendAvatarURLFor(friend);
-        const isAvatarPending = Boolean(
-            friend.avatarObjectID && avatarUrl === undefined,
-        );
-        const isUnavailable = Boolean(
-            item &&
-            (item.isUnavailable ||
-                unavailablePostsByKey[postImageCacheKey(item)]),
-        );
-        const isRead = unreadFriendPosts.length == 0;
+        }));
+        const imageUrl = photos[0]?.imageUrl;
+        const avatarUrl = loadedFeedAvatarURLFor(item);
+        const isAvatarPending = !item.isUnavailable && avatarUrl === undefined;
+        const isUnavailable =
+            Boolean(item.isUnavailable) ||
+            Boolean(unavailableFeedPostsByKey[feedPostImageCacheKey(item)]);
         return (
-            <FriendPostTile
-                key={`${friend.id}:${item?.postId ?? "empty"}`}
-                avatarUrl={avatarUrl}
-                friend={friend}
+            <FeedItem
+                key={key}
+                aspectRatio={
+                    item.width && item.height ? item.width / item.height : 1
+                }
+                avatarUrl={avatarUrl ?? null}
+                caption={item.caption}
+                friendID={item.friendID}
                 imageUrl={imageUrl}
                 isAvatarPending={isAvatarPending}
-                isLoading={isFriendsLoading || (isLatestPostsLoading && !item)}
-                isRead={isRead}
+                isOwnPost={
+                    Boolean(viewerSpaceId) && item.spaceId == viewerSpaceId
+                }
+                isViewerOpen={Boolean(selectedViewer)}
                 isUnavailable={isUnavailable}
-                onLoadAvatar={() => loadFriendAvatar(friend)}
-                onLoadImage={
-                    item && !imageUrl && !isUnavailable
-                        ? () => loadPostImage(item)
-                        : undefined
-                }
-                onOpenFriend={onOpenFriend}
-                onOpenAvatar={(anchorRect) =>
-                    setSelectedContact({ anchorRect, friend, avatarUrl })
-                }
-                onOpenPosts={openPostPhotos}
-                isNineTileLayout={
-                    orderedHomeItems.length == maximumHomeTileCount
-                }
-                placement={placement}
-                posts={posts}
-            />
-        );
-    };
-    const friendRequestTileFor = (
-        request: SpaceFriendRequest,
-        index: number,
-    ) => {
-        const friend = request.friend;
-        const avatarUrl =
-            request.direction == "sent"
-                ? loadedFriendAvatarURLFor(friend)
-                : undefined;
-        return (
-            <FriendPostTile
-                key={`request:${request.requestId}`}
-                avatarUrl={avatarUrl}
-                friend={friend}
-                friendRequestDirection={request.direction}
-                isAvatarPending={Boolean(
-                    request.direction == "sent" &&
-                    friend.avatarObjectID &&
-                    avatarUrl === undefined,
-                )}
-                isLoading={isHomeItemsLoading}
-                isRead
-                isUnavailable={false}
-                onAcceptFriendRequest={
-                    request.direction == "received" && onAcceptFriendRequest
-                        ? () => onAcceptFriendRequest(request.requestId)
-                        : undefined
-                }
-                onDiscardFriendRequest={
-                    request.direction == "received" && onDiscardFriendRequest
-                        ? () => onDiscardFriendRequest(request.requestId)
-                        : undefined
-                }
+                name={item.name}
                 onLoadAvatar={
-                    request.direction == "sent"
-                        ? () => loadFriendAvatar(friend)
+                    isAvatarPending && !isUnavailable
+                        ? () => loadFeedPostAvatar(item)
                         : undefined
                 }
-                onOpenFriendRequest={
-                    request.direction == "sent"
-                        ? onOpenFriendRequests
-                        : undefined
+                onLoadImage={(index) => loadFeedPostImage(postPhotos[index]!)}
+                onLoadVideo={onLoadPostImage}
+                onOpenFriend={onOpenFriend}
+                onOpenPhoto={(photo, focusReply) =>
+                    openFeedPhoto({ ...item, photos }, photo, focusReply)
                 }
-                onOpenPosts={openPostPhotos}
-                isNineTileLayout={
-                    orderedHomeItems.length == maximumHomeTileCount
+                onOpenProfile={onOpenProfile}
+                onSetPostLiked={onSetPostLiked}
+                photos={photos}
+                photoCount={photos.length}
+                photoIndex={feedPhotoIndices[item.postId] ?? 0}
+                onPhotoIndexChange={(index) =>
+                    setFeedPhotoIndices((current) => ({
+                        ...current,
+                        [item.postId]: index,
+                    }))
                 }
-                isTwoTileLayout={orderedHomeItems.length == 2}
-                placement={postLayout!.friends[index]!}
-                posts={[]}
-                showFriendRequestDetails={orderedHomeItems.length <= 2}
+                postId={item.postId}
+                spaceId={item.spaceId}
+                thumbHash={item.thumbHash}
+                timestampStatus={timestampStatus}
+                timestampMs={item.timestampMs}
+                username={item.username}
+                viewerLiked={item.viewerLiked}
+            />
+        );
+    };
+    const localFeedItemFor = (item: LocalSpaceFeedPost) => {
+        if (item.status == "posted" || item.status == "ready") {
+            return feedItemFor(
+                item.post,
+                item.id,
+                item.status == "posted" ? "posted" : undefined,
+            );
+        }
+
+        const fetchedPost = item.postId
+            ? feedItems.find((post) => post.postId == item.postId)
+            : undefined;
+        if (fetchedPost) return feedItemFor(fetchedPost, item.id, "posted");
+
+        return (
+            <FeedItem
+                key={item.id}
+                aspectRatio={
+                    item.width && item.height ? item.width / item.height : 1
+                }
+                avatarUrl={item.avatarUrl ?? null}
+                caption={item.caption}
+                friendID={item.friendID}
+                imageUrl={item.imageUrl}
+                isAvatarPending={false}
+                isOwnPost
+                name={item.name}
+                onOpenProfile={onOpenProfile}
+                photoCount={item.photoCount}
+                postId={0}
+                timestampStatus={
+                    item.status == "failed"
+                        ? item.reason == "post-limit"
+                            ? "post-limit"
+                            : "failed"
+                        : item.postId
+                          ? "posted"
+                          : "posting"
+                }
+                timestampMs={item.timestampMs}
+                viewerLiked={false}
             />
         );
     };
 
-    const prepareSelectedPostPhoto = React.useCallback(
-        async (file: File) => {
-            if (!profile) return;
+    React.useEffect(() => {
+        if (!newestLocalPostID) return;
 
-            const canShowLocalPreview = canPreviewSpaceImageFile(file);
-            if (!canShowLocalPreview) {
-                const timestampMs = Date.now();
-                const draftKey = `pending-preview-${timestampMs}`;
-                activeLocalPostObjectUrlRef.current = draftKey;
-                setSelectedViewer({
-                    draftFile: file,
-                    isDraftImagePreviewPending: true,
-                    localObjectUrl: draftKey,
-                    photo: {
-                        alt: `${profileDisplayName || "You"} post`,
-                        avatarUrl: profile.avatarUrl,
-                        imageUrl: "",
-                        name: profileDisplayName || "You",
-                        timestampMs,
-                    },
-                    postActionMode: "draft-post",
-                });
+        return scheduleScrollPageToTop();
+    }, [newestLocalPostID]);
 
-                window.setTimeout(() => {
-                    if (activeLocalPostObjectUrlRef.current != draftKey) return;
+    React.useEffect(() => {
+        if (
+            hasFeedLoadMoreError ||
+            !hasMoreFeedItems ||
+            isFeedLoadingMore ||
+            !onLoadMoreFeedItems
+        ) {
+            return;
+        }
 
-                    void spacePostPreviewImageForFile(file)
-                        .then((preview) => {
-                            if (
-                                activeLocalPostObjectUrlRef.current != draftKey
-                            ) {
-                                URL.revokeObjectURL(preview.url);
-                                return;
-                            }
+        const element = feedLoadMoreRef.current;
+        if (!element) return;
 
-                            localPostObjectUrlsRef.current.add(preview.url);
-                            activeLocalPostObjectUrlRef.current = preview.url;
-                            setSelectedViewer((currentViewer) => {
-                                if (currentViewer?.localObjectUrl != draftKey)
-                                    return currentViewer;
+        let didRequestLoad = false;
+        const loadMore = () => {
+            if (didRequestLoad) return;
 
-                                return {
-                                    ...currentViewer,
-                                    isDraftImagePreviewPending: false,
-                                    localObjectUrl: preview.url,
-                                    photo: {
-                                        ...currentViewer.photo,
-                                        height: preview.height,
-                                        imageUrl: preview.url,
-                                        width: preview.width,
-                                    },
-                                };
-                            });
-                        })
-                        .catch((error: unknown) => {
-                            log.error("Failed to prepare post preview", error);
-                            const message = spacePostImageErrorMessage(error);
-                            setSelectedViewer((currentViewer) => {
-                                if (currentViewer?.localObjectUrl != draftKey)
-                                    return currentViewer;
+            didRequestLoad = true;
+            void Promise.resolve(onLoadMoreFeedItems()).catch(
+                (error: unknown) => {
+                    log.error("Failed to load more space feed", error);
+                },
+            );
+        };
 
-                                return {
-                                    ...currentViewer,
-                                    draftImageError: message,
-                                };
-                            });
-                        });
-                }, 0);
-                return;
-            }
+        if (
+            typeof window == "undefined" ||
+            !("IntersectionObserver" in window)
+        ) {
+            loadMore();
+            return;
+        }
 
-            const localPost = await createLoadedLocalPostPhoto({
-                avatarUrl: profile.avatarUrl,
-                file,
-                name: profileDisplayName || "You",
-            });
-            localPostObjectUrlsRef.current.add(localPost.objectUrl);
-            activeLocalPostObjectUrlRef.current = localPost.objectUrl;
-            setSelectedViewer({
-                draftFile: file,
-                localObjectUrl: localPost.objectUrl,
-                photo: localPost.photo,
-                postActionMode: "draft-post",
-            });
-        },
-        [profile, profileDisplayName],
-    );
-
-    const handlePostPhotoSelect: React.ChangeEventHandler<HTMLInputElement> = (
-        event,
-    ) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (!file) return;
-
-        setIsPostPhotoOpening(true);
-        void prepareSelectedPostPhoto(file)
-            .catch((error: unknown) => {
-                log.error("Failed to open post photo draft", error);
-            })
-            .finally(() => {
-                setIsPostPhotoOpening(false);
-            });
-    };
-
-    React.useEffect(
-        () => () => {
-            activeLocalPostObjectUrlRef.current = null;
-            revokeLocalPostObjectUrls();
-        },
-        [revokeLocalPostObjectUrls],
-    );
+        const observer = new IntersectionObserver(
+            (entries) => {
+                if (entries.some((entry) => entry.isIntersecting)) loadMore();
+            },
+            { rootMargin: feedLoadMoreRootMargin },
+        );
+        observer.observe(element);
+        return () => observer.disconnect();
+    }, [
+        hasFeedLoadMoreError,
+        hasMoreFeedItems,
+        isFeedLoadingMore,
+        onLoadMoreFeedItems,
+    ]);
 
     return (
         <Box
             component="main"
             sx={{
-                background: spaceAppBackground,
+                bgcolor: homeBackground,
                 color: textBase,
                 display: "grid",
                 minHeight: "100svh",
@@ -1634,12 +2177,15 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 position: "relative",
             }}
         >
-            {selectedViewer && (
-                <SpaceViewerPostBackdrop exiting={isDraftPostExitAnimating} />
+            <SpaceSkipLink />
+            {hasFeedItems && (
+                <Box component="h1" sx={visuallyHidden}>
+                    Home
+                </Box>
             )}
             <Box
                 sx={{
-                    bgcolor: "transparent",
+                    bgcolor: homeBackground,
                     boxSizing: "border-box",
                     maxWidth: "100%",
                     minHeight: "100svh",
@@ -1656,138 +2202,243 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     onOpenMessages={onOpenMessages}
                     onOpenProfile={onOpenProfile}
                 >
-                    <Box
-                        ref={postInputRef}
-                        component="input"
-                        type="file"
-                        accept={spacePostImageInputAccept}
-                        onChange={handlePostPhotoSelect}
-                        sx={{ display: "none" }}
+                    <SpacePostPhotoInput
+                        inputRef={postInputRef}
+                        onSelect={onPostPhotoSelect}
                     />
                 </SpaceHomeHeader>
                 <Box
+                    component="section"
+                    id="space-main-content"
+                    aria-label="Feed"
+                    tabIndex={-1}
                     sx={{
                         boxSizing: "border-box",
                         display: "flex",
                         flexDirection: "column",
-                        gap: `${homeTileGap * 2.5}px`,
-                        minHeight: `calc(100svh - ${spaceHomeHeaderHeight}px)`,
+                        gap: 0,
+                        justifyContent: showFeedCards ? "flex-start" : "center",
+                        minHeight: "calc(100svh - 64px)",
                         minWidth: 0,
-                        pb: "calc(env(safe-area-inset-bottom) + 12px)",
-                        px: homeHorizontalPadding,
-                        pt: "22px",
+                        pb: "calc(env(safe-area-inset-bottom) + 112px)",
+                        px: feedHorizontalPadding,
+                        pt: showFeedCards ? "16px" : "8px",
                         width: "100%",
                     }}
                 >
-                    <Box
-                        ref={postTileCanvasRef}
-                        sx={{
-                            flex: "1 1 auto",
-                            minHeight: minimumHomeTileCanvasHeight(
-                                orderedHomeItems.length,
-                            ),
-                            position: "relative",
-                            width: "100%",
-                        }}
-                    >
-                        {isHomeItemsLoading ? (
-                            <Box
-                                sx={{
-                                    alignItems: "center",
-                                    display: "flex",
-                                    height: "100%",
-                                    justifyContent: "center",
-                                    width: "100%",
-                                }}
-                            >
-                                {!isHomeCacheLoading && (
-                                    <SpaceLoadingSpinner ariaLabel="Loading friends and requests" />
-                                )}
-                            </Box>
-                        ) : (
-                            postLayout && (
+                    {hasFeedItems ? (
+                        <>
+                            <FeedMotionList
+                                entries={desiredFeedEntries}
+                                renderEntry={(entry) =>
+                                    entry.kind == "local"
+                                        ? localFeedItemFor(entry.item)
+                                        : feedItemFor(
+                                              entry.item,
+                                              entry.item.postId,
+                                          )
+                                }
+                            />
+                            {hasMoreFeedItems && onLoadMoreFeedItems && (
                                 <Box
-                                    component="ul"
-                                    aria-label="Friends and friend requests"
+                                    ref={feedLoadMoreRef}
+                                    aria-live="polite"
                                     sx={{
-                                        inset: 0,
-                                        m: 0,
-                                        p: 0,
-                                        position: "absolute",
+                                        alignItems: "center",
+                                        alignSelf: "center",
+                                        display: "flex",
+                                        height: 48,
+                                        justifyContent: "center",
+                                        mb: 0,
+                                        mt: "12px",
+                                        width: "100%",
                                     }}
                                 >
-                                    {orderedHomeItems.map((item, index) =>
-                                        item.type == "friend"
-                                            ? friendPostTileFor(
-                                                  item.friend,
-                                                  index,
-                                              )
-                                            : friendRequestTileFor(
-                                                  item.request,
-                                                  index,
-                                              ),
-                                    )}
-                                    {postLayout.addFriend && (
-                                        <SpaceAddFriendTile
-                                            placement={postLayout.addFriend}
-                                            variant={
-                                                postLayout.addFriendVariant
-                                            }
-                                            onClick={onAddFriend}
+                                    {hasFeedLoadMoreError ? (
+                                        <Box
+                                            component="button"
+                                            type="button"
+                                            aria-label="Retry loading posts"
+                                            onClick={onLoadMoreFeedItems}
+                                            sx={{
+                                                alignItems: "center",
+                                                appearance: "none",
+                                                bgcolor: spaceControlBackground,
+                                                border: 0,
+                                                borderRadius: "18px",
+                                                color: "#DEDEDE",
+                                                cursor: "pointer",
+                                                display: "inline-flex",
+                                                fontFamily:
+                                                    '"Inter Variable", Inter, sans-serif',
+                                                fontSize: 13,
+                                                fontWeight: 600,
+                                                height: spaceTouchTargetSize,
+                                                justifyContent: "center",
+                                                lineHeight: "18px",
+                                                minWidth: 116,
+                                                px: "18px",
+                                                whiteSpace: "nowrap",
+                                                "&:focus-visible": {
+                                                    outline: `2px solid ${green}`,
+                                                    outlineOffset: 2,
+                                                },
+                                                "&:hover": {
+                                                    bgcolor:
+                                                        spaceControlBackgroundHover,
+                                                },
+                                            }}
+                                        >
+                                            Retry
+                                        </Box>
+                                    ) : (
+                                        <SpaceLoadingSpinner
+                                            ariaLabel="Loading more posts"
+                                            size={22}
                                         />
                                     )}
                                 </Box>
-                            )
-                        )}
-                    </Box>
-                    <SpaceOwnPostTile
-                        post={ownLatestPost}
-                        isLoading={isOwnLatestPostLoading}
-                        isUnavailable={isOwnLatestPostUnavailable}
-                        isNewPostDisabled={isPostPhotoButtonDisabled}
-                        onLoadPostImage={onLoadPostImage}
-                        onNewPost={openPostPhotoPicker}
-                        onOpenPost={onOpenOwnPost}
-                    />
+                            )}
+                        </>
+                    ) : isEmptyFeedLoading ? (
+                        <Box
+                            sx={{
+                                alignItems: "center",
+                                display: "flex",
+                                justifyContent: "center",
+                                width: "100%",
+                            }}
+                        >
+                            <SpaceLoadingSpinner ariaLabel="Loading posts" />
+                        </Box>
+                    ) : (
+                        <Box
+                            className="green-bg"
+                            sx={{
+                                alignItems: "center",
+                                bgcolor: green,
+                                borderRadius: "24px",
+                                boxSizing: "border-box",
+                                color: "#FFFFFF",
+                                display: "flex",
+                                flexDirection: "column",
+                                height: "calc(100svh - 184px - env(safe-area-inset-bottom))",
+                                minHeight: 360,
+                                overflow: "hidden",
+                                px: "24px",
+                                pt: "72px",
+                                pb: "16px",
+                                textAlign: "center",
+                                width: "100%",
+                                "@media (max-height: 720px)": { pt: "32px" },
+                            }}
+                        >
+                            <Box
+                                component="h1"
+                                sx={{
+                                    fontFamily:
+                                        '"Nunito", "Inter Variable", sans-serif',
+                                    fontSize: 25,
+                                    fontWeight: 800,
+                                    lineHeight: "30px",
+                                    m: 0,
+                                    maxWidth: 260,
+                                    textWrap: "balance",
+                                }}
+                            >
+                                Invite your friends and family
+                            </Box>
+                            <Box
+                                component="p"
+                                sx={{
+                                    color: "rgba(255, 255, 255, 0.84)",
+                                    fontFamily:
+                                        '"Inter Variable", Inter, sans-serif',
+                                    fontSize: 15,
+                                    fontWeight: 500,
+                                    lineHeight: "21px",
+                                    m: 0,
+                                    mt: "10px",
+                                    maxWidth: 250,
+                                    textWrap: "balance",
+                                }}
+                            >
+                                Keep up with each other through
+                                <br />
+                                everyday photos.
+                            </Box>
+                            <Box
+                                component="button"
+                                type="button"
+                                aria-haspopup="dialog"
+                                disabled={!profile}
+                                onClick={onAddFriend}
+                                sx={{
+                                    ...spaceEmptyStateButtonSx,
+                                    bgcolor: "#FFFFFF",
+                                    color: homeBackground,
+                                    flexShrink: 0,
+                                    mt: "24px",
+                                    "&:focus-visible": {
+                                        outline: `2px solid ${textBase}`,
+                                        outlineOffset: 2,
+                                    },
+                                    "&:hover:not(:disabled)": {
+                                        bgcolor: textBase,
+                                    },
+                                }}
+                            >
+                                <HugeiconsIcon
+                                    icon={UserAdd02Icon}
+                                    size={18}
+                                    strokeWidth={1.8}
+                                />
+                                Add friend
+                            </Box>
+                            <Box sx={{ flexGrow: 1, minHeight: "32px" }} />
+                            <Box
+                                component="img"
+                                alt=""
+                                src="/images/ducky-space.svg"
+                                sx={{
+                                    display: "block",
+                                    height: "auto",
+                                    maxWidth: 300,
+                                    minHeight: 0,
+                                    objectFit: "contain",
+                                    width: "100%",
+                                    "@media (max-height: 720px)": {
+                                        maxWidth: 228,
+                                    },
+                                }}
+                            />
+                        </Box>
+                    )}
                 </Box>
-                {selectedContact && (
-                    <FriendQuickActionsDialog
-                        {...selectedContact}
-                        onClose={() => setSelectedContact(null)}
-                        onMessage={() =>
-                            onMessageFriend(selectedContact.friend)
-                        }
-                        onPoke={() => onPokeFriend(selectedContact.friend)}
-                        onProfile={() =>
-                            onOpenFriend?.(
-                                selectedContact.friend.id,
-                                selectedContact.friend.username,
-                            )
-                        }
-                    />
-                )}
+                <SpaceFeedPostButton
+                    onClick={openPostPhotoPicker}
+                    showFirstPostPrompt={showFirstPostPrompt}
+                />
                 {selectedViewer && (
                     <SpaceFileViewer
+                        closeOnSwipePastEnd
                         focusReplyOnOpen={selectedViewer.focusReplyOnOpen}
                         photo={selectedViewer.photo}
-                        photos={selectedViewerPhotos}
-                        photoIndex={selectedViewerPostIndex}
-                        draftPostPreparationError={
-                            selectedViewer.draftImageError
-                        }
-                        isDraftPostPreviewPending={
-                            selectedViewer.isDraftImagePreviewPending
-                        }
+                        photos={selectedViewer.photos}
+                        photoIndex={selectedViewer.photoIndex}
+                        onPhotoIndexChange={(index) => {
+                            setSelectedViewer((current) =>
+                                current
+                                    ? { ...current, photoIndex: index }
+                                    : null,
+                            );
+                            setFeedPhotoIndices((current) => ({
+                                ...current,
+                                [selectedViewer.photo.postId!]: index,
+                            }));
+                        }}
+                        onLoadPhoto={onLoadPostImage}
                         postActionMode={selectedViewer.postActionMode}
-                        showSequenceProgress={Boolean(
-                            selectedViewerPosts &&
-                            selectedViewerPosts.length > 1,
-                        )}
-                        onPhotoIndexChange={
-                            selectedViewerPosts
-                                ? handleSelectedViewerPostIndexChange
-                                : undefined
-                        }
                         onClose={closeSelectedPhoto}
                         onOpenProfile={
                             selectedPhotoIsOwn && onOpenProfile
@@ -1795,6 +2446,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                       void clearSelectedPhotoHistory(
                                           "back",
                                       ).finally(() => {
+                                          closeSelectedPhoto();
                                           onOpenProfile();
                                       });
                                   }
@@ -1803,6 +2455,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                         void clearSelectedPhotoHistory(
                                             "back",
                                         ).finally(() => {
+                                            closeSelectedPhoto();
                                             onOpenFriend(
                                                 selectedPhotoFriendID,
                                                 selectedViewer.photo.username,
@@ -1811,53 +2464,22 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                     }
                                   : undefined
                         }
-                        onSwipeLeft={
-                            !selectedViewerPosts ||
-                            selectedViewerPostIndex ==
-                                selectedViewerPosts.length - 1
-                                ? closeSelectedPhoto
-                                : undefined
-                        }
                         onReplyToPost={
                             !selectedPhotoIsOwn &&
                             selectedViewer.photo.friendID != viewerSpaceId
                                 ? onReplyToPost
                                 : undefined
                         }
-                        onPublishDraftPost={
-                            selectedViewer.draftFile && onCreatePost
-                                ? (caption, edit) => {
-                                      const previewUrl =
-                                          selectedViewer.photo.imageUrl;
-                                      const publishPromise = onCreatePost(
-                                          {
-                                              cropArea: edit.cropArea,
-                                              file: selectedViewer.draftFile!,
-                                              height: edit.height,
-                                              previewUrl,
-                                              rotationDegrees:
-                                                  edit.rotationDegrees,
-                                              width: edit.width,
-                                          },
-                                          caption,
-                                      );
-                                      localPostObjectUrlsRef.current.delete(
-                                          previewUrl,
-                                      );
-                                      return publishPromise;
-                                  }
+                        onDeletePost={
+                            selectedPhotoIsOwn &&
+                            selectedViewer.photo.postId &&
+                            onDeletePost
+                                ? deleteSelectedPost
                                 : undefined
                         }
-                        onDraftPostExitAnimationStart={() => {
-                            setIsDraftPostExitAnimating(true);
-                        }}
-                        onDraftPostExitStart={() => {
-                            setIsDraftPostExiting(true);
-                        }}
-                        onSetPostLiked={
-                            onSetPostLiked
-                                ? setSelectedViewerPostLiked
-                                : undefined
+                        onSetPostLiked={onSetPostLiked}
+                        onUpdatePostCaption={
+                            selectedPhotoIsOwn ? onUpdatePostCaption : undefined
                         }
                     />
                 )}
@@ -1865,6 +2487,13 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     <AddedFriendToast
                         message={`Friend request sent to @${friendRequestSentToastName}`}
                         onClose={onFriendRequestSentToastClose}
+                    />
+                ) : showInviteFriendsToast ? (
+                    <InviteFriendsToast
+                        profileLink={profileLink}
+                        sharing={isInviteSharing}
+                        onClose={onInviteFriendsToastClose}
+                        onSharingChange={setIsInviteSharing}
                     />
                 ) : (
                     <SpacePWAInstallPrompt enabled={isInstallPromptEnabled} />

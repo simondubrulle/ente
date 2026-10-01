@@ -89,12 +89,20 @@ func (repo *UserRepository) Delete(userID int64) error {
 	return deleteUser(context.Background(), repo.DB, userID)
 }
 
-func (repo *UserRepository) DeleteTx(ctx context.Context, tx *sql.Tx, userID int64) (string, error) {
+func (repo *UserRepository) DeleteTx(ctx context.Context, tx *sql.Tx, userID int64) (string, []RevokedToken, error) {
 	var emailHash string
-	if err := tx.QueryRowContext(ctx, `SELECT email_hash FROM users WHERE user_id = $1 FOR UPDATE`, userID).Scan(&emailHash); err != nil {
-		return "", stacktrace.Propagate(err, "failed to read email hash")
+	var active bool
+	if err := tx.QueryRowContext(ctx, `SELECT email_hash, encrypted_email IS NOT NULL FROM users WHERE user_id = $1 FOR NO KEY UPDATE`, userID).Scan(&emailHash, &active); err != nil {
+		return "", nil, stacktrace.Propagate(err, "failed to read user for deletion")
 	}
-	return emailHash, deleteUser(ctx, tx, userID)
+	if !active {
+		return "", nil, ente.ErrUserDeleted
+	}
+	revokedTokens, err := markTokensDeleted(tx, `UPDATE tokens SET is_deleted = true WHERE user_id = $1 AND is_deleted = false RETURNING app, token_hash`, userID)
+	if err != nil {
+		return "", nil, err
+	}
+	return emailHash, revokedTokens, deleteUser(ctx, tx, userID)
 }
 
 func deleteUser(ctx context.Context, executor userMutationExecutor, userID int64) error {
@@ -352,17 +360,15 @@ func (repo *UserRepository) GetUserIDWithEmailUnrestricted(email string) (int64,
 }
 
 func (repo *UserRepository) GetKeyAttributes(userID int64) (ente.KeyAttributes, error) {
-	row := repo.DB.QueryRow(`SELECT kek_salt, kek_hash_bytes, encrypted_key, key_decryption_nonce, public_key, encrypted_secret_key, secret_key_decryption_nonce, mem_limit, ops_limit, master_key_encrypted_with_recovery_key, master_key_decryption_nonce, recovery_key_encrypted_with_master_key, recovery_key_decryption_nonce FROM key_attributes WHERE user_id = $1`, userID)
+	row := repo.DB.QueryRow(`SELECT kek_salt, encrypted_key, key_decryption_nonce, public_key, encrypted_secret_key, secret_key_decryption_nonce, mem_limit, ops_limit, master_key_encrypted_with_recovery_key, master_key_decryption_nonce, recovery_key_encrypted_with_master_key, recovery_key_decryption_nonce FROM key_attributes WHERE user_id = $1`, userID)
 	var (
 		keyAttributes                     ente.KeyAttributes
-		kekHashBytes                      []byte
 		masterKeyEncryptedWithRecoveryKey sql.NullString
 		masterKeyDecryptionNonce          sql.NullString
 		recoveryKeyEncryptedWithMasterKey sql.NullString
 		recoveryKeyDecryptionNonce        sql.NullString
 	)
 	err := row.Scan(&keyAttributes.KEKSalt,
-		&kekHashBytes,
 		&keyAttributes.EncryptedKey,
 		&keyAttributes.KeyDecryptionNonce,
 		&keyAttributes.PublicKey,
@@ -378,7 +384,6 @@ func (repo *UserRepository) GetKeyAttributes(userID int64) (ente.KeyAttributes, 
 	if err != nil {
 		return ente.KeyAttributes{}, stacktrace.Propagate(err, "")
 	}
-	keyAttributes.KEKHash = string(kekHashBytes)
 	if masterKeyEncryptedWithRecoveryKey.Valid {
 		keyAttributes.MasterKeyEncryptedWithRecoveryKey = masterKeyEncryptedWithRecoveryKey.String
 	}
@@ -396,8 +401,8 @@ func (repo *UserRepository) GetKeyAttributes(userID int64) (ente.KeyAttributes, 
 }
 
 func (repo *UserRepository) SetKeyAttributes(userID int64, keyAttributes ente.KeyAttributes) error {
-	_, err := repo.DB.Exec(`INSERT INTO key_attributes(user_id, kek_salt, kek_hash_bytes, encrypted_key, key_decryption_nonce, public_key, encrypted_secret_key, secret_key_decryption_nonce, mem_limit, ops_limit, master_key_encrypted_with_recovery_key, master_key_decryption_nonce, recovery_key_encrypted_with_master_key, recovery_key_decryption_nonce) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)`,
-		userID, keyAttributes.KEKSalt, []byte(keyAttributes.KEKHash),
+	_, err := repo.DB.Exec(`INSERT INTO key_attributes(user_id, kek_salt, encrypted_key, key_decryption_nonce, public_key, encrypted_secret_key, secret_key_decryption_nonce, mem_limit, ops_limit, master_key_encrypted_with_recovery_key, master_key_decryption_nonce, recovery_key_encrypted_with_master_key, recovery_key_decryption_nonce) VALUES($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+		userID, keyAttributes.KEKSalt,
 		keyAttributes.EncryptedKey, keyAttributes.KeyDecryptionNonce,
 		keyAttributes.PublicKey, keyAttributes.EncryptedSecretKey,
 		keyAttributes.SecretKeyDecryptionNonce, keyAttributes.MemLimit, keyAttributes.OpsLimit,

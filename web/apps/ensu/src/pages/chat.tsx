@@ -9,6 +9,7 @@ import { useFileInput } from "@/components/utils/use-file-input";
 import { useNotesCollections } from "@/hooks/use-notes-collections";
 import { handleManualAppUpdateCheck } from "@/services/app-update";
 import {
+    buildConversationPath,
     buildSelectedPath,
     ROOT_SELECTION_KEY,
     STREAMING_SELECTION_KEY,
@@ -48,6 +49,13 @@ import {
     type GroundedSource,
     type KnowledgePack,
 } from "@/services/knowledge";
+import { DEFAULT_WEB_CONTEXT_SIZE } from "@/services/llm/budget";
+import {
+    prepareDesktopConversation,
+    resolveDesktopSourceFollowup,
+    type PreparedReply,
+} from "@/services/llm/conversation";
+import { stripHiddenPartsText } from "@/services/llm/history-text";
 import {
     DEFAULT_MODEL,
     FALLBACK_DESKTOP_MODEL_PRESETS,
@@ -102,9 +110,6 @@ const formatTime = (timestamp: number) => {
     return `${hour12}:${minute} ${period}`;
 };
 
-const DEFAULT_GENERATION_MAX_TOKENS = 8_192;
-const OVERFLOW_SAFETY_TOKENS = 256;
-const DEFAULT_WEB_CONTEXT_SIZE = 4096;
 const ADVANCED_SETTINGS_UNLOCK_KEY = "ensu.advancedSettingsUnlocked";
 const MODEL_SETTINGS_STORAGE_KEY = "ensu.modelSettings";
 const SYSTEM_PROMPT_STORAGE_KEY = "ensu.systemPrompt";
@@ -297,13 +302,6 @@ const parseDocumentBlocks = (text: string) => {
     return { text: stripped, documents };
 };
 
-const stripHiddenPartsText = (text: string) =>
-    text
-        .replaceAll("\0", "")
-        .replace(/<think>[\s\S]*?<\/think>/g, "")
-        .replace(/<todo_list>[\s\S]*?<\/todo_list>/g, "")
-        .trim();
-
 const buildDocumentBlocks = (documents: DocumentAttachment[]) => {
     if (!documents.length) return "";
     return documents
@@ -394,7 +392,7 @@ const Page: React.FC = () => {
         : "rgba(0, 0, 0, 0.04)";
     const messageTypographySx = {
         fontSize: "15px",
-        lineHeight: "26px",
+        lineHeight: "22px",
         fontWeight: 400,
         fontFamily: messageFontFamily,
     } as const;
@@ -414,6 +412,7 @@ const Page: React.FC = () => {
         wordBreak: "break-word",
         overflowWrap: "anywhere",
     } as const;
+    const markdownParagraphSpacing = "12px";
     const assistantMarkdownSx = {
         ...messageTypographySx,
         color: "text.base",
@@ -432,22 +431,30 @@ const Page: React.FC = () => {
             marginLeft: "2px",
             animation: "ensu-blink 1s steps(1, end) infinite",
         },
-        "& p": { margin: 0 },
-        "& p + p": { marginTop: "12px" },
-        "& ul, & ol": { paddingLeft: "24px", margin: "12px 0 0" },
-        "& li": { marginBottom: "4px" },
+        "& p, & ul, & ol, & blockquote, & pre, & h1, & h2, & h3, & h4, & h5, & h6, & hr":
+            { margin: 0 },
+        "& .markdown-content > * + *, & li > * + *, & blockquote > * + *": {
+            marginTop: markdownParagraphSpacing,
+        },
+        "& ul, & ol": { paddingLeft: "24px" },
+        "& li > :is(ul, ol, .markdown-code-block, blockquote, h1, h2, h3, h4, h5, h6, hr)":
+            { marginTop: markdownParagraphSpacing },
+        "& li + li": { marginTop: markdownParagraphSpacing },
         "& code": { fontFamily: codeFontFamily, fontSize: "0.95em" },
-        "& .markdown-code-block": { position: "relative", margin: "12px 0 0" },
-        "& .markdown-code-block pre": {
-            margin: 0,
-            padding: "12px",
-            borderRadius: 6,
+        "& .markdown-code-block": {
+            borderRadius: "6px",
             backgroundColor: codeBlockBackground,
+            overflow: "hidden",
+        },
+        "& .markdown-code-block pre": {
+            padding: "12px",
             overflowX: "auto",
+            whiteSpace: "pre",
+            overflowWrap: "normal",
+            wordBreak: "normal",
         },
         "& .markdown-code-block pre code": { fontFamily: codeFontFamily },
         "& blockquote": {
-            margin: "12px 0 0",
             paddingLeft: "12px",
             borderLeft: "3px solid",
             borderLeftColor: "divider",
@@ -461,6 +468,22 @@ const Page: React.FC = () => {
             overflowX: "auto",
         },
         "& .katex": { color: "text.base" },
+        "& .markdown-table": { maxWidth: "100%", overflowX: "auto" },
+        "& table": {
+            borderCollapse: "collapse",
+            width: "max-content",
+            minWidth: "100%",
+        },
+        "& th, & td": {
+            border: "1px solid",
+            borderColor: "divider",
+            padding: "8px 12px",
+            minWidth: "100px",
+            maxWidth: "320px",
+            verticalAlign: "top",
+        },
+        "& th": { backgroundColor: codeBlockBackground },
+        "& img": { maxWidth: "100%", height: "auto" },
         "& a": { color: "accent.main" },
     };
     const streamingMessageSx = { transition: "all 0.2s ease" } as const;
@@ -553,7 +576,6 @@ const Page: React.FC = () => {
     >(null);
     const [selectedModelId, setSelectedModelId] = useState("");
     const [contextLength, setContextLength] = useState("");
-    const [maxTokens, setMaxTokens] = useState("");
     const [systemPrompt, setSystemPrompt] = useState(
         DEFAULT_CHAT_SYSTEM_PROMPT_BODY,
     );
@@ -623,6 +645,10 @@ const Page: React.FC = () => {
     > | null>(null);
     const generationStartingRef = useRef(false);
     const generationActiveRef = useRef(false);
+    const preparedReplyRef = useRef<PreparedReply | undefined>(undefined);
+    const [conversationStatus, setConversationStatus] = useState<string | null>(
+        null,
+    );
     const generationStoppingRef = useRef(false);
     const pendingGenerationStopsRef = useRef(0);
     const modelGateRequestRef = useRef(0);
@@ -1022,7 +1048,6 @@ const Page: React.FC = () => {
         const applySettings = (parsed: {
             modelId?: string;
             contextLength?: string;
-            maxTokens?: string;
         }) => {
             const rawContextLength = parsed.contextLength ?? "";
             const clampedContextLength =
@@ -1034,7 +1059,6 @@ const Page: React.FC = () => {
             const settings = {
                 modelId: parsed.modelId ?? "",
                 contextLength: clampedContextLength,
-                maxTokens: parsed.maxTokens ?? "",
             };
             window.localStorage.setItem(
                 MODEL_SETTINGS_STORAGE_KEY,
@@ -1043,7 +1067,6 @@ const Page: React.FC = () => {
             if (cancelled) return;
             setSelectedModelId(settings.modelId);
             setContextLength(settings.contextLength);
-            setMaxTokens(settings.maxTokens);
         };
 
         // Older builds persisted a model URL selection; llm_migrate_models
@@ -1071,7 +1094,6 @@ const Page: React.FC = () => {
                       modelUrl?: string;
                       mmprojUrl?: string;
                       contextLength?: string;
-                      maxTokens?: string;
                   })
                 : {};
             let modelId = parsed.modelId ?? "";
@@ -1096,11 +1118,7 @@ const Page: React.FC = () => {
                     modelId = converted ?? "";
                 }
             }
-            applySettings({
-                modelId,
-                contextLength: parsed.contextLength,
-                maxTokens: parsed.maxTokens,
-            });
+            applySettings({ modelId, contextLength: parsed.contextLength });
         };
 
         void loadSettings()
@@ -1413,9 +1431,11 @@ const Page: React.FC = () => {
         if (!isGenerating && !generationStartingRef.current) return;
 
         generationTokenRef.current += 1;
+        setConversationStatus(null);
         beginGenerationStop();
         const jobId = currentJobIdRef.current;
         currentJobIdRef.current = null;
+        preparedReplyRef.current = undefined;
         activeKnowledgeSourcesRef.current = [];
         generationActiveRef.current = false;
         setIsGenerating(false);
@@ -1477,6 +1497,7 @@ const Page: React.FC = () => {
     }, []);
 
     useEffect(() => {
+        preparedReplyRef.current = undefined;
         setStreamingParentId(null);
         setStreamingText("");
         streamingBufferRef.current = "";
@@ -1840,12 +1861,8 @@ const Page: React.FC = () => {
         return {
             modelId: selectedModelId || undefined,
             contextLength: contextLength ? Number(contextLength) : undefined,
-            maxTokens:
-                maxTokens && Number(maxTokens) > 0
-                    ? Number(maxTokens)
-                    : undefined,
         };
-    }, [selectedModelId, contextLength, maxTokens]);
+    }, [selectedModelId, contextLength]);
 
     const modelSettingsKey = useMemo(
         () => JSON.stringify(getModelSettings()),
@@ -1854,9 +1871,9 @@ const Page: React.FC = () => {
 
     const formatErrorMessage = useCallback((error: unknown) => {
         if (isNamedError(error, "prompt_too_long")) {
-            return "Prompt exceeds the model context window. Reduce history, lower max tokens, or increase context length.";
+            return "Prompt exceeds the model context window. Reduce history or increase context length.";
         }
-        return error instanceof Error ? error.message : "Unknown model error";
+        return tauriCommandError(error).message ?? "Unknown model error";
     }, []);
 
     const trimToWords = useCallback((text: string, maxWords: number) => {
@@ -2352,8 +2369,7 @@ const Page: React.FC = () => {
         (
             path: ChatMessage[],
             promptText: string,
-            contextSize: number,
-            maxTokensCount?: number,
+            inputBudget: number,
             stopAtMessageUuid?: string | null,
         ): LlmMessage[] => {
             const candidates = slicePathUntil(path, stopAtMessageUuid);
@@ -2364,10 +2380,6 @@ const Page: React.FC = () => {
                     ? candidates.slice(0, -1)
                     : candidates;
 
-            const inputBudget =
-                contextSize -
-                (maxTokensCount ?? DEFAULT_GENERATION_MAX_TOKENS) -
-                256;
             const budget =
                 inputBudget -
                 approxTokens(buildChatSystemPrompt(systemPrompt)) -
@@ -2787,6 +2799,7 @@ const Page: React.FC = () => {
     const handleStopGeneration = useCallback(() => {
         const jobId = currentJobIdRef.current;
         generationTokenRef.current += 1;
+        setConversationStatus(null);
         beginGenerationStop();
 
         flushStreamingText();
@@ -2795,6 +2808,8 @@ const Page: React.FC = () => {
         const parentMessageUuid = streamingParentId;
         const activeSessionId = currentSessionIdRef.current ?? currentSessionId;
         const activeKnowledgeSources = activeKnowledgeSourcesRef.current;
+        const preparedReply = preparedReplyRef.current;
+        preparedReplyRef.current = undefined;
         activeKnowledgeSourcesRef.current = [];
 
         const last = lastGenerationRef.current;
@@ -2822,15 +2837,17 @@ const Page: React.FC = () => {
                 chatKey
             ) {
                 try {
-                    const assistantMessage = await addMessage(
-                        activeSessionId,
-                        "assistant",
-                        finalText,
-                        chatKey,
-                        parentMessageUuid,
-                        [],
-                        activeKnowledgeSources,
-                    );
+                    const assistantMessage = await (preparedReply
+                        ? preparedReply.saveAnswer(finalText)
+                        : addMessage(
+                              activeSessionId,
+                              "assistant",
+                              finalText,
+                              chatKey,
+                              parentMessageUuid,
+                              [],
+                              activeKnowledgeSources,
+                          ));
 
                     await updateBranchSelectionState(
                         parentMessageUuid,
@@ -2909,7 +2926,7 @@ const Page: React.FC = () => {
     const startGeneration = useCallback(
         async ({
             promptText,
-            parentMessageUuid,
+            parentMessage,
             historyPath,
             stopAtMessageUuid,
             resetContext = false,
@@ -2918,14 +2935,15 @@ const Page: React.FC = () => {
             mediaMarker,
         }: {
             promptText: string;
-            parentMessageUuid: string;
+            parentMessage: ChatMessage;
             historyPath: ChatMessage[];
             stopAtMessageUuid?: string | null;
             resetContext?: boolean;
             sessionUuid?: string;
             imagePaths?: string[];
             mediaMarker?: string;
-        }) => {
+        }): Promise<void> => {
+            const parentMessageUuid = parentMessage.messageUuid;
             const activeSessionId =
                 sessionUuid ?? currentSessionIdRef.current ?? currentSessionId;
             if (!chatKey || !activeSessionId) return;
@@ -2950,8 +2968,8 @@ const Page: React.FC = () => {
 
             let provider: LlmProvider;
             let settings: ModelSettings;
-            let contextSize: number;
             let maxTokens: number;
+            let inputBudget: number;
             let previousSelection: string | null | undefined;
             let startupCompleted = false;
             try {
@@ -2968,7 +2986,7 @@ const Page: React.FC = () => {
                     if (!isActiveGeneration()) return;
                 }
                 settings = getModelSettings();
-                ({ contextSize, maxTokens } =
+                ({ maxTokens, inputBudget } =
                     provider.resolveRuntimeSettings(settings));
 
                 if (!isActiveGeneration()) return;
@@ -3006,31 +3024,40 @@ const Page: React.FC = () => {
             }
 
             let errorMessage: string | null = null;
+            preparedReplyRef.current = undefined;
             activeKnowledgeSourcesRef.current = [];
 
             try {
                 const normalSystemPrompt = buildChatSystemPrompt(systemPrompt);
-                const history = buildHistory(
-                    historyPath,
-                    promptText,
-                    contextSize,
-                    maxTokens,
-                    stopAtMessageUuid,
-                );
+                const useConversationMemory =
+                    provider.getBackendKind() === "tauri" &&
+                    !imagePaths?.length;
+                let history = useConversationMemory
+                    ? []
+                    : buildHistory(
+                          historyPath,
+                          promptText,
+                          inputBudget,
+                          stopAtMessageUuid,
+                      );
                 const normalMessages: LlmMessage[] = [
                     { role: "system", content: normalSystemPrompt },
                     ...history,
                     { role: "user", content: promptText },
                 ];
-                const inputBudget =
-                    contextSize - maxTokens - OVERFLOW_SAFETY_TOKENS;
-                const normalPromptTokenEstimate = normalMessages.reduce(
-                    (total, message) => total + approxTokens(message.content),
-                    0,
-                );
-                if (normalPromptTokenEstimate > inputBudget) {
+                const countTokens = (messages: LlmMessage[]) =>
+                    messages.reduce(
+                        (total, message) =>
+                            total + approxTokens(message.content),
+                        0,
+                    );
+                const normalPromptTokenEstimate = countTokens(normalMessages);
+                if (
+                    provider.getBackendKind() === "wasm" &&
+                    normalPromptTokenEstimate > inputBudget
+                ) {
                     throw new Error(
-                        "Prompt exceeds the model context window. Reduce history, lower max tokens, or increase context length.",
+                        "Prompt exceeds the model context window. Reduce history or increase context length.",
                     );
                 }
 
@@ -3066,15 +3093,22 @@ const Page: React.FC = () => {
                     .text.replaceAll(MEDIA_MARKER, "")
                     .replace(/\[\d+ image attachments? provided\]/gi, "")
                     .trim();
-                const remainingKnowledgeBytes = Math.max(
-                    0,
-                    (inputBudget - normalPromptTokenEstimate) * 4 - 2,
-                );
+                const conversationPath = useConversationMemory
+                    ? buildConversationPath(allMessages, parentMessage)
+                    : [];
+                let resolutionToken: string | undefined;
+                const remainingKnowledgeBytes = useConversationMemory
+                    ? 6000
+                    : Math.max(
+                          0,
+                          (inputBudget - normalPromptTokenEstimate) * 4 - 2,
+                      );
                 if (
                     isTauriRuntime &&
                     knowledgeQuery &&
                     remainingKnowledgeBytes > 0
                 ) {
+                    setConversationStatus("Finding sources");
                     try {
                         knowledgeContext =
                             await provider.withKnowledgeRetrieval(
@@ -3090,7 +3124,11 @@ const Page: React.FC = () => {
                         if (!isActiveGeneration()) return;
                     } catch (error) {
                         const { name } = tauriCommandError(error);
-                        if (!isActiveGeneration() || name === "cancelled") {
+                        if (
+                            !isActiveGeneration() ||
+                            name === "cancelled" ||
+                            name === "stale"
+                        ) {
                             return;
                         }
                         if (name === "embedding_missing") {
@@ -3101,8 +3139,44 @@ const Page: React.FC = () => {
                             error,
                         );
                     }
+                    setConversationStatus(null);
                 }
                 if (!isActiveGeneration()) return;
+
+                if (
+                    useConversationMemory &&
+                    historyPath.some((message) => message.sources?.length)
+                ) {
+                    setConversationStatus("Finding sources");
+                    try {
+                        resolutionToken = await provider.withKnowledgeRetrieval(
+                            (cancellationEpoch) =>
+                                resolveDesktopSourceFollowup({
+                                    sessionUuid: activeSessionId,
+                                    path: conversationPath,
+                                    question: knowledgeQuery,
+                                    enabledStableIds: enabledReadyPackIds,
+                                    cancellationEpoch,
+                                    candidates: knowledgeContext?.candidates,
+                                }),
+                            isActiveGeneration,
+                        );
+                        if (!isActiveGeneration()) return;
+                    } catch (error) {
+                        const { name } = tauriCommandError(error);
+                        if (
+                            !isActiveGeneration() ||
+                            name === "cancelled" ||
+                            name === "stale"
+                        )
+                            return;
+                        log.warn(
+                            "Source followup failed; continuing with available sources",
+                            error,
+                        );
+                    }
+                    setConversationStatus(null);
+                }
 
                 await provider.ensureModelReady(settings);
                 setLoadedModelName(provider.getCurrentModel()?.name ?? null);
@@ -3114,31 +3188,89 @@ const Page: React.FC = () => {
                 }
 
                 if (resetContext) {
-                    await provider.resetContext(contextSize);
+                    await provider.resetContext(
+                        provider.resolveRuntimeSettings(settings, false)
+                            .contextSize,
+                    );
                     if (!isActiveGeneration()) return;
+                }
+
+                ({ maxTokens, inputBudget } =
+                    provider.resolveRuntimeSettings(settings));
+                if (
+                    provider.getBackendKind() === "tauri" &&
+                    !useConversationMemory
+                ) {
+                    history = buildHistory(
+                        historyPath,
+                        promptText,
+                        inputBudget,
+                        stopAtMessageUuid,
+                    );
+                    normalMessages.splice(
+                        1,
+                        normalMessages.length - 2,
+                        ...history,
+                    );
+                    if (countTokens(normalMessages) > inputBudget) {
+                        throw new Error(
+                            "Prompt exceeds the loaded model context window. Reduce history or increase context length.",
+                        );
+                    }
                 }
 
                 let messages = normalMessages;
                 let activeSources: GroundedSource[] = [];
-                if (knowledgeContext) {
+                if (knowledgeContext && !useConversationMemory) {
                     const candidateMessages: LlmMessage[] = [
                         {
                             role: "system",
                             content: `${normalSystemPrompt}\n\n${knowledgeContext.text}`,
                         },
-                        ...history,
-                        { role: "user", content: promptText },
+                        ...normalMessages.slice(1),
                     ];
-                    if (
-                        candidateMessages.reduce(
-                            (total, message) =>
-                                total + approxTokens(message.content),
-                            0,
-                        ) <= inputBudget
-                    ) {
+                    if (countTokens(candidateMessages) <= inputBudget) {
                         messages = candidateMessages;
                         activeSources = knowledgeContext.sources;
                     }
+                }
+                if (useConversationMemory) {
+                    const prepared = await prepareDesktopConversation(
+                        {
+                            sessionUuid: activeSessionId,
+                            path: conversationPath,
+                            system: normalSystemPrompt,
+                            current: promptText,
+                            historyQuery: resolutionToken
+                                ? undefined
+                                : knowledgeQuery,
+                            maxTokens,
+                            groundingCandidates: resolutionToken
+                                ? undefined
+                                : knowledgeContext?.candidates,
+                            resolutionToken,
+                        },
+                        provider,
+                        {
+                            isCurrent: isActiveGeneration,
+                            onProgress: () =>
+                                setConversationStatus(
+                                    "Remembering earlier messages",
+                                ),
+                        },
+                    );
+                    if (!isActiveGeneration()) return;
+                    setConversationStatus(null);
+                    if (!prepared) {
+                        if (previousSelection) {
+                            void updateBranchSelectionState(
+                                parentMessageUuid,
+                                previousSelection,
+                            );
+                        }
+                        return;
+                    }
+                    preparedReplyRef.current = prepared;
                 }
                 activeKnowledgeSourcesRef.current = activeSources;
                 const nativeImagePaths =
@@ -3153,7 +3285,7 @@ const Page: React.FC = () => {
                 }
 
                 const generate = () =>
-                    provider.generateChatStream(
+                    (preparedReplyRef.current ?? provider).generateChatStream(
                         {
                             messages,
                             imagePaths: nativeImagePaths,
@@ -3194,7 +3326,8 @@ const Page: React.FC = () => {
                         name === "prompt_too_long" &&
                         !streamingBufferRef.current &&
                         streamingChunksRef.current.length === 0 &&
-                        activeSources.length > 0
+                        activeSources.length > 0 &&
+                        !useConversationMemory
                     ) {
                         activeSources = [];
                         activeKnowledgeSourcesRef.current = [];
@@ -3251,16 +3384,19 @@ const Page: React.FC = () => {
 
                 activeKnowledgeSourcesRef.current = [];
 
-                const assistantMessage = await addMessage(
-                    activeSessionId,
-                    "assistant",
-                    rawAssistantText,
-                    chatKey,
-                    parentMessageUuid,
-                    [],
-                    activeSources,
-                );
+                const assistantMessage = await (preparedReplyRef.current
+                    ? preparedReplyRef.current.saveAnswer(rawAssistantText)
+                    : addMessage(
+                          activeSessionId,
+                          "assistant",
+                          rawAssistantText,
+                          chatKey,
+                          parentMessageUuid,
+                          [],
+                          activeSources,
+                      ));
 
+                if (!isActiveGeneration()) return;
                 void updateBranchSelectionState(
                     parentMessageUuid,
                     assistantMessage.messageUuid,
@@ -3288,7 +3424,9 @@ const Page: React.FC = () => {
                     setModelGateStatus("missing");
                 } else {
                     const message = formatErrorMessage(error);
-                    showMiniDialog({ title: "Model error", message });
+                    if (name !== "cancelled" && name !== "stale") {
+                        showMiniDialog({ title: "Model error", message });
+                    }
                 }
                 if (previousSelection) {
                     void updateBranchSelectionState(
@@ -3299,6 +3437,8 @@ const Page: React.FC = () => {
             } finally {
                 if (isActiveGeneration()) {
                     activeKnowledgeSourcesRef.current = [];
+                    preparedReplyRef.current = undefined;
+                    setConversationStatus(null);
                     generationActiveRef.current = false;
                     setIsGenerating(false);
                     setIsStreamingOutro(false);
@@ -3319,6 +3459,7 @@ const Page: React.FC = () => {
             ensureProvider,
             getModelSettings,
             buildHistory,
+            allMessages,
             branchSelections,
             updateBranchSelectionState,
             appendMessageToState,
@@ -3376,7 +3517,7 @@ const Page: React.FC = () => {
             const historyPath = slicePathUntil(messageState.path, parentUuid);
             await startGeneration({
                 promptText: parentMessage.text,
-                parentMessageUuid: parentUuid,
+                parentMessage,
                 historyPath,
                 stopAtMessageUuid: parentUuid,
                 resetContext: true,
@@ -3403,9 +3544,10 @@ const Page: React.FC = () => {
                 (switcher.currentIndex - 1 + switcher.total) % switcher.total;
             const target = switcher.targets[nextIndex];
             if (!target) return;
+            cancelActiveGenerationForNavigation();
             void updateBranchSelectionState(switcher.selectionKey, target);
         },
-        [updateBranchSelectionState],
+        [cancelActiveGenerationForNavigation, updateBranchSelectionState],
     );
 
     const handleNextBranch = useCallback(
@@ -3414,9 +3556,10 @@ const Page: React.FC = () => {
             const nextIndex = (switcher.currentIndex + 1) % switcher.total;
             const target = switcher.targets[nextIndex];
             if (!target) return;
+            cancelActiveGenerationForNavigation();
             void updateBranchSelectionState(switcher.selectionKey, target);
         },
-        [updateBranchSelectionState],
+        [cancelActiveGenerationForNavigation, updateBranchSelectionState],
     );
 
     const handleOpenDrawer = useCallback(() => {
@@ -3685,11 +3828,7 @@ const Page: React.FC = () => {
         modelGateStatus === "downloading";
 
     const handleSaveModel = useCallback(
-        (draft: {
-            modelId: string;
-            contextLength: string;
-            maxTokens: string;
-        }) => {
+        (draft: { modelId: string; contextLength: string }) => {
             if (isModelPreparationActive) return;
             setIsSavingModel(true);
             if (typeof window !== "undefined") {
@@ -3700,7 +3839,6 @@ const Page: React.FC = () => {
             }
             setSelectedModelId(draft.modelId);
             setContextLength(draft.contextLength);
-            setMaxTokens(draft.maxTokens);
             modelGateRequestRef.current += 1;
             setLoadedModelName(null);
             setModelDownloadSizeBytes(null);
@@ -3716,16 +3854,11 @@ const Page: React.FC = () => {
         if (typeof window !== "undefined") {
             window.localStorage.setItem(
                 MODEL_SETTINGS_STORAGE_KEY,
-                JSON.stringify({
-                    modelId: "",
-                    contextLength: "",
-                    maxTokens: "",
-                }),
+                JSON.stringify({ modelId: "", contextLength: "" }),
             );
         }
         setSelectedModelId("");
         setContextLength("");
-        setMaxTokens("");
         modelGateRequestRef.current += 1;
         setLoadedModelName(null);
         setModelDownloadSizeBytes(null);
@@ -4318,7 +4451,7 @@ const Page: React.FC = () => {
 
                 await startGeneration({
                     promptText,
-                    parentMessageUuid: newUserMessage.messageUuid,
+                    parentMessage: newUserMessage,
                     historyPath,
                     sessionUuid: activeSessionId,
                     imagePaths: inferenceImagePaths,
@@ -4353,7 +4486,7 @@ const Page: React.FC = () => {
 
             await startGeneration({
                 promptText,
-                parentMessageUuid: userMessage.messageUuid,
+                parentMessage: userMessage,
                 historyPath: basePath,
                 sessionUuid: activeSessionId,
                 imagePaths: inferenceImagePaths,
@@ -4550,6 +4683,7 @@ const Page: React.FC = () => {
                             attachmentPreviews={attachmentPreviews}
                             branchSwitchers={branchSwitchers}
                             loadingPhrase={loadingPhrase}
+                            preparationStatus={conversationStatus}
                             loadingDots={loadingDots}
                             isGenerating={isGenerating}
                             isStreamingOutro={isStreamingOutro}
@@ -4708,7 +4842,6 @@ const Page: React.FC = () => {
                 isTauriRuntime={isTauriRuntime}
                 suggestedModels={suggestedModels}
                 contextLength={contextLength}
-                maxTokens={maxTokens}
                 isSavingModel={isSavingModel}
                 handleSaveModel={handleSaveModel}
                 handleUseDefaultModel={handleUseDefaultModel}

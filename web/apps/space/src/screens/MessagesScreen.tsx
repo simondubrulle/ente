@@ -15,9 +15,22 @@ import {
     MenuList,
     Popper,
 } from "@mui/material";
+import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
+import { SpaceLiveStatus } from "components/LiveStatus";
+import {
+    MessageQuickReactions,
+    MessageReactionPicker,
+} from "components/MessageReactionPicker";
+import { SpacePostPhotoInput } from "components/PostPhotoInput";
+import {
+    SpacePostPhotosBadge,
+    SpacePostVideoBadge,
+} from "components/PostPhotosBadge";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareInviteButton } from "components/ShareInviteButton";
+import { SpaceSkipLink } from "components/SkipLink";
+import { emojiName } from "data/emojis";
 import { formatTimeAgo } from "ente-base/date";
 import log from "ente-base/log";
 import React from "react";
@@ -33,6 +46,8 @@ import {
     spaceAppBackground,
     spaceAppBackgroundColor,
     spaceDialogBackground,
+    spaceMenuBackground,
+    spaceMenuHover,
     spaceOnAccent,
     spaceSurface,
     spaceSurfaceHover,
@@ -42,7 +57,8 @@ import {
 import { spaceTouchTargetSize } from "styles/touch-targets";
 import { firstNameFrom } from "utils/display";
 import { clampSpaceMessageText } from "utils/message-limits";
-import { spacePostImageInputAccept } from "utils/post-image";
+import { spacePostDeletedEvent } from "utils/post-events";
+import { postQuoteErrorState, postQuoteKey } from "utils/post-quote";
 
 const green = "#08C225";
 const textBase = spaceText;
@@ -53,10 +69,9 @@ const outgoingBubble = "#176B2A";
 const incomingBubble = spaceSurface;
 const outgoingMessageText = "#FFFFFF";
 const incomingMessageText = spaceText;
-const outgoingQuoteBubble = "#124F21";
+const outgoingQuoteBubble = "#213425";
 const incomingQuoteBubble = spaceSurfaceHover;
 const incomingQuoteText = spaceTextMuted;
-const outgoingQuoteText = "#C7E8CE";
 const quoteRule = "#666666";
 const dangerColor = "#F63A3A";
 const composerHeight = 48;
@@ -71,6 +86,8 @@ const messageGroupTimeThresholdMs = 10 * 60 * 1000;
 const messageTimeSeparatorThresholdMs = 60 * 60 * 1000;
 const messageLongPressMs = 520;
 const messageLongPressMoveTolerancePx = 10;
+const messageReplySwipeThresholdPx = 64;
+const messageReplySwipeMinThresholdPx = 20;
 const messageActionsTouchOpenMouseSuppressMs = 900;
 const dayMs = 24 * 60 * 60 * 1000;
 const shouldShowPostSomething = (
@@ -112,7 +129,7 @@ interface MessagesScreenProps {
     ) => void;
     onOpenQuotePost: (quote: SpaceMessageQuote) => void;
     onOpenThread: (conversation: SpaceMessageConversation) => void;
-    onPostPhotoSelect: (file: File) => void;
+    onPostPhotoSelect: (files: File[]) => void;
     onLoadActivityPost?: (
         post: SpaceMessageActivityPost,
     ) => Promise<SpaceMessageActivityPost | undefined>;
@@ -123,7 +140,10 @@ interface MessagesScreenProps {
     ) => Promise<void>;
     onSendPoke: (spaceId: string) => Promise<void>;
     onSendMessage: (spaceId: string, text: string) => Promise<void>;
-    onSetMessageLiked: (messageId: string, liked: boolean) => Promise<void>;
+    onSetMessageReaction: (
+        messageId: string,
+        emoji: string | undefined,
+    ) => Promise<void>;
     profileLink?: string;
     newConversationIds?: string[];
     profile: SetupProfile;
@@ -234,11 +254,11 @@ const conversationPreview = (conversation: SpaceMessageConversation) => {
     if (activity.type == "message_like") {
         return text
             ? activity.outgoing
-                ? `You liked "${text}"`
-                : `Liked "${text}"`
+                ? `You reacted ${activity.reaction ?? ""} to "${text}"`
+                : `Reacted ${activity.reaction ?? ""} to "${text}"`
             : activity.outgoing
-              ? "You liked a message"
-              : "Liked a message";
+              ? `You reacted ${activity.reaction ?? ""} to a message`
+              : `Reacted ${activity.reaction ?? ""} to a message`;
     }
     if (activity.kind == "poke") {
         return activity.outgoing
@@ -272,7 +292,7 @@ const ConversationPreviewLine: React.FC<{
         return (
             <Box sx={{ ...previewLineSx, display: "flex" }}>
                 <Box component="span" sx={{ flexShrink: 0 }}>
-                    {activity.outgoing ? 'You liked "' : 'Liked "'}
+                    {`${activity.outgoing ? "You reacted" : "Reacted"} ${activity.reaction ?? ""} to "`}
                 </Box>
                 <Box
                     component="span"
@@ -298,9 +318,6 @@ const conversationId = (conversation: SpaceMessageConversation) =>
     conversation.latestActivity.type == "friend_request"
         ? conversation.latestActivity.id
         : (conversation.friend.spaceId ?? conversation.friend.id);
-
-const activityPostKey = (post: SpaceMessageActivityPost) =>
-    `${post.spaceId}:${post.postId}`;
 
 const conversationTimeSections = (
     conversations: SpaceMessageConversation[],
@@ -425,7 +442,7 @@ const MessageTimeSeparator: React.FC<{ timestampMs: number }> = ({
             fontWeight: 500,
             lineHeight: "16px",
             listStyle: "none",
-            py: "14px",
+            py: "32px",
             textAlign: "center",
         }}
     >
@@ -470,16 +487,17 @@ const ConversationListItem: React.FC<{
     const post = conversation.latestActivity.post;
     const postThumbnailUrl = (activityPost ?? post)?.imageUrl;
     const showPostThumbnailSlot = Boolean(post);
-    const isPostThumbnailUnavailable =
-        Boolean(post?.isDeleted) ||
-        Boolean(activityPost && !activityPost.imageUrl);
+    const isPostThumbnailUnavailable = Boolean(
+        (activityPost ?? post)?.isUnavailable,
+    );
+    const hasPostThumbnailLoadError = Boolean(activityPost?.hasLoadError);
     const unreadCount = conversation.unreadCount;
     const showPostSomething = shouldShowPostSomething(
         conversation,
         latestPostCreatedAtMs,
     );
     React.useEffect(() => {
-        if (!post || post.isDeleted || post.imageUrl || activityPost) {
+        if (!post || post.isUnavailable || post.imageUrl || activityPost) {
             return;
         }
         onLoadActivityPost?.(post);
@@ -488,7 +506,7 @@ const ConversationListItem: React.FC<{
         onLoadActivityPost,
         post,
         post?.imageUrl,
-        post?.isDeleted,
+        post?.isUnavailable,
     ]);
     const confirmFriendRequest = () => {
         void onConfirmFriendRequest(conversation).catch((error: unknown) =>
@@ -713,24 +731,39 @@ const ConversationListItem: React.FC<{
                     {showPostThumbnailSlot &&
                         (postThumbnailUrl ? (
                             <Box
-                                component="img"
-                                alt=""
-                                src={postThumbnailUrl}
                                 sx={{
-                                    borderRadius: "20%",
-                                    display: "block",
-                                    height: 44,
-                                    objectFit: "cover",
-                                    objectPosition: "center",
+                                    position: "relative",
                                     width: 44,
+                                    height: 44,
                                 }}
-                            />
+                            >
+                                <Box
+                                    component="img"
+                                    alt=""
+                                    src={postThumbnailUrl}
+                                    sx={{
+                                        borderRadius: "20%",
+                                        display: "block",
+                                        height: "100%",
+                                        objectFit: "cover",
+                                        objectPosition: "center",
+                                        width: "100%",
+                                    }}
+                                />
+                                <SpacePostVideoBadge
+                                    durationMs={
+                                        (activityPost ?? post)?.durationMs
+                                    }
+                                />
+                            </Box>
                         ) : (
                             <Box
                                 aria-label={
                                     isPostThumbnailUnavailable
                                         ? "Post image unavailable"
-                                        : "Loading post image"
+                                        : hasPostThumbnailLoadError
+                                          ? "Couldn't load post image"
+                                          : "Loading post image"
                                 }
                                 role="img"
                                 sx={{
@@ -894,7 +927,7 @@ const ConversationSection: React.FC<{
                         activityPost={
                             conversation.latestActivity.post
                                 ? activityPostsByKey[
-                                      activityPostKey(
+                                      postQuoteKey(
                                           conversation.latestActivity.post,
                                       )
                                   ]
@@ -926,6 +959,7 @@ const bodyBubblesCanGroup = (
 ) => {
     if (!first || !second) return false;
     if (!sameMessageSender(first, second)) return false;
+    if (first.reaction) return false;
     if (first.kind == "post_like" || first.kind == "friend_added") return false;
     if (
         (second.kind != "regular" && second.kind != "poke") ||
@@ -963,54 +997,6 @@ const ReplyIcon: React.FC = () => (
     </svg>
 );
 
-const HeartIcon: React.FC<{ filled?: boolean; small?: boolean }> = ({
-    filled,
-    small,
-}) => (
-    <svg
-        width={small ? "13" : "16"}
-        height={small ? "11" : "14"}
-        viewBox="0 0 16 14"
-        fill={filled ? green : "none"}
-        xmlns="http://www.w3.org/2000/svg"
-    >
-        <path
-            d="M6.63749 12.3742C4.66259 10.885 0.75 7.4804 0.75 4.41664C0.75 2.39161 2.22368 0.75 4.25 0.75C5.3 0.75 6.35 1.10294 7.75 2.51469C9.15 1.10294 10.2 0.75 11.25 0.75C13.2763 0.75 14.75 2.39161 14.75 4.41664C14.75 7.4804 10.8374 10.885 8.86251 12.3742C8.19793 12.8753 7.30207 12.8753 6.63749 12.3742Z"
-            stroke={filled ? green : "currentColor"}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        />
-    </svg>
-);
-
-const MessageLikeHeartIcon: React.FC = () => (
-    <svg
-        width="17"
-        height="15"
-        viewBox="-2 -2 20 18"
-        fill="none"
-        xmlns="http://www.w3.org/2000/svg"
-    >
-        <path
-            d="M6.63749 12.3742C4.66259 10.885 0.75 7.4804 0.75 4.41664C0.75 2.39161 2.22368 0.75 4.25 0.75C5.3 0.75 6.35 1.10294 7.75 2.51469C9.15 1.10294 10.2 0.75 11.25 0.75C13.2763 0.75 14.75 2.39161 14.75 4.41664C14.75 7.4804 10.8374 10.885 8.86251 12.3742C8.19793 12.8753 7.30207 12.8753 6.63749 12.3742Z"
-            fill={green}
-            stroke={spaceAppBackgroundColor}
-            strokeWidth="4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        />
-        <path
-            d="M6.63749 12.3742C4.66259 10.885 0.75 7.4804 0.75 4.41664C0.75 2.39161 2.22368 0.75 4.25 0.75C5.3 0.75 6.35 1.10294 7.75 2.51469C9.15 1.10294 10.2 0.75 11.25 0.75C13.2763 0.75 14.75 2.39161 14.75 4.41664C14.75 7.4804 10.8374 10.885 8.86251 12.3742C8.19793 12.8753 7.30207 12.8753 6.63749 12.3742Z"
-            fill={green}
-            stroke={green}
-            strokeWidth="1.5"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-        />
-    </svg>
-);
-
 const DeleteIcon: React.FC = () => (
     <svg
         width="13"
@@ -1044,11 +1030,6 @@ const CopyIcon: React.FC = () => (
     </svg>
 );
 
-const messageActionsPopperModifiers = [
-    { name: "offset", options: { offset: [0, 6] } },
-    { name: "preventOverflow", options: { padding: 14 } },
-    { name: "flip", options: { padding: 14 } },
-];
 const messageActionsTransitionDuration = { enter: 140, exit: 100 };
 
 const MessageActionMenuItem: React.FC<{
@@ -1071,14 +1052,18 @@ const MessageActionMenuItem: React.FC<{
             py: "7px",
             "&.Mui-focusVisible": {
                 bgcolor:
-                    tone == "danger" ? "rgba(246, 58, 58, 0.14)" : spaceSurface,
+                    tone == "danger"
+                        ? "rgba(246, 58, 58, 0.14)"
+                        : spaceMenuHover,
                 outline: 0,
             },
             "&:focus": { outline: 0 },
             "&:focus-visible": { outline: 0 },
             "&:hover": {
                 bgcolor:
-                    tone == "danger" ? "rgba(246, 58, 58, 0.14)" : spaceSurface,
+                    tone == "danger"
+                        ? "rgba(246, 58, 58, 0.14)"
+                        : spaceMenuHover,
             },
         }}
     >
@@ -1181,7 +1166,8 @@ const QuoteFrame: React.FC<{
     children: React.ReactNode;
     isOwn: boolean;
     mb?: string;
-}> = ({ children, isOwn, mb = "8px" }) => (
+    subtle?: boolean;
+}> = ({ children, isOwn, mb = "8px", subtle = false }) => (
     <Box
         sx={{
             alignItems: "stretch",
@@ -1198,7 +1184,7 @@ const QuoteFrame: React.FC<{
             aria-hidden
             sx={{
                 alignSelf: "stretch",
-                bgcolor: quoteRule,
+                bgcolor: subtle ? "#444444" : quoteRule,
                 borderRadius: "999px",
                 flexShrink: 0,
                 width: 3,
@@ -1220,14 +1206,12 @@ const MessageReplyPreview: React.FC<{
         : false;
 
     return (
-        <QuoteFrame isOwn={isOwn}>
+        <QuoteFrame isOwn={isOwn} subtle>
             <Box
                 sx={{
-                    bgcolor: parentIsOwn
-                        ? outgoingQuoteBubble
-                        : incomingQuoteBubble,
+                    bgcolor: parentIsOwn ? outgoingQuoteBubble : spaceSurface,
                     borderRadius,
-                    color: parentIsOwn ? outgoingQuoteText : incomingQuoteText,
+                    color: textSecondary,
                     fontFamily: '"Inter Variable", Inter, sans-serif',
                     fontSize: 13,
                     fontWeight: 600,
@@ -1267,34 +1251,53 @@ const PostQuotePreview: React.FC<{
     onOpenQuotePost,
 }) => {
     const quote = message.quote;
-    const imageUrl = quote?.imageUrl ?? activityPost?.imageUrl;
-    const isUnavailable =
-        !quote ||
-        quote.isUnavailable == true ||
-        (!imageUrl &&
-            (activityPost != undefined || onLoadActivityPost == undefined));
+    const preview = activityPost ?? quote;
+    const isUnavailable = !quote || Boolean(preview?.isUnavailable);
+    const hasLoadError = Boolean(preview?.hasLoadError);
+    const imageUrl =
+        isUnavailable || hasLoadError ? undefined : preview?.imageUrl;
+    const photoCount = preview?.photoCount ?? 1;
     const loadedQuote =
-        quote && imageUrl && !isUnavailable
-            ? { ...quote, imageUrl }
-            : undefined;
-    const isLoading = quote != undefined && !imageUrl && !isUnavailable;
+        quote && imageUrl ? { ...quote, ...preview, imageUrl } : undefined;
+    const isLoading = Boolean(
+        quote && !imageUrl && !isUnavailable && !hasLoadError,
+    );
     const canOpen = Boolean(loadedQuote);
+    const canRetry = hasLoadError && Boolean(onLoadActivityPost);
+    const unavailableLabel =
+        quote?.objectKey !== undefined && preview?.photoCount !== undefined
+            ? "Photo unavailable"
+            : "Post unavailable";
 
     React.useEffect(() => {
-        if (!quote || imageUrl || isUnavailable) return;
+        if (!quote || activityPost || imageUrl || isUnavailable || hasLoadError)
+            return;
         onLoadActivityPost?.(quote);
-    }, [imageUrl, isUnavailable, onLoadActivityPost, quote]);
+    }, [
+        activityPost,
+        hasLoadError,
+        imageUrl,
+        isUnavailable,
+        onLoadActivityPost,
+        quote,
+    ]);
 
     return (
         <QuoteFrame isOwn={isOwn} mb={mb}>
             <Box
-                component={canOpen ? "button" : "div"}
-                type={canOpen ? "button" : undefined}
-                aria-label={canOpen ? "Open quoted post" : undefined}
+                component={canOpen || canRetry ? "button" : "div"}
+                type={canOpen || canRetry ? "button" : undefined}
+                aria-label={
+                    canOpen
+                        ? "Open quoted photo"
+                        : canRetry
+                          ? "Retry loading photo"
+                          : undefined
+                }
                 onClick={(event: React.MouseEvent) => {
-                    if (!loadedQuote) return;
                     event.stopPropagation();
-                    onOpenQuotePost(loadedQuote);
+                    if (canRetry && quote) onLoadActivityPost?.(quote);
+                    else if (loadedQuote) onOpenQuotePost(loadedQuote);
                 }}
                 sx={{
                     appearance: "none",
@@ -1302,11 +1305,12 @@ const PostQuotePreview: React.FC<{
                     border: 0,
                     borderRadius: "28px",
                     color: "inherit",
-                    cursor: canOpen ? "pointer" : "default",
+                    cursor: canOpen || canRetry ? "pointer" : "default",
                     display: "inline-flex",
                     font: "inherit",
                     overflow: "hidden",
                     p: 0,
+                    position: "relative",
                     "&:focus-visible": {
                         outline: `2px solid ${green}`,
                         outlineOffset: 2,
@@ -1331,14 +1335,18 @@ const PostQuotePreview: React.FC<{
                         role="img"
                         aria-label={
                             isLoading
-                                ? "Loading post image"
-                                : "Post unavailable"
+                                ? "Loading photo"
+                                : hasLoadError
+                                  ? "Couldn't load photo"
+                                  : unavailableLabel
                         }
                         sx={{
                             alignItems: "center",
                             bgcolor: incomingQuoteBubble,
                             color: incomingQuoteText,
                             display: "flex",
+                            flexDirection: "column",
+                            gap: "8px",
                             fontFamily: '"Inter Variable", Inter, sans-serif',
                             fontSize: 12,
                             fontWeight: 700,
@@ -1357,7 +1365,18 @@ const PostQuotePreview: React.FC<{
                                 strokeWidth={1.5}
                             />
                         )}
+                        {isUnavailable ? (
+                            unavailableLabel
+                        ) : hasLoadError ? (
+                            "Couldn't load photo. Tap to retry."
+                        ) : (
+                            <SpaceLoadingSpinner />
+                        )}
                     </Box>
+                )}
+                {canOpen && <SpacePostPhotosBadge count={photoCount} />}
+                {canOpen && (
+                    <SpacePostVideoBadge durationMs={loadedQuote?.durationMs} />
                 )}
             </Box>
         </QuoteFrame>
@@ -1369,6 +1388,7 @@ const isMessageLongPressIgnoredTarget = (target: EventTarget | null) =>
 
 const MessageBubble: React.FC<{
     activityPost?: SpaceMessageActivityPost;
+    canReply: boolean;
     friendName: string;
     groupsWithNext: boolean;
     groupsWithPrevious: boolean;
@@ -1381,11 +1401,13 @@ const MessageBubble: React.FC<{
     ) => void;
     onLoadActivityPost?: (post: SpaceMessageActivityPost) => void;
     onOpenQuotePost: (quote: SpaceMessageQuote) => void;
+    onReply: (message: SpaceMessage) => void;
     ownSpaceID?: string;
     parentMessage?: SpaceMessage;
     profile: SetupProfile;
 }> = ({
     activityPost,
+    canReply,
     friendName,
     groupsWithNext,
     groupsWithPrevious,
@@ -1394,6 +1416,7 @@ const MessageBubble: React.FC<{
     onOpenActions,
     onLoadActivityPost,
     onOpenQuotePost,
+    onReply,
     ownSpaceID,
     parentMessage,
     profile,
@@ -1431,10 +1454,20 @@ const MessageBubble: React.FC<{
           ? "flex-end"
           : "flex-start";
     const longPressTimerRef = React.useRef<number | undefined>(undefined);
-    const longPressStartRef = React.useRef<
-        { x: number; y: number } | undefined
-    >(undefined);
     const didOpenLongPressRef = React.useRef(false);
+    const gestureStartRef = React.useRef<
+        | {
+              pointerId: number;
+              x: number;
+              y: number;
+              active: boolean;
+              thresholdPx: number;
+              maxOffsetPx: number;
+              resistancePx: number;
+          }
+        | undefined
+    >(undefined);
+    const [swipeOffset, setSwipeOffset] = React.useState(0);
 
     const clearLongPressTimer = React.useCallback(() => {
         if (longPressTimerRef.current == undefined) return;
@@ -1442,17 +1475,18 @@ const MessageBubble: React.FC<{
         longPressTimerRef.current = undefined;
     }, []);
 
-    const cancelLongPress = React.useCallback(() => {
+    const cancelGesture = () => {
         clearLongPressTimer();
-        longPressStartRef.current = undefined;
+        gestureStartRef.current = undefined;
         didOpenLongPressRef.current = false;
-    }, [clearLongPressTimer]);
+        setSwipeOffset(0);
+    };
 
     const openActions = React.useCallback(
         (bubbleElement: HTMLElement, source: MessageActionsOpenSource) => {
             if (isSystemMessage || isUnavailable) return;
             clearLongPressTimer();
-            longPressStartRef.current = undefined;
+            setSwipeOffset(0);
             window.getSelection()?.removeAllRanges();
             onOpenActions(message, bubbleElement, source);
         },
@@ -1472,24 +1506,48 @@ const MessageBubble: React.FC<{
         openActions(event.currentTarget, "contextmenu");
     };
 
-    const handleTouchStart = (event: React.TouchEvent<HTMLElement>) => {
-        if (isSystemMessage || isUnavailable) {
-            cancelLongPress();
-            return;
-        }
+    const handlePointerDown = (event: React.PointerEvent<HTMLElement>) => {
+        if (event.pointerType != "touch") return;
         if (
-            event.touches.length != 1 ||
+            isSystemMessage ||
+            isUnavailable ||
+            event.button != 0 ||
+            gestureStartRef.current ||
             isMessageLongPressIgnoredTarget(event.target)
         ) {
-            cancelLongPress();
+            cancelGesture();
             return;
         }
 
-        const touch = event.touches[0]!;
-        const bubbleElement = event.currentTarget;
-        clearLongPressTimer();
+        const rowRect = event.currentTarget
+            .closest("li")!
+            .getBoundingClientRect();
+        const availableRightPx = Math.max(
+            0,
+            Math.min(window.innerWidth - 8, rowRect.right + 8) - event.clientX,
+        );
+        const resistancePx = rowRect.width * 0.42;
+        gestureStartRef.current = {
+            pointerId: event.pointerId,
+            x: event.clientX,
+            y: event.clientY,
+            active: false,
+            thresholdPx: Math.min(
+                messageReplySwipeThresholdPx,
+                Math.max(
+                    messageReplySwipeMinThresholdPx,
+                    availableRightPx * 0.65,
+                ),
+                availableRightPx,
+            ),
+            maxOffsetPx:
+                resistancePx * Math.log1p(availableRightPx / resistancePx),
+            resistancePx,
+        };
         didOpenLongPressRef.current = false;
-        longPressStartRef.current = { x: touch.clientX, y: touch.clientY };
+        event.currentTarget.setPointerCapture(event.pointerId);
+
+        const bubbleElement = event.currentTarget;
         longPressTimerRef.current = window.setTimeout(() => {
             longPressTimerRef.current = undefined;
             didOpenLongPressRef.current = true;
@@ -1497,30 +1555,71 @@ const MessageBubble: React.FC<{
         }, messageLongPressMs);
     };
 
-    const handleTouchMove = (event: React.TouchEvent<HTMLElement>) => {
-        const start = longPressStartRef.current;
-        const touch = event.touches[0];
-        if (!start || !touch) return;
-
-        if (
-            Math.hypot(touch.clientX - start.x, touch.clientY - start.y) >
-            messageLongPressMoveTolerancePx
-        ) {
-            cancelLongPress();
+    const handlePointerMove = (event: React.PointerEvent<HTMLElement>) => {
+        const start = gestureStartRef.current;
+        if (!start) return;
+        if (event.pointerId != start.pointerId) return;
+        if (didOpenLongPressRef.current) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (Math.hypot(dx, dy) > messageLongPressMoveTolerancePx)
+            clearLongPressTimer();
+        if (!canReply || isPoke) return;
+        if (!start.active) {
+            if (
+                (Math.abs(dy) > messageLongPressMoveTolerancePx &&
+                    Math.abs(dy) >= Math.abs(dx)) ||
+                dx < -messageLongPressMoveTolerancePx
+            ) {
+                gestureStartRef.current = undefined;
+                return;
+            }
+            if (
+                dx <= messageLongPressMoveTolerancePx ||
+                dx <= Math.abs(dy) * 1.2
+            )
+                return;
+            start.active = true;
         }
+        setSwipeOffset(
+            Math.min(
+                start.maxOffsetPx,
+                start.resistancePx *
+                    Math.log1p(Math.max(dx, 0) / start.resistancePx),
+            ),
+        );
+    };
+
+    const handlePointerUp = (event: React.PointerEvent<HTMLElement>) => {
+        const start = gestureStartRef.current;
+        if (!start) return;
+        if (event.pointerId != start.pointerId) return;
+        clearLongPressTimer();
+        gestureStartRef.current = undefined;
+        setSwipeOffset(0);
+        if (didOpenLongPressRef.current) {
+            if (event.cancelable) event.preventDefault();
+            event.stopPropagation();
+            return;
+        }
+
+        if (!start.active) return;
+        const dx = event.clientX - start.x;
+        const dy = event.clientY - start.y;
+        if (dx < start.thresholdPx || dx <= Math.abs(dy) * 1.2) return;
+        if (event.cancelable) event.preventDefault();
+        event.stopPropagation();
+        onReply(message);
     };
 
     const handleTouchEnd = (event: React.TouchEvent<HTMLElement>) => {
-        clearLongPressTimer();
-        longPressStartRef.current = undefined;
         if (!didOpenLongPressRef.current) return;
-
         if (event.cancelable) event.preventDefault();
         event.stopPropagation();
         didOpenLongPressRef.current = false;
     };
 
-    React.useEffect(() => cancelLongPress, [cancelLongPress]);
+    React.useEffect(() => clearLongPressTimer, [clearLongPressTimer]);
 
     return (
         <Box
@@ -1534,8 +1633,12 @@ const MessageBubble: React.FC<{
                 maxWidth: "100%",
                 minWidth: 0,
                 position: "relative",
+                transition: "margin-bottom 180ms ease-out",
                 width: "100%",
-                zIndex: isHighlighted ? 3 : message.liked ? 1 : "auto",
+                zIndex: isHighlighted ? 3 : message.reaction ? 1 : "auto",
+                "@media (prefers-reduced-motion: reduce)": {
+                    transition: "none",
+                },
             }}
         >
             {isFriendAdded ? (
@@ -1577,97 +1680,152 @@ const MessageBubble: React.FC<{
                         />
                     )}
                     {hasBodyBubble && (
-                        <Box
-                            data-message-bubble
-                            onContextMenu={handleContextMenu}
-                            onTouchCancel={cancelLongPress}
-                            onTouchEnd={handleTouchEnd}
-                            onTouchMove={handleTouchMove}
-                            onTouchStart={handleTouchStart}
-                            sx={{
-                                bgcolor: isOwn
-                                    ? outgoingBubble
-                                    : incomingBubble,
-                                borderRadius: bubbleBorderRadius,
-                                color: isOwn
-                                    ? outgoingMessageText
-                                    : incomingMessageText,
-                                cursor: isUnavailable
-                                    ? "default"
-                                    : "context-menu",
-                                display: "block",
-                                maxWidth: "100%",
-                                minWidth: 0,
-                                ml: 0,
-                                overflow: "visible",
-                                position: "relative",
-                                px: messageBubblePaddingX,
-                                py: messageBubblePaddingY,
-                                textAlign: "left",
-                                touchAction: "pan-y",
-                                userSelect: "none",
-                                WebkitTouchCallout: "none",
-                                WebkitUserSelect: "none",
-                                width: "fit-content",
-                                "& *": {
-                                    userSelect: "none",
-                                    WebkitTouchCallout: "none",
-                                    WebkitUserSelect: "none",
-                                },
-                                "&:hover": {
+                        <Box sx={{ maxWidth: "100%", position: "relative" }}>
+                            {canReply && !isUnavailable && !isPoke && (
+                                <Box
+                                    aria-hidden
+                                    sx={{
+                                        alignItems: "center",
+                                        color: "#888888",
+                                        display: "flex",
+                                        height: "100%",
+                                        justifyContent: "center",
+                                        left: 0,
+                                        opacity: Math.min(swipeOffset / 24, 1),
+                                        position: "absolute",
+                                        top: 0,
+                                        width: 40,
+                                        "& svg": { height: 12, width: 16 },
+                                    }}
+                                >
+                                    <ReplyIcon />
+                                </Box>
+                            )}
+                            <Box
+                                data-message-bubble
+                                tabIndex={isUnavailable ? undefined : 0}
+                                onKeyDown={(
+                                    event: React.KeyboardEvent<HTMLElement>,
+                                ) => {
+                                    if (
+                                        event.key == "ContextMenu" ||
+                                        (event.shiftKey && event.key == "F10")
+                                    ) {
+                                        event.preventDefault();
+                                        openActions(
+                                            event.currentTarget,
+                                            "contextmenu",
+                                        );
+                                    }
+                                }}
+                                onContextMenu={handleContextMenu}
+                                onPointerCancel={cancelGesture}
+                                onPointerDown={handlePointerDown}
+                                onPointerMove={handlePointerMove}
+                                onPointerUp={handlePointerUp}
+                                onTouchEnd={handleTouchEnd}
+                                sx={{
                                     bgcolor: isOwn
                                         ? outgoingBubble
-                                        : spaceSurfaceHover,
-                                },
-                            }}
-                        >
-                            <Box
-                                sx={{
+                                        : incomingBubble,
+                                    borderRadius: bubbleBorderRadius,
+                                    "&:focus-visible": {
+                                        outline: `2px solid ${green}`,
+                                        outlineOffset: 2,
+                                    },
                                     color: isOwn
                                         ? outgoingMessageText
                                         : incomingMessageText,
-                                    fontFamily:
-                                        '"Inter Variable", Inter, sans-serif',
-                                    fontStyle:
-                                        isUnavailable || isPoke
-                                            ? "italic"
-                                            : "normal",
-                                    fontSize: 14,
-                                    fontWeight: 600,
-                                    lineHeight: "21px",
-                                    overflowWrap: "anywhere",
-                                    whiteSpace: "pre-wrap",
+                                    cursor: isUnavailable
+                                        ? "default"
+                                        : "context-menu",
+                                    display: "block",
+                                    maxWidth: "100%",
+                                    minWidth: message.reaction ? 48 : 0,
+                                    ml: 0,
+                                    overflow: "visible",
+                                    position: "relative",
+                                    px: messageBubblePaddingX,
+                                    py: messageBubblePaddingY,
+                                    textAlign: "left",
+                                    touchAction: "pan-y",
+                                    transform: `translateX(${swipeOffset}px)`,
+                                    transition:
+                                        swipeOffset > 0
+                                            ? "border-radius 180ms ease-out"
+                                            : "transform 160ms ease-out, border-radius 180ms ease-out",
+                                    "@media (prefers-reduced-motion: reduce)": {
+                                        transition: "none",
+                                    },
+                                    userSelect: "none",
+                                    WebkitTouchCallout: "none",
+                                    WebkitUserSelect: "none",
+                                    width: "fit-content",
+                                    "& *": {
+                                        userSelect: "none",
+                                        WebkitTouchCallout: "none",
+                                        WebkitUserSelect: "none",
+                                    },
                                 }}
                             >
-                                {isUnavailable
-                                    ? "Message unavailable"
-                                    : isPoke
-                                      ? pokeText
-                                      : message.text}
-                            </Box>
-                            {!isUnavailable && message.liked && (
                                 <Box
-                                    component="span"
-                                    role="img"
-                                    aria-label="Liked"
                                     sx={{
-                                        alignItems: "center",
-                                        bottom: -5,
-                                        color: green,
-                                        display: "inline-flex",
-                                        justifyContent: "center",
-                                        lineHeight: 0,
-                                        pointerEvents: "none",
-                                        position: "absolute",
-                                        zIndex: 2,
-                                        ...(isOwn
-                                            ? { left: -2 }
-                                            : { right: -2 }),
+                                        color: isOwn
+                                            ? outgoingMessageText
+                                            : incomingMessageText,
+                                        fontFamily:
+                                            '"Inter Variable", Inter, sans-serif',
+                                        fontStyle:
+                                            isUnavailable || isPoke
+                                                ? "italic"
+                                                : "normal",
+                                        fontSize: 14,
+                                        fontWeight: 600,
+                                        lineHeight: "21px",
+                                        overflowWrap: "anywhere",
+                                        whiteSpace: "pre-wrap",
                                     }}
                                 >
-                                    <MessageLikeHeartIcon />
+                                    {isUnavailable
+                                        ? "Message unavailable"
+                                        : isPoke
+                                          ? pokeText
+                                          : message.text}
                                 </Box>
-                            )}
+                                {!isUnavailable && message.reaction && (
+                                    <Box
+                                        component="span"
+                                        role="img"
+                                        aria-label={`Reaction: ${emojiName(message.reaction)}`}
+                                        sx={{
+                                            alignItems: "center",
+                                            bottom: -16,
+                                            bgcolor: spaceDialogBackground,
+                                            border: `2px solid ${spaceAppBackgroundColor}`,
+                                            borderRadius: "12px",
+                                            fontFamily:
+                                                '"Apple Color Emoji", "Segoe UI Emoji", "Noto Color Emoji", sans-serif',
+                                            fontSize: 15,
+                                            minHeight: 25,
+                                            minWidth: 29,
+                                            pt: "2px",
+                                            px: "3px",
+                                            color: green,
+                                            display: "inline-flex",
+                                            justifyContent: "center",
+                                            lineHeight: 1,
+                                            pointerEvents: "none",
+                                            position: "absolute",
+                                            zIndex: 2,
+                                            ...(isOwn
+                                                ? { right: 14 }
+                                                : { left: 14 }),
+                                        }}
+                                    >
+                                        {message.reaction}
+                                    </Box>
+                                )}
+                            </Box>
                         </Box>
                     )}
                 </Box>
@@ -1699,7 +1857,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     onReplyToMessage,
     onSendPoke,
     onSendMessage,
-    onSetMessageLiked,
+    onSetMessageReaction,
     profile,
     profileLink,
     selectedFriend,
@@ -1708,12 +1866,17 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     const [messageText, setMessageText] = React.useState("");
     const [messageContextMenu, setMessageContextMenu] =
         React.useState<MessageContextMenuState | null>(null);
+    const [reactionPickerMessage, setReactionPickerMessage] =
+        React.useState<MessageContextMenuState | null>(null);
+    const [reactionError, setReactionError] = React.useState(false);
     const [replyingTo, setReplyingTo] = React.useState<SpaceMessage | null>(
         null,
     );
     const [sendPhase, setSendPhase] = React.useState<"idle" | "sending">(
         "idle",
     );
+    const [actionStatus, setActionStatus] = React.useState("");
+    const [liveThreadID, setLiveThreadID] = React.useState<string>();
     const [isInviteSharing, setIsInviteSharing] = React.useState(false);
     const [activityPostsByKey, setActivityPostsByKey] = React.useState<
         Record<string, SpaceMessageActivityPost>
@@ -1741,53 +1904,90 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     const selectedName = selectedFriend
         ? selectedFriend.fullName.trim() || selectedFriend.username
         : "";
+    const selectedThreadID = selectedFriend?.spaceId ?? selectedFriend?.id;
+    const isThreadBusy = isThreadLoading || isThreadRecipientLoading;
+    React.useEffect(() => {
+        setLiveThreadID(isThreadBusy ? undefined : selectedThreadID);
+    }, [isThreadBusy, selectedThreadID]);
     const showInviteEmptyState = friendsCount == 0 && Boolean(profileLink);
     const emptyConversationsCopy =
         friendsCount == 0
-            ? "No messages yet. Once you add friends, you'll see their likes, replies and messages here."
-            : "No messages yet. You'll see your friends' likes, replies and messages here.";
+            ? "No messages yet. Once you add friends, you'll see their likes, replies, pokes and messages here."
+            : "No messages yet. You'll see your friends' likes, replies, pokes and messages here.";
     const conversationSections = React.useMemo(
         () => conversationTimeSections(conversations, newConversationIds),
         [conversations, newConversationIds],
     );
+    const previewGenerationRef = React.useRef(0);
+    React.useEffect(() => {
+        const cancelPreviewLoads = () => {
+            previewGenerationRef.current++;
+            activityPostLoadsInFlightRef.current.clear();
+        };
+        const invalidatePreviews = () => {
+            cancelPreviewLoads();
+            setActivityPostsByKey({});
+        };
+        const onVisibilityChange = () => {
+            if (document.visibilityState == "visible") invalidatePreviews();
+        };
+        invalidatePreviews();
+        window.addEventListener("focus", invalidatePreviews);
+        window.addEventListener("online", invalidatePreviews);
+        window.addEventListener(spacePostDeletedEvent, invalidatePreviews);
+        document.addEventListener("visibilitychange", onVisibilityChange);
+        return () => {
+            cancelPreviewLoads();
+            window.removeEventListener("focus", invalidatePreviews);
+            window.removeEventListener("online", invalidatePreviews);
+            window.removeEventListener(
+                spacePostDeletedEvent,
+                invalidatePreviews,
+            );
+            document.removeEventListener(
+                "visibilitychange",
+                onVisibilityChange,
+            );
+        };
+    }, [selectedFriend?.id]);
     const loadActivityPost = React.useCallback(
         (post: SpaceMessageActivityPost) => {
             if (!onLoadActivityPost) return;
-            const key = activityPostKey(post);
+            const key = postQuoteKey(post);
+            const cached = activityPostsByKey[key];
             if (
-                activityPostsByKey[key] ||
+                (cached && !cached.hasLoadError) ||
                 activityPostLoadsInFlightRef.current.has(key)
-            ) {
+            )
                 return;
-            }
+            const generation = previewGenerationRef.current;
             activityPostLoadsInFlightRef.current.add(key);
-            void onLoadActivityPost(post)
-                .then((loadedPost) => {
-                    setActivityPostsByKey((currentPosts) =>
-                        currentPosts[key]
-                            ? currentPosts
-                            : {
-                                  ...currentPosts,
-                                  [key]: loadedPost ?? {
-                                      ...post,
-                                      isDeleted: true,
-                                  },
-                              },
-                    );
-                })
+            const target = {
+                spaceId: post.spaceId,
+                postId: post.postId,
+                objectKey: post.objectKey,
+            };
+            setActivityPostsByKey((posts) => ({ ...posts, [key]: target }));
+            const storePreview = (preview: SpaceMessageActivityPost) => {
+                if (generation != previewGenerationRef.current) return;
+                setActivityPostsByKey((posts) => ({
+                    ...posts,
+                    [key]: preview,
+                }));
+            };
+            void onLoadActivityPost(target)
+                .then((loadedPost) =>
+                    storePreview(
+                        loadedPost ?? { ...target, isUnavailable: true },
+                    ),
+                )
                 .catch((error: unknown) => {
                     log.warn("Failed to load message activity post", error);
-                    setActivityPostsByKey((currentPosts) =>
-                        currentPosts[key]
-                            ? currentPosts
-                            : {
-                                  ...currentPosts,
-                                  [key]: { ...post, isDeleted: true },
-                              },
-                    );
+                    storePreview({ ...target, ...postQuoteErrorState(error) });
                 })
                 .finally(() => {
-                    activityPostLoadsInFlightRef.current.delete(key);
+                    if (generation == previewGenerationRef.current)
+                        activityPostLoadsInFlightRef.current.delete(key);
                 });
         },
         [activityPostsByKey, onLoadActivityPost],
@@ -1800,22 +2000,12 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         () => new Map(messages.map((message) => [message.id, message])),
         [messages],
     );
-    const isContextMessageLiked = Boolean(
-        messageContextMenu?.message.viewerLiked,
-    );
     const isContextMessageOwn = Boolean(
         messageContextMenu?.message &&
         isCurrentProfileMessage(messageContextMenu.message, profile),
     );
     const isContextMessagePoke = messageContextMenu?.message.kind == "poke";
 
-    const handlePostPhotoSelect: React.ChangeEventHandler<HTMLInputElement> = (
-        event,
-    ) => {
-        const file = event.target.files?.[0];
-        event.target.value = "";
-        if (file) onPostPhotoSelect(file);
-    };
     const openPostPhotoPicker = () => postPhotoInputRef.current?.click();
 
     const sendMessage = () => {
@@ -1826,6 +2016,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         stickToThreadBottomRef.current = true;
         smoothNextMessageScrollRef.current = true;
         setSendPhase("sending");
+        setActionStatus("Sending message");
         setMessageText("");
         setReplyingTo(null);
         const sendPromise = repliedMessage
@@ -1834,6 +2025,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         void sendPromise
             .then(() => {
                 setSendPhase("idle");
+                setActionStatus("Message sent");
             })
             .catch((error: unknown) => {
                 smoothNextMessageScrollRef.current = false;
@@ -1843,6 +2035,9 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                     (currentReplyingTo) => currentReplyingTo ?? repliedMessage,
                 );
                 setSendPhase("idle");
+                setActionStatus(
+                    "Couldn't send message. Your draft has been restored. Try again.",
+                );
             });
     };
 
@@ -1912,9 +2107,36 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         closeMessageActions();
     };
 
-    const handleMessageAction = (
-        action: "copy" | "delete" | "like" | "reply",
-    ) => {
+    const startReply = (message: SpaceMessage) => {
+        if (!canInteract) return;
+        flushSync(() => {
+            closeMessageActions();
+            setReplyingTo(messageByID.get(message.id) ?? message);
+        });
+        composerRef.current?.focus();
+    };
+
+    const reactToMessage = (message: SpaceMessage, emoji: string) => {
+        if (!canInteract || isCurrentProfileMessage(message, profile)) return;
+        closeMessageActions();
+        setReactionError(false);
+        const current = messageByID.get(message.id) ?? message;
+        const reaction = current.reaction == emoji ? undefined : emoji;
+        void onSetMessageReaction(message.id, reaction)
+            .then(() => {
+                setActionStatus(
+                    reaction
+                        ? `Reacted with ${emojiName(reaction)}`
+                        : "Reaction removed",
+                );
+            })
+            .catch((error: unknown) => {
+                log.error("Failed to update message reaction", error);
+                setReactionError(true);
+            });
+    };
+
+    const handleMessageAction = (action: "copy" | "delete" | "reply") => {
         const targetMessage = messageContextMenu?.message;
         if (!targetMessage) return;
         if (!canInteract && action != "copy") {
@@ -1930,22 +2152,8 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                         log.error("Failed to copy message", error),
                 );
                 break;
-            case "like":
-                closeMessageActions();
-                if (isCurrentProfileMessage(targetMessage, profile)) return;
-                void onSetMessageLiked(
-                    targetMessage.id,
-                    !targetMessage.viewerLiked,
-                ).catch((error: unknown) =>
-                    log.error("Failed to update message like", error),
-                );
-                break;
             case "reply":
-                flushSync(() => {
-                    closeMessageActions();
-                    setReplyingTo(targetMessage);
-                });
-                composerRef.current?.focus();
+                startReply(targetMessage);
                 break;
             case "delete":
                 closeMessageActions();
@@ -2022,18 +2230,20 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
     React.useLayoutEffect(() => {
         resizeComposer(composerRef.current);
-        if (!selectedFriend || !stickToThreadBottomRef.current) return;
+        if (!selectedThreadID || !stickToThreadBottomRef.current) return;
         if (smoothNextMessageScrollRef.current) return;
         scrollThreadToBottom();
-    }, [messageText, replyingTo, scrollThreadToBottom, selectedFriend]);
+    }, [messageText, replyingTo, scrollThreadToBottom, selectedThreadID]);
 
     React.useEffect(() => {
         setReplyingTo(null);
         setMessageContextMenu(null);
+        setReactionPickerMessage(null);
+        setReactionError(false);
         setMessageText("");
         stickToThreadBottomRef.current = true;
         smoothNextMessageScrollRef.current = false;
-    }, [selectedFriend]);
+    }, [selectedThreadID]);
 
     React.useEffect(() => {
         if (!messageContextMenu?.open) return;
@@ -2062,7 +2272,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     }, [isThreadReadOnly]);
 
     React.useLayoutEffect(() => {
-        if (!selectedFriend || isThreadLoading) return;
+        if (!selectedThreadID || isThreadBusy) return;
         if (!stickToThreadBottomRef.current) return;
         if (smoothNextMessageScrollRef.current) {
             smoothNextMessageScrollRef.current = false;
@@ -2071,10 +2281,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
         }
         scrollThreadToBottom();
     }, [
-        isThreadLoading,
+        isThreadBusy,
         scheduleThreadBottomScroll,
         scrollThreadToBottom,
-        selectedFriend,
+        selectedThreadID,
         visibleMessages.length,
     ]);
 
@@ -2094,14 +2304,6 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     );
 
     const messageActionMenuItems = [
-        !isContextMessagePoke && canInteract && !isContextMessageOwn ? (
-            <MessageActionMenuItem
-                key="like"
-                icon={<HeartIcon small />}
-                label={isContextMessageLiked ? "Unlike" : "Like"}
-                onClick={() => handleMessageAction("like")}
-            />
-        ) : null,
         !isContextMessagePoke && canInteract ? (
             <MessageActionMenuItem
                 key="reply"
@@ -2131,13 +2333,41 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
 
     return (
         <>
-            <Box
-                ref={postPhotoInputRef}
-                component="input"
-                type="file"
-                accept={spacePostImageInputAccept}
-                onChange={handlePostPhotoSelect}
-                sx={{ display: "none" }}
+            <SpaceLiveStatus>{actionStatus}</SpaceLiveStatus>
+            {reactionPickerMessage && (
+                <MessageReactionPicker
+                    selected={
+                        messageByID.get(reactionPickerMessage.message.id)
+                            ?.reaction
+                    }
+                    onSelect={(emoji) =>
+                        reactToMessage(reactionPickerMessage.message, emoji)
+                    }
+                    onClose={() => {
+                        reactionPickerMessage.anchorEl.focus();
+                        setReactionPickerMessage(null);
+                    }}
+                />
+            )}
+            {reactionError && (
+                <SpaceActionToast
+                    animateEntrance
+                    closeLabel="Dismiss reaction error"
+                    icon={
+                        <HugeiconsIcon
+                            icon={Cancel01Icon}
+                            size={20}
+                            color={dangerColor}
+                        />
+                    }
+                    message="Couldn’t update your reaction. Try again."
+                    onClose={() => setReactionError(false)}
+                    zIndex={1600}
+                />
+            )}
+            <SpacePostPhotoInput
+                inputRef={postPhotoInputRef}
+                onSelect={onPostPhotoSelect}
             />
             <Box
                 component="main"
@@ -2152,6 +2382,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                     placeItems: { xs: "stretch", sm: "start center" },
                 }}
             >
+                <SpaceSkipLink />
                 <Box
                     sx={{
                         bgcolor: "transparent",
@@ -2354,13 +2585,26 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                     {isThreadOpen && selectedFriend ? (
                         <>
                             <Box
+                                id="space-main-content"
+                                tabIndex={-1}
                                 ref={threadScrollRef}
+                                role="log"
+                                aria-label={`Messages with ${selectedName}`}
+                                aria-busy={isThreadBusy}
+                                aria-live={
+                                    !isThreadBusy &&
+                                    liveThreadID == selectedThreadID
+                                        ? "polite"
+                                        : "off"
+                                }
+                                aria-relevant="additions text"
                                 onScroll={handleThreadScroll}
                                 sx={{
                                     boxSizing: "border-box",
                                     minHeight: 0,
                                     overscrollBehaviorY: "contain",
                                     overflowY: "auto",
+                                    overflowX: "hidden",
                                     px: "14px",
                                     py: "12px",
                                 }}
@@ -2466,11 +2710,14 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                                                 activityPost={
                                                                     message.quote
                                                                         ? activityPostsByKey[
-                                                                              activityPostKey(
+                                                                              postQuoteKey(
                                                                                   message.quote,
                                                                               )
                                                                           ]
                                                                         : undefined
+                                                                }
+                                                                canReply={
+                                                                    canInteract
                                                                 }
                                                                 friendName={
                                                                     selectedName
@@ -2499,6 +2746,9 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                                                 onOpenQuotePost={
                                                                     onOpenQuotePost
                                                                 }
+                                                                onReply={
+                                                                    startReply
+                                                                }
                                                                 ownSpaceID={
                                                                     profile.spaceId
                                                                 }
@@ -2523,9 +2773,47 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                             </Box>
                             <Popper
                                 anchorEl={messageContextMenu?.anchorEl ?? null}
-                                modifiers={messageActionsPopperModifiers}
+                                modifiers={[
+                                    {
+                                        name: "offset",
+                                        options: {
+                                            offset: [
+                                                0,
+                                                messageContextMenu?.message
+                                                    .reaction
+                                                    ? 24
+                                                    : 8,
+                                            ],
+                                        },
+                                    },
+                                    {
+                                        name: "preventOverflow",
+                                        options: {
+                                            altAxis: true,
+                                            boundary: threadScrollRef.current,
+                                            padding: 8,
+                                        },
+                                    },
+                                    {
+                                        name: "flip",
+                                        options: {
+                                            boundary: threadScrollRef.current,
+                                            padding: 8,
+                                            fallbackPlacements: [
+                                                isContextMessageOwn
+                                                    ? "top-end"
+                                                    : "top-start",
+                                            ],
+                                            flipVariations: false,
+                                        },
+                                    },
+                                ]}
                                 open={Boolean(messageContextMenu?.open)}
-                                placement="bottom-end"
+                                placement={
+                                    isContextMessageOwn
+                                        ? "bottom-end"
+                                        : "bottom-start"
+                                }
                                 sx={{ outline: 0, zIndex: 1300 }}
                                 transition
                             >
@@ -2540,10 +2828,15 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                         <Grow
                                             {...(TransitionProps ?? {})}
                                             style={{
-                                                transformOrigin:
+                                                transformOrigin: `${
+                                                    placement.endsWith("end")
+                                                        ? "right"
+                                                        : "left"
+                                                } ${
                                                     placement.startsWith("top")
-                                                        ? "right bottom"
-                                                        : "right top",
+                                                        ? "bottom"
+                                                        : "top"
+                                                }`,
                                             }}
                                             onExited={() => {
                                                 TransitionProps?.onExited();
@@ -2554,27 +2847,68 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                             }
                                         >
                                             <Box
+                                                onKeyDown={(
+                                                    event: React.KeyboardEvent<HTMLElement>,
+                                                ) => {
+                                                    if (event.key == "Escape") {
+                                                        closeMessageActions();
+                                                        messageContextMenu?.anchorEl.focus();
+                                                    }
+                                                }}
                                                 sx={{
                                                     WebkitTapHighlightColor:
                                                         "transparent",
-                                                    bgcolor:
-                                                        spaceDialogBackground,
-                                                    borderRadius: "16px",
-                                                    boxShadow:
-                                                        "0 14px 40px rgba(0, 0, 0, 0.14)",
-                                                    minWidth: 132,
+                                                    display: "flex",
+                                                    flexDirection: "column",
+                                                    gap: "4px",
                                                     outline: 0,
-                                                    p: "4px",
                                                 }}
                                             >
+                                                {!isContextMessagePoke &&
+                                                    canInteract &&
+                                                    !isContextMessageOwn &&
+                                                    messageContextMenu && (
+                                                        <MessageQuickReactions
+                                                            selected={
+                                                                messageContextMenu
+                                                                    .message
+                                                                    .reaction
+                                                            }
+                                                            onSelect={(emoji) =>
+                                                                reactToMessage(
+                                                                    messageContextMenu.message,
+                                                                    emoji,
+                                                                )
+                                                            }
+                                                            onMore={() => {
+                                                                setReactionPickerMessage(
+                                                                    messageContextMenu,
+                                                                );
+                                                                closeMessageActions();
+                                                            }}
+                                                        />
+                                                    )}
                                                 <MenuList
-                                                    autoFocus
+                                                    aria-label="Message actions"
+                                                    autoFocus={
+                                                        isContextMessagePoke ||
+                                                        !canInteract ||
+                                                        isContextMessageOwn
+                                                    }
                                                     onKeyDown={
                                                         handleMessageActionsKeyDown
                                                     }
                                                     sx={{
+                                                        alignSelf: "flex-start",
+                                                        bgcolor:
+                                                            spaceMenuBackground,
+                                                        borderRadius: "16px",
+                                                        boxShadow:
+                                                            "0 0 0 1px rgba(255, 255, 255, 0.08), 0 8px 24px rgba(0, 0, 0, 0.32)",
+                                                        minWidth: 132,
                                                         outline: 0,
-                                                        p: 0,
+                                                        p: "4px",
+                                                        width: "max-content",
                                                         "&:focus": {
                                                             outline: 0,
                                                         },
@@ -2842,7 +3176,12 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                             )}
                         </>
                     ) : (
-                        <>
+                        <Box
+                            component="section"
+                            id="space-main-content"
+                            aria-label="Messages"
+                            tabIndex={-1}
+                        >
                             {isConversationsLoading ? (
                                 <Box
                                     sx={{
@@ -2940,7 +3279,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                     ))}
                                 </Box>
                             )}
-                        </>
+                        </Box>
                     )}
                 </Box>
             </Box>

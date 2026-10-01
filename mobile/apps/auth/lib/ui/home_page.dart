@@ -1233,6 +1233,9 @@ class _HomePageState extends State<HomePage> {
       case CodeSortKey.manual:
         codes.sort((a, b) => a.display.position.compareTo(b.display.position));
         break;
+      case CodeSortKey.newestFirst:
+        codes.sort(_compareNewestFirst);
+        break;
     }
     if (sortKey != CodeSortKey.manual) {
       int insertIndex = 0;
@@ -1244,6 +1247,14 @@ class _HomePageState extends State<HomePage> {
         }
       }
     }
+  }
+
+  static int _compareNewestFirst(Code a, Code b) {
+    final byCreatedAt = b.createdAt!.compareTo(a.createdAt!);
+    if (byCreatedAt != 0) {
+      return byCreatedAt;
+    }
+    return b.generatedID!.compareTo(a.generatedID!);
   }
 
   bool get _shouldFocusAddedCode {
@@ -1268,19 +1279,22 @@ class _HomePageState extends State<HomePage> {
         context,
         logger: _logger,
       );
-      if (importResult == null) {
+      if (importResult == null || !mounted) {
         return;
       }
-      final googleAuthCodes = importResult.googleAuthCodes;
-      if (googleAuthCodes != null) {
-        if (!mounted) return;
+      final firstMigration = importResult.googleAuthMigration;
+      if (firstMigration != null) {
+        final googleAuthCodes = await collectGoogleAuthImageBatches(
+          context,
+          firstMigration,
+          logger: _logger,
+        );
+        if (!mounted || googleAuthCodes == null) return;
         final shouldImport = await confirmGoogleAuthImport(
           context,
           googleAuthCodes.length,
         );
-        if (!shouldImport) {
-          return;
-        }
+        if (!shouldImport) return;
         await _completeGoogleAuthImport(googleAuthCodes);
         return;
       }

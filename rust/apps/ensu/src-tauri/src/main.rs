@@ -4,12 +4,20 @@ use tauri::{Manager, RunEvent, async_runtime};
 
 mod commands;
 mod logging;
+#[path = "../../../../crates/ensu/src/platform.rs"]
+mod platform;
+#[cfg(any(windows, target_os = "linux"))]
+mod single_instance;
 
 fn main() {
     logging::install_panic_hook();
     logging::log("App", "starting Tauri backend");
 
-    let app = tauri::Builder::default()
+    let builder = tauri::Builder::default();
+    #[cfg(any(windows, target_os = "linux"))]
+    let builder = builder.plugin(single_instance::plugin());
+
+    let app = builder
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_opener::init())
@@ -18,6 +26,8 @@ fn main() {
         .manage(commands::llm::State::default())
         .manage(commands::chat_db::ChatDbState::default())
         .manage(commands::knowledge::State::default())
+        .manage(commands::conversation::State::default())
+        .manage(commands::followup::State::default())
         .setup(|app| {
             logging::init_logging(app.handle());
             logging::log("App", "setup started");
@@ -75,7 +85,6 @@ fn main() {
             commands::chat_db::chat_db_delete_session,
             commands::chat_db::chat_db_get_messages,
             commands::chat_db::chat_db_insert_message,
-            commands::chat_db::chat_db_update_message_text,
             commands::chat_db::chat_db_upsert_session,
             commands::chat_db::chat_db_insert_message_with_uuid,
             commands::chat_db::chat_db_compress_attachment_image_file,
@@ -88,6 +97,8 @@ fn main() {
             commands::llm::llm_free_model,
             commands::llm::llm_prewarm_multimodal_context,
             commands::llm::llm_generate_chat_stream,
+            commands::conversation::conversation_prepare,
+            commands::followup::conversation_resolve_followup,
             commands::llm::llm_cancel,
             commands::llm::llm_retrieval_epoch,
             commands::llm::llm_model_state_epoch,

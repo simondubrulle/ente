@@ -2,7 +2,9 @@ use super::test_support::*;
 use super::*;
 use crate::crypto::{encrypt_asset_payload, seal_with_public_key};
 use crate::transport::{
-    EntityKeyPayload, ProfileAvatarPayload, ProfileCoverPayload, SpaceActorResponse,
+    ConversationChatSummaryResponse, EntityKeyPayload, MessageConversationActivity,
+    MessagePageResponse, MessageResponse, ProfileAvatarPayload, ProfileCoverPayload,
+    SpaceActorResponse, SpaceFriendResponse,
 };
 
 use mockito::{Matcher, Server};
@@ -39,6 +41,206 @@ async fn account_api_sends_space_session_token_header() {
         .unwrap();
 
     request.assert_async().await;
+}
+
+#[tokio::test]
+async fn message_thread_keeps_content_failures_local_to_each_message() {
+    fn content(message: &crate::Message) -> &crate::MessageContent {
+        message.content.as_ref().unwrap().as_ref().unwrap()
+    }
+
+    let mut server = Server::new_async().await;
+    let ctx = test_account_ctx(&server.url());
+    let key = generate_key();
+    let encrypted_key =
+        b64::encode(&seal_with_public_key(&key, &test_public_key(&ctx)).expect("message key seal"));
+    let message = |id: &str, kind: &str, plaintext: &[u8]| MessageResponse {
+        message_id: id.into(),
+        kind: kind.into(),
+        sender_space_id: "space_friend".into(),
+        recipient_space_id: "space_owner_main".into(),
+        message_cipher: b64::encode(&encrypt_secretbox_payload(&key, plaintext).unwrap()),
+        encrypted_reaction: String::new(),
+        encrypted_message_key: encrypted_key.clone(),
+        text: String::new(),
+        reply_post_id: None,
+        reply_message_id: None,
+        liked: false,
+        viewer_liked: false,
+        is_deleted: false,
+        created_at: "2026-09-23T00:00:00Z".into(),
+        updated_at: "2026-09-23T00:00:00Z".into(),
+    };
+    let mut readable = message(
+        "readable",
+        "regular",
+        br#"{"version":1,"kind":"regular","text":"hello","replyObjectKey":"photo"}"#,
+    );
+    readable.encrypted_reaction = "invalid".into();
+    let poke = message(
+        "poke",
+        "regular",
+        br#"{"version":1,"kind":"poke","text":"Poked"}"#,
+    );
+    let mut event = message("event", "post_like", b"");
+    event.text = "Liked your post".into();
+    let mut deleted = message("deleted", "regular", b"");
+    deleted.is_deleted = true;
+    let corrupt = message("corrupt", "regular", b"not-json");
+    let page = MessagePageResponse {
+        items: vec![readable.clone(), poke, event, deleted, corrupt, readable],
+        next_cursor: "next".into(),
+    };
+    let request = server
+        .mock(
+            "GET",
+            "/spaces/space_owner_main/friends/space_friend/messages",
+        )
+        .with_body(serde_json::to_string(&page).unwrap())
+        .create_async()
+        .await;
+
+    let opened = ctx
+        .list_message_thread("space_owner_main", "space_friend", None, None)
+        .await
+        .unwrap();
+    assert_eq!(opened.next_cursor, "next");
+    assert_eq!(opened.items.len(), 6);
+    assert_eq!(content(&opened.items[0]).text, "hello");
+    assert!(opened.items[0].reaction.is_err());
+    assert_eq!(
+        content(&opened.items[0]).reply_object_key.as_deref(),
+        Some("photo")
+    );
+    assert_eq!(opened.items[1].kind, "poke");
+    assert_eq!(content(&opened.items[1]).text, "Poked");
+    assert_eq!(opened.items[2].kind, "post_like");
+    assert_eq!(content(&opened.items[2]).text, "Liked your post");
+    assert!(opened.items[3].content.as_ref().unwrap().is_none());
+    assert!(matches!(
+        &opened.items[4].content,
+        Err(Error::InvalidInput(_))
+    ));
+    assert_eq!(content(&opened.items[5]).text, "hello");
+    request.assert_async().await;
+}
+
+#[tokio::test]
+async fn unread_poke_uses_latest_activity_kind() {
+    let server = Server::new_async().await;
+    let ctx = test_account_ctx(&server.url());
+    let activity = MessageConversationActivity {
+        id: "activity-1".into(),
+        activity_type: "message".into(),
+        kind: "poke".into(),
+        created_at: "2026-08-01T00:00:00Z".into(),
+        outgoing: false,
+        message_id: Some("message-1".into()),
+        sender_space_id: "space_friend".into(),
+        recipient_space_id: "space_owner_main".into(),
+        message_cipher: String::new(),
+        encrypted_reaction: String::new(),
+        encrypted_message_key: String::new(),
+        reply_message_id: None,
+        post_id: None,
+        post_space_id: None,
+    };
+    let mut unread = activity.clone();
+    unread.kind = "regular".into();
+    let summary = ctx
+        .open_conversation_summary(
+            "space_owner_main",
+            ConversationChatSummaryResponse {
+                latest_activity: activity,
+                unread_activities: vec![unread],
+            },
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(summary.unread_activities[0].kind, "poke");
+}
+
+#[tokio::test]
+async fn conversation_activities_open_content_and_preserve_server_kind() {
+    let server = Server::new_async().await;
+    let ctx = test_account_ctx(&server.url());
+    let key = generate_key();
+    let encrypted_key = b64::encode(&seal_with_public_key(&key, &test_public_key(&ctx)).unwrap());
+    for (server_kind, payload_kind, expected_kind) in [
+        ("regular", "poke", "poke"),
+        ("regular", "post_like", "regular"),
+        ("post_reply", "poke", "post_reply"),
+    ] {
+        let plaintext = serde_json::to_vec(&json!({
+            "version": 1,
+            "kind": payload_kind,
+            "text": "hello",
+            "replyObjectKey": "photo",
+        }))
+        .unwrap();
+        let activity = MessageConversationActivity {
+            id: "activity-1".into(),
+            activity_type: "message".into(),
+            kind: server_kind.into(),
+            created_at: "2026-08-01T00:00:00Z".into(),
+            outgoing: false,
+            message_id: Some("message-1".into()),
+            sender_space_id: "space_friend".into(),
+            recipient_space_id: "space_owner_main".into(),
+            message_cipher: b64::encode(&encrypt_secretbox_payload(&key, &plaintext).unwrap()),
+            encrypted_reaction: String::new(),
+            encrypted_message_key: encrypted_key.clone(),
+            reply_message_id: None,
+            post_id: None,
+            post_space_id: None,
+        };
+        let summary = ctx
+            .open_conversation_summary(
+                "space_owner_main",
+                ConversationChatSummaryResponse {
+                    latest_activity: activity,
+                    unread_activities: vec![],
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(summary.latest_activity.kind, expected_kind);
+        let content = summary.latest_activity.content.unwrap().unwrap();
+        assert_eq!(content.text, "hello");
+        assert_eq!(content.reply_object_key.as_deref(), Some("photo"));
+    }
+
+    let activity = MessageConversationActivity {
+        id: "corrupt".into(),
+        activity_type: "message".into(),
+        kind: "regular".into(),
+        created_at: "2026-08-01T00:00:00Z".into(),
+        outgoing: false,
+        message_id: Some("message-2".into()),
+        sender_space_id: "space_friend".into(),
+        recipient_space_id: "space_owner_main".into(),
+        message_cipher: b64::encode(&encrypt_secretbox_payload(&key, b"not-json").unwrap()),
+        encrypted_reaction: String::new(),
+        encrypted_message_key: encrypted_key,
+        reply_message_id: None,
+        post_id: None,
+        post_space_id: None,
+    };
+    let summary = ctx
+        .open_conversation_summary(
+            "space_owner_main",
+            ConversationChatSummaryResponse {
+                latest_activity: activity,
+                unread_activities: vec![],
+            },
+        )
+        .await
+        .unwrap();
+    assert!(matches!(
+        summary.latest_activity.content,
+        Err(Error::InvalidInput(_))
+    ));
 }
 
 #[tokio::test]
@@ -121,7 +323,8 @@ async fn account_space_key_resolution_is_cached_within_context() {
     let ctx = test_account_ctx_with_space_root_key(&server.url(), space_root_key.clone());
     let friend_space_key = generate_key();
     let encrypted_profile = b64::encode(
-        &encrypt_secretbox_payload(&friend_space_key, b"friend-profile").expect("profile wrap"),
+        &encrypt_secretbox_payload(&friend_space_key, br#"{"fullName":"Friend"}"#)
+            .expect("profile wrap"),
     );
     let sealed_share =
         seal_with_public_key(&friend_space_key, &test_public_key(&ctx)).expect("friend share seal");
@@ -174,7 +377,6 @@ async fn account_space_key_resolution_is_cached_within_context() {
         encrypted_profile,
         ..Default::default()
     };
-
     let first = ctx
         .decrypt_actor_profile(&actor)
         .await
@@ -184,8 +386,42 @@ async fn account_space_key_resolution_is_cached_within_context() {
         .await
         .expect("second profile decrypt");
 
-    assert_eq!(first.as_deref(), Some(b"friend-profile".as_slice()));
-    assert_eq!(second.as_deref(), Some(b"friend-profile".as_slice()));
+    assert_eq!(first.unwrap().full_name.as_deref(), Some("Friend"));
+    assert_eq!(second.unwrap().full_name.as_deref(), Some("Friend"));
+    let opened = ctx
+        .open_friend(SpaceFriendResponse {
+            friend: actor.clone(),
+            share_key_version: 1,
+            created_at: "2026-04-16T00:00:00Z".into(),
+        })
+        .await
+        .unwrap();
+    assert_eq!(
+        opened
+            .friend
+            .profile
+            .as_ref()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .full_name
+            .as_deref(),
+        Some("Friend")
+    );
+    let mut corrupt_actor = actor;
+    corrupt_actor.encrypted_profile = "not-base64".into();
+    let opened = ctx
+        .open_friend(SpaceFriendResponse {
+            friend: corrupt_actor,
+            share_key_version: 1,
+            created_at: "2026-04-16T00:00:00Z".into(),
+        })
+        .await
+        .unwrap();
+    assert!(matches!(
+        &opened.friend.profile,
+        Err(Error::Base64Decode(_))
+    ));
     spaces.assert_async().await;
     shares.assert_async().await;
 }
@@ -290,8 +526,7 @@ async fn upload_post_photo_asset_attaches_photo_metadata() {
 
     assert_eq!(payload.object_key, "photo-object");
     assert_eq!(payload.position, Some(0));
-    let metadata = ctx
-        .decrypt_post_object_metadata(&post_key, &payload)
+    let metadata = decrypt_post_object_metadata(&post_key, &payload)
         .expect("metadata should decrypt")
         .expect("metadata should exist");
     assert_eq!(metadata.width, Some(4032));
@@ -999,6 +1234,7 @@ async fn create_post_rejects_video_object_media_type() {
         .create_post(
             "space_owner_main",
             &[PostObjectPayload {
+                video: None,
                 object_key: "object-1".to_owned(),
                 size: None,
                 position: Some(0),
@@ -1113,13 +1349,63 @@ async fn update_space_profile_sends_encrypted_profile_and_profile_assets() {
 }
 
 #[tokio::test]
+async fn removing_profile_images_sets_only_the_requested_asset_flag() {
+    let mut server = Server::new_async().await;
+    let space_root_key = generate_key();
+    let ctx = test_account_ctx_with_space_root_key(&server.url(), space_root_key.clone());
+    let space_key = generate_key();
+    let spaces = server
+        .mock("GET", "/account/space")
+        .with_status(200)
+        .with_body(owned_space_response(
+            &space_root_key,
+            &space_key,
+            "space_owner_main",
+            "owner-main",
+            3,
+        ))
+        .create_async()
+        .await;
+    let cover = server
+        .mock("POST", "/spaces/space_owner_main/profile")
+        .match_body(Matcher::Regex(
+            r#"^\{"keyVersion":3,"encryptedProfile":"[^"]+","removeCover":true\}$"#.into(),
+        ))
+        .with_status(200)
+        .with_body(r#"{"status":"updated"}"#)
+        .create_async()
+        .await;
+    let avatar = server
+        .mock("POST", "/spaces/space_owner_main/profile")
+        .match_body(Matcher::Regex(
+            r#"^\{"keyVersion":3,"encryptedProfile":"[^"]+","removeAvatar":true\}$"#.into(),
+        ))
+        .with_status(200)
+        .with_body(r#"{"status":"updated"}"#)
+        .create_async()
+        .await;
+
+    ctx.remove_space_profile_cover("space_owner_main", b"profile-v2")
+        .await
+        .expect("cover removal should succeed");
+    ctx.remove_space_profile_avatar("space_owner_main", b"profile-v2")
+        .await
+        .expect("avatar removal should succeed");
+
+    spaces.assert_async().await;
+    cover.assert_async().await;
+    avatar.assert_async().await;
+}
+
+#[tokio::test]
 async fn get_space_profile_decrypted_loads_and_decrypts_profile() {
     let mut server = Server::new_async().await;
     let space_root_key = generate_key();
     let ctx = test_account_ctx_with_space_root_key(&server.url(), space_root_key.clone());
     let space_key = generate_key();
-    let encrypted_profile =
-        b64::encode(&encrypt_secretbox_payload(&space_key, b"profile-json").expect("profile wrap"));
+    let encrypted_profile = b64::encode(
+        &encrypt_secretbox_payload(&space_key, br#"{"fullName":"Owner"}"#).expect("profile wrap"),
+    );
     let profile = server
         .mock("GET", "/spaces/space_owner_main/profile")
         .match_header("x-space-session-token", "space-session-token")
@@ -1160,7 +1446,10 @@ async fn get_space_profile_decrypted_loads_and_decrypts_profile() {
     assert_eq!(decrypted.space_slug, "owner-main");
     assert_eq!(decrypted.version, 3);
     assert_eq!(decrypted.friends, 2);
-    assert_eq!(decrypted.profile, b"profile-json");
+    assert_eq!(
+        decrypted.profile.unwrap().full_name.as_deref(),
+        Some("Owner")
+    );
     profile.assert_async().await;
     spaces.assert_async().await;
 }
@@ -1264,7 +1553,7 @@ async fn get_space_profile_for_display_keeps_envelope_on_decryption_error() {
     assert_eq!(decrypted.space_slug, "owner-main");
     assert_eq!(decrypted.version, 3);
     assert_eq!(decrypted.friends, 2);
-    assert!(decrypted.profile.is_empty());
+    assert!(decrypted.profile.is_none());
     profile.assert_async().await;
     spaces.assert_async().await;
 }
@@ -1317,7 +1606,42 @@ async fn space_status_mutations_accept_empty_server_responses() {
 #[tokio::test]
 async fn update_post_caption_uses_caption_endpoint() {
     let mut server = Server::new_async().await;
-    let ctx = test_account_ctx(&server.url());
+    let root_key = generate_key();
+    let space_key = generate_key();
+    let post_key = generate_key();
+    let ctx = test_account_ctx_with_space_root_key(&server.url(), root_key.clone());
+    let spaces = server
+        .mock("GET", "/account/space")
+        .with_body(owned_space_response(
+            &root_key,
+            &space_key,
+            "space_owner_main",
+            "owner",
+            1,
+        ))
+        .create_async()
+        .await;
+    let mut post = json!({
+        "postId": 42,
+        "spaceId": "space_owner_main",
+        "spaceSlug": "owner",
+        "author": { "spaceSlug": "owner" },
+        "encryptedPostKey": b64::encode(&encrypt_secretbox_payload(&space_key, &post_key).unwrap()),
+        "captionCipher": b64::encode(&encrypt_secretbox_payload(&post_key, b"old caption").unwrap()),
+        "keyVersion": 1,
+        "objects": [],
+        "createdAt": "2026-04-16T00:00:00Z",
+        "viewerLiked": false,
+    });
+    let read = server
+        .mock("GET", "/spaces/space_owner_main/posts/42")
+        .match_query(Matcher::UrlEncoded(
+            "viewerSpaceId".into(),
+            "space_owner_main".into(),
+        ))
+        .with_body(post.to_string())
+        .create_async()
+        .await;
     let update = server
         .mock("POST", "/spaces/space_owner_main/posts/42/caption")
         .match_header("x-space-session-token", "space-session-token")
@@ -1328,15 +1652,26 @@ async fn update_post_caption_uses_caption_endpoint() {
         .create_async()
         .await;
 
-    ctx.update_post_caption(
-        "space_owner_main",
-        42,
-        &generate_key(),
-        Some(b"updated caption".as_slice()),
-    )
-    .await
-    .expect("caption update should succeed");
+    ctx.update_post_caption("space_owner_main", 42, Some(b"updated caption".as_slice()))
+        .await
+        .expect("caption update should succeed");
 
+    spaces.assert_async().await;
+    read.assert_async().await;
+    read.remove_async().await;
+    post["captionCipher"] = "not-base64".into();
+    let corrupt = server
+        .mock("GET", "/spaces/space_owner_main/posts/42")
+        .match_query(Matcher::Any)
+        .with_body(post.to_string())
+        .create_async()
+        .await;
+    assert!(matches!(
+        ctx.update_post_caption("space_owner_main", 42, Some(b"updated caption"))
+            .await,
+        Err(Error::Base64Decode(_))
+    ));
+    corrupt.assert_async().await;
     update.assert_async().await;
 }
 
@@ -1435,14 +1770,15 @@ async fn message_actions_use_message_endpoints() {
             Matcher::Regex("\"recipientEncryptedMessageKey\":\"[^\"]+\"".into()),
         ]))
         .with_status(200)
-        .with_body(
+        .with_body_from_request(|request| {
+            let body: serde_json::Value = serde_json::from_slice(request.body().unwrap()).unwrap();
             json!({
                 "messageId": "wmsg_reply",
                 "kind": "regular",
                 "senderSpaceId": "space_owner_main",
                 "recipientSpaceId": "space_friend",
-                "messageCipher": "cipher",
-                "encryptedMessageKey": "key",
+                "messageCipher": body["messageCipher"],
+                "encryptedMessageKey": body["senderEncryptedMessageKey"],
                 "replyMessageId": "wmsg_parent",
                 "liked": false,
                 "viewerLiked": false,
@@ -1450,8 +1786,9 @@ async fn message_actions_use_message_endpoints() {
                 "createdAt": "2026-04-16T00:00:00Z",
                 "updatedAt": "2026-04-16T00:00:00Z"
             })
-            .to_string(),
-        )
+            .to_string()
+            .into_bytes()
+        })
         .create_async()
         .await;
     let like = server
@@ -1527,20 +1864,24 @@ async fn poke_message_requests_special_notification() {
             Matcher::Regex("\"recipientEncryptedMessageKey\":\"[^\"]+\"".into()),
         ]))
         .with_status(200)
-        .with_body(
+        .with_body_from_request(|request| {
+            let body: serde_json::Value = serde_json::from_slice(request.body().unwrap()).unwrap();
             json!({
                 "messageId": "wmsg_poke",
                 "kind": "regular",
                 "senderSpaceId": "space_owner_main",
                 "recipientSpaceId": "space_friend",
+                "messageCipher": body["messageCipher"],
+                "encryptedMessageKey": body["senderEncryptedMessageKey"],
                 "liked": false,
                 "viewerLiked": false,
                 "isDeleted": false,
                 "createdAt": "2026-04-16T00:00:00Z",
                 "updatedAt": "2026-04-16T00:00:00Z"
             })
-            .to_string(),
-        )
+            .to_string()
+            .into_bytes()
+        })
         .create_async()
         .await;
 
@@ -1550,6 +1891,7 @@ async fn poke_message_requests_special_notification() {
         .expect("poke should be sent");
 
     assert_eq!(message.message_id, "wmsg_poke");
+    assert_eq!(message.kind, "poke");
     friends.assert_async().await;
     poke.assert_async().await;
 }
@@ -1560,6 +1902,7 @@ fn message_payload_limits_reject_oversized_text_and_payload() {
         version: 1,
         kind: MESSAGE_KIND_REGULAR.to_owned(),
         text: "hello".to_owned(),
+        reply_object_key: None,
     };
     let valid_plaintext = serde_json::to_vec(&valid).expect("valid payload json");
     validate_message_payload(&valid, valid_plaintext.len())
@@ -1580,6 +1923,81 @@ fn message_payload_limits_reject_oversized_text_and_payload() {
 }
 
 #[tokio::test]
+async fn post_replies_encrypt_photo_references_and_reject_other_photos() {
+    let mut server = Server::new_async().await;
+    let ctx = test_account_ctx(&server.url());
+    let (public_key, _) = generate_keypair().unwrap();
+    let owned = server
+        .mock("GET", "/account/space")
+        .with_body("[]")
+        .create_async()
+        .await;
+    let post = server.mock("GET", "/spaces/space_friend/posts/42")
+        .match_query(Matcher::UrlEncoded("viewerSpaceId".into(), "space_owner_main".into()))
+        .with_body(json!({
+            "postId": 42,
+            "spaceId": "space_friend",
+            "spaceSlug": "friend",
+            "author": { "spaceId": "space_friend", "spaceSlug": "friend", "publicKey": b64::encode(&public_key) },
+            "encryptedPostKey": "unused",
+            "keyVersion": 1,
+            "viewerLiked": false,
+            "createdAt": "2026-09-19T00:00:00Z",
+            "objects": [
+                { "objectKey": "first", "metadataCipher": "unused" },
+                { "objectKey": "second", "metadataCipher": "unused" }
+            ]
+        }).to_string())
+        .expect(4).create_async().await;
+    let reply = server
+        .mock("POST", "/spaces/space_owner_main/posts/42/reply")
+        .with_body_from_request(|request| {
+            let body: serde_json::Value = serde_json::from_slice(request.body().unwrap()).unwrap();
+            assert!(body.get("replyObjectKey").is_none());
+            json!({
+                "messageId": "reply",
+                "kind": "post_reply",
+                "senderSpaceId": "space_owner_main",
+                "recipientSpaceId": "space_friend",
+                "replyPostId": 42,
+                "messageCipher": body["messageCipher"],
+                "encryptedMessageKey": body["senderEncryptedMessageKey"],
+                "createdAt": "2026-09-19T00:00:00Z",
+                "updatedAt": "2026-09-19T00:00:00Z"
+            })
+            .to_string()
+            .into_bytes()
+        })
+        .expect(3)
+        .create_async()
+        .await;
+    for object_key in [None, Some("first"), Some("second")] {
+        let response = ctx
+            .reply_to_post("space_owner_main", "space_friend", 42, "Coo", object_key)
+            .await
+            .unwrap();
+        let content = response.content.unwrap().unwrap();
+        assert_eq!(content.text, "Coo");
+        assert_eq!(content.reply_object_key.as_deref(), object_key);
+    }
+    let error = ctx
+        .reply_to_post(
+            "space_owner_main",
+            "space_friend",
+            42,
+            "Coo",
+            Some("unrelated"),
+        )
+        .await
+        .err()
+        .unwrap();
+    assert!(matches!(error, Error::InvalidInput(_)));
+    owned.assert_async().await;
+    post.assert_async().await;
+    reply.assert_async().await;
+}
+
+#[tokio::test]
 async fn list_space_friends_uses_space_friends_endpoint() {
     let mut server = Server::new_async().await;
     let ctx = test_account_ctx(&server.url());
@@ -1593,8 +2011,7 @@ async fn list_space_friends_uses_space_friends_endpoint() {
                     "spaceId": "space_friend",
                     "spaceSlug": "friend",
                     "publicKey": "friend-public-key",
-                    "keyVersion": 2,
-                    "encryptedProfile": "profile-cipher"
+                    "keyVersion": 2
                 },
                 "shareKeyVersion": 2,
                 "createdAt": "2026-04-16T00:00:00Z"
@@ -1611,6 +2028,7 @@ async fn list_space_friends_uses_space_friends_endpoint() {
 
     assert_eq!(response.len(), 1);
     assert_eq!(response[0].friend.space_id, "space_friend");
+    assert!(response[0].friend.profile.as_ref().unwrap().is_none());
     assert_eq!(response[0].share_key_version, 2);
     friends.assert_async().await;
 }
@@ -1751,9 +2169,23 @@ async fn refresh_friend_shares_accepts_empty_server_response() {
 }
 
 #[tokio::test]
-async fn list_home_posts_uses_home_posts_endpoint() {
+async fn list_feed_uses_feed_endpoint() {
     let mut server = Server::new_async().await;
-    let ctx = test_account_ctx(&server.url());
+    let root_key = generate_key();
+    let space_key = generate_key();
+    let ctx = test_account_ctx_with_space_root_key(&server.url(), root_key.clone());
+    let spaces = server
+        .mock("GET", "/account/space")
+        .with_status(200)
+        .with_body(owned_space_response(
+            &root_key,
+            &space_key,
+            "space_friend_gallery",
+            "gallery",
+            3,
+        ))
+        .create_async()
+        .await;
     let shares = server
         .mock("GET", "/spaces/space_owner_main/friends/shares")
         .match_header("x-space-session-token", "space-session-token")
@@ -1761,11 +2193,10 @@ async fn list_home_posts_uses_home_posts_endpoint() {
         .with_body("[]")
         .create_async()
         .await;
-    let home_posts = server
-        .mock("GET", "/spaces/space_owner_main/home-posts")
+    let feed = server
+        .mock("GET", "/spaces/space_owner_main/feed")
         .match_header("x-space-session-token", "space-session-token")
         .match_query(Matcher::AllOf(vec![
-            Matcher::UrlEncoded("after".into(), "1000:1".into()),
             Matcher::UrlEncoded("cursor".into(), "cursor-1".into()),
             Matcher::UrlEncoded("limit".into(), "5".into()),
         ]))
@@ -1780,15 +2211,14 @@ async fn list_home_posts_uses_home_posts_endpoint() {
                         "spaceId": "space_owner_gallery",
                         "spaceSlug": "owner-gallery"
                     },
-                    "encryptedPostKey": "cGFja2Vk",
+                    "encryptedPostKey": b64::encode(&encrypt_secretbox_payload(&space_key, &generate_key()).unwrap()),
                     "captionCipher": "",
                     "keyVersion": 3,
-                    "objects": [],
+                    "objects": [{"objectKey": "photo"}],
                     "createdAt": "2026-04-16T00:00:00Z",
                     "viewerLiked": true
                 }],
-                "nextCursor": "cursor-2",
-                "syncCursor": "2000:42"
+                "nextCursor": "cursor-2"
             })
             .to_string(),
         )
@@ -1796,27 +2226,37 @@ async fn list_home_posts_uses_home_posts_endpoint() {
         .await;
 
     let page = ctx
-        .list_home_posts(
-            "space_owner_main",
-            Some("1000:1".to_owned()),
-            Some("cursor-1".to_owned()),
-            Some(5),
-        )
+        .list_feed("space_owner_main", Some("cursor-1".to_owned()), Some(5))
         .await
-        .expect("home posts should load");
+        .expect("feed should load");
 
     assert_eq!(page.items.len(), 1);
+    assert!(page.items[0].content.is_ok());
+    spaces.assert_async().await;
     assert_eq!(page.items[0].post_id, 42);
     assert_eq!(page.next_cursor, "cursor-2");
-    assert_eq!(page.sync_cursor, "2000:42");
     shares.assert_async().await;
-    home_posts.assert_async().await;
+    feed.assert_async().await;
 }
 
 #[tokio::test]
 async fn list_posts_uses_space_posts_page_endpoint() {
     let mut server = Server::new_async().await;
-    let ctx = test_account_ctx(&server.url());
+    let root_key = generate_key();
+    let space_key = generate_key();
+    let ctx = test_account_ctx_with_space_root_key(&server.url(), root_key.clone());
+    let spaces = server
+        .mock("GET", "/account/space")
+        .with_status(200)
+        .with_body(owned_space_response(
+            &root_key,
+            &space_key,
+            "space_owner_main",
+            "gallery",
+            3,
+        ))
+        .create_async()
+        .await;
     let posts = server
         .mock("GET", "/spaces/space_owner_gallery/posts")
         .match_header("x-space-session-token", "space-session-token")
@@ -1836,10 +2276,10 @@ async fn list_posts_uses_space_posts_page_endpoint() {
                         "spaceId": "space_owner_gallery",
                         "spaceSlug": "owner-gallery"
                     },
-                    "encryptedPostKey": "cGFja2Vk",
+                    "encryptedPostKey": b64::encode(&encrypt_secretbox_payload(&space_key, &generate_key()).unwrap()),
                     "captionCipher": "",
                     "keyVersion": 3,
-                    "objects": [],
+                    "objects": [{"objectKey": "photo"}],
                     "createdAt": "2026-04-16T00:00:00Z",
                     "viewerLiked": true
                 }],
@@ -1861,13 +2301,15 @@ async fn list_posts_uses_space_posts_page_endpoint() {
         .expect("post page should load");
 
     assert_eq!(page.items.len(), 1);
+    assert!(page.items[0].content.is_ok());
+    spaces.assert_async().await;
     assert_eq!(page.items[0].post_id, 41);
     assert_eq!(page.next_cursor, "41");
     posts.assert_async().await;
 }
 
 #[tokio::test]
-async fn fetch_post_decrypted_uses_post_by_id_endpoint() {
+async fn get_post_returns_decrypted_content() {
     let mut server = Server::new_async().await;
     let space_root_key = generate_key();
     let ctx = test_account_ctx_with_space_root_key(&server.url(), space_root_key.clone());
@@ -1907,7 +2349,7 @@ async fn fetch_post_decrypted_uses_post_by_id_endpoint() {
                     "encryptedPostKey": b64::encode(&encrypt_secretbox_payload(&space_key, &post_key).expect("post key wrap")),
                     "captionCipher": b64::encode(&encrypt_secretbox_payload(&post_key, caption).expect("caption wrap")),
                     "keyVersion": 3,
-                    "objects": [],
+                    "objects": [{"objectKey": "photo"}],
                     "createdAt": "2026-04-16T00:00:00Z",
                     "viewerLiked": false
                 })
@@ -1917,14 +2359,14 @@ async fn fetch_post_decrypted_uses_post_by_id_endpoint() {
             .await;
 
     let decrypted = ctx
-        .fetch_post_decrypted("space_owner_gallery", 42, None)
+        .get_post("space_owner_gallery", 42, None)
         .await
         .expect("post should decrypt");
 
-    assert_eq!(decrypted.post_key, post_key);
+    assert_eq!(decrypted.post_id, 42);
     assert_eq!(
-        decrypted.caption_plaintext.as_deref(),
-        Some(caption.as_slice())
+        decrypted.content.unwrap().caption.as_deref(),
+        Some("hello from post")
     );
     spaces.assert_async().await;
     post.assert_async().await;

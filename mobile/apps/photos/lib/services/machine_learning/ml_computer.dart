@@ -52,12 +52,15 @@ class MLComputer extends SuperIsolate {
     }
   }
 
-  Future<(Uint64List, List<Uint64List>, List<Float32List>)>
-  bulkVectorSearchWithKeys(Uint64List potentialKeys, bool exact) async {
+  Future<Map<int, List<(int, double)>>> bulkVectorSearchWithKeys(
+    List<int> fileIDs, {
+    required double maxDistance,
+    required bool exact,
+  }) async {
     try {
       final result = await runInIsolate(
         IsolateOperation.bulkVectorSearchWithKeys,
-        {"potentialKeys": potentialKeys, "exact": exact},
+        {"fileIDs": fileIDs, "maxDistance": maxDistance, "exact": exact},
       );
       return result;
     } catch (e, s) {

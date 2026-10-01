@@ -11,17 +11,12 @@ import (
 	"github.com/ente/stacktrace"
 )
 
-const MaxPostsPerSpace = 250
+const (
+	MaxPostsPerSpace = 250
+	MaxPostObjects   = 10
+)
 
 var ErrSpacePostLimitReached = errors.New("space post limit reached")
-
-func (r *PostsRepository) CurrentDatabaseTimeMicroseconds(ctx context.Context) (int64, error) {
-	var currentTime int64
-	if err := r.DB.QueryRowContext(ctx, `SELECT now_utc_micro_seconds()`).Scan(&currentTime); err != nil {
-		return 0, stacktrace.Propagate(err, "")
-	}
-	return currentTime, nil
-}
 
 func (r *PostsRepository) CountPosts(ctx context.Context, spaceID string) (int64, error) {
 	var count int64
@@ -71,7 +66,13 @@ func scanPostRecords(rows *sql.Rows) ([]SpacePostRecord, error) {
 	return out, nil
 }
 
-func (r *PostsRepository) CreatePost(ctx context.Context, spaceID string, encryptedPostKey []byte, captionCipher []byte, keyVersion int, objects []SpacePostAssetRecord) (int64, int, error) {
+func (r *PostsRepository) PostIDForRequest(ctx context.Context, spaceID, requestID string) (int64, error) {
+	var postID int64
+	err := r.DB.QueryRowContext(ctx, "SELECT post_id FROM space_posts WHERE space_id = $1 AND client_request_id = $2", spaceID, requestID).Scan(&postID)
+	return postID, err
+}
+
+func (r *PostsRepository) CreatePost(ctx context.Context, spaceID string, encryptedPostKey []byte, captionCipher []byte, keyVersion int, objects []SpacePostAssetRecord, clientRequestID string) (int64, int, error) {
 	tx, err := r.DB.BeginTx(ctx, nil)
 	if err != nil {
 		return 0, 0, stacktrace.Propagate(err, "")
@@ -88,6 +89,16 @@ func (r *PostsRepository) CreatePost(ctx context.Context, spaceID string, encryp
 	}
 	if currentVersion != keyVersion {
 		return 0, 0, sql.ErrNoRows
+	}
+	if clientRequestID != "" {
+		var existingID int64
+		err := tx.QueryRowContext(ctx, "SELECT post_id FROM space_posts WHERE space_id = $1 AND client_request_id = $2", spaceID, clientRequestID).Scan(&existingID)
+		if err == nil {
+			return existingID, 0, nil
+		}
+		if err != sql.ErrNoRows {
+			return 0, 0, err
+		}
 	}
 	var postCount int
 	if err := tx.QueryRowContext(ctx, `
@@ -106,17 +117,21 @@ func (r *PostsRepository) CreatePost(ctx context.Context, spaceID string, encryp
 	}
 	var postID int64
 	if err := tx.QueryRowContext(ctx, `
-		INSERT INTO space_posts (space_id, encrypted_post_key, caption_cipher, key_version)
-		VALUES ($1, $2, $3, $4)
+		INSERT INTO space_posts (space_id, encrypted_post_key, caption_cipher, key_version, client_request_id)
+		VALUES ($1, $2, $3, $4, NULLIF($5, ''))
 		RETURNING post_id
-	`, spaceID, encryptedPostKey, caption, keyVersion).Scan(&postID); err != nil {
+	`, spaceID, encryptedPostKey, caption, keyVersion, clientRequestID).Scan(&postID); err != nil {
 		return 0, 0, stacktrace.Propagate(err, "")
 	}
 	for _, obj := range objects {
+		role := obj.Role
+		if role == "" {
+			role = "preview"
+		}
 		if _, err := tx.ExecContext(ctx, `
-			INSERT INTO space_post_assets (post_id, object_key, bucket_id, size, position, metadata_cipher)
-			VALUES ($1, $2, $3, $4, $5, $6)
-		`, postID, obj.ObjectKey, obj.BucketID, obj.Size, obj.Position, obj.MetadataCipher); err != nil {
+			INSERT INTO space_post_assets (post_id, object_key, bucket_id, size, position, metadata_cipher, role)
+			VALUES ($1, $2, $3, $4, $5, $6, $7)
+		`, postID, obj.ObjectKey, obj.BucketID, obj.Size, obj.Position, obj.MetadataCipher, role); err != nil {
 			return 0, 0, stacktrace.Propagate(err, "")
 		}
 		if err := ConsumeTempObjectTx(ctx, tx, obj.ObjectKey, TempObjectPurposePost, &spaceID); err != nil {
@@ -148,8 +163,8 @@ func (r *PostsRepository) GetPost(ctx context.Context, postID int64, viewerSpace
 
 func (r *PostsRepository) ListPostsBySpace(ctx context.Context, spaceID string, viewerSpaceID string, cursor string, limit int) ([]SpacePostRecord, string, error) {
 	limit = optionalInt(limit, 50)
-	if limit > 100 {
-		limit = 100
+	if limit > MaxPostsPerSpace {
+		limit = MaxPostsPerSpace
 	}
 	args := []any{spaceID, viewerSpaceID}
 	query := postRecordSelectSQL(`
@@ -187,41 +202,33 @@ func (r *PostsRepository) ListPostsBySpace(ctx context.Context, spaceID string, 
 	return out, nextCursor, nil
 }
 
-func (r *PostsRepository) ListHomePosts(ctx context.Context, viewerSpaceID string, after string, cursor string, limit int) ([]SpacePostRecord, string, error) {
+func (r *PostsRepository) ListFeed(ctx context.Context, viewerSpaceID string, cursor string, limit int) ([]SpacePostRecord, string, error) {
 	limit = optionalInt(limit, 25)
 	if limit > 100 {
 		limit = 100
 	}
 	args := []any{viewerSpaceID}
 	query := postRecordSelectSQL(`
-			       EXISTS (
+			       CASE WHEN p.space_id = $1 THEN FALSE ELSE EXISTS (
 			           SELECT 1
 			           FROM space_messages m
 			           WHERE m.kind = 'post_like'
 			             AND m.reply_post_id = p.post_id
 			             AND m.sender_space_id = $1
-			       )`) + `
-			FROM space_posts p
-			JOIN space_friend_shares fs ON fs.friend_space_id = $1 AND fs.space_id = p.space_id
+			       ) END`) + `
+			FROM (
+			    SELECT $1::TEXT AS space_id
+			    UNION ALL
+			    SELECT space_id FROM space_friend_shares WHERE friend_space_id = $1
+			) accessible_spaces
+			JOIN space_posts p ON p.space_id = accessible_spaces.space_id
 			JOIN spaces w ON w.space_id = p.space_id
 			` + spaceActorAvatarJoin("w", "w_avatar") + `
 			JOIN users u ON u.user_id = w.owner_id AND u.encrypted_email IS NOT NULL
-			WHERE p.is_deleted = FALSE
-			  AND (
-			      NOT EXISTS (
-			          SELECT 1 FROM space_posts newer
-			          WHERE newer.space_id = p.space_id
-			            AND newer.is_deleted = FALSE
-			            AND (newer.created_at, newer.post_id) > (p.created_at, p.post_id)
-			      )`
-	if afterCreatedAt, afterPostID, ok := parsePostBoundary(after); ok {
-		args = append(args, afterCreatedAt, afterPostID)
-		query += ` OR (p.created_at, p.post_id) > ($2, $3)`
-	}
-	query += `)`
+			WHERE p.is_deleted = FALSE`
 	if cursorCreatedAt, cursorPostID, ok := parsePostCursor(cursor); ok {
 		args = append(args, cursorCreatedAt, cursorPostID)
-		query += ` AND (p.created_at, p.post_id) < ($` + strconv.Itoa(len(args)-1) + `, $` + strconv.Itoa(len(args)) + `)`
+		query += ` AND (p.created_at, p.post_id) < ($2, $3)`
 	}
 	args = append(args, limit+1)
 	query += ` ORDER BY p.created_at DESC, p.post_id DESC LIMIT $` + strconv.Itoa(len(args))
@@ -246,7 +253,7 @@ func (r *PostsRepository) ListAssetsByPostIDs(ctx context.Context, postIDs []int
 	if len(postIDs) == 0 {
 		return map[int64][]SpacePostAssetRecord{}, nil
 	}
-	query, args := inClause("SELECT asset_id, post_id, object_key, bucket_id, size, position, metadata_cipher, created_at FROM space_post_assets WHERE post_id IN (%s) ORDER BY position ASC, asset_id ASC", postIDs, 0)
+	query, args := inClause("SELECT asset_id, post_id, object_key, bucket_id, size, position, metadata_cipher, created_at, role FROM space_post_assets WHERE post_id IN (%s) ORDER BY position ASC, asset_id ASC", postIDs, 0)
 	rows, err := r.DB.QueryContext(ctx, query, args...)
 	if err != nil {
 		return nil, stacktrace.Propagate(err, "")
@@ -255,7 +262,7 @@ func (r *PostsRepository) ListAssetsByPostIDs(ctx context.Context, postIDs []int
 	result := make(map[int64][]SpacePostAssetRecord, len(postIDs))
 	for rows.Next() {
 		var rec SpacePostAssetRecord
-		if err := rows.Scan(&rec.AssetID, &rec.PostID, &rec.ObjectKey, &rec.BucketID, &rec.Size, &rec.Position, &rec.MetadataCipher, &rec.CreatedAt); err != nil {
+		if err := rows.Scan(&rec.AssetID, &rec.PostID, &rec.ObjectKey, &rec.BucketID, &rec.Size, &rec.Position, &rec.MetadataCipher, &rec.CreatedAt, &rec.Role); err != nil {
 			return nil, stacktrace.Propagate(err, "")
 		}
 		result[rec.PostID] = append(result[rec.PostID], rec)
@@ -410,14 +417,6 @@ func scanPostRecord(scanner interface{ Scan(dest ...any) error }) (*SpacePostRec
 }
 
 func parsePostCursor(cursor string) (int64, int64, bool) {
-	return parsePostPosition(cursor, false)
-}
-
-func parsePostBoundary(cursor string) (int64, int64, bool) {
-	return parsePostPosition(cursor, true)
-}
-
-func parsePostPosition(cursor string, allowZeroPostID bool) (int64, int64, bool) {
 	createdAtText, postIDText, ok := strings.Cut(strings.TrimSpace(cursor), ":")
 	if !ok {
 		return 0, 0, false
@@ -427,7 +426,7 @@ func parsePostPosition(cursor string, allowZeroPostID bool) (int64, int64, bool)
 		return 0, 0, false
 	}
 	postID, err := strconv.ParseInt(postIDText, 10, 64)
-	if err != nil || postID < 0 || (!allowZeroPostID && postID == 0) {
+	if err != nil || postID <= 0 {
 		return 0, 0, false
 	}
 	return createdAt, postID, true

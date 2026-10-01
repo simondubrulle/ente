@@ -216,6 +216,131 @@ test("binary deleted is ignored", (t) => {
     assert.equal(scan(t, { "a.bin": Buffer.alloc(16) }, { "a.bin": null }), "");
 });
 
+test("README additions and edits need approval in CI", (t) => {
+    const changed = {
+        README: "# New\n",
+        "README.md": "# Updated\n",
+        "docs/README.fr.md": "# Guide\n",
+        "mobile/readme-notes.txt": "# Notes\n",
+        "rust/crates/example/ReadMe": "",
+    };
+    const { stdout, output, summary } = scan(
+        t,
+        { "README.md": "# Original\n" },
+        changed,
+        { ci: true },
+    );
+    assert.equal(output, 'categories=["README files"]\n');
+    assert.equal(
+        stdout,
+        "::warning title=Change approval needed::5 README files\n",
+    );
+    assert.equal(
+        summary,
+        `5 README files\n\n## README files\n\n${Object.keys(changed)
+            .map((path) => `- \`${path}\``)
+            .join("\n")}\n`,
+    );
+});
+
+test("README edits and untracked files are scanned locally", (t) => {
+    const output = scan(
+        t,
+        { "docs/readme.md": "# Original\n" },
+        { "docs/readme.md": "# Updated\n", README: "# New\n" },
+        { commit: false },
+    );
+    assert.match(output, /^2 README files\n/);
+    assert.match(output, /- `docs\/readme.md`/);
+    assert.match(output, /- `README`/);
+});
+
+test("renaming a file to or from README needs approval", (t) => {
+    for (const [before, after] of [
+        ["guide.txt", "README.txt"],
+        ["README.txt", "guide.txt"],
+    ]) {
+        const { output, summary } = scan(
+            t,
+            { [before]: "# Guide\n" },
+            { [before]: null, [after]: "# Guide\n" },
+            { ci: true },
+        );
+        assert.equal(output, 'categories=["README files"]\n');
+        assert.equal(
+            summary,
+            "1 README file\n\n## README files\n\n- `README.txt`\n",
+        );
+    }
+});
+
+test("README deletions need approval in CI and local scans", (t) => {
+    const summary =
+        "2 README files\n\n## README files\n\n- `README`\n- `docs/readme.md`\n";
+    for (const ci of [false, true]) {
+        const result = scan(
+            t,
+            { README: "# Remove\n", "docs/readme.md": "# Remove\n" },
+            { README: null, "docs/readme.md": null },
+            { ci, commit: ci },
+        );
+        if (ci) {
+            assert.deepEqual(result, {
+                stdout: "::warning title=Change approval needed::2 README files\n",
+                output: 'categories=["README files"]\n',
+                summary,
+            });
+        } else {
+            assert.equal(result, `${summary}\n`);
+        }
+    }
+});
+
+test("unchanged READMEs need no approval", (t) => {
+    const { stdout, output, summary } = scan(
+        t,
+        { "README.md": "# Keep\n" },
+        { "notes.txt": "Ordinary change\n" },
+        { ci: true },
+    );
+    assert.equal(stdout, "");
+    assert.equal(output, "categories=[]\n");
+    assert.equal(summary, "No approval needed.\n");
+});
+
+test("README approval matches the beginning of the filename", (t) => {
+    for (const ci of [false, true]) {
+        const result = scan(
+            t,
+            {},
+            {
+                "README-assets/notes.md": "# Notes\n",
+                "docs/not-README.md": "# Other\n",
+            },
+            { ci, commit: ci },
+        );
+        if (ci) {
+            assert.deepEqual(result, {
+                stdout: "",
+                output: "categories=[]\n",
+                summary: "No approval needed.\n",
+            });
+        } else {
+            assert.equal(result, "");
+        }
+    }
+});
+
+test("Markdown changes in GitHub guardrails still need approval", (t) => {
+    const { output } = scan(
+        t,
+        {},
+        { ".github/PULL_REQUEST_TEMPLATE.md": "# Template\n" },
+        { ci: true },
+    );
+    assert.equal(output, 'categories=["guardrail files"]\n');
+});
+
 test("CI preserves tabs and newlines in binary and large filenames", (t) => {
     const binary = "image.png\tpayload.jar";
     const large = "large\nfile.txt";
@@ -595,6 +720,11 @@ test("existing guardrails modified or deleted", (t) => {
         {
             ".github/scripts/x.mjs": "",
             ".github/workflows/x.yml": "on: push\n",
+            "apple/.swift-format": "{}\n",
+            "apple/.swiftlint.yml": "only_rules: []\n",
+            "apple/Package.swift": "// swift-tools-version: 6.0\n",
+            "apple/checks/lint-exceptions/check.mjs": "",
+            "apple/scripts/lint.sh": "swift format lint --strict\n",
             "mobile/checks/x/check.rb": "",
             "rust/checks/x/check.py": "",
             "web/apps/x/eslint.config.mjs": "",
@@ -603,6 +733,11 @@ test("existing guardrails modified or deleted", (t) => {
         {
             ".github/scripts/x.mjs": "export {};\n",
             ".github/workflows/x.yml": "on: pull_request\n",
+            "apple/.swift-format": null,
+            "apple/.swiftlint.yml": "only_rules: [empty_count]\n",
+            "apple/Package.swift": "// swift-tools-version: 6.1\n",
+            "apple/checks/lint-exceptions/check.mjs": "\n",
+            "apple/scripts/lint.sh": "swift format lint\n",
             "mobile/checks/x/check.rb": "\n",
             "rust/checks/x/check.py": "\n",
             "web/apps/x/eslint.config.mjs": null,
@@ -612,7 +747,7 @@ test("existing guardrails modified or deleted", (t) => {
     );
     assert.equal(
         output,
-        "6 guardrail files\n\n## Guardrail changes\n\n- `.github/scripts/x.mjs`\n- `.github/workflows/x.yml`\n- `mobile/checks/x/check.rb`\n- `rust/checks/x/check.py`\n- `web/apps/x/eslint.config.mjs`\n- `web/checks/x/check.mjs`\n\n",
+        "11 guardrail files\n\n## Guardrail changes\n\n- `.github/scripts/x.mjs`\n- `.github/workflows/x.yml`\n- `apple/.swift-format`\n- `apple/.swiftlint.yml`\n- `apple/Package.swift`\n- `apple/checks/lint-exceptions/check.mjs`\n- `apple/scripts/lint.sh`\n- `mobile/checks/x/check.rb`\n- `rust/checks/x/check.py`\n- `web/apps/x/eslint.config.mjs`\n- `web/checks/x/check.mjs`\n\n",
     );
 });
 
@@ -628,6 +763,122 @@ test("new GitHub workflows, actions and policies need approval", (t) => {
     for (const file of Object.keys(files))
         assert.ok(summary.includes(`\`${file}\``));
     assert.match(scan(t, {}, files, { commit: false }), /^3 guardrail files\n/);
+});
+
+test("new lint and formatter configs need approval, including untracked files", (t) => {
+    const files = {
+        ".github/checks/new/.prettierrc.json": "{}\n",
+        "apple/apps/cast/.swift-format": "{}\n",
+        "apple/apps/cast/.swiftlint.yml": "only_rules: []\n",
+        "rust/crates/example/.rustfmt.toml": "max_width = 120\n",
+        "rust/rustfmt.toml": "max_width = 120\n",
+        "web/apps/photos/nested/.prettierrc.json": "{}\n",
+        "web/apps/photos/nested/eslint.config.mjs": "export default [];\n",
+    };
+    const { output, summary } = scan(t, {}, files, { ci: true });
+    assert.equal(output, 'categories=["guardrail files"]\n');
+    assert.match(summary, /^7 guardrail files\n/);
+    for (const file of Object.keys(files))
+        assert.ok(summary.includes(`\`${file}\``));
+    assert.match(scan(t, {}, files, { commit: false }), /^7 guardrail files\n/);
+});
+
+test("suppression lists need approval when added, edited, or deleted", (t) => {
+    const files = {
+        "android/checks/lint-exceptions/suppressions.json": "{}\n",
+        "apple/checks/lint-exceptions/suppressions.json": "{}\n",
+        "web/apps/photos/eslint-suppressions.json": "{}\n",
+        "web/packages/new/nested/eslint-suppressions.json": "{}\n",
+        "rust/checks/lint-exceptions/suppressions.json": "{}\n",
+        "web/checks/lint-exceptions/suppressions.json": "{}\n",
+    };
+    for (const [before, after] of [
+        [{}, files],
+        [
+            files,
+            Object.fromEntries(
+                Object.keys(files).map((path) => [path, '{"changed": {}}\n']),
+            ),
+        ],
+        [
+            files,
+            Object.fromEntries(Object.keys(files).map((path) => [path, null])),
+        ],
+    ]) {
+        const { output, summary } = scan(t, before, after, { ci: true });
+        assert.equal(output, 'categories=["guardrail files"]\n');
+        assert.match(summary, /6 guardrail files/);
+        for (const file of Object.keys(files))
+            assert.ok(summary.includes(`\`${file}\``));
+    }
+    assert.match(scan(t, {}, files, { commit: false }), /^6 guardrail files\n/);
+});
+
+test("Android lint configurations need approval when added, edited, or deleted", (t) => {
+    const files = {
+        "android/build.gradle.kts": "",
+        "android/settings.gradle.kts": "",
+        "android/gradle.properties": "",
+        "android/gradlew": "",
+        "android/gradlew.bat": "",
+        "android/gradle/verification-metadata.xml": "",
+        "android/detekt.yml": "",
+        "android/apps/example/detekt.yaml": "",
+        "android/apps/example/lint.xml": "",
+        "android/apps/example/build.gradle": "",
+    };
+    for (const [base, change] of [
+        [{}, files],
+        [
+            files,
+            Object.fromEntries(Object.keys(files).map((file) => [file, "\n"])),
+        ],
+        [
+            files,
+            Object.fromEntries(Object.keys(files).map((file) => [file, null])),
+        ],
+    ]) {
+        const { summary } = scan(t, base, change, { ci: true });
+        assert.match(summary, /10 guardrail files/);
+        for (const file of Object.keys(files))
+            assert.ok(summary.includes(`\`${file}\``));
+    }
+});
+
+test("Gradle version bumps are exempt only when nothing else changes", (t) => {
+    const version = (n) => `versionName = "1.2.${n}"
+versionCode = findProperty("build")?.toString()?.toInt() ?: ${n}
+versionName '1.2.${n}-beta'
+versionCode ${n}
+`;
+    for (const path of [
+        "android/a/build.gradle",
+        "android/b/build.gradle.kts",
+    ]) {
+        const base = { [path]: version(1) };
+        assert.equal(scan(t, base, { [path]: version(2) }), "");
+        assert.match(
+            scan(t, base, { [path]: version(2) + 'apply(plugin = "other")\n' }),
+            /^1 guardrail file\n/,
+        );
+    }
+});
+
+test("Android lint scripts and checks need approval when edited", (t) => {
+    assert.match(
+        scan(
+            t,
+            {
+                "android/scripts/lint.sh": "",
+                "android/checks/gradle-order/check.py": "",
+            },
+            {
+                "android/scripts/lint.sh": "\n",
+                "android/checks/gradle-order/check.py": "\n",
+            },
+        ),
+        /^2 guardrail files\n/,
+    );
 });
 
 test("toolchain and registry config added, modified, or deleted", (t) => {
@@ -1044,6 +1295,70 @@ test("new Web directives are checked in uncommitted and untracked files", (t) =>
         );
 });
 
+test("Swift lint directives in added lines need approval", (t) => {
+    const file = "apple/apps/cast/Example.swift";
+    for (const directive of [
+        "// swift-format-ignore",
+        "// swift-format-ignore: NeverForceUnwrap",
+        "// swift-format-ignore-file",
+        "// swiftlint:disable:next empty_count",
+        "// swiftlint:enable empty_count",
+    ]) {
+        const { output, summary } = scan(
+            t,
+            { [file]: "first()\n" },
+            { [file]: `${directive}\nfirst()\n` },
+            { ci: true },
+        );
+        assert.equal(output, 'categories=["Swift lint policy files"]\n');
+        assert.match(summary, /## Swift lint directives/);
+        assert.ok(summary.includes(`\`${file}\``));
+    }
+});
+
+test("Swift directive edits need approval; ordinary edits and removals do not", (t) => {
+    const file = "apple/apps/cast/Example.swift";
+    const before = "// swift-format-ignore: NeverForceUnwrap\nfirst()\n";
+    assert.match(
+        scan(
+            t,
+            { [file]: before },
+            { [file]: before.replace(": NeverForceUnwrap", "") },
+        ),
+        /^1 Swift lint policy file\n/,
+    );
+    for (const after of [before.replace("first", "second"), "first()\n", null])
+        assert.equal(scan(t, { [file]: before }, { [file]: after }), "");
+});
+
+test("added Android lint suppressions need approval", (t) => {
+    for (const [extension, directive] of [
+        ["kt", '@Suppress("UnsafeCallOnNullableType")'],
+        ["kts", '@file:Suppress("DEPRECATION")'],
+        ["java", '@android.annotation.SuppressLint("NewApi")'],
+        ["java", '@SuppressWarnings("deprecation")'],
+        ["xml", 'tools:ignore="HardcodedText"'],
+        ["kt", "//noinspection KotlinConstantConditions"],
+    ]) {
+        const file = `android/apps/example/Example.${extension}`;
+        assert.match(
+            scan(
+                t,
+                { [file]: "first()\n" },
+                { [file]: `${directive}\nfirst()\n` },
+            ),
+            /^1 Android lint policy file\n/,
+        );
+    }
+});
+
+test("ordinary Android edits and removed suppressions need no approval", (t) => {
+    const file = "android/apps/example/Example.kt";
+    const before = '@Suppress("DEPRECATION")\nfirst()\n';
+    for (const after of [before.replace("first", "second"), "first()\n", null])
+        assert.equal(scan(t, { [file]: before }, { [file]: after }), "");
+});
+
 test("checks started in a subdirectory inspect repository-wide changes", (t) => {
     const summary =
         "1 binary file, 1 new dependency\n\n## Binary files\n\n- `new.bin` (16 bytes)\n\n## New dependencies\n\n`rust/Cargo.lock`\n\n- b 2.0.0\n";
@@ -1095,6 +1410,9 @@ test("workflow scans PR changes with the complete checker from main", (t) => {
                 "export function checkRust() { return []; }",
             [`${checkerDir}/web.mjs`]:
                 'throw new Error("loaded an untrusted rule");',
+            [`${checkerDir}/files.mjs`]:
+                'throw new Error("loaded an untrusted file rule");',
+            "docs/README.md": "# Guide\n",
             "src/lib.rs": "pub unsafe fn call() {}",
             "web/example.ts":
                 "// eslint-disable-next-line no-console\nfirst();\n",
@@ -1103,9 +1421,10 @@ test("workflow scans PR changes with the complete checker from main", (t) => {
     );
     assert.equal(
         output,
-        'categories=["guardrail files","Rust lint policy files","Web lint policy files"]\n',
+        'categories=["guardrail files","README files","Rust lint policy files","Web lint policy files"]\n',
     );
     assert.match(summary, /- `src\/lib.rs`/);
     assert.match(summary, /- `web\/example.ts`/);
     assert.match(summary, /- `rust\/Cargo.toml`/);
+    assert.match(summary, /- `docs\/README.md`/);
 });

@@ -1,11 +1,10 @@
-use ente_accounts::{
-    AccountsClient, AccountsClientConfig, AuthFlow, AuthFlowUi, AuthenticatedAccount,
-    CreateAccountParams, OtpPurpose, SecondFactorMethod, TotpPurpose,
+use ente_accounts::{AccountsClient, AccountsClientConfig, AuthenticatedAccount, signup::Signup};
+use ente_core::{
+    crypto::{PublicKey, blob, sealed, secretbox, stream},
+    io::Md5Writer,
 };
-use ente_core::crypto::{PublicKey, blob, sealed, secretbox};
 use ente_test_support::{HARDCODED_OTT, Museum, TestResult};
 use uuid::Uuid;
-use zeroize::Zeroizing;
 
 use super::*;
 
@@ -190,6 +189,10 @@ async fn exercise(origin: String) -> TestResult {
         json!({"visibility": 2}),
     )
     .await;
+    let original = b"original photo bytes from Museum";
+    let file_id = upload_file(&origin, &alice, album, &key, original, Some(0))
+        .await
+        .to_string();
 
     let home = TestHome::new();
     login(&home, "photos", &alice_email, &["--host", &origin]);
@@ -211,7 +214,7 @@ async fn exercise(origin: String) -> TestResult {
     listed.sort();
     let expected = [
         ("Archive", "archived"),
-        ("Default hidden", "hidden"),
+        ("Hidden", "hidden"),
         ("Monsoon 🌧", "visible"),
         ("Private album", "hidden"),
     ];
@@ -224,7 +227,7 @@ async fn exercise(origin: String) -> TestResult {
         .unwrap();
     assert_eq!(monsoon["id"], album.to_string());
     assert_eq!(monsoon["ownerId"], alice_id);
-    assert_eq!(monsoon["type"], "album");
+    assert_eq!(monsoon["type"], "folder");
     assert_eq!(
         chrono::DateTime::parse_from_rfc3339(monsoon["updatedAt"].as_str().unwrap())
             .unwrap()
@@ -232,14 +235,51 @@ async fn exercise(origin: String) -> TestResult {
             .local_minus_utc(),
         0
     );
+    for album in albums.as_array().unwrap() {
+        for selector in [
+            album["id"].as_str().unwrap(),
+            album["name"].as_str().unwrap(),
+        ] {
+            assert_eq!(home.json(&["photos", "album", "view", selector]), *album);
+        }
+    }
+    assert_eq!(
+        String::from_utf8(success(home.run(&["photos", "album", "view", "Monsoon 🌧"])).stdout)
+            .unwrap(),
+        format!(
+            "Name        Monsoon 🌧\nType        folder\nVisibility  visible\nOwner       {alice_id}\nUpdated     {}\nID          {album}\n",
+            monsoon["updatedAt"].as_str().unwrap(),
+        ),
+    );
+    for selector in ["missing", "Monsoon", "monsoon 🌧"] {
+        let output = home.run(&["photos", "album", "view", selector, "--json"]);
+        assert!(failure(&output).contains("no album matches"));
+        assert!(output.stdout.is_empty());
+    }
     let human = String::from_utf8(success(home.run(&["photos", "album", "list"])).stdout).unwrap();
     assert!(human.starts_with("ID  "));
     let raw: Value =
         serde_json::from_slice(&success(home.run(&["photos", "api", "/collections/v2"])).stdout)
             .unwrap();
     assert!(raw["collections"].as_array().unwrap().iter().any(|a| a["id"] == album && a["encryptedName"].as_str().is_some_and(|s| !s.is_empty())));
+    let files = home.json(&["photos", "file", "list"]);
+    assert_eq!(files.as_array().unwrap().len(), 1);
+    assert_eq!(files[0]["id"], file_id);
+    assert_eq!(files[0]["name"], "original.jpg");
+    assert_eq!(files[0]["type"], "image");
+    assert_eq!(files[0]["albumIds"], json!([album.to_string()]));
+    let output_dir = tempfile::tempdir().unwrap();
+    let output_path = output_dir.path().join("owned.jpg");
+    success(home.run(&[
+        "photos",
+        "file",
+        "download",
+        &file_id,
+        "--output",
+        output_path.to_str().unwrap(),
+    ]));
+    assert_eq!(fs::read(output_path).unwrap(), original);
 
-    // Two origins with the same server user ID are still different accounts.
     let alias_origin = origin.replace("127.0.0.1", "localhost");
     assert_ne!(alias_origin, origin);
     let before = fs::read(home.dir.path().join("vault.json")).unwrap();
@@ -303,8 +343,170 @@ async fn exercise(origin: String) -> TestResult {
     assert_eq!(shared["name"], "Monsoon 🌧");
     assert_eq!(shared["ownerId"], alice_id);
     assert_eq!(shared["visibility"], "hidden");
+    assert_eq!(
+        home.json(&["photos", "album", "view", "Monsoon 🌧"]),
+        *shared
+    );
+    assert_eq!(
+        home.json(&["photos", "album", "view", "Monsoon 🌧", "--account", "work"]),
+        *monsoon,
+    );
+    let shared_file = home.json(&["photos", "file", "view", &file_id]);
+    assert_eq!(shared_file["ownerId"], alice_id);
+    let shared_export = output_dir.path().join("shared-export");
+    home.json(&[
+        "photos",
+        "export",
+        shared_export.to_str().unwrap(),
+        "--album",
+        "Monsoon 🌧",
+    ]);
+    let album_record: Value =
+        serde_json::from_slice(&fs::read(shared_export.join("Monsoon 🌧/metadata.json")).unwrap())
+            .unwrap();
+    assert_eq!(album_record["ente"]["visibility"], "hidden");
+    let shared_sidecar = shared_export.join("Monsoon 🌧/metadata/original.jpg.json");
+    let file_record: Value = serde_json::from_slice(&fs::read(&shared_sidecar).unwrap()).unwrap();
+    assert!(file_record["ente"].get("visibility").is_none());
+    let adopted = TestHome::new();
+    adopted.write_vault(&home.read_vault());
+    fs::write(
+        shared_export.join("Monsoon 🌧/original.jpg"),
+        vec![0; original.len()],
+    )
+    .unwrap();
+    adopted.json(&[
+        "photos",
+        "export",
+        shared_export.to_str().unwrap(),
+        "--adopt",
+    ]);
+    assert_eq!(
+        fs::read(shared_export.join("Monsoon 🌧/original.jpg")).unwrap(),
+        original
+    );
+    let output_path = output_dir.path().join("shared.jpg");
+    success(home.run(&[
+        "photos",
+        "file",
+        "download",
+        &file_id,
+        "--output",
+        output_path.to_str().unwrap(),
+    ]));
+    assert_eq!(fs::read(output_path).unwrap(), original);
+
+    reqwest::Client::new()
+        .post(format!("{origin}/collections/unshare"))
+        .header("x-auth-token", b64::encode_url_safe(&alice.secrets.token))
+        .header("x-client-package", "io.ente.photos")
+        .json(&json!({"collectionID":album,"email":bob_email}))
+        .send()
+        .await
+        .unwrap()
+        .error_for_status()
+        .unwrap();
+    adopted.json(&[
+        "photos",
+        "export",
+        shared_export.to_str().unwrap(),
+        "--exclude-album",
+        &album.to_string(),
+    ]);
+    assert_eq!(
+        fs::read(shared_export.join("Monsoon 🌧/original.jpg")).unwrap(),
+        original
+    );
+    let revoked = adopted.json(&[
+        "photos",
+        "export",
+        shared_export.to_str().unwrap(),
+        "--album",
+        &album.to_string(),
+    ]);
+    assert_eq!(revoked["copies"]["expected"], 0);
+    assert_eq!(revoked["changes"]["retained"], 1);
+    assert!(!shared_export.join("Monsoon 🌧/original.jpg").exists());
+    assert_eq!(
+        fs::read(shared_export.join("Trash/Monsoon 🌧/original.jpg")).unwrap(),
+        original
+    );
+    let retained_record: Value = serde_json::from_slice(
+        &fs::read(shared_export.join("Trash/Monsoon 🌧/metadata/original.jpg.json")).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(retained_record["ente"]["fileID"], file_id);
+    assert_eq!(
+        adopted.json(&[
+            "photos",
+            "export",
+            shared_export.to_str().unwrap(),
+            "--album",
+            &album.to_string()
+        ])["changes"]["retained"],
+        0
+    );
 
     login(&home, "photos", &alice_email, &["--host", &origin]);
+    let added_original = b"added after the first sync";
+    let added_file = upload_file(&origin, &alice, album, &key, added_original, None)
+        .await
+        .to_string();
+    assert_eq!(home.json(&["photos", "file", "list", "--offline"]), files);
+    let refreshed = home.json(&["photos", "file", "list", "--all"]);
+    assert_eq!(refreshed.as_array().unwrap().len(), 2);
+    let added = refreshed
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|file| file["id"] == added_file)
+        .unwrap();
+    assert_eq!(added["type"], "unknown");
+    assert_eq!(home.json(&["photos", "file", "view", &added_file]), *added);
+    assert_eq!(
+        home.json(&["photos", "file", "list", "--offline", "--all"]),
+        refreshed
+    );
+    assert_eq!(
+        home.json(&["photos", "file", "list", "--offline", "--limit", "1"]),
+        json!([refreshed[0]])
+    );
+    let output_path = output_dir.path().join("unknown-type");
+    success(home.run(&[
+        "photos",
+        "file",
+        "download",
+        &added_file,
+        "--output",
+        output_path.to_str().unwrap(),
+    ]));
+    assert_eq!(fs::read(output_path).unwrap(), added_original);
+
+    for selector in ["Monsoon 🌧", &album.to_string()] {
+        let (conflict, _) = create_album(&origin, &alice, selector, "album").await;
+        let output = home.run(&["photos", "album", "view", selector, "--json"]);
+        let error = failure(&output);
+        assert!(error.contains("is ambiguous"));
+        assert!(error.contains(&format!("{album}  \"Monsoon 🌧\"")));
+        assert!(error.contains(&format!("{conflict}  {selector:?}")));
+        assert!(output.stdout.is_empty());
+        let ambiguous_export = output_dir.path().join("ambiguous-export");
+        let output = home.run(&[
+            "photos",
+            "export",
+            ambiguous_export.to_str().unwrap(),
+            "--album",
+            selector,
+            "--json",
+        ]);
+        assert!(failure(&output).contains("is ambiguous"));
+        assert!(output.stdout.is_empty());
+        assert!(!ambiguous_export.exists());
+        assert_eq!(
+            home.json(&["photos", "album", "view", &conflict.to_string()])["id"],
+            conflict.to_string(),
+        );
+    }
     let state = home.read_vault();
     assert_eq!(state["accounts"].as_array().unwrap().len(), 3);
     assert_eq!(state["selected"], first_id);
@@ -340,9 +542,26 @@ async fn exercise(origin: String) -> TestResult {
         home.json(&["account", "view", "work"])["products"],
         json!(["locker"])
     );
+    let account_dir = home
+        .dir
+        .path()
+        .join("accounts")
+        .join(first_id.as_str().unwrap());
+    assert!(account_dir.join("data.db").is_file());
+    success(home.run(&["account", "logout", "work", "--local"]));
+    assert!(!account_dir.exists());
+    assert!(!account_dir.with_extension("lock").exists());
 
     for entry in fs::read_dir(home.dir.path()).unwrap() {
         let entry = entry.unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(entry.metadata().unwrap().permissions().mode() & 0o077, 0);
+        }
+        if entry.file_type().unwrap().is_dir() {
+            continue;
+        }
         let bytes = fs::read(entry.path()).unwrap();
         assert!(
             !bytes
@@ -354,11 +573,6 @@ async fn exercise(origin: String) -> TestResult {
                 .windows(PASSWORD.len())
                 .any(|b| b == PASSWORD.as_bytes())
         );
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::PermissionsExt;
-            assert_eq!(entry.metadata().unwrap().permissions().mode() & 0o077, 0);
-        }
     }
     Ok(())
 }
@@ -381,15 +595,16 @@ async fn create_account(origin: &str, email: &str) -> AuthenticatedAccount {
         AccountsClient::new(AccountsClientConfig::new("io.ente.photos").with_origin(origin))
             .unwrap();
     client.send_otp(email, "signup").await.unwrap();
-    AuthFlow::new(&client, &mut NoPrompts)
-        .create_account_with_otp(
-            CreateAccountParams {
-                email: email.into(),
-                password: Zeroizing::new(PASSWORD.into()),
-                source: Some("testAccount".into()),
-            },
-            HARDCODED_OTT,
-        )
+    let response = client
+        .verify_email(email, HARDCODED_OTT, Some("testAccount"))
+        .await
+        .unwrap();
+    Signup::verified(email.into(), response)
+        .unwrap()
+        .prepare(&client, PASSWORD)
+        .await
+        .unwrap()
+        .finish(&client)
         .await
         .unwrap()
 }
@@ -433,6 +648,114 @@ async fn create_album(
     (response["collection"]["id"].as_i64().unwrap(), key)
 }
 
+async fn upload_file(
+    origin: &str,
+    owner: &AuthenticatedAccount,
+    album: i64,
+    collection_key: &Key,
+    original: &[u8],
+    file_type: Option<i32>,
+) -> i64 {
+    let mut metadata = json!({"title":"original.jpg","creationTime":1_700_000_000_000_000i64,"modificationTime":1_700_000_000_000_000i64});
+    if let Some(kind) = file_type {
+        metadata["fileType"] = json!(kind);
+    }
+    upload_fixture(origin, owner, album, collection_key, original, metadata)
+        .await
+        .0
+}
+
+async fn upload_fixture(
+    origin: &str,
+    owner: &AuthenticatedAccount,
+    album: i64,
+    collection_key: &Key,
+    original: &[u8],
+    metadata: Value,
+) -> (i64, Key) {
+    upload_reader(origin, owner, album, collection_key, original, metadata).await
+}
+
+async fn upload_reader(
+    origin: &str,
+    owner: &AuthenticatedAccount,
+    album: i64,
+    collection_key: &Key,
+    mut original: impl std::io::Read,
+    metadata: Value,
+) -> (i64, Key) {
+    let client = reqwest::Client::new();
+    let token = b64::encode_url_safe(&owner.secrets.token);
+    let key = Key::generate();
+    let wrapped = secretbox::encrypt(key.as_bytes(), collection_key);
+    let mut encrypted = Md5Writer::new(tempfile::tempfile().unwrap());
+    let header = stream::encrypt_file(&mut original, &mut encrypted, &key).unwrap();
+    let (mut encrypted, checksum) = encrypted.finalize();
+    std::io::Seek::rewind(&mut encrypted).unwrap();
+    let thumbnail = blob::encrypt(b"thumbnail", &key).unwrap();
+    let mut object_keys = Vec::new();
+    let mut thumbnail_checksum = Md5Writer::new(std::io::sink());
+    thumbnail_checksum
+        .write_all(&thumbnail.encrypted_data)
+        .unwrap();
+    let objects: [(Box<dyn std::io::Read + Send>, u64, String); 2] = [
+        (
+            Box::new(encrypted.try_clone().unwrap()),
+            encrypted.metadata().unwrap().len(),
+            b64::encode(&checksum),
+        ),
+        (
+            Box::new(std::io::Cursor::new(thumbnail.encrypted_data.clone())),
+            thumbnail.encrypted_data.len() as u64,
+            b64::encode(&thumbnail_checksum.finalize().1),
+        ),
+    ];
+    for (bytes, size, checksum) in objects {
+        let upload: Value = client
+            .post(format!("{origin}/files/upload-url"))
+            .header("x-auth-token", &token)
+            .header("x-client-package", "io.ente.photos")
+            .json(&json!({"contentLength": size, "contentMD5": checksum}))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap()
+            .json()
+            .await
+            .unwrap();
+        let body = futures_util::stream::try_unfold(bytes, |mut input| async move {
+            let mut chunk = vec![0; 64 * 1024];
+            let count = input.read(&mut chunk)?;
+            chunk.truncate(count);
+            Ok::<_, std::io::Error>((count > 0).then_some((chunk, input)))
+        });
+        client
+            .put(upload["url"].as_str().unwrap())
+            .header("content-md5", checksum)
+            .header("content-length", size)
+            .body(reqwest::Body::wrap_stream(body))
+            .send()
+            .await
+            .unwrap()
+            .error_for_status()
+            .unwrap();
+        object_keys.push(upload["objectKey"].as_str().unwrap().to_owned());
+    }
+    let metadata = blob::encrypt_json(&metadata, &key).unwrap();
+    let result: Value = client.post(format!("{origin}/files"))
+        .header("x-auth-token", &token).header("x-client-package", "io.ente.photos")
+        .json(&json!({
+            "collectionID": album, "encryptedKey": b64::encode(&wrapped.encrypted_data),
+            "keyDecryptionNonce": b64::encode(wrapped.nonce.as_bytes()),
+            "file": {"objectKey": object_keys[0], "decryptionHeader": b64::encode(header.as_bytes())},
+            "thumbnail": {"objectKey": object_keys[1], "decryptionHeader": b64::encode(thumbnail.decryption_header.as_bytes())},
+            "metadata": {"encryptedData": b64::encode(&metadata.encrypted_data),
+                "decryptionHeader": b64::encode(metadata.decryption_header.as_bytes())}
+        })).send().await.unwrap().error_for_status().unwrap().json().await.unwrap();
+    (result["id"].as_i64().unwrap(), key)
+}
+
 async fn set_album_metadata(
     origin: &str,
     user: &AuthenticatedAccount,
@@ -458,31 +781,5 @@ async fn set_album_metadata(
         .unwrap();
 }
 
-struct NoPrompts;
-
-impl AuthFlowUi for NoPrompts {
-    fn read_email_otp(&mut self, _: &str, _: OtpPurpose, _: bool) -> ente_accounts::Result<String> {
-        unreachable!()
-    }
-    fn read_totp_code(&mut self, _: TotpPurpose) -> ente_accounts::Result<String> {
-        unreachable!()
-    }
-    fn report_retryable_error(&mut self, _: &str) -> ente_accounts::Result<()> {
-        unreachable!()
-    }
-    fn choose_second_factor(
-        &mut self,
-        _: &[SecondFactorMethod],
-    ) -> ente_accounts::Result<SecondFactorMethod> {
-        unreachable!()
-    }
-    fn present_passkey_verification(&mut self, _: &str) -> ente_accounts::Result<()> {
-        unreachable!()
-    }
-    fn wait_for_passkey_verification(&mut self) -> ente_accounts::Result<()> {
-        unreachable!()
-    }
-    fn present_totp_secret(&mut self, _: &str, _: &str) -> ente_accounts::Result<()> {
-        unreachable!()
-    }
-}
+#[path = "export.rs"]
+mod export;

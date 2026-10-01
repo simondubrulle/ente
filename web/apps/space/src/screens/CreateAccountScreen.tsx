@@ -1,6 +1,7 @@
 import { Box } from "@mui/material";
 import { SpaceBackIcon } from "components/BackIcon";
 import { SpaceButtonSpinner } from "components/ButtonSpinner";
+import { SpaceLiveStatus } from "components/LiveStatus";
 import {
     estimatePasswordStrength,
     type PasswordStrength,
@@ -179,6 +180,7 @@ const TextInput: React.FC<TextInputProps> = ({
 }) => {
     const inputID = useId();
     const [showPassword, setShowPassword] = useState(false);
+    const [visibilityStatus, setVisibilityStatus] = useState("");
     const isPassword = type == "password";
 
     return (
@@ -201,7 +203,15 @@ const TextInput: React.FC<TextInputProps> = ({
             >
                 <Box sx={{ display: "flex", gap: "2px", minWidth: 0 }}>
                     <Box component="span">{label}</Box>
-                    {required && <Box sx={{ color: warning }}>*</Box>}
+                    {required && (
+                        <Box
+                            component="span"
+                            aria-hidden
+                            sx={{ color: warning }}
+                        >
+                            *
+                        </Box>
+                    )}
                 </Box>
                 {labelAccessory}
             </Box>
@@ -251,7 +261,13 @@ const TextInput: React.FC<TextInputProps> = ({
                         aria-label={
                             showPassword ? "Hide password" : "Show password"
                         }
-                        onClick={() => setShowPassword((value) => !value)}
+                        aria-controls={inputID}
+                        onClick={() => {
+                            setShowPassword(!showPassword);
+                            setVisibilityStatus(
+                                `${label} is ${showPassword ? "hidden" : "visible"}`,
+                            );
+                        }}
                         sx={{
                             alignItems: "center",
                             bgcolor: "transparent",
@@ -276,6 +292,9 @@ const TextInput: React.FC<TextInputProps> = ({
                     </Box>
                 )}
             </Box>
+            {isPassword && (
+                <SpaceLiveStatus>{visibilityStatus}</SpaceLiveStatus>
+            )}
         </Box>
     );
 };
@@ -346,6 +365,9 @@ export const CreateAccountScreen: React.FC<CreateAccountScreenProps> = ({
                 placeItems: { xs: "stretch", sm: "start center" },
             }}
         >
+            <SpaceLiveStatus>
+                {isSubmitting ? "Creating account" : ""}
+            </SpaceLiveStatus>
             <Box
                 sx={{
                     bgcolor: "transparent",

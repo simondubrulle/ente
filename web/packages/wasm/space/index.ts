@@ -1,41 +1,42 @@
+import type {
+    EncryptedBox,
+    OpenAccountSpaceCtxInput,
+    OpenSpaceLinkCtxInput,
+    SpaceAccountCtxHandle,
+    SpaceLinkCtxHandle,
+} from "./pkg/ente_space_wasm";
+
+export type {
+    DecryptedSpaceProfile,
+    MessageConversationActivity,
+    MessageResponse,
+    PostAsset,
+    PostPage,
+    PostPhoto,
+    PostResponse,
+    ProfileAvatarResponse,
+    SpaceAccountCtxHandle,
+    SpaceActorResponse,
+    SpaceKeyResponse,
+    SpaceLinkCtxHandle,
+    UpdateSpaceProfileResponse,
+    UploadedPostAsset,
+} from "./pkg/ente_space_wasm";
+
 const wasm = () => import("./pkg/ente_space_wasm");
 
-export type SpaceAccountCtxHandle =
-    import("./pkg/ente_space_wasm").SpaceAccountCtxHandle;
-export type SpaceLinkCtxHandle =
-    import("./pkg/ente_space_wasm").SpaceLinkCtxHandle;
+export const generateKey = async () => (await wasm()).cryptoGenerateKey();
 
-interface OpenSpaceAccountContextInput {
-    baseUrl: string;
-    clientPackage: string;
-    clientVersion?: string;
-    ownedSpaces?: unknown[];
-    spaceRootKeyB64: string;
-    spaceSessionToken: string;
-}
+export const encryptBox = async (dataB64: string, keyB64: string) =>
+    (await wasm()).cryptoEncryptBox(dataB64, keyB64);
 
-interface OpenSpaceLinkContextInput {
-    accessKey: string;
-    baseUrl: string;
-    clientPackage: string;
-    clientVersion?: string;
-    spaceUsername: string;
-}
-
-export const encryptSpaceRootEntityKey = async (
-    spaceRootKeyB64: string,
-    masterKeyB64: string,
-) => (await wasm()).encryptSpaceRootEntityKey(spaceRootKeyB64, masterKeyB64);
-
-export const decryptSpaceRootEntityKey = async (
-    encryptedKeyB64: string,
-    masterKeyB64: string,
-) => (await wasm()).decryptSpaceRootEntityKey(encryptedKeyB64, masterKeyB64);
+export const decryptBox = async (box: EncryptedBox, keyB64: string) =>
+    (await wasm()).cryptoDecryptBox(box.encryptedData, box.nonce, keyB64);
 
 export const openSpaceAccountContext = async (
-    input: OpenSpaceAccountContextInput,
+    input: OpenAccountSpaceCtxInput,
 ): Promise<SpaceAccountCtxHandle> => (await wasm()).spaceOpenAccountCtx(input);
 
 export const openSpaceLinkContext = async (
-    input: OpenSpaceLinkContextInput,
+    input: OpenSpaceLinkCtxInput,
 ): Promise<SpaceLinkCtxHandle> => (await wasm()).spaceOpenLinkCtx(input);

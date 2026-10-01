@@ -8,12 +8,14 @@ import {
     CollectionSelector,
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
+import { AlbumSlideshow } from "@/components/Collections/AlbumSlideshow";
 import { CollectionMapDialog } from "@/components/Collections/CollectionMapDialog";
 import {
     EditAlbumDetailsDialog,
     type AlbumDetails,
 } from "@/components/Collections/EditAlbumDetailsDialog";
 import { GalleryBarAndListHeader } from "@/components/Collections/GalleryBarAndListHeader";
+import { slideshowFiles } from "@/components/Collections/album-slideshow";
 import { Export } from "@/components/Export";
 import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
@@ -85,11 +87,10 @@ import log from "ente-base/log";
 import {
     clearSessionStorage,
     haveMasterKeyInSession,
-    masterKeyFromSession,
-} from "ente-base/session";
+} from "ente-base/session-storage";
 import { savedAuthToken } from "ente-base/token";
 import type { Location } from "ente-base/types";
-import { ensureContactsReady } from "ente-contacts";
+import { initContacts, pullContacts } from "ente-contacts";
 import { DownloadStatusNotifications } from "ente-gallery/components/DownloadStatusNotifications";
 import { FullScreenDropZone } from "ente-gallery/components/FullScreenDropZone";
 import type { UploadTypeSelectorIntent } from "ente-gallery/components/Upload";
@@ -105,6 +106,7 @@ import {
     useSettingsSnapshot,
     useUserDetailsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
+import { masterKeyFromSession } from "ente-new/photos/services/account-keys";
 import { reauthenticateWithAppLock } from "ente-new/photos/services/app-lock";
 import {
     addToCollection,
@@ -206,6 +208,12 @@ const Page: React.FC = () => {
         [],
     );
     const [isFileViewerOpen, setIsFileViewerOpen] = useState(false);
+    const [slideshow, setSlideshow] = useState<{
+        files: EnteFile[];
+        title: string;
+        collectionID: number;
+    }>();
+    const closeSlideshow = useCallback(() => setSlideshow(undefined), []);
 
     const [pendingFileNavigation, setPendingFileNavigation] = useState<{
         fileIndex: number;
@@ -446,6 +454,38 @@ const Page: React.FC = () => {
         tempDeletedFileIDs,
         tempHiddenFileIDs,
     ]);
+    const startSlideshow = useCallback(() => {
+        if (!activeCollection) return;
+        const files = slideshowFiles(activeCollectionFiles);
+        if (!files.length) {
+            showNotification({
+                color: "primary",
+                title: t("no_photos_found_here"),
+            });
+            return;
+        }
+        setSlideshow({
+            files,
+            title: activeCollectionSummary?.name ?? activeCollection.name,
+            collectionID: activeCollection.id,
+        });
+    }, [
+        activeCollection,
+        activeCollectionFiles,
+        activeCollectionSummary?.name,
+        showNotification,
+    ]);
+
+    useEffect(() => {
+        if (
+            slideshow &&
+            (slideshow.collectionID !== activeCollection?.id ||
+                isInSearchMode ||
+                !user)
+        )
+            closeSlideshow();
+    }, [slideshow, activeCollection?.id, isInSearchMode, user, closeSlideshow]);
+
     const mapFileSource = useMemo(
         () => ({
             collectionFiles: state.collectionFiles,
@@ -501,9 +541,8 @@ const Page: React.FC = () => {
                 return;
             }
 
-            let session;
             try {
-                session = await ensureAuthenticatedSession();
+                await ensureAuthenticatedSession();
             } catch (e) {
                 if (isNamedError(e, "missing_recovery_key")) {
                     showMiniDialog(sessionExpiredDialogAttributes(logout));
@@ -522,17 +561,19 @@ const Page: React.FC = () => {
             setIsFirstLoad(getAndClearIsFirstLogin());
 
             const user = ensureLocalUser();
-            void ensureContactsReady(
+            void initContacts(
                 user.id,
-                session,
+                ensureAuthenticatedSession,
                 contactsGetDiff,
                 contactsGetProfilePicture,
-            ).catch((error: unknown) => {
-                log.warn(
-                    "[gallery] Failed to warm contacts display cache",
-                    error,
-                );
-            });
+            )
+                .then(pullContacts)
+                .catch((error: unknown) => {
+                    log.warn(
+                        "[gallery] Failed to warm contacts display cache",
+                        error,
+                    );
+                });
             const userDetails = await savedUserDetailsOrTriggerPull();
             dispatch({
                 type: "mount",
@@ -703,7 +744,8 @@ const Page: React.FC = () => {
             authenticateUserVisibilityProps.open ||
             albumNameInputVisibilityProps.open ||
             editAlbumDetailsVisibilityProps.open ||
-            isFileViewerOpen
+            isFileViewerOpen ||
+            slideshow
         ) {
             return;
         }
@@ -1809,7 +1851,7 @@ const Page: React.FC = () => {
             message={
                 watchFolderView ? t("watch_folder_dropzone_hint") : undefined
             }
-            disabled={shouldDisableDropzone}
+            disabled={shouldDisableDropzone || !!slideshow}
             onDrop={setDragAndDropFiles}
         >
             {blockingLoad && <TranslucentLoadingOverlay />}
@@ -1930,6 +1972,7 @@ const Page: React.FC = () => {
                     onAddSaveGroup,
                     onEditAlbumDetails: showEditAlbumDetails,
                     onShowMap: handleShowCollectionMap,
+                    onCollectionSlideshow: startSlideshow,
                 }}
                 mode={barMode}
                 shouldHide={isInSearchMode}
@@ -2074,6 +2117,15 @@ const Page: React.FC = () => {
                     }
                 />
             )}
+            {slideshow &&
+                slideshow.collectionID === activeCollection?.id &&
+                !isInSearchMode && (
+                    <AlbumSlideshow
+                        files={slideshow.files}
+                        title={slideshow.title}
+                        onClose={closeSlideshow}
+                    />
+                )}
             {activeCollectionSummary && (
                 <CollectionMapDialog
                     {...collectionMapVisibilityProps}

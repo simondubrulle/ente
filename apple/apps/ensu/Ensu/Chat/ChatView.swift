@@ -43,8 +43,13 @@ struct ChatView: View {
         )
     }
 
-    private var modelSettingsSignature: String {
-        modelSettings.modelId
+    private var modelSettingsSignature: [String] {
+        [
+            modelSettings.modelId,
+            modelSettings.contextLength,
+            modelSettings.temperature,
+            modelSettings.systemPromptBody,
+        ]
     }
 
     private let drawerWidth: CGFloat = 320
@@ -81,7 +86,8 @@ struct ChatView: View {
                                             guard value.startLocation.x <= 24 else { return }
                                             let horizontal = value.translation.width
                                             let vertical = value.translation.height
-                                            guard abs(horizontal) > abs(vertical), horizontal > 40 else { return }
+                                            guard abs(horizontal) > abs(vertical), horizontal > 40
+                                            else { return }
                                             viewState.isDrawerOpen = true
                                         }
                                 )
@@ -96,7 +102,8 @@ struct ChatView: View {
                                     .onEnded { value in
                                         let horizontal = value.translation.width
                                         let vertical = value.translation.height
-                                        guard abs(horizontal) > abs(vertical), horizontal < -40 else { return }
+                                        guard abs(horizontal) > abs(vertical), horizontal < -40
+                                        else { return }
                                         viewState.isDrawerOpen = false
                                     }
                             )
@@ -116,7 +123,8 @@ struct ChatView: View {
                     isInputFocused = false
                     viewState.wasDrawerOpen = true
                 } else if viewState.wasDrawerOpen {
-                    let shouldRestoreFocus = viewModel.isModelDownloaded
+                    let shouldRestoreFocus =
+                        viewModel.isModelDownloaded
                         && !viewModel.isChatUnsupported
                         && !viewModel.isDownloading
                         && !viewModel.isGenerating
@@ -132,10 +140,11 @@ struct ChatView: View {
                 handleToastTrigger(trigger)
             }
             .onChange(of: modelSettingsSignature) { _ in
-                viewModel.refreshModelDownloadInfo()
+                viewModel.modelSelectionChanged()
             }
             .onChange(of: scenePhase) { newValue in
                 viewModel.notesStore.setForeground(newValue == .active)
+                viewModel.setChatActive(newValue == .active && !viewState.showSettings)
                 if newValue == .active {
                     viewModel.refreshModelDownloadInfo()
                 } else {
@@ -144,7 +153,17 @@ struct ChatView: View {
             }
         }
         .environmentObject(viewModel.notesStore)
-        .onAppear { viewModel.notesStore.setForeground(scenePhase == .active) }
+        .onAppear {
+            viewModel.notesStore.setForeground(scenePhase == .active)
+            viewModel.setChatActive(scenePhase == .active && !viewState.showSettings)
+        }
+        .onDisappear { viewModel.setChatActive(false) }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIApplication.didReceiveMemoryWarningNotification)
+        ) { _ in
+            viewModel.suppressChatWarmup()
+        }
         .sheet(isPresented: $viewState.showSettings) {
             SettingsView(
                 knowledgeStore: viewModel.knowledgeStore,
@@ -156,6 +175,7 @@ struct ChatView: View {
             )
         }
         .onChange(of: viewState.showSettings) { isPresented in
+            viewModel.setChatActive(!isPresented && scenePhase == .active)
             if isPresented {
                 viewState.didDismissKeyboard = true
                 isInputFocused = false
@@ -164,9 +184,12 @@ struct ChatView: View {
                 handleSignInRequest()
             }
         }
-        .sheet(item: $viewState.pendingWhatsNew, onDismiss: {
-            markWhatsNewSeen()
-        }) { pending in
+        .sheet(
+            item: $viewState.pendingWhatsNew,
+            onDismiss: {
+                markWhatsNewSeen()
+            }
+        ) { pending in
             WhatsNewSheet(entries: pending.entries) {
                 markWhatsNewSeen()
             }
@@ -181,14 +204,18 @@ struct ChatView: View {
                 secondaryButton: .cancel()
             )
         }
-        .alert("Chat unavailable on this device", isPresented: $viewModel.showUnsupportedDeviceDialog) {
+        .alert(
+            "Chat unavailable on this device", isPresented: $viewModel.showUnsupportedDeviceDialog
+        ) {
             Button("Got it") {
                 viewModel.dismissUnsupportedDeviceDialog()
             }
         } message: {
             Text(viewModel.unsupportedDeviceMessage)
         }
-        .confirmationDialog("Conversation too long", isPresented: overflowDialogPresented, titleVisibility: .visible) {
+        .confirmationDialog(
+            "Conversation too long", isPresented: overflowDialogPresented, titleVisibility: .visible
+        ) {
             Button("Continue") {
                 viewModel.confirmOverflowTrim()
             }
@@ -196,7 +223,9 @@ struct ChatView: View {
                 viewModel.cancelOverflowDialog()
             }
         } message: {
-            Text("This conversation is too long for the model to process. Some older messages will be dropped to make room.")
+            Text(
+                "This conversation is too long for the model to process. Some older messages will be dropped to make room."
+            )
         }
         .overlay {
             if viewState.showSignInComingSoon {
@@ -232,7 +261,8 @@ struct ChatView: View {
     private func mainContent(showsMenuButton: Bool) -> some View {
         VStack(spacing: 0) {
             ChatAppBar(
-                sessionTitle: viewModel.currentSessionId.map { viewModel.sessionTitle(for: $0) } ?? "New chat",
+                sessionTitle: viewModel.currentSessionId.map { viewModel.sessionTitle(for: $0) }
+                    ?? "New chat",
                 showBrand: viewModel.messages.isEmpty,
                 showSignIn: false,
                 showsMenuButton: showsMenuButton,
@@ -257,23 +287,28 @@ struct ChatView: View {
             .animation(.easeInOut(duration: 0.32))
 
             ZStack(alignment: .bottom) {
-                let shouldShowDownloadOnboarding = !viewModel.isModelDownloaded && !viewModel.isChatUnsupported
+                let shouldShowDownloadOnboarding =
+                    !viewModel.isModelDownloaded && !viewModel.isChatUnsupported
 
                 MessageListView(
                     messages: viewModel.messages,
                     streamingResponse: viewModel.displayedStreamingResponse,
                     streamingParentId: viewModel.displayedStreamingParentId,
                     isGenerating: viewModel.isGenerating,
+                    conversationStatus: viewModel.conversationStatus,
                     sessionId: viewModel.currentSessionId,
                     keyboardHeight: keyboard.height,
-                    inputBarHeight: (viewModel.isModelDownloaded || viewModel.isChatUnsupported) ? viewState.inputBarHeight : 0,
+                    inputBarHeight: (viewModel.isModelDownloaded || viewModel.isChatUnsupported)
+                        ? viewState.inputBarHeight : 0,
                     emptyStateTitle: "Welcome",
                     emptyStateSubtitle: "Start typing to begin a conversation",
                     onEdit: { message in
                         viewModel.beginEditing(message: message)
                     },
                     onCopy: { message in
-                        copyToPasteboard(message.role == .assistant ? cleanAssistantText(storedText: message.text) : message.text)
+                        copyToPasteboard(
+                            message.role == .assistant
+                                ? cleanAssistantText(storedText: message.text) : message.text)
                         showToast("Copied to clipboard", duration: 1)
                     },
                     onRetry: { message in
@@ -290,12 +325,6 @@ struct ChatView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                 .id(viewState.sessionTransitionId)
                 .transition(sessionTransition)
-                .onAppear {
-                    viewModel.autoStartModelDownloadIfNeeded()
-                }
-                .onChange(of: viewModel.messages.count) { _ in
-                    viewModel.autoStartModelDownloadIfNeeded()
-                }
                 .zIndex(0)
 
                 if viewModel.isChatUnsupported {
@@ -313,6 +342,7 @@ struct ChatView: View {
                         text: $viewModel.draftText,
                         attachments: $viewModel.draftAttachments,
                         isGenerating: viewModel.isGenerating,
+                        isSendPending: viewModel.isSendPending,
                         isDownloading: viewModel.isDownloading,
                         editingMessage: editingMessage,
                         isProcessingAttachments: viewModel.isProcessingAttachments,

@@ -109,6 +109,7 @@ type SpacePostRecord struct {
 }
 
 type SpacePostAssetRecord struct {
+	Role           string
 	AssetID        int64
 	PostID         int64
 	ObjectKey      string
@@ -128,6 +129,8 @@ type SpaceTempObjectRecord struct {
 	ExpiresAt    int64
 	CleanupAfter int64
 	CreatedAt    int64
+	ContentMD5   sql.NullString
+	Client       sql.NullString
 }
 
 type SpaceMessageRecord struct {
@@ -137,6 +140,7 @@ type SpaceMessageRecord struct {
 	RecipientSpaceID    string
 	MessageCipher       []byte
 	EncryptedMessageKey []byte
+	EncryptedReaction   []byte
 	ReplyPostID         sql.NullInt64
 	ReplyMessageID      sql.NullString
 	Liked               bool
@@ -164,6 +168,7 @@ type SpaceMessageConversationActivityRecord struct {
 	RecipientSpaceID    sql.NullString
 	MessageCipher       []byte
 	EncryptedMessageKey []byte
+	EncryptedReaction   []byte
 	ReplyMessageID      sql.NullString
 	PostID              sql.NullInt64
 	PostSpaceID         sql.NullString

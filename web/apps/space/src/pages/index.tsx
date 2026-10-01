@@ -1,7 +1,7 @@
 import { Box } from "@mui/material";
+import { SpaceAboutButton } from "components/AboutSpaceButton";
+import { SpaceAddFriendButton } from "components/AddFriendButton";
 import { AuthenticatedFriendProfile } from "components/AuthenticatedFriendProfile";
-import { SpaceButtonSpinner } from "components/ButtonSpinner";
-import { SpaceFriendLimitToast } from "components/FriendLimitToast";
 import { SpaceMobileBestToast } from "components/MobileBestToast";
 import { SpacePageMeta } from "components/PageMeta";
 import { SpacePublicProfileNotificationControl } from "components/PublicProfileNotificationControl";
@@ -36,7 +36,6 @@ import {
 } from "services/space";
 import { useSpaceAppState, type OnboardingEntrySource } from "state/app-state";
 import { spaceAppBackgroundColor } from "styles/colors";
-import { isSpaceFriendLimitError } from "utils/friend-errors";
 import { profilePostItemsFromPosts } from "utils/post-display";
 import { useSpaceRouter } from "utils/route-transitions";
 import { spaceRoutes } from "utils/routes";
@@ -53,13 +52,8 @@ interface PageProps {
     invitePreview?: boolean;
 }
 
-const addFriendOnboardingTitle = (username: string) => (
-    <>
-        {`See @${username}'s`}
-        <br />
-        everyday photos
-    </>
-);
+const addFriendOnboardingTitle = (username: string) =>
+    `See what @${username}’s up to`;
 
 const addFriendPostActionOnboardingTitle = (
     username: string,
@@ -146,7 +140,6 @@ const PublicFriendRequestScreen: React.FC<PublicFriendRequestScreenProps> = ({
                 color: "white",
                 display: "flex",
                 flexDirection: "column",
-                justifyContent: "space-between",
                 minHeight: { xs: "calc(100svh - 16px)", sm: "100svh" },
                 overflow: "hidden",
                 position: "relative",
@@ -201,6 +194,7 @@ const PublicFriendRequestScreen: React.FC<PublicFriendRequestScreenProps> = ({
                 </Box>
                 <Box />
             </Box>
+            <Box sx={{ flex: 1, minHeight: 24 }} />
             <Box
                 sx={{
                     alignItems: "center",
@@ -224,12 +218,10 @@ const PublicFriendRequestScreen: React.FC<PublicFriendRequestScreenProps> = ({
                         m: 0,
                         maxWidth: "100%",
                         overflowWrap: "anywhere",
+                        textWrap: "balance",
                     }}
                 >
-                    <Box component="span" sx={{ display: "block" }}>
-                        {`See @${identity.username}’s`}
-                    </Box>
-                    everyday photos
+                    {addFriendOnboardingTitle(identity.username)}
                 </Box>
                 <Box
                     component="p"
@@ -243,8 +235,24 @@ const PublicFriendRequestScreen: React.FC<PublicFriendRequestScreenProps> = ({
                         maxWidth: 260,
                     }}
                 >
-                    {`Add @${identity.username} as a friend to see what they're up to on Ente Space`}
+                    {`Add @${identity.username} as a friend to see their life in photos and share a little of yours on Ente Space`}
                 </Box>
+            </Box>
+            <Box
+                sx={{
+                    alignItems: "center",
+                    display: "flex",
+                    flex: 1,
+                    justifyContent: "center",
+                    minHeight: 80,
+                }}
+            >
+                <SpaceAboutButton
+                    isAddingFriend={isAddingFriend}
+                    onAddFriend={onAddFriend}
+                    showAddingFriendSpinner={showAddingFriendSpinner}
+                    username={identity.username}
+                />
             </Box>
             <Box
                 sx={{
@@ -254,50 +262,14 @@ const PublicFriendRequestScreen: React.FC<PublicFriendRequestScreenProps> = ({
                     mx: "auto",
                     pb: "calc(env(safe-area-inset-bottom) + clamp(36px, calc(5.5svh + 12px), 56px))",
                     px: 3,
-                    pt: 3,
                     width: "100%",
                 }}
             >
-                <Box
-                    component="button"
-                    type="button"
-                    disabled={isAddingFriend}
-                    aria-label={isAddingFriend ? "Adding friend" : undefined}
-                    aria-busy={isAddingFriend ? true : undefined}
-                    onClick={onAddFriend}
-                    sx={{
-                        alignItems: "center",
-                        appearance: "none",
-                        bgcolor: "white",
-                        border: 0,
-                        borderRadius: "24px",
-                        color: "black",
-                        cursor: isAddingFriend ? "default" : "pointer",
-                        display: "flex",
-                        fontFamily: '"Inter Variable", Inter, sans-serif',
-                        fontSize: 16,
-                        fontWeight: 700,
-                        justifyContent: "center",
-                        lineHeight: "24px",
-                        minHeight: 60,
-                        p: "18px 24px",
-                        mx: "auto",
-                        width: "min(100%, 300px)",
-                        "&:hover": isAddingFriend
-                            ? undefined
-                            : { bgcolor: "#F4F4F4" },
-                        "&:focus-visible": {
-                            outline: "2px solid rgba(255 255 255 / 0.88)",
-                            outlineOffset: 3,
-                        },
-                    }}
-                >
-                    {showAddingFriendSpinner ? (
-                        <SpaceButtonSpinner />
-                    ) : (
-                        "Add Friend"
-                    )}
-                </Box>
+                <SpaceAddFriendButton
+                    isAddingFriend={isAddingFriend}
+                    onAddFriend={onAddFriend}
+                    showAddingFriendSpinner={showAddingFriendSpinner}
+                />
             </Box>
         </Box>
         <SpaceMobileBestToast />
@@ -333,7 +305,6 @@ export const Page: React.FC<PageProps> = ({ invitePreview }) => {
     const [pendingInviteIntent, setPendingInviteIntent] =
         useState<SpaceInviteIntent>();
     const [isAddingFriend, setIsAddingFriend] = useState(false);
-    const [showFriendLimitToast, setShowFriendLimitToast] = useState(false);
     const publicPostItems = useMemo(
         () => profilePostItemsFromPosts(publicPosts),
         [publicPosts],
@@ -617,13 +588,6 @@ export const Page: React.FC<PageProps> = ({ invitePreview }) => {
                 void router.push(spaceRoutes.home);
             } catch (error) {
                 setIsAddingFriend(false);
-                if (isSpaceFriendLimitError(error)) {
-                    clearPendingSpaceInvite();
-                    clearPendingSpaceInviteFriend();
-                    clearPendingSpaceInviteIntent();
-                    setShowFriendLimitToast(true);
-                    return;
-                }
                 log.error("Failed to send friend request", error);
             }
         };
@@ -681,11 +645,6 @@ export const Page: React.FC<PageProps> = ({ invitePreview }) => {
                         showAddingFriendSpinner={
                             isAddingFriend && Boolean(profile)
                         }
-                    />
-                )}
-                {showFriendLimitToast && (
-                    <SpaceFriendLimitToast
-                        onClose={() => setShowFriendLimitToast(false)}
                     />
                 )}
             </>

@@ -24,6 +24,7 @@ import "package:photos/models/ml/face/person.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/collections_service.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
+import "package:photos/services/memory_lane/memory_lane_cache_service.dart";
 import "package:photos/services/memory_lane/memory_lane_service.dart";
 import "package:photos/ui/home/memories/all_memories_page.dart";
 import "package:photos/ui/home/memories/crafting_memories_card.dart";
@@ -66,6 +67,7 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
   int _fetchMemoriesGeneration = 0;
   String? _lastWarmSignature;
   MemoryLanePersonTimeline? _memoryLane;
+  MemoryLaneSchedule? _memoryLaneSchedule;
   Uint8List? _oldestMemoryLaneFace;
   Uint8List? _newestMemoryLaneFace;
   PersonEntity? _memoryLanePerson;
@@ -222,13 +224,16 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
         (memoryLane.isCluster || memoryLanePerson != null) &&
         oldestMemoryLaneFace != null &&
         newestMemoryLaneFace != null;
+    final hasSeenMemoryLane =
+        hasMemoryLane && _memoryLaneSchedule?.lastCompletelySeenAt != null;
     final hasContent = memories.isNotEmpty || memoryLane != null;
     final cardBuilders = <MemoryCardWrapper Function(VoidCallback onTap)>[
       if (hasMemoryLane)
         (onTap) => MemoryCardWrapper(
           id: "memoryLane_${memoryLane.personId}",
           widget: () => MemoryLaneCardWidget(
-            id: memoryLane.personId,
+            personId: memoryLane.personId,
+            isSeen: hasSeenMemoryLane,
             oldestFace: oldestMemoryLaneFace,
             face: newestMemoryLaneFace,
             personName: memoryLanePerson?.data.name ?? "",
@@ -247,6 +252,34 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
           ),
         ),
     ];
+    final cards = cardBuilders.indexed
+        .map(
+          (entry) => entry.$2(() async {
+            await openAllMemoriesPage(
+              context: context,
+              allMemories: memories,
+              memoryLane: hasMemoryLane ? memoryLane : null,
+              memoryLanePerson: hasMemoryLane ? memoryLanePerson : null,
+              isFromMemoriesStrip: true,
+              isMemoryLaneSeen: hasSeenMemoryLane,
+              initialPageIndex: entry.$1,
+            );
+            if (!mounted) return;
+            final schedule = await MemoryLaneCacheService.instance
+                .getCurrentMemoriesStripSchedule();
+            if (!mounted) return;
+            setState(() {
+              _memoryLaneSchedule =
+                  schedule?.personID == _memoryLane?.personId &&
+                      schedule?.isCluster == _memoryLane?.isCluster
+                  ? schedule
+                  : null;
+            });
+          }),
+        )
+        .toList();
+    final memoryLaneCard = hasMemoryLane ? cards.first : null;
+    final memoryLaneIndex = getMemoryLaneInsertionIndex(memories);
     return [
       if (_shouldShowCraftingMemories && hasContent)
         MemoryCardWrapper(
@@ -264,19 +297,10 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
             },
           ),
         ),
-      ...cardBuilders.indexed.map(
-        (entry) => entry.$2(() async {
-          await openAllMemoriesPage(
-            context: context,
-            allMemories: memories,
-            memoryLane: hasMemoryLane ? memoryLane : null,
-            memoryLanePerson: hasMemoryLane ? memoryLanePerson : null,
-            initialPageIndex: entry.$1,
-          );
-          if (!mounted) return;
-          setState(() {});
-        }),
-      ),
+      ...cards.skip(hasMemoryLane ? 1 : 0).take(memoryLaneIndex),
+      if (memoryLaneCard != null && !hasSeenMemoryLane) memoryLaneCard,
+      ...cards.skip((hasMemoryLane ? 1 : 0) + memoryLaneIndex),
+      if (memoryLaneCard != null && hasSeenMemoryLane) memoryLaneCard,
     ];
   }
 
@@ -384,6 +408,14 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
     if (!mounted || faceCrops == null || !hasGrantedMLConsent) {
       return;
     }
+    final schedule = await MemoryLaneCacheService.instance
+        .getCurrentMemoriesStripSchedule();
+    if (!mounted || !hasGrantedMLConsent) return;
+    _memoryLaneSchedule =
+        schedule?.personID == timeline.personId &&
+            schedule?.isCluster == timeline.isCluster
+        ? schedule
+        : null;
     _memoryLane = timeline;
     _oldestMemoryLaneFace = faceCrops.oldest;
     _newestMemoryLaneFace = faceCrops.newest;
@@ -393,6 +425,7 @@ class _MemoriesStripWidgetState extends State<MemoriesStripWidget> {
   void _hideMemoryLane() {
     setState(() {
       _memoryLane = null;
+      _memoryLaneSchedule = null;
       _oldestMemoryLaneFace = null;
       _newestMemoryLaneFace = null;
       _memoryLanePerson = null;

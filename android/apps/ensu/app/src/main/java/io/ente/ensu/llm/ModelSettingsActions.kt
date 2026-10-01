@@ -7,15 +7,22 @@ import io.ente.ensu.bindings.AssetDownloadException
 import io.ente.ensu.bindings.LlmException
 import io.ente.ensu.bindings.ModelRuntimeSurface
 import io.ente.ensu.bindings.resolveEffectiveModelId
+import io.ente.ensu.coroutines.runCatchingCancellable
 import io.ente.ensu.device.isChatSupported
 import io.ente.ensu.logging.FileLogRepository
 import io.ente.ensu.logging.LogLevel
+import io.ente.ensu.notes.NotesStore
 import io.ente.ensu.settings.IS_ENSU_PACKS_ENABLED
 import io.ente.ensu.settings.SessionPreferencesDataStore
+import java.util.UUID
+import java.util.concurrent.atomic.AtomicInteger
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -23,21 +30,32 @@ internal class ModelSettingsActions(
     private val state: MutableStateFlow<AppState>,
     private val sessionPreferences: SessionPreferencesDataStore,
     private val llmProvider: LlmProvider,
-    private val logRepository: FileLogRepository
+    private val logRepository: FileLogRepository,
+    private val notesStore: NotesStore,
+    private val awaitKnowledgeReady: suspend () -> Unit,
 ) {
     private var scope: CoroutineScope? = null
     private var modelDownloadJob: Job? = null
+    private var chatActive = false
+    private val activeVoiceJobs = AtomicInteger()
+    private var warmupSuppressed = false
+    private var warmupJob: Job? = null
+    private var warmupOwner: String? = null
+    private var warmupSelection: LlmModelSelection? = null
 
-    fun setScope(scope: CoroutineScope) {
+    fun bootstrap(scope: CoroutineScope) {
         this.scope = scope
+        scope.launch {
+            awaitKnowledgeReady()
+            notesStore.awaitReady()
+            combine(state, notesStore.state) { _, _ -> Unit }.collect { refreshChatWarmup() }
+        }
     }
 
     fun updateModelSettings(settings: ModelSettingsState) {
         val oldSelection = resolveSelection(state.value.modelSettings)
         val newSelection = resolveSelection(settings)
-        state.update { appState ->
-            appState.copy(modelSettings = settings)
-        }
+        state.update { appState -> appState.copy(modelSettings = settings) }
         if (downloadIdentityChanged(oldSelection, newSelection)) {
             modelDownloadJob?.cancel()
             modelDownloadJob = null
@@ -46,16 +64,12 @@ internal class ModelSettingsActions(
     }
 
     fun hydratePersistedModelSettings(settings: ModelSettingsState) {
-        state.update { appState ->
-            appState.copy(modelSettings = settings)
-        }
+        state.update { appState -> appState.copy(modelSettings = settings) }
         refreshModelDownloadInfo()
     }
 
     fun resetModelSettings() {
-        state.update { appState ->
-            appState.copy(modelSettings = ModelSettingsState())
-        }
+        state.update { appState -> appState.copy(modelSettings = ModelSettingsState()) }
         refreshModelDownloadInfo()
     }
 
@@ -66,14 +80,15 @@ internal class ModelSettingsActions(
             persistModelDownloadRequested(false)
             state.update { appState ->
                 appState.copy(
-                    chat = appState.chat.copy(
-                        isDownloading = false,
-                        downloadPercent = null,
-                        downloadStatus = null,
-                        downloadPhase = null,
-                        modelDownloadSizeBytes = null,
-                        hasRequestedModelDownload = false
-                    )
+                    chat =
+                        appState.chat.copy(
+                            isDownloading = false,
+                            downloadPercent = null,
+                            downloadStatus = null,
+                            downloadPhase = null,
+                            modelDownloadSizeBytes = null,
+                            hasRequestedModelDownload = false,
+                        )
                 )
             }
             return
@@ -87,15 +102,18 @@ internal class ModelSettingsActions(
         }
         state.update { appState ->
             appState.copy(
-                chat = appState.chat.copy(
-                    isModelDownloaded = isDownloaded,
-                    isDownloading = if (isDownloaded) false else appState.chat.isDownloading,
-                    downloadPercent = if (isDownloaded) null else appState.chat.downloadPercent,
-                    downloadStatus = if (isDownloaded) null else appState.chat.downloadStatus,
-                    downloadPhase = if (isDownloaded) null else appState.chat.downloadPhase,
-                    modelDownloadSizeBytes = if (isDownloaded) null else appState.chat.modelDownloadSizeBytes,
-                    hasRequestedModelDownload = appState.chat.hasRequestedModelDownload || isDownloaded
-                )
+                chat =
+                    appState.chat.copy(
+                        isModelDownloaded = isDownloaded,
+                        isDownloading = if (isDownloaded) false else appState.chat.isDownloading,
+                        downloadPercent = if (isDownloaded) null else appState.chat.downloadPercent,
+                        downloadStatus = if (isDownloaded) null else appState.chat.downloadStatus,
+                        downloadPhase = if (isDownloaded) null else appState.chat.downloadPhase,
+                        modelDownloadSizeBytes =
+                            if (isDownloaded) null else appState.chat.modelDownloadSizeBytes,
+                        hasRequestedModelDownload =
+                            appState.chat.hasRequestedModelDownload || isDownloaded,
+                    )
             )
         }
 
@@ -107,33 +125,38 @@ internal class ModelSettingsActions(
                 persistModelDownloadRequested(false)
                 state.update { appState ->
                     appState.copy(
-                        chat = appState.chat.copy(
-                            isDownloading = false,
-                            downloadPercent = null,
-                            downloadStatus = null,
-                            downloadPhase = null,
-                            hasRequestedModelDownload = false
-                        )
+                        chat =
+                            appState.chat.copy(
+                                isDownloading = false,
+                                downloadPercent = null,
+                                downloadStatus = null,
+                                downloadPhase = null,
+                                hasRequestedModelDownload = false,
+                            )
                     )
                 }
             }
 
-            val chatSize = if (chatReady) 0L else llmProvider.estimateChatModelDownloadSize(selection)
-            val embeddingSize = if (!IS_ENSU_PACKS_ENABLED || embeddingReady) {
-                0L
-            } else {
-                llmProvider.estimateEmbeddingDownloadSize()
-            }
-            val size = if (chatSize == null || embeddingSize == null) {
-                null
-            } else {
-                chatSize + embeddingSize
-            }
+            val chatSize =
+                if (chatReady) 0L else llmProvider.estimateChatModelDownloadSize(selection)
+            val embeddingSize =
+                if (!IS_ENSU_PACKS_ENABLED || embeddingReady) {
+                    0L
+                } else {
+                    llmProvider.estimateEmbeddingDownloadSize()
+                }
+            val size =
+                if (chatSize == null || embeddingSize == null) {
+                    null
+                } else {
+                    chatSize + embeddingSize
+                }
             state.update { appState ->
                 appState.copy(
-                    chat = appState.chat.copy(
-                        modelDownloadSizeBytes = size ?: appState.chat.modelDownloadSizeBytes
-                    )
+                    chat =
+                        appState.chat.copy(
+                            modelDownloadSizeBytes = size ?: appState.chat.modelDownloadSizeBytes
+                        )
                 )
             }
         }
@@ -148,16 +171,20 @@ internal class ModelSettingsActions(
         if (!userInitiated && !currentState.chat.hasRequestedModelDownload) return
 
         val selection = resolveSelection(currentState.modelSettings)
-        val isDownloaded = llmProvider.isChatModelReady(selection) &&
-            (!IS_ENSU_PACKS_ENABLED || llmProvider.isEmbeddingModelReady())
+        val isDownloaded =
+            llmProvider.isChatModelReady(selection) &&
+                (!IS_ENSU_PACKS_ENABLED || llmProvider.isEmbeddingModelReady())
         if (isDownloaded) {
             state.update { appState ->
                 appState.copy(
-                    chat = appState.chat.copy(
-                        isModelDownloaded = true,
-                        modelDownloadSizeBytes = null,
-                        hasRequestedModelDownload = if (userInitiated) true else appState.chat.hasRequestedModelDownload
-                    )
+                    chat =
+                        appState.chat.copy(
+                            isModelDownloaded = true,
+                            modelDownloadSizeBytes = null,
+                            hasRequestedModelDownload =
+                                if (userInitiated) true
+                                else appState.chat.hasRequestedModelDownload,
+                        )
                 )
             }
         }
@@ -169,27 +196,33 @@ internal class ModelSettingsActions(
                 LogLevel.Info,
                 "Model download started",
                 details = "model=${selection.id}",
-                tag = "Model"
+                tag = "Model",
             )
             state.update { appState ->
                 appState.copy(
-                    chat = appState.chat.copy(
-                        isDownloading = true,
-                        downloadPercent = 0,
-                        downloadStatus = "Starting download...",
-                        downloadPhase = DownloadPhase.Downloading,
-                        hasRequestedModelDownload = if (userInitiated) true else appState.chat.hasRequestedModelDownload
-                    )
+                    chat =
+                        appState.chat.copy(
+                            isDownloading = true,
+                            downloadPercent = 0,
+                            downloadStatus = "Starting download...",
+                            downloadPhase = DownloadPhase.Downloading,
+                            hasRequestedModelDownload =
+                                if (userInitiated) true
+                                else appState.chat.hasRequestedModelDownload,
+                        )
                 )
             }
         }
 
         modelDownloadJob = scope.launch {
             var loggedComplete = false
-            val progressTracker = DownloadProgressTracker(
-                initialPercent = if (isDownloaded) null else 0,
-                initialStatus = if (isDownloaded) null else "Starting download..."
-            )
+            val progressTracker =
+                DownloadProgressTracker(
+                    initialPercent = if (isDownloaded) null else 0,
+                    initialStatus = if (isDownloaded) null else "Starting download...",
+                )
+            var completed = false
+            var downloadFailure: Throwable? = null
             try {
                 var retryCount = 0
                 while (true) {
@@ -202,23 +235,30 @@ internal class ModelSettingsActions(
                                     LogLevel.Info,
                                     "Model download complete",
                                     details = "model=${selection.id}",
-                                    tag = "Model"
+                                    tag = "Model",
                                 )
                             }
                             state.update { appState ->
                                 appState.copy(
-                                    chat = appState.chat.copy(
-                                        isDownloading = resolvedProgress.isDownloading,
-                                        downloadPercent = resolvedProgress.percent,
-                                        downloadStatus = resolvedProgress.status,
-                                        downloadPhase = resolvedProgress.phase,
-                                        isModelDownloaded = if (resolvedProgress.isFinished) true else appState.chat.isModelDownloaded,
-                                        modelDownloadSizeBytes = if (resolvedProgress.isFinished) null else appState.chat.modelDownloadSizeBytes
-                                    )
+                                    chat =
+                                        appState.chat.copy(
+                                            isDownloading = resolvedProgress.isDownloading,
+                                            downloadPercent = resolvedProgress.percent,
+                                            downloadStatus = resolvedProgress.status,
+                                            downloadPhase = resolvedProgress.phase,
+                                            isModelDownloaded =
+                                                if (resolvedProgress.isFinished) true
+                                                else appState.chat.isModelDownloaded,
+                                            modelDownloadSizeBytes =
+                                                if (resolvedProgress.isFinished) null
+                                                else appState.chat.modelDownloadSizeBytes,
+                                        )
                                 )
                             }
                         }
                         break
+                    } catch (err: kotlinx.coroutines.CancellationException) {
+                        throw err
                     } catch (err: Throwable) {
                         if (!shouldRetryDownload(err, retryCount)) {
                             throw err
@@ -228,43 +268,141 @@ internal class ModelSettingsActions(
                         delay(retryDelayMs(retryCount))
                     }
                 }
+                completed = true
+            } catch (err: kotlinx.coroutines.CancellationException) {
+                throw err
             } catch (err: Throwable) {
-                val cancelled = err is kotlinx.coroutines.CancellationException ||
-                    err is LlmException.Cancelled ||
-                    err is AssetDownloadException.Cancelled
-                val failureMessage = if (cancelled) {
-                    "Download cancelled"
-                } else {
-                    userFacingDownloadError(err, isDownloaded)
-                }
-                state.update { appState ->
-                    appState.copy(
-                        chat = appState.chat.copy(
-                            isDownloading = false,
-                            downloadPercent = null,
-                            downloadStatus = failureMessage,
-                            downloadPhase = if (cancelled) null else DownloadPhase.Failed,
-                            hasRequestedModelDownload = false
-                        )
-                    )
-                }
-                persistModelDownloadRequested(false)
-                if (cancelled) {
-                    if (!isDownloaded) {
-                        logRepository.log(LogLevel.Info, "Model download cancelled", tag = "Model")
-                    }
-                } else {
-                    logRepository.log(
-                        LogLevel.Error,
-                        if (isDownloaded) "Model load failed" else "Model download failed",
-                        details = err.message,
-                        tag = "Model",
-                        throwable = err
-                    )
-                }
+                downloadFailure = err
             } finally {
+                if (!completed) {
+                    val cancelled =
+                        downloadFailure == null ||
+                            downloadFailure is LlmException.Cancelled ||
+                            downloadFailure is AssetDownloadException.Cancelled
+                    val failureMessage =
+                        if (cancelled) {
+                            "Download cancelled"
+                        } else {
+                            userFacingDownloadError(downloadFailure, isDownloaded)
+                        }
+                    state.update { appState ->
+                        appState.copy(
+                            chat =
+                                appState.chat.copy(
+                                    isDownloading = false,
+                                    downloadPercent = null,
+                                    downloadStatus = failureMessage,
+                                    downloadPhase = if (cancelled) null else DownloadPhase.Failed,
+                                    hasRequestedModelDownload = false,
+                                )
+                        )
+                    }
+                    persistModelDownloadRequested(false)
+                    if (cancelled) {
+                        if (!isDownloaded) {
+                            logRepository.log(
+                                LogLevel.Info,
+                                "Model download cancelled",
+                                tag = "Model",
+                            )
+                        }
+                    } else {
+                        logRepository.log(
+                            LogLevel.Error,
+                            if (isDownloaded) "Model load failed" else "Model download failed",
+                            details = downloadFailure.message,
+                            tag = "Model",
+                            throwable = downloadFailure,
+                        )
+                    }
+                }
                 modelDownloadJob = null
                 refreshModelDownloadInfo()
+            }
+        }
+    }
+
+    fun setChatActive(active: Boolean) {
+        if (chatActive == active) return
+        chatActive = active
+        if (active) warmupSuppressed = false
+        refreshChatWarmup()
+    }
+
+    fun suppressChatWarmup() {
+        warmupSuppressed = true
+        cancelChatWarmup()
+    }
+
+    fun trackVoiceInput(job: Job) {
+        activeVoiceJobs.incrementAndGet()
+        suppressChatWarmup()
+        job.invokeOnCompletion {
+            if (activeVoiceJobs.decrementAndGet() == 0) scope?.launch { refreshChatWarmup() }
+        }
+    }
+
+    private fun cancelChatWarmup() {
+        warmupJob?.cancel()
+        warmupJob = null
+        val owner = warmupOwner
+        warmupOwner = null
+        warmupSelection = null
+        if (owner != null) scope?.launch { llmProvider.releaseChatWarmup(owner) }
+    }
+
+    private fun refreshChatWarmup() {
+        val current = state.value
+        val selection = resolveSelection(current.modelSettings)
+        val eligible =
+            chatActive &&
+                !warmupSuppressed &&
+                activeVoiceJobs.get() == 0 &&
+                current.chat.deviceCapability.isChatSupported() &&
+                current.knowledge.packs.values.none { it.enabled } &&
+                notesStore.state.value.collections.isEmpty()
+        if (!eligible || (warmupSelection != null && warmupSelection != selection)) {
+            cancelChatWarmup()
+        }
+        if (
+            !eligible ||
+                warmupOwner != null ||
+                current.chat.isGenerating ||
+                current.chat.isDownloading ||
+                !current.chat.isModelDownloaded
+        )
+            return
+        val scope = scope ?: return
+        val owner = UUID.randomUUID().toString()
+        warmupOwner = owner
+        warmupSelection = selection
+        warmupJob = scope.launch {
+            try {
+                delay(350)
+                awaitKnowledgeReady()
+                notesStore.awaitReady()
+                coroutineContext.ensureActive()
+                val latest = state.value
+                if (
+                    activeVoiceJobs.get() > 0 ||
+                        latest.chat.isGenerating ||
+                        latest.chat.isDownloading ||
+                        latest.knowledge.packs.values.any { it.enabled } ||
+                        notesStore.state.value.collections.isNotEmpty()
+                ) {
+                    if (warmupOwner == owner) cancelChatWarmup()
+                    return@launch
+                }
+                llmProvider.prewarmChatModelIfDownloaded(selection, owner)
+            } catch (error: CancellationException) {
+                throw error
+            } catch (error: Exception) {
+                logRepository.log(
+                    LogLevel.Info,
+                    "Chat warm-up skipped",
+                    tag = "Model",
+                    throwable = error,
+                )
             }
         }
     }
@@ -281,12 +419,14 @@ internal class ModelSettingsActions(
         scope.launch {
             try {
                 llmProvider.prewarmImageInference(selection)
+            } catch (err: kotlinx.coroutines.CancellationException) {
+                throw err
             } catch (err: Throwable) {
                 logRepository.log(
                     LogLevel.Warning,
                     "Image inference prewarm skipped",
                     details = err.message,
-                    tag = "Model"
+                    tag = "Model",
                 )
             }
         }
@@ -298,13 +438,14 @@ internal class ModelSettingsActions(
         persistModelDownloadRequested(false)
         state.update { appState ->
             appState.copy(
-                chat = appState.chat.copy(
-                    isDownloading = false,
-                    downloadPercent = null,
-                    downloadStatus = "Download cancelled",
-                    downloadPhase = null,
-                    hasRequestedModelDownload = false
-                )
+                chat =
+                    appState.chat.copy(
+                        isDownloading = false,
+                        downloadPercent = null,
+                        downloadStatus = "Download cancelled",
+                        downloadPhase = null,
+                        hasRequestedModelDownload = false,
+                    )
             )
         }
         refreshModelDownloadInfo()
@@ -312,33 +453,33 @@ internal class ModelSettingsActions(
 
     private fun persistModelDownloadRequested(requested: Boolean) {
         scope?.launch {
-            runCatching {
+            runCatchingCancellable {
                 sessionPreferences.setModelDownloadRequested(requested)
-            }.onFailure { error ->
-                logRepository.log(
-                    LogLevel.Error,
-                    "Failed to persist model download state",
-                    details = error.message,
-                    tag = "Model",
-                    throwable = error
-                )
             }
+                .onFailure { error ->
+                    logRepository.log(
+                        LogLevel.Error,
+                        "Failed to persist model download state",
+                        details = error.message,
+                        tag = "Model",
+                        throwable = error,
+                    )
+                }
         }
     }
 
     fun resolveSelection(settings: ModelSettingsState): LlmModelSelection {
-        val modelId = resolveEffectiveModelId(
-            surface = ModelRuntimeSurface.ANDROID,
-            totalMemoryBytes = state.value.chat.deviceCapability.totalMemoryBytes?.toULong(),
-            preferredModelId = settings.modelId.takeIf { it.isNotEmpty() }
-        )
+        val modelId =
+            resolveEffectiveModelId(
+                surface = ModelRuntimeSurface.ANDROID,
+                totalMemoryBytes = state.value.chat.deviceCapability.totalMemoryBytes?.toULong(),
+                preferredModelId = settings.modelId.takeIf { it.isNotEmpty() },
+            )
         val contextLength = settings.contextLength.toIntOrNull()
-        val maxTokens = settings.maxTokens.toIntOrNull()?.takeIf { it > 0 }
 
         return LlmModelSelection(
             id = modelId,
             contextLength = contextLength,
-            maxTokens = maxTokens
         )
     }
 
@@ -350,7 +491,7 @@ internal class ModelSettingsActions(
 
     private fun downloadIdentityChanged(
         oldSelection: LlmModelSelection,
-        newSelection: LlmModelSelection
+        newSelection: LlmModelSelection,
     ): Boolean {
         return oldSelection.id != newSelection.id
     }
@@ -386,7 +527,8 @@ internal class ModelSettingsActions(
         if (isOutOfStorageError(err)) {
             return "Not enough storage space to download the model. Please free up space and try again."
         }
-        return if (wasAlreadyDownloaded) "Model load failed" else "Download failed. Please try again."
+        return if (wasAlreadyDownloaded) "Model load failed"
+        else "Download failed. Please try again."
     }
 
     private fun isOutOfStorageError(err: Throwable): Boolean {

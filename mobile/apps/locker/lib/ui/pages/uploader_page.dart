@@ -66,6 +66,7 @@ abstract class UploaderPageState<T extends UploaderPage> extends State<T> {
     var hasUploadError = false;
     var completedPrimaryUploads = 0;
     var didShowDialog = false;
+    var filesToUpload = <File>[];
     final l10n = context.strings;
     ProgressDialog? progressDialog;
 
@@ -90,6 +91,11 @@ abstract class UploaderPageState<T extends UploaderPage> extends State<T> {
             ),
           );
 
+      filesToUpload = uploadResult?.files ?? [];
+      if (filesToUpload.isEmpty) {
+        return _UploadFilesOutcome.cancelled;
+      }
+
       final isUncategorizedUpload =
           uploadResult != null && uploadResult.selectedCollections.isEmpty;
       final isRegularUpload =
@@ -106,17 +112,21 @@ abstract class UploaderPageState<T extends UploaderPage> extends State<T> {
         if (mounted) {
           final dialog = createProgressDialog(
             context,
-            l10n.uploadedFilesProgress(completed: 0, total: files.length),
+            l10n.uploadedFilesProgress(
+              completed: 0,
+              total: filesToUpload.length,
+            ),
           );
           progressDialog = dialog;
           didShowDialog = await dialog.show();
         }
 
         int completedUploads = 0;
-        for (final file in files) {
+        for (final file in filesToUpload) {
           final fileUploadFuture = FileUploader.instance.upload(
             file,
             uploadResult.selectedCollections.first,
+            fileName: uploadResult.fileNames[file.path],
           );
           futures.add(
             fileUploadFuture.then<void>(
@@ -131,7 +141,7 @@ abstract class UploaderPageState<T extends UploaderPage> extends State<T> {
                     progressDialog?.update(
                       message: l10n.uploadedFilesProgress(
                         completed: completedUploads,
-                        total: files.length,
+                        total: filesToUpload.length,
                       ),
                     );
                   } catch (e, s) {
@@ -204,7 +214,8 @@ abstract class UploaderPageState<T extends UploaderPage> extends State<T> {
       }
     } catch (e, s) {
       final didUploadAllFiles =
-          files.isNotEmpty && completedPrimaryUploads == files.length;
+          filesToUpload.isNotEmpty &&
+          completedPrimaryUploads == filesToUpload.length;
       outcome = didUploadAllFiles
           ? _UploadFilesOutcome.succeeded
           : _UploadFilesOutcome.failed;

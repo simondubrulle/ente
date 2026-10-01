@@ -10,11 +10,6 @@ import {
 } from "screens/ProfileImageViewerScreen";
 import { ProfileScreen } from "screens/ProfileScreen";
 import {
-    markSpaceHomePostRead,
-    patchCachedSpaceHomePost,
-    removeCachedSpaceHomePostsBySpace,
-} from "services/home-posts";
-import {
     loadCurrentSpacePostAssetURL,
     loadCurrentSpaceProfile,
     loadCurrentSpaceProfilePostsPage,
@@ -39,8 +34,6 @@ export const AuthenticatedFriendProfile: React.FC<
     AuthenticatedFriendProfileProps
 > = ({ friendSpaceId, username }) => {
     const router = useSpaceRouter();
-    const initialSection =
-        router.query.section == "latest" ? "latest" : undefined;
     const { friends, profile, profileLoadError, profileLoadStatus } =
         useSpaceAppState();
     const [friendProfile, setFriendProfile] =
@@ -142,7 +135,6 @@ export const AuthenticatedFriendProfile: React.FC<
         if (!actorSpaceId) return;
 
         await removeCurrentSpaceFriend(actorSpaceId, friendSpaceId);
-        await removeCachedSpaceHomePostsBySpace(actorSpaceId, friendSpaceId);
     }, [friendSpaceId, profile?.spaceId]);
 
     if (profileLoadStatus != "ready" || !profile?.spaceId) {
@@ -154,8 +146,7 @@ export const AuthenticatedFriendProfile: React.FC<
         );
     }
     if (
-        (!hadCachedFriendProfileOnMount.current ||
-            initialSection == "latest") &&
+        !hadCachedFriendProfileOnMount.current &&
         (isProfileLoading || isPostsLoading)
     ) {
         return <SpaceRouteFallback background={spaceAppBackgroundColor} />;
@@ -164,15 +155,15 @@ export const AuthenticatedFriendProfile: React.FC<
 
     return (
         <>
-            <SpacePageMeta themeColor={spaceAppBackgroundColor} />
+            <SpacePageMeta
+                themeColor={spaceAppBackgroundColor}
+                title={`${friendDisplayName}'s profile`}
+            />
             <ProfileScreen
-                friendsCount={displayedProfile.friendsCount}
                 headerVariant="friend"
-                initialSection={initialSection}
                 isCoverLoading={isProfileLoading}
                 isNameLoading={isProfileLoading && !immediateFriendProfile}
                 isPostsLoading={isPostsLoading}
-                isStatsLoading={isProfileLoading || isPostsLoading}
                 onBack={goBack}
                 onLoadPostImage={loadCurrentSpacePostAssetURL}
                 onMessageFriend={() =>
@@ -180,17 +171,14 @@ export const AuthenticatedFriendProfile: React.FC<
                 }
                 onOpenProfileCover={() => setOpenProfileImage("cover")}
                 onOpenProfilePhoto={() => setOpenProfileImage("avatar")}
-                onOpenPost={(post) => {
-                    if (!post.postId) return;
-                    void markSpaceHomePostRead(actorSpaceId, {
-                        postId: post.postId,
-                        timestampMs: post.timestampMs,
-                    }).catch((error: unknown) =>
-                        log.warn("Failed to mark Space post as read", error),
-                    );
-                }}
-                onReplyToPost={(postSpaceId, postId, text) =>
-                    replyToCurrentPost(actorSpaceId, postSpaceId, postId, text)
+                onReplyToPost={(postSpaceId, postId, text, objectKey) =>
+                    replyToCurrentPost(
+                        actorSpaceId,
+                        postSpaceId,
+                        postId,
+                        text,
+                        objectKey,
+                    )
                 }
                 onSetPostLiked={async (postId, liked) => {
                     const previousLiked =
@@ -211,9 +199,6 @@ export const AuthenticatedFriendProfile: React.FC<
                         updateLiked(previousLiked);
                         throw error;
                     }
-                    void patchCachedSpaceHomePost(actorSpaceId, postId, {
-                        viewerLiked: liked,
-                    });
                 }}
                 onUnfriend={unfriend}
                 onUnfriendComplete={() =>

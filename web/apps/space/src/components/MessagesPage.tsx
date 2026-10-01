@@ -1,4 +1,3 @@
-import { SpaceFriendLimitToast } from "components/FriendLimitToast";
 import { SpaceFriendRequestCanceledToast } from "components/FriendRequestCanceledToast";
 import { SpacePageMeta } from "components/PageMeta";
 import { SpaceRouteFallback } from "components/RouteFallback";
@@ -20,17 +19,14 @@ import {
     replyToCurrentMessage,
     sendCurrentMessage,
     sendCurrentPoke,
-    setCurrentMessageLiked,
+    setCurrentMessageReaction,
     shouldAutoReadMessageActivities,
     type SpaceMessage,
     type SpaceMessageConversation,
 } from "services/space";
 import { useSpaceAppState } from "state/app-state";
 import { spaceAppBackgroundColor } from "styles/colors";
-import {
-    isFriendRequestCanceledError,
-    isSpaceFriendLimitError,
-} from "utils/friend-errors";
+import { isFriendRequestCanceledError } from "utils/friend-errors";
 import { useSpaceRouter } from "utils/route-transitions";
 import { spaceRoutes } from "utils/routes";
 
@@ -125,7 +121,7 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
         profileLoadError,
         profileLoadStatus,
         setFriends,
-        setPendingPostPhotoFile,
+        setPendingPostPhotoFiles,
     } = useSpaceAppState();
     const [conversations, setConversations] = React.useState<
         SpaceMessageConversation[]
@@ -138,9 +134,11 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
     const [isThreadLoading, setIsThreadLoading] = React.useState(false);
     const [showFriendRequestCanceledToast, setShowFriendRequestCanceledToast] =
         React.useState(false);
-    const [showFriendLimitToast, setShowFriendLimitToast] =
-        React.useState(false);
     const [messages, setMessages] = React.useState<SpaceMessage[]>([]);
+    const reactionQueues = React.useRef(new Map<string, Promise<void>>());
+    const savedReactions = React.useRef(new Map<string, string | undefined>());
+    const localReactions = React.useRef(new Map<string, string | undefined>());
+
     const [selectedFriendProfile, setSelectedFriendProfile] =
         React.useState<SpaceMessageConversation["friend"]>();
     const [
@@ -202,6 +200,8 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
         selectedFriendFromFriends ??
         selectedLoadedFriendProfile ??
         selectedFriendPlaceholder;
+    const selectedFriendName =
+        selectedFriend?.fullName.trim() || selectedFriend?.username;
     const selectedFriendSpaceId = selectedFriend
         ? friendSpaceId(selectedFriend)
         : undefined;
@@ -407,10 +407,6 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
                     friendRequestIdFromConversation(conversation),
                 );
             } catch (error: unknown) {
-                if (isSpaceFriendLimitError(error)) {
-                    setShowFriendLimitToast(true);
-                    return;
-                }
                 if (!isFriendRequestCanceledError(error)) throw error;
                 setConversations((currentConversations) =>
                     currentConversations.filter(
@@ -619,6 +615,10 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
 
         let cancelled = false;
         selectedFriendSpaceIdRef.current = selectedSpaceId;
+        for (const messageId of localReactions.current.keys()) {
+            if (!reactionQueues.current.has(messageId))
+                localReactions.current.delete(messageId);
+        }
         setMessages([]);
         setIsThreadLoading(true);
         const viewer = currentProfileMessageActor(profile);
@@ -635,7 +635,19 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
                         page.items.map((message) => message.id),
                     );
                     setMessages((currentMessages) => [
-                        ...page.items,
+                        ...page.items.map((message) => {
+                            if (!localReactions.current.has(message.id))
+                                return message;
+                            const reaction = localReactions.current.get(
+                                message.id,
+                            );
+                            return {
+                                ...message,
+                                reaction,
+                                liked: Boolean(reaction),
+                                viewerLiked: Boolean(reaction),
+                            };
+                        }),
                         ...currentMessages.filter(
                             (message) => !loadedMessageIds.has(message.id),
                         ),
@@ -677,7 +689,14 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
 
     return (
         <>
-            <SpacePageMeta themeColor={spaceAppBackgroundColor} />
+            <SpacePageMeta
+                themeColor={spaceAppBackgroundColor}
+                title={
+                    selectedFriendName
+                        ? `Messages with ${selectedFriendName}`
+                        : "Messages"
+                }
+            />
             <MessagesScreen
                 conversations={conversations}
                 friendsCount={conversationFriends.length}
@@ -702,12 +721,16 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
                 }}
                 onOpenQuotePost={(quote) =>
                     void router.push(
-                        spaceRoutes.post(quote.spaceId, quote.postId),
+                        spaceRoutes.post(
+                            quote.spaceId,
+                            quote.postId,
+                            quote.objectKey,
+                        ),
                     )
                 }
                 onOpenThread={openConversation}
                 onPostPhotoSelect={(file) => {
-                    setPendingPostPhotoFile(file);
+                    setPendingPostPhotoFiles(file);
                 }}
                 onLoadActivityPost={(post) =>
                     loadCurrentMessageActivityPostPreview(post, actorSpaceId)
@@ -812,20 +835,56 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
                     }
                     void refreshConversations();
                 }}
-                onSetMessageLiked={async (messageId, liked) => {
-                    await setCurrentMessageLiked(
-                        actorSpaceId,
-                        messageId,
-                        liked,
-                    );
-                    setMessages((currentMessages) =>
-                        currentMessages.map((message) =>
-                            message.id == messageId
-                                ? { ...message, liked, viewerLiked: liked }
-                                : message,
-                        ),
-                    );
-                    void refreshConversations();
+                onSetMessageReaction={async (messageId, emoji) => {
+                    const message = messages.find(
+                        (item) => item.id == messageId,
+                    )!;
+                    const previous = reactionQueues.current.get(messageId);
+                    if (!previous)
+                        savedReactions.current.set(messageId, message.reaction);
+                    const update = (reaction: string | undefined) => {
+                        localReactions.current.set(messageId, reaction);
+                        setMessages((items) =>
+                            items.map((item) =>
+                                item.id == messageId
+                                    ? {
+                                          ...item,
+                                          reaction,
+                                          liked: Boolean(reaction),
+                                          viewerLiked: Boolean(reaction),
+                                      }
+                                    : item,
+                            ),
+                        );
+                    };
+                    update(emoji);
+                    const request = (previous ?? Promise.resolve())
+                        .catch(() => undefined)
+                        .then(async () => {
+                            await setCurrentMessageReaction(
+                                actorSpaceId,
+                                message.sender.spaceId!,
+                                messageId,
+                                emoji,
+                            );
+                            savedReactions.current.set(messageId, emoji);
+                        });
+                    reactionQueues.current.set(messageId, request);
+                    try {
+                        await request;
+                        if (reactionQueues.current.get(messageId) == request)
+                            update(emoji);
+                    } catch (error) {
+                        if (reactionQueues.current.get(messageId) == request)
+                            update(savedReactions.current.get(messageId));
+                        throw error;
+                    } finally {
+                        if (reactionQueues.current.get(messageId) == request) {
+                            reactionQueues.current.delete(messageId);
+                            savedReactions.current.delete(messageId);
+                            void refreshConversations();
+                        }
+                    }
                 }}
                 profileLink={spaceInviteURL({
                     spaceUsername: profile.username,
@@ -845,11 +904,6 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
             {showFriendRequestCanceledToast && (
                 <SpaceFriendRequestCanceledToast
                     onClose={() => setShowFriendRequestCanceledToast(false)}
-                />
-            )}
-            {showFriendLimitToast && (
-                <SpaceFriendLimitToast
-                    onClose={() => setShowFriendLimitToast(false)}
                 />
             )}
         </>

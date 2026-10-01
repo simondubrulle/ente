@@ -4,23 +4,25 @@ import { onboardingDescription } from "screens/OnboardingScreen";
 
 const spacePreviewTitle = "Ente Space";
 const spacePreviewDescription =
-    "A private photo-sharing app for keeping up with close friends and family. Share everyday photos, with no ads or algorithms.";
+    "A private photo-sharing app for keeping up with friends and family. End-to-end encrypted. No ads. No algorithms.";
 const spaceInvitePreviewTitle = "You're invited to my Space";
 const spaceInvitePreviewDescription =
     "See the everyday photos I share on Ente Space.";
 const previewImages = {
     home: "https://ente.space/images/meta.png",
-    invite: "https://ente.space/images/meta-invite.png",
+    invite: "https://ente.space/images/meta.png",
 } as const;
 
 interface SpacePageMetaProps {
     preview?: keyof typeof previewImages;
     themeColor: string;
+    title?: string;
 }
 
 export const SpacePageMeta: React.FC<SpacePageMetaProps> = ({
     preview,
     themeColor,
+    title,
 }) => {
     const previewImage = preview && previewImages[preview];
     const previewTitle =
@@ -32,6 +34,7 @@ export const SpacePageMeta: React.FC<SpacePageMetaProps> = ({
 
     return (
         <Head>
+            {title && <title>{`${title} · Ente Space`}</title>}
             <meta name="theme-color" content={themeColor} />
             <meta name="robots" content="noindex,nofollow" />
             <meta
