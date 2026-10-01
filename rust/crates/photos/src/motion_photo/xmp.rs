@@ -34,16 +34,13 @@ fn parse_xmp_attributes(xml_bytes: &[u8]) -> Result<HashMap<String, String>, Mot
                     let attribute = attribute.map_err(|err| {
                         MotionPhotoError::Xml(format!("invalid attribute: {err}"))
                     })?;
-                    let key = std::str::from_utf8(attribute.key.as_ref())
-                        .map_err(|err| MotionPhotoError::Xml(format!("invalid key bytes: {err}")))?
-                        .trim()
-                        .to_string();
+                    let key = attribute.key.as_ref().trim().to_string();
                     if key.starts_with("xmlns:") || key.starts_with("xml:") {
                         continue;
                     }
 
                     let value = attribute
-                        .decoded_and_normalized_value(XmlVersion::Implicit1_0, reader.decoder())
+                        .normalized_value(XmlVersion::Implicit1_0)
                         .map_err(|err| MotionPhotoError::Xml(format!("invalid value: {err}")))?
                         .to_string();
                     result.insert(key, value);
