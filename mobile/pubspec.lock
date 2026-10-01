@@ -1712,15 +1712,6 @@ packages:
       url: "https://pub.dev"
     source: hosted
     version: "13.12.6"
-  mobile_ocr:
-    dependency: transitive
-    description:
-      path: "."
-      ref: "0c68f88f20607cfcb10286422860350ccb024acd"
-      resolved-ref: "0c68f88f20607cfcb10286422860350ccb024acd"
-      url: "https://github.com/ente/mobile_ocr"
-    source: git
-    version: "1.0.0"
   mockito:
     dependency: transitive
     description:

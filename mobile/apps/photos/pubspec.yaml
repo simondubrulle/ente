@@ -149,10 +149,6 @@ dependencies:
   media_kit_video: 2.0.0
   mesh_gradient: 1.3.8
   ml_linalg: 13.12.6
-  mobile_ocr:
-    git:
-      url: https://github.com/ente/mobile_ocr
-      ref: 0c68f88f20607cfcb10286422860350ccb024acd
   modal_bottom_sheet: 3.0.0
   motionphoto:
     git:
