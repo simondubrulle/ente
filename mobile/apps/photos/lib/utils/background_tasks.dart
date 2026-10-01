@@ -138,9 +138,7 @@ class BackgroundTasks {
                 requiresNetwork: true,
                 requiresCharging: Platform.isAndroid,
                 runBudget: Platform.isIOS
-                    ? BgTaskUtils.taskTimeoutFor(
-                        BgTaskUtils.iOSBackgroundProcessingTask,
-                      )
+                    ? null
                     : BgTaskUtils.mlSelfStopFor(
                         BgTaskUtils.androidBackgroundProcessingTask,
                       ),
@@ -261,6 +259,8 @@ class BackgroundTasks {
           }
           task.throwIfStopping();
           await retireLegacySchedules();
+          final isIOSProcessing =
+              Platform.isIOS && task.identifier == processing;
           final taskName = task.identifier == processing
               ? (Platform.isIOS
                     ? BgTaskUtils.iOSBackgroundProcessingTask
@@ -280,31 +280,37 @@ class BackgroundTasks {
           );
           var timedOut = false;
           try {
-            final remainingBudget =
-                BgTaskUtils.taskTimeoutFor(taskName) - task.elapsed;
-            await runBackgroundTask(
+            final remainingBudget = isIOSProcessing
+                ? null
+                : BgTaskUtils.taskTimeoutFor(taskName) - task.elapsed;
+            final work =
+                runBackgroundTask(
                   taskName,
                   TimeLogger(),
                   control: control,
                   shouldStop: () => timedOut || task.isStopping,
-                  mlSelfStop:
-                      BgTaskUtils.mlSelfStopFor(taskName) - task.elapsed,
+                  mlSelfStop: isIOSProcessing
+                      ? null
+                      : BgTaskUtils.mlSelfStopFor(taskName) - task.elapsed,
                   mlLockWait: BgTaskUtils.mlLockWaitFor(taskName),
-                )
-                .whenComplete(() async {
+                ).whenComplete(() async {
                   try {
                     await SuperIsolate.disposeAll();
                   } finally {
                     await SqlDbBase.closeAll();
                   }
-                })
-                .timeout(
-                  remainingBudget.isNegative ? Duration.zero : remainingBudget,
-                  onTimeout: () {
-                    timedOut = true;
-                    throw TimeoutException("Background task timed out");
-                  },
-                );
+                });
+            if (remainingBudget == null) {
+              await work;
+            } else {
+              await work.timeout(
+                remainingBudget.isNegative ? Duration.zero : remainingBudget,
+                onTimeout: () {
+                  timedOut = true;
+                  throw TimeoutException("Background task timed out");
+                },
+              );
+            }
             result = task.isStopping
                 ? BackgroundTaskResult.stopped
                 : BackgroundTaskResult.completed;
