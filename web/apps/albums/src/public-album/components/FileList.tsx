@@ -180,25 +180,19 @@ export const FileList: React.FC<FileListProps> = ({
             }) satisfies FileListItem;
 
         const pushItemsFromSplits = (splits: FileListAnnotatedFile[][]) => {
-            if (splits.length > 1) {
+            if (!disableGrouping) {
                 items.push({
                     height: dateListItemHeight,
                     type: "date",
                     groups: splits.map((s) => ({
                         date: s[0]!.timelineDateString,
-                        dateSpan: s.length,
+                        dateSpan: splits.length > 1 ? s.length : columns,
                     })),
                 });
+            }
+            if (splits.length > 1) {
                 items.push(createFileItem(splits));
             } else {
-                items.push({
-                    height: dateListItemHeight,
-                    type: "date",
-                    groups: splits.map((s) => ({
-                        date: s[0]!.timelineDateString,
-                        dateSpan: columns,
-                    })),
-                });
                 items = items.concat(
                     batch(splits[0]!, columns).map((batchFiles) =>
                         createFileItem([batchFiles]),
@@ -207,42 +201,37 @@ export const FileList: React.FC<FileListProps> = ({
             }
         };
 
-        if (disableGrouping) {
-            items.push(
-                ...batch(annotatedFiles, columns).map((files) =>
-                    createFileItem([files]),
-                ),
+        const spaceBetweenDatesToImageContainerWidthRatio = 0.244;
+        const splits = disableGrouping
+            ? [annotatedFiles]
+            : splitByDate(annotatedFiles);
+
+        let pendingSplits = new Array<FileListAnnotatedFile[]>();
+        for (const split of splits) {
+            const filledColumns = pendingSplits.reduce(
+                (a, s) => a + s.length,
+                0,
             );
-        } else {
-            const spaceBetweenDatesToImageContainerWidthRatio = 0.244;
+            const incomingColumns = split.length;
 
-            let pendingSplits = new Array<FileListAnnotatedFile[]>();
-            for (const split of splitByDate(annotatedFiles)) {
-                const filledColumns = pendingSplits.reduce(
-                    (a, s) => a + s.length,
-                    0,
-                );
-                const incomingColumns = split.length;
-
-                if (
-                    !isSmallerLayout &&
-                    filledColumns +
-                        incomingColumns +
-                        Math.ceil(
-                            pendingSplits.length *
-                                spaceBetweenDatesToImageContainerWidthRatio,
-                        ) <=
-                        columns
-                ) {
-                    pendingSplits.push(split);
-                    continue;
-                }
-
-                if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
-                pendingSplits = [split];
+            if (
+                !isSmallerLayout &&
+                filledColumns +
+                    incomingColumns +
+                    Math.ceil(
+                        pendingSplits.length *
+                            spaceBetweenDatesToImageContainerWidthRatio,
+                    ) <=
+                    columns
+            ) {
+                pendingSplits.push(split);
+                continue;
             }
+
             if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
+            pendingSplits = [split];
         }
+        if (pendingSplits.length) pushItemsFromSplits(pendingSplits);
 
         if (!annotatedFiles.length) {
             items.push({

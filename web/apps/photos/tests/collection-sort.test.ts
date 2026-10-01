@@ -1,9 +1,5 @@
-import { sortFiles } from "ente-gallery/utils/file";
 import { CollectionPublicMagicMetadataData } from "ente-media/collection";
-import {
-    collectionSortBy,
-    sortCollectionFiles,
-} from "ente-media/collection-sort";
+import { sortCollectionFiles, sortFiles } from "ente-media/collection-sort";
 import type { EnteFile } from "ente-media/file";
 import { describe, expect, test } from "vitest";
 
@@ -22,12 +18,14 @@ const ids = (files: EnteFile[]) => files.map(({ id }) => id);
 describe("album sorting", () => {
     test("preserves legacy date ordering without mutating the library", () => {
         const files = [photo(2), photo(1), photo(3)];
-        expect(sortCollectionFiles(files)).toEqual(sortFiles([...files]));
-        expect(sortCollectionFiles(files, { asc: true })).toEqual(
-            sortFiles([...files], true),
-        );
+        expect(ids(sortCollectionFiles(files))).toEqual([3, 2, 1]);
+        expect(ids(sortCollectionFiles(files, { asc: true }))).toEqual([
+            1, 2, 3,
+        ]);
         expect(ids(files)).toEqual([2, 1, 3]);
         expect(sortCollectionFiles([])).toEqual([]);
+        expect(sortFiles(files)).toBe(files);
+        expect(ids(files)).toEqual([3, 2, 1]);
     });
     test("uses edited dates and modification time like the existing sorter", () => {
         const files = [photo(1), photo(2), photo(3)];
@@ -36,10 +34,10 @@ describe("album sorting", () => {
             version: 1,
             count: 1,
         };
-        expect(sortCollectionFiles(files)).toEqual(sortFiles([...files]));
-        expect(sortCollectionFiles(files, { asc: true })).toEqual(
-            sortFiles([...files], true),
-        );
+        expect(ids(sortCollectionFiles(files))).toEqual([3, 1, 2]);
+        expect(ids(sortCollectionFiles(files, { asc: true }))).toEqual([
+            2, 1, 3,
+        ]);
     });
     test("sorts filenames naturally, ignoring case and honoring renamed files", () => {
         const files = [
@@ -70,7 +68,6 @@ describe("album sorting", () => {
     });
     test("future sort modes fall back to legacy date ordering", () => {
         const metadata = { sortBy: "future-mode", asc: true };
-        expect(collectionSortBy(metadata)).toBe("date");
         expect(
             ids(sortCollectionFiles([photo(3), photo(1), photo(2)], metadata)),
         ).toEqual([1, 2, 3]);

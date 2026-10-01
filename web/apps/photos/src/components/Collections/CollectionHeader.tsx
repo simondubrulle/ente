@@ -41,10 +41,7 @@ import {
     CollectionSubType,
     type Collection,
 } from "ente-media/collection";
-import {
-    collectionSortBy,
-    type CollectionSortBy,
-} from "ente-media/collection-sort";
+import type { CollectionSortBy } from "ente-media/collection-sort";
 import { ItemVisibility } from "ente-media/file-metadata";
 import {
     GalleryItemsHeaderAdapter,
@@ -718,9 +715,11 @@ const CollectionHeaderOptions: React.FC<CollectionHeaderProps> = ({
                 {...sortOrderMenuVisibilityProps}
                 overflowMenuIconRef={overflowMenuIconRef}
                 sortAsc={activeCollection?.pubMagicMetadata?.data.asc ?? false}
-                sortBy={collectionSortBy(
-                    activeCollection?.pubMagicMetadata?.data,
-                )}
+                sortBy={
+                    activeCollection?.pubMagicMetadata?.data.sortBy === "name"
+                        ? "name"
+                        : "date"
+                }
                 onSort={changeSortOrder}
             />
         </Box>

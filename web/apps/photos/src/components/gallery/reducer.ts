@@ -1,7 +1,6 @@
 import type { LocalUser } from "ente-accounts/services/user";
 import {
     groupFilesByCollectionID,
-    sortFiles,
     uniqueFilesByID,
 } from "ente-gallery/utils/file";
 import {
@@ -11,10 +10,7 @@ import {
     findUserUncategorizedCollection,
     type Collection,
 } from "ente-media/collection";
-import {
-    collectionSortBy,
-    sortCollectionFiles,
-} from "ente-media/collection-sort";
+import { sortCollectionFiles, sortFiles } from "ente-media/collection-sort";
 import type { EnteFile } from "ente-media/file";
 import {
     isArchivedFile,
@@ -1766,7 +1762,7 @@ const sortAndUniqueFilteredFiles = (
     );
     const metadata = activeCollection?.pubMagicMetadata?.data;
     // The synced library is already in newest-first order.
-    return metadata?.asc || collectionSortBy(metadata) !== "date"
+    return metadata?.asc || metadata?.sortBy === "name"
         ? sortCollectionFiles(uniqueFiles, metadata)
         : uniqueFiles;
 };

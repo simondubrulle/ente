@@ -70,10 +70,7 @@ import {
     quickLinkDateRangeForFiles,
 } from "ente-gallery/utils/quick-link";
 import type { Collection } from "ente-media/collection";
-import {
-    collectionSortBy,
-    sortCollectionFiles,
-} from "ente-media/collection-sort";
+import { sortCollectionFiles } from "ente-media/collection-sort";
 import type { EnteFile } from "ente-media/file";
 import { fileCreationTime, fileFileName } from "ente-media/file-metadata";
 import { FileType } from "ente-media/file-type";
@@ -698,7 +695,7 @@ export default function PublicAlbumPage() {
     }
 
     const disableGrouping =
-        collectionSortBy(publicCollection?.pubMagicMetadata?.data) === "name";
+        publicCollection?.pubMagicMetadata?.data.sortBy === "name";
     // Trip sections group by date/location, which would break filename order.
     const layout =
         disableGrouping && publicAlbumLayout === "trip"
