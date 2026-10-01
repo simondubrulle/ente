@@ -726,11 +726,7 @@ class MemoriesCacheService {
         localSettings.initialMemoriesNotificationScheduledAt() != null) {
       return;
     }
-    final cutoff = DateTime.now()
-        .subtract(const Duration(days: 21))
-        .microsecondsSinceEpoch;
-    if (cache.peopleShownLogs.any((log) => log.lastTimeShown <= cutoff) ||
-        cache.clipShownLogs.any((log) => log.lastTimeShown <= cutoff)) {
+    if (cache.peopleShownLogs.isNotEmpty || cache.clipShownLogs.isNotEmpty) {
       await localSettings.markInitialMemoriesNotificationScheduled();
     }
   }
