@@ -143,7 +143,6 @@ class ImageEditorTextBar extends StatefulWidget {
 }
 
 class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
-  final _fontMenuLink = LayerLink();
   final _fontMenu = OverlayPortalController();
   var _colorTarget = _ColorTarget.text;
   var _showHueSlider = false;
@@ -362,49 +361,46 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
         behavior: HitTestBehavior.opaque,
         child: Center(
           widthFactor: 1,
-          child: CompositedTransformTarget(
-            link: _fontMenuLink,
-            child: OverlayPortal(
-              controller: _fontMenu,
-              overlayChildBuilder: _buildFontMenu,
-              child: Container(
-                height: _controlSize,
-                padding: const EdgeInsetsDirectional.only(
-                  start: Spacing.lg,
-                  end: Spacing.md,
-                ),
-                decoration: BoxDecoration(
-                  color: isOpen
-                      ? colors.fillBase.withValues(alpha: 0.9)
-                      : colors.fillLight,
-                  borderRadius: BorderRadius.circular(_pillRadius),
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Flexible(
-                      child: Text(
-                        name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: _font.copyWith(
-                          inherit: false,
-                          fontSize: TextStyles.body.fontSize,
-                          height: TextStyles.body.height,
-                          color: isOpen ? colors.textReverse : colors.iconColor,
-                        ),
+          child: OverlayPortal.overlayChildLayoutBuilder(
+            controller: _fontMenu,
+            overlayChildBuilder: _buildFontMenu,
+            child: Container(
+              height: _controlSize,
+              padding: const EdgeInsetsDirectional.only(
+                start: Spacing.lg,
+                end: Spacing.md,
+              ),
+              decoration: BoxDecoration(
+                color: isOpen
+                    ? colors.fillBase.withValues(alpha: 0.9)
+                    : colors.fillLight,
+                borderRadius: BorderRadius.circular(_pillRadius),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Flexible(
+                    child: Text(
+                      name,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: _font.copyWith(
+                        inherit: false,
+                        fontSize: TextStyles.body.fontSize,
+                        height: TextStyles.body.height,
+                        color: isOpen ? colors.textReverse : colors.iconColor,
                       ),
                     ),
-                    const SizedBox(width: 6),
-                    HugeIcon(
-                      icon: isOpen
-                          ? HugeIcons.strokeRoundedArrowDown01
-                          : HugeIcons.strokeRoundedArrowUp01,
-                      size: IconSizes.tiny,
-                      color: isOpen ? colors.textReverse : colors.textLight,
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(width: 6),
+                  HugeIcon(
+                    icon: isOpen
+                        ? HugeIcons.strokeRoundedArrowDown01
+                        : HugeIcons.strokeRoundedArrowUp01,
+                    size: IconSizes.tiny,
+                    color: isOpen ? colors.textReverse : colors.textLight,
+                  ),
+                ],
               ),
             ),
           ),
@@ -413,10 +409,15 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
     );
   }
 
-  Widget _buildFontMenu(BuildContext context) {
+  Widget _buildFontMenu(BuildContext context, OverlayChildLayoutInfo info) {
     final colors = context.componentColors;
     final borderSide = BorderSide(color: colors.strokeFaint);
     final isRtl = Directionality.of(context) == TextDirection.rtl;
+    final padding = MediaQueryData.fromView(View.of(context)).padding;
+    final button = MatrixUtils.transformRect(
+      info.childPaintTransform,
+      Offset.zero & info.childSize,
+    );
     return Stack(
       children: [
         Positioned.fill(
@@ -426,37 +427,37 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
           ),
         ),
         Positioned(
-          left: 0,
-          top: 0,
-          child: CompositedTransformFollower(
-            link: _fontMenuLink,
-            showWhenUnlinked: false,
-            targetAnchor: isRtl ? Alignment.topRight : Alignment.topLeft,
-            followerAnchor: isRtl
-                ? Alignment.bottomRight
-                : Alignment.bottomLeft,
-            offset: const Offset(0, -Spacing.sm),
-            child: Material(
-              color: colors.fillLight,
-              clipBehavior: Clip.antiAlias,
-              shape: RoundedRectangleBorder(
-                side: borderSide,
-                borderRadius: BorderRadius.circular(Radii.button),
-              ),
-              child: ConstrainedBox(
-                constraints: const BoxConstraints(
-                  maxHeight: _fontMenuItemHeight * 4.5,
+          left: (isRtl ? button.right - _fontMenuWidth : button.left).clamp(
+            padding.left + Spacing.sm,
+            info.overlaySize.width -
+                padding.right -
+                _fontMenuWidth -
+                Spacing.sm,
+          ),
+          bottom: info.overlaySize.height - button.top + Spacing.sm,
+          child: Material(
+            color: colors.fillLight,
+            clipBehavior: Clip.antiAlias,
+            shape: RoundedRectangleBorder(
+              side: borderSide,
+              borderRadius: BorderRadius.circular(Radii.button),
+            ),
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                maxHeight: (button.top - padding.top - Spacing.sm).clamp(
+                  0.0,
+                  _fontMenuItemHeight * 4.5,
                 ),
-                child: SizedBox(
-                  width: _fontMenuWidth,
-                  child: ListView(
-                    shrinkWrap: true,
-                    padding: EdgeInsets.zero,
-                    children: [
-                      for (final font in _fonts)
-                        _buildFontOption(context, font, borderSide),
-                    ],
-                  ),
+              ),
+              child: SizedBox(
+                width: _fontMenuWidth,
+                child: ListView(
+                  shrinkWrap: true,
+                  padding: EdgeInsets.zero,
+                  children: [
+                    for (final font in _fonts)
+                      _buildFontOption(context, font, borderSide),
+                  ],
                 ),
               ),
             ),
