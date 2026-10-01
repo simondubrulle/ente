@@ -102,8 +102,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
   Size? _imageSize;
   bool _userAttemptedInteraction = false;
   Offset? _pendingSelectionPosition;
-  int _detectionRequestSequence = 0;
-  String? _activeDetectionRequestId;
   bool get _hasSelectableText =>
       _detectedTextBlocks != null && _detectedTextBlocks!.isNotEmpty;
 
@@ -124,7 +122,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
 
   @override
   void dispose() {
-    _cancelActiveDetection();
     widget.controller._detach(this);
     super.dispose();
   }
@@ -170,14 +167,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         _errorMessage = context.strings.ocrImageDecodeFailedError;
         _isProcessing = false;
       });
-    }
-  }
-
-  void _cancelActiveDetection() {
-    final requestId = _activeDetectionRequestId;
-    _activeDetectionRequestId = null;
-    if (requestId != null) {
-      unawaited(_ocr.cancelRequest(requestId).catchError((_) {}));
     }
   }
 
@@ -246,7 +235,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
       _notifyController();
     }
 
-    String? nativeRequestId;
     try {
       await _ensureModelsReady();
       if (_errorMessage != null) {
@@ -257,14 +245,7 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         return;
       }
 
-      final requestId =
-          'text-detector-${identityHashCode(this)}-${++_detectionRequestSequence}';
-      nativeRequestId = requestId;
-      _activeDetectionRequestId = requestId;
-      final result = await _ocr.detectText(
-        imagePath: imagePath,
-        requestId: requestId,
-      );
+      final result = await _ocr.detectText(imagePath: imagePath);
       if (mounted && widget.imagePath == requestedPath) {
         final pendingPos = _pendingSelectionPosition;
         setState(() {
@@ -297,9 +278,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         _notifyController();
       }
     } finally {
-      if (_activeDetectionRequestId == nativeRequestId) {
-        _activeDetectionRequestId = null;
-      }
       if (mounted && widget.imagePath == requestedPath) {
         setState(() {
           _isProcessing = false;
