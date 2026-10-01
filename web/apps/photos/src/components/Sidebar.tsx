@@ -974,9 +974,10 @@ const Account: React.FC<AccountProps> = ({
         onRootClose();
     };
 
-    const handleChangePassword = useCallback(() => {
+    const handleChangePassword = useCallback(async () => {
+        if (!(await onAuthenticateUser())) return;
         void router.push("/change-password");
-    }, [router]);
+    }, [onAuthenticateUser, router]);
     const handleChangeEmail = useCallback(() => {
         void router.push("/change-email");
     }, [router]);
@@ -1051,7 +1052,7 @@ const Account: React.FC<AccountProps> = ({
                 void handlePasskeys();
                 break;
             case "account.changePassword":
-                handleChangePassword();
+                void handleChangePassword();
                 break;
             case "account.changeEmail":
                 handleChangeEmail();
