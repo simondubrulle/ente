@@ -97,14 +97,16 @@ void main() {
     final layer = find.byKey(editor.activeLayers.single.keyInternalSize);
 
     await _tap(tester, layer);
-    expect(find.byType(TextEditor), findsNothing);
+    expect(find.bySubtype<TextEditor>(), findsNothing);
     now = now.add(kDoubleTapTimeout + const Duration(milliseconds: 1));
     await tester.tap(layer);
     await tester.pump(const Duration(milliseconds: 50));
-    expect(find.byType(TextEditor), findsNothing);
+    expect(find.bySubtype<TextEditor>(), findsNothing);
     now = now.add(const Duration(milliseconds: 50));
     await _tap(tester, layer);
-    final reopened = tester.state<TextEditorState>(find.byType(TextEditor));
+    final reopened = tester.state<TextEditorState>(
+      find.bySubtype<TextEditor>(),
+    );
     expect(reopened.textCtrl.text, 'Hello');
     expect(reopened.focusNode.hasFocus, isTrue);
     expect(tester.testTextInput.isVisible, isTrue);
@@ -126,7 +128,7 @@ void main() {
     await tester.tap(layer);
     await tester.tap(layer);
     await tester.pumpAndSettle();
-    expect(find.byType(TextEditor), findsNothing);
+    expect(find.bySubtype<TextEditor>(), findsNothing);
     expect(editor.activeLayers, hasLength(1));
 
     editor.undoAction();
@@ -168,23 +170,24 @@ void main() {
     await first.up();
     await second.up();
     await tester.pumpAndSettle();
-    expect(find.byType(TextEditor), findsNothing);
+    expect(find.bySubtype<TextEditor>(), findsNothing);
 
     await tester.tapAt(center);
     await tester.dragFrom(center, const Offset(45, 0));
     await tester.dragFrom(center + const Offset(45, 0), const Offset(-45, 0));
     await tester.pumpAndSettle();
-    expect(find.byType(TextEditor), findsNothing);
+    expect(find.bySubtype<TextEditor>(), findsNothing);
   });
 
-  testWidgets('typed text remains visible above the bar in landscape', (
+  testWidgets('typed text remains visible after rotating to landscape', (
     tester,
   ) async {
-    tester.view.physicalSize = const Size(874, 402);
+    tester.view.physicalSize = const Size(402, 874);
     tester.view.devicePixelRatio = 1;
-    tester.view.viewInsets = const FakeViewPadding(bottom: 250);
     addTearDown(tester.view.reset);
     await _openEditor(tester);
+    tester.view.physicalSize = const Size(874, 402);
+    tester.view.viewInsets = const FakeViewPadding(bottom: 250);
     await tester.pumpAndSettle();
 
     final fieldBottom = tester.getBottomLeft(find.byType(TextField)).dy;

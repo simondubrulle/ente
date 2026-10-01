@@ -6,6 +6,7 @@ import "package:flutter/gestures.dart";
 import "package:flutter/material.dart";
 import "package:hugeicons/hugeicons.dart";
 import "package:photos/ui/tools/editor/image_editor/image_editor_constants.dart";
+import "package:photos/ui/tools/editor/image_editor/image_editor_text_bar.dart";
 import "package:pro_image_editor/features/main_editor/services/layer_copy_manager.dart";
 import "package:pro_image_editor/pro_image_editor.dart";
 
@@ -14,6 +15,7 @@ const _frameGap = 6.0;
 const _handleRadius = 5.0;
 const _handleTapSize = 32.0;
 const _actionSize = 44.0;
+const _textEditorWidthInset = 34.0;
 
 LayerInteractionConfigs imageEditorLayerInteractionConfigs(
   BuildContext context,
@@ -181,7 +183,7 @@ Future<TextLayer?> imageEditorCreateTextLayer(
   if (state == null || state.isSubEditorOpen) return null;
   final id = UniqueKey().toString();
   final layer = await state.openPage<TextLayer>(
-    TextEditor(
+    ImageEditorTextPage(
       key: state.textEditor,
       heroTag: id,
       configs: state.configs,
@@ -218,23 +220,36 @@ void _selectLayerAfterClose(ProImageEditorState state, String id) {
 Future<void> _editTextLayer(ProImageEditorState editor, TextLayer layer) async {
   if (editor.isSubEditorOpen) return;
   final layerWidth = layer.keyInternalSize.currentContext?.size?.width;
-  final availableWidth = editor.sizesManager.bodySize.width - 34;
+  final wrapWidth =
+      layer.maxTextWidth ??
+      (layerWidth == null ? null : layerWidth / layer.scale);
+  final availableWidth =
+      editor.sizesManager.bodySize.width - _textEditorWidthInset;
   final displayScale = min(
     layer.scale,
-    layerWidth == null || layerWidth <= 0
+    wrapWidth == null || wrapWidth <= 0
         ? layer.scale
-        : layer.scale * availableWidth / layerWidth,
+        : availableWidth / wrapWidth,
   );
   final updated = await editor.openPage<TextLayer>(
-    TextEditor(
+    ImageEditorTextPage(
       key: editor.textEditor,
       layer: (LayerCopyManager().copyLayer(layer) as TextLayer)
         ..fontScale = layer.fontScale * displayScale,
       heroTag: layer.rotation == 0 ? layer.id : null,
-      configs: editor.configs,
+      configs: editor.configs.copyWith(
+        textEditor: editor.configs.textEditor.copyWith(
+          enableImageBoundaryTextWrap: layer.maxTextWidth != null,
+        ),
+      ),
       theme: editor.configs.theme ?? Theme.of(editor.context),
       callbacks: editor.callbacks,
-      imageSize: editor.sizesManager.decodedImageSize,
+      imageSize: layer.maxTextWidth == null
+          ? editor.sizesManager.decodedImageSize
+          : Size(
+              layer.maxTextWidth! * displayScale + _textEditorWidthInset,
+              editor.sizesManager.decodedImageSize.height,
+            ),
     ),
     duration: const Duration(milliseconds: 250),
   );
@@ -257,9 +272,7 @@ Future<void> _editTextLayer(ProImageEditorState editor, TextLayer layer) async {
     ..rotation = layer.rotation
     ..boxConstraints = layer.boxConstraints
     ..fontScale = updated.fontScale / displayScale
-    ..maxTextWidth = updated.maxTextWidth == null
-        ? null
-        : updated.maxTextWidth! / displayScale
+    ..maxTextWidth = layer.maxTextWidth
     ..groupId = layer.groupId
     ..interaction = layer.interaction
     ..meta = layer.meta

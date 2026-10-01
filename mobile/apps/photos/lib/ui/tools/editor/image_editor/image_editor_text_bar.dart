@@ -50,11 +50,6 @@ TextEditorConfigs imageEditorTextConfigs(BuildContext context) {
       inputCursorColor: colors.primary,
       inputHintColor: Colors.white70,
       textFieldMargin: EdgeInsets.zero,
-      textFieldPadding: EdgeInsets.only(
-        top: MediaQuery.orientationOf(context) == Orientation.landscape
-            ? 0
-            : MediaQuery.sizeOf(context).height * _textFieldTopFraction,
-      ),
     ),
     widgets: TextEditorWidgets(
       appBar: (editor, rebuildStream) => ReactiveAppbar(
@@ -81,6 +76,43 @@ TextEditorConfigs imageEditorTextConfigs(BuildContext context) {
       ),
     ),
   );
+}
+
+class ImageEditorTextPage extends TextEditor {
+  const ImageEditorTextPage({
+    super.key,
+    super.heroTag,
+    super.layer,
+    super.configs,
+    super.callbacks,
+    super.imageSize,
+    required super.theme,
+  });
+
+  @override
+  TextEditorState createState() => _ImageEditorTextPageState();
+}
+
+class _ImageEditorTextPageState extends TextEditorState {
+  late TextEditorConfigs _textConfigs = widget.configs.textEditor;
+
+  @override
+  TextEditorConfigs get textEditorConfigs => _textConfigs;
+
+  @override
+  Widget build(BuildContext context) {
+    final configs = widget.configs.textEditor;
+    _textConfigs = configs.copyWith(
+      style: configs.style.copyWith(
+        textFieldPadding: EdgeInsets.only(
+          top: MediaQuery.orientationOf(context) == Orientation.landscape
+              ? 0
+              : MediaQuery.sizeOf(context).height * _textFieldTopFraction,
+        ),
+      ),
+    );
+    return super.build(context);
+  }
 }
 
 const _textFieldTopFraction = 0.12;
