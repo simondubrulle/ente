@@ -1,9 +1,12 @@
-import { DropdownInput, type DropdownOption } from "@/components/DropdownInput";
 import {
     EnteAuthIcon,
     EnteLockerIcon,
     EntePhotosIcon,
 } from "@/components/EnteAppIcon";
+import {
+    DropdownInput,
+    type DropdownOption,
+} from "@/components/sidebar/DropdownInput";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ErrorOutlinedIcon from "@mui/icons-material/ErrorOutlined";
 import {
