@@ -1,4 +1,3 @@
-import { ShapeIcon } from "@/components/icons/ShapeIcon";
 import { downloadAppDialogAttributes } from "@/components/utils/download";
 import exportService from "@/services/export";
 import {
@@ -9,6 +8,7 @@ import { performSidebarAction as performSidebarRegistryAction } from "@/services
 import {
     Delete02Icon,
     Download05Icon,
+    GeometricShapes01Icon,
     ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -702,7 +702,13 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
     return (
         <>
             <RowButton
-                startIcon={<ShapeIcon />}
+                startIcon={
+                    <HugeiconsIcon
+                        icon={GeometricShapes01Icon}
+                        size={shortcutIconSize}
+                        aria-hidden
+                    />
+                }
                 label={t("section_uncategorized")}
                 caption={summaryCaption(uncategorizedCollectionSummaryID)}
                 onClick={handleOpenUncategorizedSection}
