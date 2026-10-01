@@ -4,6 +4,7 @@ import "package:flutter_rust_bridge/flutter_rust_bridge_for_generated.dart"
     show Int64List;
 import "package:ml_linalg/linalg.dart";
 import "package:photos/db/ml/clip_vector_db.dart";
+import "package:photos/db/ml/db.dart";
 import "package:photos/db/ml/usearch_clip_vector_db.dart";
 import "package:photos/models/ml/face/box.dart";
 import "package:photos/models/ml/vector.dart";
@@ -65,16 +66,21 @@ Future<dynamic> isolateFunction(
   switch (function) {
     case IsolateOperation.bulkVectorSearchWithKeys:
       await _ensureRustLoaded();
+      MLDataDB.initialize(preferRust: args["rustMlDb"] as bool);
       final fileIDs = args["fileIDs"] as List<int>;
       final maxDistance = args["maxDistance"] as double;
       final exact = args["exact"] as bool;
 
-      return ClipVectorDB.instance.bulkSearchNearestForFiles(
-        fileIDs,
-        count: 100,
-        maxDistance: maxDistance,
-        exact: exact,
-      );
+      try {
+        return await ClipVectorDB.instance.bulkSearchNearestForFiles(
+          fileIDs,
+          count: 100,
+          maxDistance: maxDistance,
+          exact: exact,
+        );
+      } finally {
+        await MLDataDB.releaseVectorIndexes();
+      }
 
     case IsolateOperation.bulkVectorSearch:
       await _ensureRustLoaded();
