@@ -886,6 +886,7 @@ class MemoriesCacheService {
     final notifications = NotificationService.instance;
     if (!await notifications.hasGrantedPermissions()) return;
     final strings = await LanguageService.locals;
+    if (!showAnyMemories) return;
     if (control?.stopRequested ?? false) return;
     if (AppLifecycleService.instance.isForeground) {
       await localSettings.markInitialMemoriesNotificationScheduled();
