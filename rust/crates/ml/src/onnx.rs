@@ -198,8 +198,8 @@ impl OnnxSession {
     }
 
     fn defer_first_run_canary(&mut self) {
-        if self.first_run_canary.is_some() {
-            self.disarm_first_run_canary();
+        if let Some(canary) = self.first_run_canary.take() {
+            canary.defer();
             self.deferred_first_run_canary = true;
         }
     }
@@ -768,6 +768,44 @@ mod tests {
         session.disarm_first_run_canary();
         session.arm_deferred_first_run_canary().unwrap();
         assert!(!has_canary(&temp));
+    }
+
+    #[test]
+    fn preload_preserves_prior_failures_until_successful_inference() {
+        for previous_failures in 1..=2 {
+            let temp = tempfile::tempdir().unwrap();
+            let model = temp.path().join("model.onnx");
+            let mut session = OnnxSession::new(
+                model.to_str().unwrap(),
+                "scanner",
+                ExecutionMode::GpuPreferred,
+            );
+            for _ in 0..previous_failures {
+                drop(first_run_canary(&temp));
+            }
+            session.first_run_canary = Some(first_run_canary(&temp));
+
+            session.defer_first_run_canary();
+            session.defer_first_run_canary();
+
+            let canary = std::fs::read_dir(temp.path())
+                .unwrap()
+                .next()
+                .unwrap()
+                .unwrap()
+                .path();
+            assert_eq!(
+                std::fs::read_to_string(&canary).unwrap().trim(),
+                previous_failures.to_string()
+            );
+            session.arm_deferred_first_run_canary().unwrap();
+            assert_eq!(
+                std::fs::read_to_string(&canary).unwrap().trim(),
+                (previous_failures + 1).to_string()
+            );
+            session.disarm_first_run_canary();
+            assert!(!has_canary(&temp));
+        }
     }
 
     #[test]

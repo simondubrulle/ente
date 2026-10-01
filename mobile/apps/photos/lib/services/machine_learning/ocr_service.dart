@@ -158,10 +158,9 @@ class OcrService with WidgetsBindingObserver {
     late final Future<void> preload;
     preload = Future.sync(() => prepareModels()).then<void>((_) {}).catchError((
       Object error,
-      StackTrace stackTrace,
     ) {
       if (identical(_modelPreload, preload)) _modelPreload = null;
-      _logger.warning("Could not preload OCR models", error, stackTrace);
+      _logger.warning("Could not preload OCR models: $error");
     });
     _modelPreload = preload;
     return preload;

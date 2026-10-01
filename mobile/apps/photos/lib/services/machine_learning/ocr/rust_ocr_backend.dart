@@ -15,6 +15,7 @@ class RustOcrBackend implements OcrBackend {
   static const _modelVersion = "pp-ocrv5-fixed-v1";
 
   final _engineLock = Lock();
+  final _retiredEngines = <OcrEngine>[];
   OcrEngine? _engine;
   String? _assetsDir;
   bool _includesRecognizer = false;
@@ -23,11 +24,18 @@ class RustOcrBackend implements OcrBackend {
   Future<void> unloadModels() {
     return _engineLock.synchronized(() async {
       final engine = _engine;
-      if (engine == null) return;
-      await engine.unloadModels();
-      _engine = null;
-      _includesRecognizer = false;
-      engine.dispose();
+      if (engine != null) {
+        _retiredEngines.add(engine);
+        _engine = null;
+        _includesRecognizer = false;
+      }
+      if (_retiredEngines.isEmpty) return;
+      while (_retiredEngines.isNotEmpty) {
+        final retiredEngine = _retiredEngines.last;
+        await retiredEngine.unloadModels();
+        retiredEngine.dispose();
+        _retiredEngines.removeLast();
+      }
       _logger.info("Unloaded Rust OCR models");
     });
   }
@@ -72,7 +80,14 @@ class RustOcrBackend implements OcrBackend {
         assetsDir: assetsDir,
         includeRecognizer: includeRecognizer,
       );
-      await engine.loadModels();
+      try {
+        await engine.loadModels();
+      } catch (_) {
+        engine.dispose();
+        rethrow;
+      }
+      final previousEngine = _engine;
+      if (previousEngine != null) _retiredEngines.add(previousEngine);
       _engine = engine;
       _includesRecognizer = includeRecognizer;
       final loadedModels = includeRecognizer
