@@ -1,8 +1,3 @@
-import {
-    EnteAuthIcon,
-    EnteLockerIcon,
-    EntePhotosIcon,
-} from "@/components/EnteAppIcon";
 import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import ErrorOutlinedIcon from "@mui/icons-material/ErrorOutlined";
 import {
@@ -45,6 +40,7 @@ import { t } from "i18next";
 import React, { useState } from "react";
 import { Trans } from "react-i18next";
 import { DropdownInput, type DropdownOption } from "../DropdownInput";
+import { EnteAuthIcon, EnteLockerIcon, EntePhotosIcon } from "../EnteAppIcon";
 
 type DeleteAccountProps = ModalVisibilityProps & {
     onAuthenticateUser: () => Promise<boolean>;
