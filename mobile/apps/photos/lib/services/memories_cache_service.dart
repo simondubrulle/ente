@@ -861,7 +861,7 @@ class MemoriesCacheService {
       final indexPercent = totalItems > 0
           ? 100 * indexStatus.indexedItems / totalItems
           : 0.0;
-      return indexPercent > 90;
+      return indexPercent >= 90;
     } catch (e, s) {
       _logger.warning(
         "Failed to check eligibility for initial memories refresh",
