@@ -10,6 +10,7 @@ import "package:flutter/foundation.dart";
 import "package:flutter/widgets.dart" show AppLifecycleState, WidgetsBinding;
 import "package:logging/logging.dart";
 import "package:permission_handler/permission_handler.dart";
+import "package:photos/db/common/base.dart";
 import "package:photos/db/upload_locks_db.dart";
 import "package:photos/main.dart";
 import "package:photos/module/upload/service/file_uploader.dart";
@@ -17,6 +18,7 @@ import "package:photos/services/machine_learning/ml_run_control.dart";
 import "package:photos/services/notification_service.dart";
 import "package:photos/settings/local_settings.dart";
 import "package:photos/utils/bg_task_utils.dart";
+import "package:photos/utils/isolate/super_isolate.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:workmanager/workmanager.dart" as legacy;
 
@@ -281,19 +283,28 @@ class BackgroundTasks {
             final remainingBudget =
                 BgTaskUtils.taskTimeoutFor(taskName) - task.elapsed;
             await runBackgroundTask(
-              taskName,
-              TimeLogger(),
-              control: control,
-              shouldStop: () => timedOut || task.isStopping,
-              mlSelfStop: BgTaskUtils.mlSelfStopFor(taskName) - task.elapsed,
-              mlLockWait: BgTaskUtils.mlLockWaitFor(taskName),
-            ).timeout(
-              remainingBudget.isNegative ? Duration.zero : remainingBudget,
-              onTimeout: () {
-                timedOut = true;
-                throw TimeoutException("Background task timed out");
-              },
-            );
+                  taskName,
+                  TimeLogger(),
+                  control: control,
+                  shouldStop: () => timedOut || task.isStopping,
+                  mlSelfStop:
+                      BgTaskUtils.mlSelfStopFor(taskName) - task.elapsed,
+                  mlLockWait: BgTaskUtils.mlLockWaitFor(taskName),
+                )
+                .whenComplete(() async {
+                  try {
+                    await SuperIsolate.disposeAll();
+                  } finally {
+                    await SqlDbBase.closeAll();
+                  }
+                })
+                .timeout(
+                  remainingBudget.isNegative ? Duration.zero : remainingBudget,
+                  onTimeout: () {
+                    timedOut = true;
+                    throw TimeoutException("Background task timed out");
+                  },
+                );
             result = task.isStopping
                 ? BackgroundTaskResult.stopped
                 : BackgroundTaskResult.completed;
