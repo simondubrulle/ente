@@ -1,3 +1,6 @@
 import { defineConfig } from "vitest/config";
 
-export default defineConfig({ oxc: { jsx: { runtime: "automatic" } } });
+export default defineConfig({
+    test: {},
+    oxc: { jsx: { runtime: "automatic" } },
+});
