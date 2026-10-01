@@ -125,7 +125,6 @@ export const renamedUploadFileName = (originalName: string, value: string) => {
     return new TextEncoder().encode(name).length <= 255 ? name : undefined;
 };
 
-// Keep queue identity and collection assignments tied to the original file.
 export const fileForUpload = (item: LockerUploadCandidate) =>
     item.uploadName && item.uploadName !== item.file.name
         ? new File([item.file], item.uploadName, {
