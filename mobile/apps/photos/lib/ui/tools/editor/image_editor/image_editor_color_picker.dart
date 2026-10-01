@@ -6,6 +6,7 @@ class ImageEditorColorPicker extends StatefulWidget {
   final ValueChanged<double> onChanged;
   final ValueChanged<double>? onChangeStart;
   final String? semanticLabel;
+  final EdgeInsetsGeometry padding;
 
   const ImageEditorColorPicker({
     super.key,
@@ -13,6 +14,7 @@ class ImageEditorColorPicker extends StatefulWidget {
     required this.onChanged,
     this.onChangeStart,
     this.semanticLabel,
+    this.padding = const EdgeInsets.symmetric(horizontal: 20.0),
   });
 
   @override
@@ -29,7 +31,7 @@ class ColorSliderState extends State<ImageEditorColorPicker> {
   Widget build(BuildContext context) {
     final colors = context.componentColors;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 20.0),
+      padding: widget.padding,
       child: SizedBox(
         height: 40,
         child: Stack(

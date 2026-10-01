@@ -1,1 +1,3 @@
 - Add text to photos with a choice of fonts, colors, backgrounds, and alignment.
+- Select text, stickers, and drawings to duplicate or delete them; edit text and drawings from the selection menu.
+- Remove drag-to-delete for stickers and drawings.
