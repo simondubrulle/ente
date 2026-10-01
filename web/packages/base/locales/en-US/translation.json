@@ -72,6 +72,7 @@
     "upload_cancelling": "Cancelling remaining uploads",
     "upload_done": "{{count, number}} uploaded",
     "upload_skipped": "{{count, number}} skipped",
+    "upload_failed": "{{count, number}} failed",
     "import_library": "Import your library",
     "need_help": "Need help?",
     "provider_not_listed": "Not seeing your provider",
