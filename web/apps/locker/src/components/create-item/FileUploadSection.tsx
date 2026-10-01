@@ -13,7 +13,6 @@ import ScheduleRoundedIcon from "@mui/icons-material/ScheduleRounded";
 import {
     Box,
     ButtonBase,
-    CircularProgress,
     IconButton,
     LinearProgress,
     Stack,
@@ -525,13 +524,6 @@ const UploadItemCard = React.memo(function UploadItemCard({
                         flexShrink: 0,
                     }}
                 >
-                    {isUploading && (
-                        <CircularProgress
-                            size={18}
-                            thickness={4}
-                            sx={{ color: "text.muted" }}
-                        />
-                    )}
                     {isDone && (
                         <Box
                             sx={(theme) => ({
