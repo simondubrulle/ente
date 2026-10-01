@@ -462,17 +462,10 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
     );
     if (index == null) return;
     final file = inheritedData.memories[index].file;
-    final controller = MemoryAudioScope.maybeOf(
-      context,
-      listen: false,
-    )?.controller;
-    if (controller == null) return;
-    unawaited(controller.setViewerActionPaused(_isMusicViewerActionPaused));
-    unawaited(
-      controller.activateMemory(
-        widget.memoryID,
-        currentItemIsVideo: file.fileType == FileType.video,
-      ),
+    MemoryAudioScope.maybeOf(context, listen: false)?.activateMusic(
+      widget.memoryID,
+      currentItemIsVideo: file.fileType == FileType.video,
+      viewerActionPaused: _isMusicViewerActionPaused,
     );
   }
 
@@ -678,13 +671,10 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
   void _pauseViewer() {
     if (!mounted) return;
     _isMusicViewerActionPaused = true;
-    final controller = MemoryAudioScope.maybeOf(
+    MemoryAudioScope.maybeOf(
       context,
       listen: false,
-    )?.controller;
-    if (controller != null) {
-      unawaited(controller.setViewerActionPaused(true));
-    }
+    )?.setMusicViewerActionPaused(true);
     _toggleAnimation(pause: true);
     Bus.instance.fire(PauseVideoEvent());
   }
@@ -694,13 +684,10 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
     _isMusicViewerActionPaused = false;
     Bus.instance.fire(ResumeVideoEvent());
     _toggleAnimation(pause: false);
-    final controller = MemoryAudioScope.maybeOf(
+    MemoryAudioScope.maybeOf(
       context,
       listen: false,
-    )?.controller;
-    if (controller != null) {
-      unawaited(controller.setViewerActionPaused(false));
-    }
+    )?.setMusicViewerActionPaused(false);
   }
 
   @override
@@ -864,9 +851,9 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
                       inheritedData.memories.length,
                     );
                     if (safeIndex == null) return const SizedBox.shrink();
-                    return _MemoryAudioMuteButton(
+                    return MemoryAudioMuteButton(
                       memoryAudio,
-                      isVideo:
+                      mutesVideoAudio:
                           inheritedData.memories[safeIndex].file.fileType ==
                           FileType.video,
                     );
@@ -1087,59 +1074,6 @@ class _MemoryActionButton extends StatelessWidget {
         ),
         onPressed: onPressed,
         icon: icon,
-      ),
-    );
-  }
-}
-
-class _MemoryAudioMuteButton extends StatelessWidget {
-  final MemoryAudioScope memoryAudio;
-  final bool isVideo;
-
-  const _MemoryAudioMuteButton(this.memoryAudio, {required this.isVideo});
-
-  @override
-  Widget build(BuildContext context) {
-    final isMuted = isVideo
-        ? memoryAudio.isVideoMuted
-        : memoryAudio.isMusicMuted;
-    return SizedBox.square(
-      dimension: 48,
-      child: IconButton(
-        tooltip: isMuted
-            ? context.strings.unmuteAudio
-            : context.strings.muteAudio,
-        padding: const EdgeInsets.all(7),
-        style: IconButton.styleFrom(
-          shape: const CircleBorder(),
-          minimumSize: const Size.square(48),
-          maximumSize: const Size.square(48),
-          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-          overlayColor: Colors.transparent,
-        ),
-        onPressed: () => unawaited(
-          isVideo
-              ? memoryAudio.toggleVideoMuted()
-              : memoryAudio.toggleMusicMuted(),
-        ),
-        icon: DecoratedBox(
-          decoration: const BoxDecoration(
-            color: Color(0x66000000),
-            shape: BoxShape.circle,
-          ),
-          child: SizedBox.square(
-            dimension: 34,
-            child: Center(
-              child: HugeIcon(
-                icon: isMuted
-                    ? HugeIcons.strokeRoundedVolumeOff
-                    : HugeIcons.strokeRoundedVolumeHigh,
-                color: Colors.white,
-                size: 18,
-              ),
-            ),
-          ),
-        ),
       ),
     );
   }
