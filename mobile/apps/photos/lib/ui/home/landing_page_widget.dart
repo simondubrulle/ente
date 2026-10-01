@@ -107,9 +107,7 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                                         horizontal: 32,
                                       ),
                                       child: Text(
-                                        pendingTranslation(
-                                          "Organize your photos and videos. Every memory, in one place.",
-                                        ),
+                                        context.strings.onboardingOrganizeDesc,
                                         textAlign: TextAlign.center,
                                         style: TextStyles.body.copyWith(
                                           color: colorScheme.greenLight,
@@ -130,7 +128,7 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                         child: ButtonComponent(
                           variant: ButtonComponentVariant.neutral,
                           density: ButtonComponentDensity.compact,
-                          label: pendingTranslation("Create my account"),
+                          label: context.strings.createMyAccount,
                           onTap: _navigateToSignUpPage,
                           shouldSurfaceExecutionStates: false,
                         ),
@@ -155,7 +153,7 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                               ),
                             ),
                             child: Text(
-                              pendingTranslation("Log in"),
+                              context.strings.logInLabel,
                               style: TextStyles.body.copyWith(
                                 color: Colors.black,
                               ),

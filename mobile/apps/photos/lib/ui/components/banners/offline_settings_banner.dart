@@ -114,8 +114,6 @@ class _OfflineSettingsBannerState extends State<OfflineSettingsBanner> {
                             children: [
                               Text(
                                 l10n.offlineSettingsBannerTitle,
-                                maxLines: 2,
-                                overflow: TextOverflow.ellipsis,
                                 style: TextStyles.large.copyWith(
                                   color: colors.textBase,
                                 ),

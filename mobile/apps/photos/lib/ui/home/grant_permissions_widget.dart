@@ -354,7 +354,7 @@ class _GrantPermissionsWidgetState extends State<GrantPermissionsWidget> {
                         ConstrainedBox(
                           constraints: const BoxConstraints(maxWidth: 297),
                           child: Text(
-                            pendingTranslation("Bring your memories together"),
+                            context.strings.bringMemoriesTogether,
                             textAlign: .center,
                             textScaler: .noScaling,
                             style: TextStyle(
@@ -372,9 +372,7 @@ class _GrantPermissionsWidgetState extends State<GrantPermissionsWidget> {
                         ),
                         const Flexible(child: SizedBox(height: 24)),
                         Text(
-                          pendingTranslation(
-                            "Grant permission to access and organise your photos with face recognition, processed entirely on your device.",
-                          ),
+                          context.strings.localGalleryPermissionDesc,
                           textAlign: TextAlign.center,
                           style: TextStyles.body.copyWith(
                             color: colorScheme.contentLight.withValues(
@@ -411,9 +409,7 @@ class _GrantPermissionsWidgetState extends State<GrantPermissionsWidget> {
     );
 
     return StyledText(
-      text: pendingTranslation(
-        "By continuing, you agree to our <terms>terms of service</terms> and <policy>privacy policy</policy>.",
-      ),
+      text: context.strings.byAgreeing,
       textAlign: TextAlign.center,
       style: textStyle,
       tags: {

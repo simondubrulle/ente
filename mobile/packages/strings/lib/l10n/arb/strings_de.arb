@@ -1,4 +1,8 @@
 {
+  "bringMemoriesTogether": "Bring deine Erinnerungen zusammen",
+  "createMyAccount": "Mein Konto erstellen",
+  "localGalleryPermissionDesc": "Erteile die Berechtigung, auf deine Fotos zuzugreifen und sie mit Gesichtserkennung zu organisieren. Die gesamte Verarbeitung erfolgt auf deinem Gerät.",
+  "onboardingOrganizeDesc": "Organisiere deine Fotos und Videos. Alle Erinnerungen an einem Ort.",
   "wallpaper": "Hintergrundbild",
   "setWallpaper": "Hintergrundbild festlegen",
   "wallpaperHome": "Startbildschirm",
