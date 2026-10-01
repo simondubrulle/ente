@@ -74,10 +74,6 @@ class SettingsSearchRegistry {
             l10n.updateBackupPassword,
             l10n.setBackupFolder,
             l10n.createBackupNow,
-            if (kDebugMode) ...[
-              l10n.clearBackupFolder,
-              l10n.clearBackupPassword,
-            ],
           ],
         ),
       for (final title in [
@@ -103,8 +99,7 @@ class SettingsSearchRegistry {
           l10n.deviceLock,
           l10n.pinLock,
           l10n.password,
-          l10n.autoLock,
-          l10n.hideContent,
+          if (PlatformDetector.isMobile()) ...[l10n.autoLock, l10n.hideContent],
         ],
       ),
       if (Platform.isAndroid ||
