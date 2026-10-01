@@ -101,7 +101,8 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   int i = 0;
   bool _hasMarkedScheduleSeen = false;
   MemoryLaneSchedule? _schedule;
-  bool _isMusicViewerActionPaused = false;
+  bool _isMusicPausedByPointer = false;
+  bool _isMusicPausedByDialog = false;
 
   @override
   void initState() {
@@ -128,18 +129,27 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
     scope.activateMusic(
       "memoryLane_${widget.personId}",
       currentItemIsVideo: false,
-      viewerActionPaused: _isMusicViewerActionPaused,
+      viewerActionPaused: _isMusicPausedByPointer || _isMusicPausedByDialog,
     );
   }
 
-  void _setMusicViewerActionPaused(bool paused) {
-    _isMusicViewerActionPaused = paused;
+  void _setMusicPausedByPointer(bool paused) {
+    _isMusicPausedByPointer = paused;
+    _syncMusicViewerActionPaused();
+  }
+
+  void _setMusicPausedByDialog(bool paused) {
+    _isMusicPausedByDialog = paused;
+    _syncMusicViewerActionPaused();
+  }
+
+  void _syncMusicViewerActionPaused() {
     if (!mounted || !widget.isActive) return;
     MemoryAudioScope.maybeOf(
       context,
       listen: false,
     )?.setMusicViewerActionPaused(
-      _isMusicViewerActionPaused || _entries.isEmpty,
+      _isMusicPausedByPointer || _isMusicPausedByDialog || _entries.isEmpty,
     );
   }
 
@@ -269,7 +279,7 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   void _onPhotoPointerEnd(PointerEvent event) {
     if (event.pointer != _photoPointer) return;
     _photoPointer = null;
-    _setMusicViewerActionPaused(false);
+    _setMusicPausedByPointer(false);
     unawaited(_play(i, fastTransition: true));
   }
 
@@ -628,7 +638,7 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
                           if (_photoPointer != null || !widget.isActive) return;
                           _photoPointer = event.pointer;
                           _pause();
-                          _setMusicViewerActionPaused(true);
+                          _setMusicPausedByPointer(true);
                         },
                         onPointerUp: _onPhotoPointerEnd,
                         onPointerCancel: _onPhotoPointerEnd,
@@ -953,11 +963,11 @@ class _MemoryLanePageV2State extends State<MemoryLanePageV2> {
   Future<void> _runWithViewerPaused(Future<void> Function() action) async {
     final wasPlaying = _playbackToken != null;
     _pause();
-    _setMusicViewerActionPaused(true);
+    _setMusicPausedByDialog(true);
     try {
       await action();
     } finally {
-      _setMusicViewerActionPaused(false);
+      _setMusicPausedByDialog(false);
       if (mounted && wasPlaying && ModalRoute.of(context)?.isCurrent == true) {
         unawaited(_play(i));
       }
