@@ -22,6 +22,7 @@ import {
     MessageQuickReactions,
     MessageReactionPicker,
 } from "components/MessageReactionPicker";
+import { SpaceMessageText } from "components/MessageText";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
 import {
     SpacePostPhotosBadge,
@@ -1383,8 +1384,8 @@ const PostQuotePreview: React.FC<{
     );
 };
 
-const isMessageLongPressIgnoredTarget = (target: EventTarget | null) =>
-    target instanceof Element && Boolean(target.closest("button"));
+const isMessageInteractiveTarget = (target: EventTarget | null) =>
+    target instanceof Element && Boolean(target.closest("a, button"));
 
 const MessageBubble: React.FC<{
     activityPost?: SpaceMessageActivityPost;
@@ -1500,7 +1501,12 @@ const MessageBubble: React.FC<{
     );
 
     const handleContextMenu = (event: React.MouseEvent<HTMLElement>) => {
-        if (isSystemMessage || isUnavailable) return;
+        if (
+            isSystemMessage ||
+            isUnavailable ||
+            isMessageInteractiveTarget(event.target)
+        )
+            return;
         event.preventDefault();
         event.stopPropagation();
         openActions(event.currentTarget, "contextmenu");
@@ -1513,7 +1519,7 @@ const MessageBubble: React.FC<{
             isUnavailable ||
             event.button != 0 ||
             gestureStartRef.current ||
-            isMessageLongPressIgnoredTarget(event.target)
+            isMessageInteractiveTarget(event.target)
         ) {
             cancelGesture();
             return;
@@ -1708,6 +1714,10 @@ const MessageBubble: React.FC<{
                                     event: React.KeyboardEvent<HTMLElement>,
                                 ) => {
                                     if (
+                                        isMessageInteractiveTarget(event.target)
+                                    )
+                                        return;
+                                    if (
                                         event.key == "ContextMenu" ||
                                         (event.shiftKey && event.key == "F10")
                                     ) {
@@ -1786,11 +1796,13 @@ const MessageBubble: React.FC<{
                                         whiteSpace: "pre-wrap",
                                     }}
                                 >
-                                    {isUnavailable
-                                        ? "Message unavailable"
-                                        : isPoke
-                                          ? pokeText
-                                          : message.text}
+                                    {isUnavailable ? (
+                                        "Message unavailable"
+                                    ) : isPoke ? (
+                                        pokeText
+                                    ) : (
+                                        <SpaceMessageText text={message.text} />
+                                    )}
                                 </Box>
                                 {!isUnavailable && message.reaction && (
                                     <Box
