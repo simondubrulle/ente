@@ -78,6 +78,13 @@ impl TextRecognizer {
             .load()
     }
 
+    pub(crate) fn unload(&self) {
+        self.session
+            .lock()
+            .unwrap_or_else(PoisonError::into_inner)
+            .unload();
+    }
+
     pub(crate) fn recognize(
         &self,
         crops: &[&ImageU8],

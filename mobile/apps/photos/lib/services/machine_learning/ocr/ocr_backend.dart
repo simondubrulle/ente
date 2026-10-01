@@ -5,6 +5,8 @@ abstract class OcrBackend {
     Set<OcrModelComponent> components,
   );
 
+  Future<void> unloadModels();
+
   Future<TextDetectionResult> detectText({
     required String imagePath,
     bool includeAllConfidenceScores = false,

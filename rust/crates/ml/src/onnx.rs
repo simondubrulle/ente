@@ -791,6 +791,27 @@ mod tests {
     }
 
     #[test]
+    fn unloading_preloaded_session_clears_deferred_canary() {
+        let temp = tempfile::tempdir().unwrap();
+        let model = temp.path().join("model.onnx");
+        let mut session = OnnxSession::new(
+            model.to_str().unwrap(),
+            "ocr-detection-fixed-v1",
+            ExecutionMode::GpuPreferred,
+        );
+        session.initialize_load_state();
+        session.first_run_canary = Some(first_run_canary(&temp));
+        session.defer_first_run_canary();
+
+        session.unload();
+        session.arm_deferred_first_run_canary().unwrap();
+
+        assert!(!session.has_load_state());
+        assert!(!session.deferred_first_run_canary);
+        assert!(!has_canary(&temp));
+    }
+
+    #[test]
     fn unload_preserves_model_identity_and_armed_canary() {
         let temp = tempfile::tempdir().unwrap();
         let mut session = OnnxSession::new(

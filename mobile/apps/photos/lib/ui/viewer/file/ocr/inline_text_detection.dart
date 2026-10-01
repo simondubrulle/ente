@@ -99,6 +99,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   @override
   void initState() {
     super.initState();
+    _ocrService.onViewerOpened();
     widget.controller._attach(this);
     GestureBinding.instance.pointerRouter.addGlobalRoute(
       _handleGlobalPointerEvent,
@@ -152,6 +153,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
 
   @override
   void dispose() {
+    _ocrService.onViewerClosed();
     _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
     _cancelActiveRegionRequest();
     _regionRetryTimer?.cancel();

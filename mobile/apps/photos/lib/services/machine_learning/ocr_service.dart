@@ -1,5 +1,7 @@
+import "dart:async";
 import "dart:io";
 
+import "package:flutter/widgets.dart";
 import "package:logging/logging.dart";
 import "package:photos/services/machine_learning/ocr/ocr_backend.dart";
 import "package:photos/services/machine_learning/ocr/ocr_models.dart";
@@ -8,7 +10,7 @@ import "package:photos/services/machine_learning/ocr/vision_ocr_backend.dart";
 
 enum OcrBackendKind { rust, vision }
 
-class OcrService {
+class OcrService with WidgetsBindingObserver {
   OcrService({
     required bool isAndroid,
     required bool isIOS,
@@ -22,9 +24,10 @@ class OcrService {
   static final instance = OcrService(
     isAndroid: Platform.isAndroid,
     isIOS: Platform.isIOS,
-  );
+  ).._observeAppLifecycle();
 
   static final _logger = Logger("OcrService");
+  static const _modelUnloadDelay = Duration(seconds: 30);
 
   final bool _isAndroid;
   final bool _isIOS;
@@ -33,6 +36,99 @@ class OcrService {
   late final OcrBackendKind backendKind = _chooseBackendKind();
   late final OcrBackend _backend = _createBackend(backendKind);
   Future<void>? _modelPreload;
+  Future<void>? _modelUnload;
+  Timer? _modelUnloadTimer;
+  int _viewerCount = 0;
+  int _activeOperations = 0;
+  bool _isBackgrounded = false;
+  bool _preloadRequested = false;
+  bool _unloadRequested = false;
+  bool _modelsMayBeLoaded = false;
+
+  void _observeAppLifecycle() {
+    if (!_isAndroid) return;
+    final binding = WidgetsBinding.instance;
+    binding.addObserver(this);
+    final state = binding.lifecycleState;
+    if (state != null) didChangeAppLifecycleState(state);
+  }
+
+  void onViewerOpened() {
+    if (!_isAndroid) return;
+    _viewerCount++;
+    _modelUnloadTimer?.cancel();
+    _modelUnloadTimer = null;
+    _unloadRequested = _isBackgrounded;
+  }
+
+  void onViewerClosed() {
+    if (!_isAndroid) return;
+    _viewerCount--;
+    if (_viewerCount != 0) return;
+    _preloadRequested = false;
+    if (_isBackgrounded) {
+      _requestModelUnload();
+    } else {
+      _modelUnloadTimer = Timer(_modelUnloadDelay, _requestModelUnload);
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (!_isAndroid) return;
+    switch (state) {
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        _isBackgrounded = true;
+        _requestModelUnload();
+      case AppLifecycleState.resumed:
+        _isBackgrounded = false;
+        if (_viewerCount > 0) {
+          _unloadRequested = false;
+          if (_preloadRequested) unawaited(preloadModels());
+        }
+      case AppLifecycleState.inactive:
+        break;
+    }
+  }
+
+  void _requestModelUnload() {
+    _modelUnloadTimer?.cancel();
+    _modelUnloadTimer = null;
+    _unloadRequested = true;
+    _unloadModelsIfIdle();
+  }
+
+  void _unloadModelsIfIdle() {
+    if (!_unloadRequested ||
+        !_modelsMayBeLoaded ||
+        _activeOperations != 0 ||
+        _modelUnload != null) {
+      return;
+    }
+    _modelPreload = null;
+    _modelsMayBeLoaded = false;
+    _modelUnload = Future.sync(_backend.unloadModels)
+        .catchError((Object error, StackTrace stackTrace) {
+          _modelsMayBeLoaded = true;
+          _logger.warning("Could not unload OCR models", error, stackTrace);
+        })
+        .whenComplete(() => _modelUnload = null);
+  }
+
+  Future<T> _withModels<T>(Future<T> Function() operation) async {
+    if (!_isAndroid) return operation();
+    _activeOperations++;
+    try {
+      await _modelUnload;
+      _modelsMayBeLoaded = true;
+      return await operation();
+    } finally {
+      _activeOperations--;
+      _unloadModelsIfIdle();
+    }
+  }
 
   OcrBackendKind _chooseBackendKind() {
     final kind = _preferredBackendKind();
@@ -52,19 +148,29 @@ class OcrService {
 
   Future<void> preloadModels() {
     if (!_isAndroid) return Future.value();
-    return _modelPreload ??= Future.sync(() => prepareModels())
-        .then<void>((_) {})
-        .catchError((Object error, StackTrace stackTrace) {
-          _modelPreload = null;
-          _logger.warning("Could not preload OCR models", error, stackTrace);
-        });
+    _preloadRequested = true;
+    if (_isBackgrounded) return Future.value();
+    final pending = _modelPreload;
+    if (pending != null) return pending;
+    late final Future<void> preload;
+    preload = Future.sync(() => prepareModels()).then<void>((_) {}).catchError((
+      Object error,
+      StackTrace stackTrace,
+    ) {
+      if (identical(_modelPreload, preload)) _modelPreload = null;
+      _logger.warning("Could not preload OCR models", error, stackTrace);
+    });
+    _modelPreload = preload;
+    return preload;
   }
 
   Future<ModelPreparationStatus> prepareModels({
     Set<OcrModelComponent>? components,
   }) {
-    return _backend.prepareModels(
-      components ?? OcrModelComponent.values.toSet(),
+    return _withModels(
+      () => _backend.prepareModels(
+        components ?? OcrModelComponent.values.toSet(),
+      ),
     );
   }
 
@@ -74,10 +180,12 @@ class OcrService {
     String? requestId,
   }) async {
     _ensureImageExists(imagePath);
-    return _backend.detectText(
-      imagePath: imagePath,
-      includeAllConfidenceScores: includeAllConfidenceScores,
-      requestId: requestId,
+    return _withModels(
+      () => _backend.detectText(
+        imagePath: imagePath,
+        includeAllConfidenceScores: includeAllConfidenceScores,
+        requestId: requestId,
+      ),
     );
   }
 
@@ -86,9 +194,11 @@ class OcrService {
     String? requestId,
   }) async {
     _ensureImageExists(imagePath);
-    return _backend.detectTextRegions(
-      imagePath: imagePath,
-      requestId: requestId,
+    return _withModels(
+      () => _backend.detectTextRegions(
+        imagePath: imagePath,
+        requestId: requestId,
+      ),
     );
   }
 

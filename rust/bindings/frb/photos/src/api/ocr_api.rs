@@ -92,6 +92,10 @@ impl OcrEngine {
             .map_err(|error| RustOcrError::from(ocr::OcrError::Ml(error)))
     }
 
+    pub fn unload_models(&self) {
+        self.inner.unload_models();
+    }
+
     pub fn detect_text(
         &self,
         image_path: String,

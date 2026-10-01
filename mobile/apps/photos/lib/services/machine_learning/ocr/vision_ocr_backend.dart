@@ -16,6 +16,9 @@ class VisionOcrBackend implements OcrBackend {
   final VisionTextRecognizer _recognizer;
 
   @override
+  Future<void> unloadModels() async {}
+
+  @override
   Future<ModelPreparationStatus> prepareModels(
     Set<OcrModelComponent> components,
   ) async {

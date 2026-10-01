@@ -20,6 +20,19 @@ class RustOcrBackend implements OcrBackend {
   bool _includesRecognizer = false;
 
   @override
+  Future<void> unloadModels() {
+    return _engineLock.synchronized(() async {
+      final engine = _engine;
+      if (engine == null) return;
+      await engine.unloadModels();
+      _engine = null;
+      _includesRecognizer = false;
+      engine.dispose();
+      _logger.info("Unloaded Rust OCR models");
+    });
+  }
+
+  @override
   Future<ModelPreparationStatus> prepareModels(
     Set<OcrModelComponent> components,
   ) {
