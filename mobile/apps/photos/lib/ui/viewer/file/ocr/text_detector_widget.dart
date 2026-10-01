@@ -333,11 +333,11 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
               _detectedTextBlocks != null &&
               _detectedTextBlocks!.isEmpty &&
               _errorMessage == null)
-            Positioned(
+            const Positioned(
               top: 100,
               left: 0,
               right: 0,
-              child: Center(child: _buildNoTextMessage()),
+              child: Center(child: _NoTextMessage()),
             ),
         ],
       ),
@@ -432,33 +432,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
     );
   }
 
-  Widget _buildNoTextMessage() {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-      decoration: BoxDecoration(
-        color: Colors.black.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(20),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Icon(
-            Icons.search_off,
-            color: textBaseDark.withValues(alpha: 0.7),
-            size: 16,
-          ),
-          const SizedBox(width: 8),
-          Text(
-            context.strings.ocrNoTextDetected,
-            style: getEnteTextTheme(
-              context,
-            ).small.copyWith(color: textBaseDark.withValues(alpha: 0.8)),
-          ),
-        ],
-      ),
-    );
-  }
-
   bool get _hasActiveSelection => _textOverlayController.hasActiveSelection;
 
   bool _selectTextAtPosition(Offset globalPosition) {
@@ -493,5 +466,37 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
 
   void _notifyController() {
     widget.controller._notifyStateChanged();
+  }
+}
+
+class _NoTextMessage extends StatelessWidget {
+  const _NoTextMessage();
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.black.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(
+            Icons.search_off,
+            color: textBaseDark.withValues(alpha: 0.7),
+            size: 16,
+          ),
+          const SizedBox(width: 8),
+          Text(
+            context.strings.ocrNoTextDetected,
+            style: getEnteTextTheme(
+              context,
+            ).small.copyWith(color: textBaseDark.withValues(alpha: 0.8)),
+          ),
+        ],
+      ),
+    );
   }
 }
