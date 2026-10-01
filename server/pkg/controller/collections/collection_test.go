@@ -1,6 +1,7 @@
 package collections
 
 import (
+	"errors"
 	"net/http/httptest"
 	"testing"
 
@@ -96,17 +97,6 @@ func TestGetFileForViewer(t *testing.T) {
 	); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := db.Exec(
-		`UPDATE collection_files SET action_user = $1, action = $2
-		 WHERE collection_id = $3 AND file_id = $4`,
-		ownerID,
-		ente.ActionRemove,
-		collectionID,
-		fileID,
-	); err != nil {
-		t.Fatal(err)
-	}
-
 	controller := &CollectionController{CollectionRepo: collectionRepo}
 	ownerFile, err := controller.GetFile(newBatchShareTestContext(ownerID), collectionID, fileID)
 	if err != nil {
@@ -115,10 +105,6 @@ func TestGetFileForViewer(t *testing.T) {
 	if ownerFile.MagicMetadata == nil || ownerFile.MagicMetadata.Data != "private-file" {
 		t.Fatalf("owner private magic metadata = %+v", ownerFile.MagicMetadata)
 	}
-	if ownerFile.Action == nil || *ownerFile.Action != ente.ActionRemove || ownerFile.ActionUserID == nil || *ownerFile.ActionUserID != ownerID {
-		t.Fatalf("owner action fields = (%v, %v)", ownerFile.Action, ownerFile.ActionUserID)
-	}
-
 	viewerFile, err := controller.GetFile(newBatchShareTestContext(shareeID), collectionID, fileID)
 	if err != nil {
 		t.Fatal(err)
@@ -131,5 +117,31 @@ func TestGetFileForViewer(t *testing.T) {
 	}
 	if viewerFile.EncryptedKey != "collection-file-key" || viewerFile.Metadata.EncryptedData != "encrypted-metadata" {
 		t.Fatalf("viewer shared file fields were not preserved: %+v", viewerFile)
+	}
+
+	for _, action := range []string{ente.ActionRemove, ente.ActionDeleteSuggested} {
+		if _, err := db.Exec(
+			`UPDATE collection_files SET action_user = $1, action = $2
+			 WHERE collection_id = $3 AND file_id = $4`,
+			ownerID,
+			action,
+			collectionID,
+			fileID,
+		); err != nil {
+			t.Fatal(err)
+		}
+
+		ownerFile, err := controller.GetFile(newBatchShareTestContext(ownerID), collectionID, fileID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ownerFile.Action == nil || *ownerFile.Action != action || ownerFile.ActionUserID == nil || *ownerFile.ActionUserID != ownerID {
+			t.Fatalf("owner action fields = (%v, %v)", ownerFile.Action, ownerFile.ActionUserID)
+		}
+
+		viewerFile, err := controller.GetFile(newBatchShareTestContext(shareeID), collectionID, fileID)
+		if viewerFile != nil || !errors.Is(err, &ente.ErrFileNotFoundInAlbum) {
+			t.Fatalf("viewer lookup with action %q = (%+v, %v), want file not found", action, viewerFile, err)
+		}
 	}
 }

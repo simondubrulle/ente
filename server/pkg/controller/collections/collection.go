@@ -119,6 +119,9 @@ func (c *CollectionController) GetFile(ctx *gin.Context, collectionID int64, fil
 		if !slices.Contains(cIDs, collectionID) {
 			return nil, stacktrace.Propagate(ente.ErrPermissionDenied, "")
 		}
+		if file.Action != nil && (*file.Action == ente.ActionRemove || *file.Action == ente.ActionDeleteSuggested) {
+			return nil, stacktrace.Propagate(&ente.ErrFileNotFoundInAlbum, "")
+		}
 		file.MagicMetadata = nil
 		file.Action = nil
 		file.ActionUserID = nil
