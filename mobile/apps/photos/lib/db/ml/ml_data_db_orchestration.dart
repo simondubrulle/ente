@@ -4,11 +4,13 @@ import "dart:typed_data";
 import "package:logging/logging.dart";
 import "package:photos/core/event_bus.dart";
 import "package:photos/db/ml/base.dart";
+import "package:photos/db/ml/clip_vector_db.dart";
+import "package:photos/db/ml/cluster_centroid_vector_db.dart";
+import "package:photos/db/ml/ml_exclusive_operation.dart";
 import "package:photos/db/ml/usearch_clip_vector_db.dart";
 import "package:photos/db/ml/usearch_cluster_centroid_vector_db.dart";
 import "package:photos/events/embedding_updated_event.dart";
 import "package:photos/generated/protos/ente/common/vector.pb.dart";
-import "package:photos/main.dart" show isProcessBg;
 import "package:photos/models/ml/clip.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/machine_learning/compute_controller.dart";
@@ -16,8 +18,6 @@ import "package:photos/services/machine_learning/ml_process_lock.dart";
 import "package:synchronized/synchronized.dart";
 
 mixin MLDataDBOrchestration implements IMLDataDB<int> {
-  static const _kMigrationLockWaitDeadline = Duration(minutes: 2);
-
   int _clusterSummaryMutationVersion = 0;
   Future<void>? _clipVectorDbRecoveryFuture;
   final Lock _clipVectorRecoveryLock = Lock();
@@ -32,9 +32,34 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   UsearchClusterCentroidVectorDB get clusterCentroidVectorDB;
   Logger get logger;
 
+  Future<void> clearNonPetTables();
+  Future<void> clearPetTables();
+  Future<void> resetClusterTables({required bool faces});
+  Future<void> upsertClusterSummaryRows(Map<String, (Uint8List, int)> summary);
+  Future<void> deleteClusterSummaryRow(String clusterID);
+  Future<void> insertClipRows(List<ClipEmbedding> embeddings);
+  Future<void> deleteClipRows(List<int> fileIDs);
+  Future<void> deleteAllClipRows();
+  Future<int> countClusterSummaries();
+  Future<List<(String, Uint8List)>> getClusterSummaryPage({
+    String? beforeClusterID,
+    required int limit,
+  });
+  Future<int> countClipRows();
+  Future<List<(int, Uint8List)>> getClipRowsPage({
+    required int limit,
+    required int offset,
+  });
+  Future<Map<String, int>> getClusterCentroidVectorIdMap(
+    Iterable<String> clusterIDs, {
+    bool createIfMissing,
+  });
+  Future<void> deleteClusterCentroidVectorIdMapping(String clusterID);
+  Future<void> clearClusterCentroidVectorIdMappings();
+
   @override
   Future<void> clearTable() =>
-      _runMlOperationExclusive(MlOperation.clearData, _clearTable);
+      runMlOperationExclusive(MlOperation.clearData, _clearTable);
 
   Future<void> _clearTable() async {
     await clearNonPetTables();
@@ -93,8 +118,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
           );
           continue;
         }
-        if (centroid.length !=
-            UsearchClusterCentroidVectorDB.embeddingDimensions) {
+        if (centroid.length != ClusterCentroidVectorDB.embeddingDimensions) {
           logger.warning(
             "Unexpected centroid embedding size ${centroid.length} for cluster ${entry.key}, skipping vector update",
           );
@@ -174,10 +198,10 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     if (!force && await clusterCentroidVectorDB.isReady()) {
       return;
     }
-    await _runMlOperationExclusive(
+    await runMlOperationExclusive(
       MlOperation.clusterCentroidVectorMigration,
       () => _checkMigrateFillClusterCentroidVectorDB(force: force),
-      waitDeadline: _kMigrationLockWaitDeadline,
+      waitDeadline: kMlMigrationLockWaitDeadline,
     );
   }
 
@@ -377,8 +401,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
             );
             continue;
           }
-          if (centroid.length ==
-              UsearchClusterCentroidVectorDB.embeddingDimensions) {
+          if (centroid.length == ClusterCentroidVectorDB.embeddingDimensions) {
             clusterIDs.add(clusterID);
             clusterIDToCentroid[clusterID] = centroid;
           } else {
@@ -458,10 +481,10 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     if (!force && await clipVectorDB.isReady()) {
       return;
     }
-    await _runMlOperationExclusive(
+    await runMlOperationExclusive(
       MlOperation.clipVectorMigration,
       () => _checkMigrateFillClipVectorDB(force: force),
-      waitDeadline: _kMigrationLockWaitDeadline,
+      waitDeadline: kMlMigrationLockWaitDeadline,
     );
   }
 
@@ -524,7 +547,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
           final List<Float32List> embeddings = [];
           for (final (fileID, embeddingBytes) in results) {
             final embedding = Float32List.view(embeddingBytes.buffer);
-            if (embedding.length == UsearchClipVectorDB.embeddingDimensions) {
+            if (embedding.length == ClipVectorDB.embeddingDimensions) {
               fileIDs.add(fileID);
               embeddings.add(Float32List.view(embeddingBytes.buffer));
             } else if (embedding.isEmpty) {
@@ -596,26 +619,6 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
     });
   }
 
-  Future<void> _runMlOperationExclusive(
-    MlOperation operation,
-    Future<void> Function() body, {
-    Duration? waitDeadline,
-  }) async {
-    final attempt = await MlProcessLock.instance.tryRunExclusive(
-      operation,
-      body,
-      background: isProcessBg,
-      waitForAvailability: true,
-      waitDeadline: waitDeadline,
-    );
-    if (attempt != MlLockAttempt.ran) {
-      throw StateError(
-        "${operation.name} could not acquire the ML process lock "
-        "(${attempt.name})",
-      );
-    }
-  }
-
   Future<void> _withClipVectorWriteRecovery({
     required String operation,
     required Future<void> Function() writeOperation,
@@ -655,8 +658,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
   }
 
   bool _isVectorizableClipEmbedding(ClipEmbedding embedding) {
-    return embedding.embedding.length ==
-        UsearchClipVectorDB.embeddingDimensions;
+    return embedding.embedding.length == ClipVectorDB.embeddingDimensions;
   }
 
   List<ClipEmbedding> _vectorizableClipEmbeddings(
@@ -677,7 +679,7 @@ mixin MLDataDBOrchestration implements IMLDataDB<int> {
 
     for (final (fileID, length) in skippedNonEmpty) {
       logger.warning(
-        "Skipping ClipVectorDB write for fileID $fileID because embedding length $length does not match expected ${UsearchClipVectorDB.embeddingDimensions}",
+        "Skipping ClipVectorDB write for fileID $fileID because embedding length $length does not match expected ${ClipVectorDB.embeddingDimensions}",
       );
     }
 

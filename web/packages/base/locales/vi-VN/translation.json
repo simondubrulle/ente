@@ -72,7 +72,7 @@
     "upload_cancelling": "Hủy bỏ các lượt tải lên còn lại",
     "upload_done": "Đã tải lên {{count, number}}",
     "upload_skipped": "{{count, number}} bị bỏ qua",
-    "upload_failed": "",
+    "upload_failed": "{{count, number}} thất bại",
     "import_library": "Nhập thư viện của bạn",
     "need_help": "Cần trợ giúp?",
     "provider_not_listed": "Không thấy nhà cung cấp của bạn",

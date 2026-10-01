@@ -1,4 +1,20 @@
 {
+  "bringMemoriesTogether": "Bring your memories together",
+  "@bringMemoriesTogether": {
+    "description": "Title on the Local Gallery photo permission screen"
+  },
+  "createMyAccount": "Create my account",
+  "@createMyAccount": {
+    "description": "Create account button on the Photos onboarding screen"
+  },
+  "localGalleryPermissionDesc": "Grant permission to access and organise your photos with face recognition, processed entirely on your device.",
+  "@localGalleryPermissionDesc": {
+    "description": "Photo permission explanation shown during Local Gallery onboarding"
+  },
+  "onboardingOrganizeDesc": "Organize your photos and videos. Every memory, in one place.",
+  "@onboardingOrganizeDesc": {
+    "description": "Description on the Photos onboarding screen"
+  },
   "wallpaper": "Wallpaper",
   "setWallpaper": "Set wallpaper",
   "wallpaperHome": "Home screen",

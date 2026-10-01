@@ -129,8 +129,6 @@ class FlagService {
 
   bool get ocrOverlayEnabled => true;
 
-  bool get rustOcr => internalUser;
-
   bool get enableBgLocalUploadPriority => internalUser;
 
   bool get syncRecoveryDiagnostics => internalUser;
