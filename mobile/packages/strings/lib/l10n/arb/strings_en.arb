@@ -830,6 +830,7 @@
   "credentialNotesHint": "Recovery methods, security questions, ...",
   "criticalUpdateAvailable": "Critical update available",
   "crop": "Crop",
+  "cropAndRotate": "Crop & rotate",
   "curatedMemories": "Curated memories",
   "currentBackupFolder": "Current backup folder:",
   "currentlyRunning": "currently running",
@@ -1956,10 +1957,9 @@
   "imageEditorExposure": "Exposure",
   "imageEditorFade": "Fade",
   "imageEditorHue": "Hue",
-  "imageEditorLuminance": "Luminance",
   "imageEditorSaturation": "Saturation",
-  "imageEditorSharpness": "Sharpness",
   "imageEditorTemperature": "Temperature",
+  "imageEditorTint": "Tint",
   "imageNotAnalyzed": "Image not analyzed",
   "immediate": "Immediate",
   "immediately": "Immediately",
@@ -4292,6 +4292,7 @@
       }
     }
   },
+  "straighten": "Straighten",
   "streamDetails": "Stream details",
   "streetArt": "Street art stories",
   "streetFood": "Street food bites",

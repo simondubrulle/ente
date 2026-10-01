@@ -87,7 +87,7 @@ class ImageEditorMainBottomBarState extends State<ImageEditorMainBottomBar>
                       children: <Widget>[
                         CircularIconButton(
                           hugeIcon: HugeIcons.strokeRoundedCrop,
-                          label: context.strings.crop,
+                          label: context.strings.cropAndRotate,
                           onTap: () {
                             widget.editor.openCropRotateEditor();
                           },

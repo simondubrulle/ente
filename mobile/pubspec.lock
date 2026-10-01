@@ -2144,10 +2144,10 @@ packages:
     dependency: transitive
     description:
       name: pro_image_editor
-      sha256: d0cc9516c52e775de4b02ece96f69dd9c5eebf1f9c3060ecec9a58042038f786
+      sha256: "5db82a3570b8c56e13fe87041ca17aedc1a64e855e1f6c3c698456fd5c6b1082"
       url: "https://pub.dev"
     source: hosted
-    version: "11.23.0"
+    version: "13.3.1"
   process:
     dependency: transitive
     description:
@@ -2377,10 +2377,10 @@ packages:
     dependency: transitive
     description:
       name: shared_preferences
-      sha256: "6e8bf70b7fef813df4e9a36f658ac46d107db4b4cfe1048b477d4e453a8159f5"
+      sha256: "2939ae520c9024cb197fc20dee269cd8cdbf564c8b5746374ec6cacdc5169e64"
       url: "https://pub.dev"
     source: hosted
-    version: "2.5.3"
+    version: "2.5.4"
   shared_preferences_android:
     dependency: transitive
     description:
@@ -3148,5 +3148,5 @@ packages:
     source: hosted
     version: "0.2.4"
 sdks:
-  dart: ">=3.11.0-0 <4.0.0"
+  dart: ">=3.12.0 <4.0.0"
   flutter: ">=3.44.0"

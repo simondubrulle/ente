@@ -38,6 +38,7 @@ import "package:photos/ui/viewer/file/detail_page.dart";
 import "package:photos/utils/dialog_util.dart";
 import "package:photos/utils/image_util.dart";
 import "package:photos/utils/lossless_edits.dart";
+import 'package:pro_image_editor/core/models/styles/sub_editor_page_style.dart';
 import 'package:pro_image_editor/pro_image_editor.dart';
 
 class ImageEditorPage extends StatefulWidget {
@@ -224,6 +225,25 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
     final isLightMode = Theme.of(context).brightness == Brightness.light;
     final colors = context.componentColors;
     final actionTextStyle = TextStyles.large.copyWith(color: colors.textBase);
+    final editorUiOverlayStyle =
+        (isLightMode ? SystemUiOverlayStyle.dark : SystemUiOverlayStyle.light)
+            .copyWith(
+              systemNavigationBarContrastEnforced: true,
+              systemNavigationBarColor: Colors.transparent,
+              systemNavigationBarIconBrightness: isLightMode
+                  ? Brightness.dark
+                  : Brightness.light,
+            );
+    final tuneI18n = I18nTuneEditor(
+      brightness: context.strings.imageEditorBrightness,
+      contrast: context.strings.imageEditorContrast,
+      saturation: context.strings.imageEditorSaturation,
+      exposure: context.strings.imageEditorExposure,
+      hue: context.strings.imageEditorHue,
+      temperature: context.strings.imageEditorTemperature,
+      tint: context.strings.imageEditorTint,
+      fade: context.strings.imageEditorFade,
+    );
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, result) {
@@ -253,19 +273,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
             ),
           ),
           configs: ProImageEditorConfigs(
-            i18n: I18n(
-              tuneEditor: I18nTuneEditor(
-                brightness: context.strings.imageEditorBrightness,
-                contrast: context.strings.imageEditorContrast,
-                saturation: context.strings.imageEditorSaturation,
-                exposure: context.strings.imageEditorExposure,
-                hue: context.strings.imageEditorHue,
-                temperature: context.strings.imageEditorTemperature,
-                sharpness: context.strings.imageEditorSharpness,
-                fade: context.strings.imageEditorFade,
-                luminance: context.strings.imageEditorLuminance,
-              ),
-            ),
+            i18n: I18n(tuneEditor: tuneI18n),
             imageGeneration: const ImageGenerationConfigs(
               jpegQuality: 100,
               enableIsolateGeneration: true,
@@ -297,16 +305,13 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
                 SubEditorMode.emoji,
               ],
               style: MainEditorStyle(
-                uiOverlayStyle: SystemUiOverlayStyle(
-                  systemNavigationBarContrastEnforced: true,
-                  systemNavigationBarColor: Colors.transparent,
-                  statusBarBrightness: isLightMode
-                      ? Brightness.dark
-                      : Brightness.light,
-                  statusBarIconBrightness: isLightMode
-                      ? Brightness.dark
-                      : Brightness.light,
+                subEditorPage: const SubEditorPageStyle(
+                  positionTop: 0,
+                  positionBottom: 0,
+                  positionLeft: 0,
+                  positionRight: 0,
                 ),
+                uiOverlayStyle: editorUiOverlayStyle,
                 appBarBackground: colors.backgroundBase,
                 background: colors.backgroundBase,
                 bottomBarBackground: colors.backgroundBase,
@@ -402,6 +407,7 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               style: PaintEditorStyle(
                 initialColor: const Color(0xFF00FFFF),
                 background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
               ),
               widgets: PaintEditorWidgets(
                 appBar: (editor, rebuildStream) {
@@ -490,9 +496,11 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               ),
             ),
             cropRotateEditor: CropRotateEditorConfigs(
+              rotateDirection: RotateDirection.right,
               style: CropRotateEditorStyle(
                 background: colors.backgroundBase,
                 cropCornerColor: colors.primary,
+                uiOverlayStyle: editorUiOverlayStyle,
               ),
               widgets: CropRotateEditorWidgets(
                 appBar: (editor, rebuildStream) {
@@ -526,7 +534,10 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               fadeInUpDuration: fadeInDuration,
               fadeInUpStaggerDelayDuration: fadeInDelay,
               filterList: filterList,
-              style: FilterEditorStyle(background: colors.backgroundBase),
+              style: FilterEditorStyle(
+                background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
+              ),
               widgets: FilterEditorWidgets(
                 slider:
                     (
@@ -577,7 +588,10 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
               ),
             ),
             tuneEditor: TuneEditorConfigs(
-              style: TuneEditorStyle(background: colors.backgroundBase),
+              style: TuneEditorStyle(
+                background: colors.backgroundBase,
+                uiOverlayStyle: editorUiOverlayStyle,
+              ),
               widgets: TuneEditorWidgets(
                 appBar: (editor, rebuildStream) {
                   return ReactiveAppbar(
