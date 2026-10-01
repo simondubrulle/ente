@@ -324,7 +324,6 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
       button: true,
       label: context.strings.font,
       value: name,
-      excludeSemantics: true,
       onTap: _toggleFontMenu,
       child: GestureDetector(
         onTap: _toggleFontMenu,
@@ -385,6 +384,7 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
   Widget _buildFontMenu(BuildContext context) {
     final colors = context.componentColors;
     final borderSide = BorderSide(color: colors.strokeFaint);
+    final isRtl = Directionality.of(context) == TextDirection.rtl;
     return Stack(
       children: [
         Positioned.fill(
@@ -399,8 +399,10 @@ class _ImageEditorTextBarState extends State<ImageEditorTextBar> {
           child: CompositedTransformFollower(
             link: _fontMenuLink,
             showWhenUnlinked: false,
-            targetAnchor: Alignment.topLeft,
-            followerAnchor: Alignment.bottomLeft,
+            targetAnchor: isRtl ? Alignment.topRight : Alignment.topLeft,
+            followerAnchor: isRtl
+                ? Alignment.bottomRight
+                : Alignment.bottomLeft,
             offset: const Offset(0, -Spacing.sm),
             child: Material(
               color: colors.fillLight,
