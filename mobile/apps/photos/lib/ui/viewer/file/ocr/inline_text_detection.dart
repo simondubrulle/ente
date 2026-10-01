@@ -419,7 +419,7 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   Future<File?> _resolveStillImage(int generation) async {
     final file = widget.file;
     final canUseUploadedCopy = file.isUploaded && !file.isRemoteOnlyFile;
-    File? localFile = await getFile(file);
+    File? localFile = await _ocrService.resolveImageFile(file);
     if (!mounted || generation != _evaluationGeneration) return null;
     if (canUseUploadedCopy && (localFile == null || !localFile.existsSync())) {
       localFile = await getFileFromServer(file);

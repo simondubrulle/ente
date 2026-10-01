@@ -3,6 +3,9 @@ import "dart:io";
 
 import "package:flutter/widgets.dart";
 import "package:logging/logging.dart";
+import "package:photos/models/file/extensions/file_props.dart";
+import "package:photos/models/file/file.dart";
+import "package:photos/module/download/file.dart";
 import "package:photos/services/machine_learning/ocr/ocr_backend.dart";
 import "package:photos/services/machine_learning/ocr/ocr_models.dart";
 import "package:photos/services/machine_learning/ocr/rust_ocr_backend.dart";
@@ -208,6 +211,31 @@ class OcrService with WidgetsBindingObserver {
 
   Future<String> ensureDisplayablePath(String imagePath) {
     return _backend.ensureDisplayablePath(imagePath);
+  }
+
+  Future<File?> resolveImageFile(EnteFile file) async {
+    final localFile = await getFile(file);
+    if (localFile != null && await localFile.exists()) return localFile;
+    if (file.localID == null ||
+        file.isSharedMediaToAppSandbox ||
+        file.isDeviceTrash) {
+      return null;
+    }
+    try {
+      final asset = await file.getAsset;
+      if (asset == null || !await asset.exists) return null;
+      final refreshedFile = await asset.file;
+      return refreshedFile != null && await refreshedFile.exists()
+          ? refreshedFile
+          : null;
+    } catch (error, stackTrace) {
+      _logger.warning(
+        "Could not refresh device image for OCR",
+        error,
+        stackTrace,
+      );
+      return null;
+    }
   }
 
   OcrBackend _createBackend(OcrBackendKind kind) => switch (kind) {
