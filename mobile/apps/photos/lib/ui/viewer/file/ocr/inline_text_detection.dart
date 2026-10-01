@@ -72,7 +72,6 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   String? _localFilePath;
   int _evaluationGeneration = 0;
   int _regionDetectionAttempt = 0;
-  String? _activeRegionRequestId;
   Timer? _regionRetryTimer;
   TextRegionDetectionResult? _detectedRegions;
   bool _overlayActive = false;
@@ -155,7 +154,6 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   void dispose() {
     _ocrService.onViewerClosed();
     _routeAnimation?.removeStatusListener(_onRouteAnimationStatus);
-    _cancelActiveRegionRequest();
     _regionRetryTimer?.cancel();
     _zoomSettleTimer?.cancel();
     _globalLongPressTimer?.cancel();
@@ -169,7 +167,6 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
 
   void _resetState() {
     _evaluationGeneration++;
-    _cancelActiveRegionRequest();
     _regionRetryTimer?.cancel();
     _regionRetryTimer = null;
     _regionDetectionAttempt = 0;
@@ -215,14 +212,6 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
   }
 
   bool get _requiresRegionRouting => widget.file.isLiveOrMotionPhoto;
-
-  void _cancelActiveRegionRequest() {
-    final requestId = _activeRegionRequestId;
-    _activeRegionRequestId = null;
-    if (requestId != null) {
-      unawaited(_ocrService.cancelRequest(requestId).catchError((_) {}));
-    }
-  }
 
   Future<void> _evaluateFile({bool isRetry = false}) async {
     final bool isEligible = _isFileEligible(widget.file);
@@ -292,24 +281,9 @@ class _InlineTextDetectionState extends State<InlineTextDetection> {
         throw StateError("OCR detector is not ready");
       }
 
-      final regionRequestId = "photos-$cacheKey-$generation";
-      _activeRegionRequestId = regionRequestId;
-      late final TextRegionDetectionResult result;
-      try {
-        result = await _ocrService
-            .detectTextRegions(
-              imagePath: localFile.path,
-              requestId: regionRequestId,
-            )
-            .timeout(_regionDetectionTimeout);
-      } on TimeoutException {
-        await _ocrService.cancelRequest(regionRequestId);
-        rethrow;
-      } finally {
-        if (_activeRegionRequestId == regionRequestId) {
-          _activeRegionRequestId = null;
-        }
-      }
+      final result = await _ocrService
+          .detectTextRegions(imagePath: localFile.path)
+          .timeout(_regionDetectionTimeout);
       if (!mounted || generation != _evaluationGeneration) return;
 
       _cacheRegionResult(

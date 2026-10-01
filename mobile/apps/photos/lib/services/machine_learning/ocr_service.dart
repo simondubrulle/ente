@@ -180,33 +180,21 @@ class OcrService with WidgetsBindingObserver {
   Future<TextDetectionResult> detectText({
     required String imagePath,
     bool includeAllConfidenceScores = false,
-    String? requestId,
   }) async {
     _ensureImageExists(imagePath);
     return _withModels(
       () => _backend.detectText(
         imagePath: imagePath,
         includeAllConfidenceScores: includeAllConfidenceScores,
-        requestId: requestId,
       ),
     );
   }
 
   Future<TextRegionDetectionResult> detectTextRegions({
     required String imagePath,
-    String? requestId,
   }) async {
     _ensureImageExists(imagePath);
-    return _withModels(
-      () => _backend.detectTextRegions(
-        imagePath: imagePath,
-        requestId: requestId,
-      ),
-    );
-  }
-
-  Future<void> cancelRequest(String requestId) {
-    return _backend.cancelRequest(requestId);
+    return _withModels(() => _backend.detectTextRegions(imagePath: imagePath));
   }
 
   Future<String> ensureDisplayablePath(String imagePath) {

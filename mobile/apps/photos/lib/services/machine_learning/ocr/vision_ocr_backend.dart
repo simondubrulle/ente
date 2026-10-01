@@ -29,13 +29,11 @@ class VisionOcrBackend implements OcrBackend {
   Future<TextDetectionResult> detectText({
     required String imagePath,
     bool includeAllConfidenceScores = false,
-    String? requestId,
   }) {
     return _translate(() async {
       final result = await _recognizer.detectText(
         imagePath: imagePath,
         includeAllConfidenceScores: includeAllConfidenceScores,
-        requestId: requestId,
       );
       return TextDetectionResult.fromMap(result);
     });
@@ -44,20 +42,11 @@ class VisionOcrBackend implements OcrBackend {
   @override
   Future<TextRegionDetectionResult> detectTextRegions({
     required String imagePath,
-    String? requestId,
   }) {
     return _translate(() async {
-      final result = await _recognizer.detectTextRegions(
-        imagePath: imagePath,
-        requestId: requestId,
-      );
+      final result = await _recognizer.detectTextRegions(imagePath: imagePath);
       return TextRegionDetectionResult.fromMap(result);
     });
-  }
-
-  @override
-  Future<void> cancelRequest(String requestId) {
-    return _translate(() => _recognizer.cancelRequest(requestId));
   }
 
   @override

@@ -93,14 +93,12 @@ class RustOcrBackend implements OcrBackend {
   Future<TextDetectionResult> detectText({
     required String imagePath,
     bool includeAllConfidenceScores = false,
-    String? requestId,
   }) async {
     final engine = await _recognitionEngine();
     try {
       final result = await engine.detectText(
         imagePath: imagePath,
         includeAllConfidenceScores: includeAllConfidenceScores,
-        requestId: requestId,
       );
       return textDetectionResultFromRust(result);
     } on RustOcrError catch (error) {
@@ -115,23 +113,14 @@ class RustOcrBackend implements OcrBackend {
   @override
   Future<TextRegionDetectionResult> detectTextRegions({
     required String imagePath,
-    String? requestId,
   }) async {
     final engine = await _detectionEngine();
     try {
-      final result = await engine.detectTextRegions(
-        imagePath: imagePath,
-        requestId: requestId,
-      );
+      final result = await engine.detectTextRegions(imagePath: imagePath);
       return textRegionDetectionResultFromRust(result);
     } on RustOcrError catch (error) {
       throw _failure(error, imagePath: imagePath, otherCode: "DETECTION_ERROR");
     }
-  }
-
-  @override
-  Future<void> cancelRequest(String requestId) async {
-    _engine?.cancel(requestId: requestId);
   }
 
   @override
@@ -263,10 +252,6 @@ OcrException ocrExceptionFromRustError(
       code: "IMAGE_DECODE_ERROR",
       message: "Failed to decode image: $message",
     ),
-    RustOcrError_Cancelled() => OcrException(
-      code: "CANCELLED",
-      message: message,
-    ),
     RustOcrError_CorruptModel() => OcrException(
       code: "MODEL_PREP_ERROR",
       message: message,
@@ -276,7 +261,6 @@ OcrException ocrExceptionFromRustError(
 }
 
 String _rustOcrErrorMessage(RustOcrError error) => switch (error) {
-  RustOcrError_Cancelled() => "OCR request was cancelled",
   RustOcrError_ImageNotFound(:final message) ||
   RustOcrError_InvalidImage(:final message) ||
   RustOcrError_CorruptModel(:final message) ||
