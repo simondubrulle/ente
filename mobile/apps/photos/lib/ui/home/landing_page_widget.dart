@@ -138,12 +138,12 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                         padding: const EdgeInsets.symmetric(horizontal: 8),
                         child: SizedBox(
                           width: double.infinity,
-                          height: 48,
                           child: TextButton(
                             onPressed: _navigateToSignInPage,
                             style: TextButton.styleFrom(
                               backgroundColor: Colors.white,
                               foregroundColor: Colors.black,
+                              minimumSize: const Size.fromHeight(48),
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 24,
                                 vertical: 14,
@@ -167,11 +167,11 @@ class _LandingPageWidgetState extends State<LandingPageWidget> {
                           padding: const EdgeInsets.symmetric(horizontal: 8),
                           child: SizedBox(
                             width: double.infinity,
-                            height: 48,
                             child: TextButton(
                               onPressed: _navigateWithoutAccount,
                               style: TextButton.styleFrom(
                                 foregroundColor: Colors.white,
+                                minimumSize: const Size.fromHeight(48),
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 24,
                                   vertical: 14,
