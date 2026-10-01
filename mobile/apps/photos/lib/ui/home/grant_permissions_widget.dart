@@ -221,6 +221,8 @@ class _GrantPermissionsWidgetState extends State<GrantPermissionsWidget> {
         } catch (e) {
           _logger.severe("Failed to initialize ML after permission grant", e);
         }
+      } else {
+        await _showPermissionDeniedDialog();
       }
     } catch (e) {
       _logger.severe("Failed to request permission: ${e.toString()}", e);
