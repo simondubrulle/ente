@@ -8,6 +8,7 @@ import 'package:photos/services/machine_learning/ocr/ocr_models.dart'
 import 'package:photos/services/machine_learning/ocr_service.dart';
 import 'package:photos/theme/colors.dart';
 import 'package:photos/theme/ente_theme.dart';
+import 'package:photos/ui/notification/toast.dart';
 import 'package:photos/ui/viewer/file/ocr/text_overlay_widget.dart';
 
 const double _enteSelectionHighlightOpacity = 0.28;
@@ -167,6 +168,8 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         _errorMessage = context.strings.ocrImageDecodeFailedError;
         _isProcessing = false;
       });
+      _notifyController();
+      _showErrorToast();
     }
   }
 
@@ -222,6 +225,7 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         _isProcessing = false;
       });
       _notifyController();
+      _showErrorToast();
       return;
     }
 
@@ -284,7 +288,16 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
           _pendingSelectionPosition = null;
         });
         _notifyController();
+        _showErrorToast();
       }
+    }
+  }
+
+  void _showErrorToast() {
+    if (!mounted || !_userAttemptedInteraction || _isNetworkError) return;
+    final message = _errorMessage;
+    if (message != null) {
+      showToast(context, message, iosLongToastLengthInSec: 3);
     }
   }
 
@@ -309,14 +322,12 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         fit: StackFit.expand,
         children: [
           _buildImageLayer(),
-          if (_errorMessage != null)
+          if (_errorMessage != null && _isNetworkError)
             Positioned(
               bottom: 32,
               left: 16,
               right: 16,
-              child: _isNetworkError
-                  ? _buildNetworkErrorBanner(_errorMessage!)
-                  : _buildErrorBanner(_errorMessage!),
+              child: _buildNetworkErrorBanner(_errorMessage!),
             ),
           if (_userAttemptedInteraction &&
               _detectedTextBlocks != null &&
@@ -362,23 +373,6 @@ class _TextDetectorWidgetState extends State<TextDetectorWidget> {
         isImageZoomed: widget.isImageZoomed,
         uiScale: widget.uiScale,
         uiOffset: widget.uiOffset,
-      ),
-    );
-  }
-
-  Widget _buildErrorBanner(String message) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-      decoration: BoxDecoration(
-        color: getEnteColorScheme(context).warning500.withValues(alpha: 0.9),
-        borderRadius: BorderRadius.circular(16),
-      ),
-      child: Text(
-        message,
-        textAlign: TextAlign.center,
-        style: getEnteTextTheme(
-          context,
-        ).smallBold.copyWith(color: textBaseDark),
       ),
     );
   }
