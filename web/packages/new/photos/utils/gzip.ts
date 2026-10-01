@@ -18,7 +18,6 @@ export const gunzipWithLimit = async (
     data: Uint8Array<ArrayBuffer>,
     maxOutputBytes: number,
 ) => {
-    // Chromium buffers each input chunk's entire output before enqueueing it.
     let inputOffset = 0;
     const compressedStream = new ReadableStream<Uint8Array<ArrayBuffer>>({
         pull(controller) {
