@@ -3026,6 +3026,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                             }
                                         >
                                             <Box
+                                                key={
+                                                    messageContextMenu?.message
+                                                        .id
+                                                }
                                                 onKeyDown={(
                                                     event: React.KeyboardEvent<HTMLElement>,
                                                 ) => {
