@@ -44,7 +44,6 @@ fn through_marker(bytes: &[u8], marker: &[u8], matched: &mut usize) -> usize {
                 return index + 1;
             }
         } else {
-            // Both markers contain '<' only at the start.
             *matched = usize::from(byte == marker[0]);
         }
     }

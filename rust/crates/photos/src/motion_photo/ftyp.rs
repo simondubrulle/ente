@@ -3,7 +3,6 @@ use std::io::{self, Read};
 
 const FTYP_BOX_MIN_SIZE: u32 = 8;
 
-// Reject accidental ftyp matches in image data.
 const FTYP_BOX_MAX_SIZE: u32 = 1024;
 
 const KNOWN_VIDEO_BRANDS: &[[u8; 4]] = &[
@@ -11,12 +10,10 @@ const KNOWN_VIDEO_BRANDS: &[[u8; 4]] = &[
     *b"avc1", *b"mmp4", *b"3gp4", *b"3gp5", *b"3gp6", *b"qt  ", *b"MSNV", *b"dash", *b"f4v ",
 ];
 
-// Phones may embed both preview and full videos.
 pub(super) fn find_largest_ftyp_segment<R: Read>(
     mut reader: R,
     size: usize,
 ) -> io::Result<Option<VideoIndex>> {
-    // Keep partial 12-byte headers across reads.
     const OVERLAP: usize = 11;
     let mut buffer = vec![0; BUFFER_SIZE + OVERLAP];
     let mut carried = 0;
@@ -35,7 +32,6 @@ pub(super) fn find_largest_ftyp_segment<R: Read>(
             }
             let start = offset + position;
             let box_size = u32::from_be_bytes([header[0], header[1], header[2], header[3]]);
-            // An ftyp box at byte 0 belongs to a standalone MP4.
             if start == 0
                 || !(FTYP_BOX_MIN_SIZE..=FTYP_BOX_MAX_SIZE).contains(&box_size)
                 || !KNOWN_VIDEO_BRANDS
