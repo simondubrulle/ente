@@ -250,21 +250,21 @@ packages:
     source: hosted
     version: "0.6.30"
   camera_avfoundation:
-    dependency: transitive
+    dependency: "direct overridden"
     description:
       name: camera_avfoundation
-      sha256: "11b4aee2f5e5e038982e152b4a342c749b414aa27857899d20f4323e94cb5f0b"
+      sha256: "9c028ae8aeef80caa9284888917a4479f776e5724557cb7c72291d13d6666d9f"
       url: "https://pub.dev"
     source: hosted
-    version: "0.9.23+2"
+    version: "0.11.0"
   camera_platform_interface:
     dependency: transitive
     description:
       name: camera_platform_interface
-      sha256: "7ac852d77699acee79f0d438b793feee26721841e50973576419ff5c6d95e9b7"
+      sha256: "9365babc7488a9e93d0ed6dcccd917619fb12ea6f9e601519e1191d4890ee2fe"
       url: "https://pub.dev"
     source: hosted
-    version: "2.13.0"
+    version: "2.14.0"
   camera_web:
     dependency: transitive
     description:
