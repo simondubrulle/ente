@@ -1,10 +1,16 @@
+import "dart:async";
+
+import "package:ente_components/ente_components.dart";
+import "package:ente_strings/ente_strings.dart";
 import 'package:flutter/material.dart';
+import "package:hugeicons/hugeicons.dart";
 import 'package:photos/core/configuration.dart';
 import 'package:photos/core/event_bus.dart';
 import 'package:photos/db/files_db.dart';
 import "package:photos/events/collection_meta_event.dart";
 import 'package:photos/events/collection_updated_event.dart';
 import 'package:photos/events/files_updated_event.dart';
+import "package:photos/models/collection/collection.dart";
 import 'package:photos/models/collection/collection_items.dart';
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file_load_result.dart';
@@ -12,6 +18,7 @@ import 'package:photos/models/gallery_type.dart';
 import "package:photos/models/search/hierarchical/album_filter.dart";
 import "package:photos/models/search/hierarchical/hierarchical_search_filter.dart";
 import 'package:photos/models/selected_files.dart';
+import "package:photos/services/collections_service.dart";
 import 'package:photos/services/ignored_files_service.dart';
 import 'package:photos/ui/viewer/actions/file_selection_overlay_bar.dart';
 import "package:photos/ui/viewer/gallery/empty_album_state.dart";
@@ -24,14 +31,15 @@ import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.da
 import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart";
 import "package:photos/ui/viewer/gallery/state/search_filter_data_provider.dart";
 import "package:photos/ui/viewer/gallery/state/selection_state.dart";
+import "package:photos/utils/magic_util.dart";
 
-class CollectionPage extends StatelessWidget {
+class CollectionPage extends StatefulWidget {
   final CollectionWithThumbnail c;
   final String tagPrefix;
   final bool? hasVerifiedLock;
   final EnteFile? fileToJumpTo;
 
-  CollectionPage(
+  const CollectionPage(
     this.c, {
     this.tagPrefix = "collection",
     this.hasVerifiedLock = false,
@@ -39,11 +47,57 @@ class CollectionPage extends StatelessWidget {
     super.key,
   });
 
+  @override
+  State<CollectionPage> createState() => _CollectionPageState();
+}
+
+class _CollectionPageState extends State<CollectionPage> {
   final _selectedFiles = SelectedFiles();
+  late final _searchFilterDataProvider = SearchFilterDataProvider(
+    initialGalleryFilter: AlbumFilter(
+      collectionID: widget.c.collection.id,
+      albumName: widget.c.collection.displayName,
+      occurrence: kMostRelevantFilter,
+    ),
+  );
+  late final StreamSubscription<CollectionUpdatedEvent>
+  _collectionUpdatedSubscription;
+  EnteFile? _cover;
+
+  @override
+  void initState() {
+    super.initState();
+    final collection = widget.c.collection;
+    _cover =
+        widget.c.thumbnail ??
+        CollectionsService.instance.getCoverCache(collection);
+    _loadCover();
+    _collectionUpdatedSubscription = Bus.instance
+        .on<CollectionUpdatedEvent>()
+        .where((event) => event.collectionID == collection.id)
+        .listen((_) => _loadCover());
+  }
+
+  @override
+  void dispose() {
+    _collectionUpdatedSubscription.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadCover() async {
+    final cover = await CollectionsService.instance.getCover(
+      widget.c.collection,
+    );
+    if (mounted && cover != _cover) {
+      setState(() => _cover = cover);
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
-    if (hasVerifiedLock == false && c.collection.isHidden()) {
+    final c = widget.c;
+    final tagPrefix = widget.tagPrefix;
+    if (widget.hasVerifiedLock == false && c.collection.isHidden()) {
       return const EmptyState();
     }
 
@@ -59,6 +113,7 @@ class CollectionPage extends StatelessWidget {
       c.collection.displayName,
       _selectedFiles,
       collection: c.collection,
+      cover: _cover,
     );
     final gallery = Gallery(
       appBar: appBar,
@@ -102,6 +157,9 @@ class CollectionPage extends StatelessWidget {
       sortAsyncFn: () => c.collection.pubMagicMetadata.asc ?? false,
       addHeaderOrFooterEmptyState: false,
       showSelectAll: true,
+      groupHeaderAction: galleryType.canSort()
+          ? _SortButton(c.collection)
+          : null,
       emptyState: galleryType == GalleryType.ownedCollection
           ? EmptyAlbumState(
               c.collection,
@@ -116,18 +174,12 @@ class CollectionPage extends StatelessWidget {
             )
           : const EmptyState(),
       footer: const SizedBox(height: 212),
-      fileToJumpTo: fileToJumpTo,
+      fileToJumpTo: widget.fileToJumpTo,
     );
 
     return GalleryFilesState(
       child: InheritedSearchFilterDataWrapper(
-        searchFilterDataProvider: SearchFilterDataProvider(
-          initialGalleryFilter: AlbumFilter(
-            collectionID: c.collection.id,
-            albumName: c.collection.displayName,
-            occurrence: kMostRelevantFilter,
-          ),
-        ),
+        searchFilterDataProvider: _searchFilterDataProvider,
         child: GalleryBoundariesProvider(
           child: Scaffold(
             body: SelectionState(
@@ -161,6 +213,37 @@ class CollectionPage extends StatelessWidget {
                 ],
               ),
             ),
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class _SortButton extends StatelessWidget {
+  const _SortButton(this.collection);
+
+  final Collection collection;
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = context.strings;
+    return EntePopupMenuButton<bool>(
+      optionsBuilder: () => [
+        EntePopupMenuOption(value: false, label: strings.sortNewestFirst),
+        EntePopupMenuOption(value: true, label: strings.sortOldestFirst),
+      ],
+      onSelected: (sortByAsc) {
+        unawaited(changeSortOrder(context, collection, sortByAsc));
+      },
+      child: Tooltip(
+        message: strings.sort,
+        child: Padding(
+          padding: const EdgeInsets.all(Spacing.xs),
+          child: HugeIcon(
+            icon: HugeIcons.strokeRoundedArrowUpDown,
+            size: IconSizes.small,
+            color: context.componentColors.textLighter,
           ),
         ),
       ),

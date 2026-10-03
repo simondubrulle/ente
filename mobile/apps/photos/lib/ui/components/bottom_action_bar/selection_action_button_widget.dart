@@ -9,6 +9,7 @@ class SelectionActionButton extends StatelessWidget {
   final VoidCallback? onTap;
   final bool shouldShow;
   final bool isCritical;
+  final Color? color;
 
   const SelectionActionButton({
     required this.labelText,
@@ -17,6 +18,7 @@ class SelectionActionButton extends StatelessWidget {
     this.iconWidget,
     this.shouldShow = true,
     this.isCritical = false,
+    this.color,
     super.key,
   });
 
@@ -35,6 +37,7 @@ class SelectionActionButton extends StatelessWidget {
                 onTap: onTap,
                 iconWidget: iconWidget,
                 isCritical: isCritical,
+                color: color,
               )
             : const SizedBox(height: 60),
       ),
@@ -48,12 +51,14 @@ class _Body extends StatefulWidget {
   final Widget? iconWidget;
   final VoidCallback? onTap;
   final bool isCritical;
+  final Color? color;
   const _Body({
     required this.labelText,
     required this.onTap,
     required this.isCritical,
     this.hugeIcon,
     this.iconWidget,
+    this.color,
   });
 
   @override
@@ -72,7 +77,7 @@ class __BodyState extends State<_Body> {
     final colors = components.ComponentTheme.colorsOf(context);
     final foregroundColor = widget.isCritical
         ? colors.warning
-        : colors.textBase;
+        : widget.color ?? colors.textBase;
     final labelStyle = components.TextStyles.mini.copyWith(
       color: foregroundColor,
     );

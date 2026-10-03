@@ -80,6 +80,7 @@ class Gallery extends StatefulWidget {
   final Duration priorityReloadDebounceTime;
   final GalleryType? galleryType;
   final bool showGallerySettingsCTA;
+  final Widget? groupHeaderAction;
   final GalleryLayoutType? layoutTypeOverride;
 
   // Return null to force a full reload.
@@ -133,6 +134,7 @@ class Gallery extends StatefulWidget {
     this.galleryType,
     this.disableVerticalPaddingForScrollbar = false,
     this.showGallerySettingsCTA = false,
+    this.groupHeaderAction,
     this.layoutTypeOverride,
     this.fileToJumpTo,
     this.newLocalFilesResolver,
@@ -396,6 +398,7 @@ class GalleryState extends State<Gallery> {
       showSelectAll: widget.showSelectAll,
       limitSelectionToOne: widget.limitSelectionToOne,
       showGallerySettingsCTA: widget.showGallerySettingsCTA,
+      groupHeaderAction: widget.groupHeaderAction,
       layoutTypeOverride: widget.layoutTypeOverride,
       justifiedLayoutAvailable: isJustifiedLayoutAvailable,
     );
@@ -1022,6 +1025,7 @@ class GalleryState extends State<Gallery> {
                               scrollbarInUseNotifier: scrollBarInUseNotifier,
                               showGallerySettingsCTA:
                                   widget.showGallerySettingsCTA,
+                              groupHeaderAction: widget.groupHeaderAction,
                             )
                           : const SizedBox.shrink(),
                     ],
@@ -1071,6 +1075,7 @@ class PinnedGroupHeader extends StatefulWidget {
   final bool showSelectAll;
   final ValueNotifier<bool> scrollbarInUseNotifier;
   final bool showGallerySettingsCTA;
+  final Widget? groupHeaderAction;
   static const kScaleDurationInMilliseconds = 200;
   static const kTrailingIconsFadeInDelayMs = 0;
   static const kTrailingIconsFadeInDurationMs = 200;
@@ -1085,6 +1090,7 @@ class PinnedGroupHeader extends StatefulWidget {
     required this.showSelectAll,
     required this.scrollbarInUseNotifier,
     required this.showGallerySettingsCTA,
+    required this.groupHeaderAction,
     super.key,
   });
 
@@ -1301,6 +1307,7 @@ class _PinnedGroupHeaderState extends State<PinnedGroupHeader>
                           showSelectAll: widget.showSelectAll,
                           showGalleryLayoutSettingCTA:
                               widget.showGallerySettingsCTA,
+                          action: widget.groupHeaderAction,
                           showTrailingIcons: !inUse,
                           isPinnedHeader: true,
                           fadeInTrailingIcons: fadeInTrailingIcons,

@@ -11,6 +11,7 @@ import 'package:logging/logging.dart';
 import "package:media_extension/media_extension.dart";
 import 'package:media_extension/media_extension_action_types.dart';
 import "package:photos/core/event_bus.dart";
+import "package:photos/core/page_route_observer.dart";
 import 'package:photos/ente_theme_data.dart';
 import "package:photos/events/memories_changed_event.dart";
 import "package:photos/events/people_changed_event.dart";
@@ -222,6 +223,7 @@ class _EnteAppState extends State<EnteApp> with WidgetsBindingObserver {
         initial: widget.savedThemeMode ?? AdaptiveThemeMode.system,
         builder: (lightTheme, dartTheme) => MaterialApp(
           navigatorKey: AppNavigationService.instance.navigatorKey,
+          navigatorObservers: [pageRouteObserver],
           title: "ente",
           themeMode: ThemeMode.system,
           theme: lightTheme,
