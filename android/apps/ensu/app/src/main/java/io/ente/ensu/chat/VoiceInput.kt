@@ -17,16 +17,17 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import io.ente.ensu.assets.AssetStore
 import io.ente.ensu.bindings.AssetDownloadException
 import io.ente.ensu.bindings.LlmException
-import io.ente.ensu.bindings.Transcriber
 import io.ente.ensu.bindings.TranscriptionException
 import io.ente.ensu.bindings.transcriptionModelAsset
 import io.ente.ensu.bindings.voiceActivityModelAsset
+import io.ente.ensu.llm.LlmProvider
 import io.ente.ensu.llm.ModelMaintenance
+import io.ente.ensu.llm.ModelMemoryUnavailable
 import io.ente.ensu.llm.withMaintenanceSuspended
 import io.ente.ensu.notes.LocalNotesStore
-import io.ente.ensu.toDirectByteBuffer
 import java.io.ByteArrayOutputStream
 import java.io.IOException
+import java.util.UUID
 import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.EmptyCoroutineContext
 import kotlin.coroutines.coroutineContext
@@ -35,10 +36,12 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -82,17 +85,17 @@ internal fun VoiceInputState.statusText(): String? =
 @Composable
 internal fun rememberVoiceTranscriptionController(
     assetStore: AssetStore,
-    transcriber: Transcriber,
+    llmProvider: LlmProvider,
     onTranscript: (String) -> Unit,
     onVoiceInputJob: (Job) -> Unit,
 ): VoiceTranscriptionController {
     val lifecycleOwner = LocalLifecycleOwner.current
     val notes = LocalNotesStore.current
     val controller =
-        remember(transcriber, notes) {
+        remember(llmProvider, notes) {
             VoiceTranscriptionController(
                 assetStore,
-                transcriber,
+                llmProvider,
                 onTranscript,
                 notes,
                 onVoiceInputJob,
@@ -113,7 +116,7 @@ internal fun rememberVoiceTranscriptionController(
 
 internal class VoiceTranscriptionController(
     private val assetStore: AssetStore,
-    private val transcriber: Transcriber,
+    private val llmProvider: LlmProvider,
     private val onTranscript: (String) -> Unit,
     private val maintenance: ModelMaintenance?,
     private val onVoiceInputJob: (Job) -> Unit,
@@ -131,6 +134,7 @@ internal class VoiceTranscriptionController(
     private var preparingRecordingJob: Job? = null
     private var recordingJob: Job? = null
     private var transcriptionPreloadJob: Job? = null
+    private var voiceOwner = UUID.randomUUID().toString()
     private var transientErrorJob: Job? = null
     private var recordedPcm = ByteArrayOutputStream()
     private var recordingSampleRate = preferredSampleRate
@@ -234,6 +238,7 @@ internal class VoiceTranscriptionController(
                     }
                     Log.w(TAG, "Could not record microphone audio", error)
                     withContext(Dispatchers.Main.immediate) {
+                        releaseVoice()
                         if (state is VoiceInputState.Recording) {
                             state = VoiceInputState.Error("Could not record microphone audio.")
                         }
@@ -266,6 +271,7 @@ internal class VoiceTranscriptionController(
 
             val pcm = synchronized(bufferLock) { recordedPcm.toByteArray() }
             if (pcm.size < minimumRecordingBytes(recordingSampleRate)) {
+                releaseVoice()
                 showTransientError("No speech captured.")
                 return@launchVoiceWork
             }
@@ -275,6 +281,7 @@ internal class VoiceTranscriptionController(
     }
 
     fun cancelActiveVoiceInput() {
+        releaseVoice()
         val wasPreparingRecording = preparingRecordingJob?.isActive == true
         preparingRecordingJob?.cancel()
         preparingRecordingJob = null
@@ -294,6 +301,7 @@ internal class VoiceTranscriptionController(
     }
 
     fun dispose() {
+        releaseVoice()
         transientErrorJob?.cancel()
         preparingRecordingJob?.cancel()
         scope.cancel()
@@ -303,17 +311,19 @@ internal class VoiceTranscriptionController(
 
     private suspend fun transcribeRecording(pcm: ByteArray, sampleRate: Int) =
         maintenance.withMaintenanceSuspended {
+            val owner = voiceOwner
             try {
                 ensureTranscriptionModelDownloaded()
-                awaitTranscriptionModelPreload()
+                transcriptionPreloadJob?.join()
+                coroutineContext.ensureActive()
                 val transcript =
                     withContext(Dispatchers.IO) {
                             withContext(Dispatchers.Main.immediate) {
                                 state = VoiceInputState.Transcribing
                             }
-                            transcriber.transcribe(
+                            llmProvider.transcribe(
                                 sampleRate.toUInt(),
-                                pcm.toDirectByteBuffer(),
+                                pcm,
                             )
                         }
                         .trim()
@@ -333,6 +343,8 @@ internal class VoiceTranscriptionController(
             } catch (error: TranscriptionException) {
                 Log.w(TAG, "Voice transcription failed: ${error.message}", error)
                 state = VoiceInputState.Error(transcriptionErrorMessage(error))
+            } catch (error: ModelMemoryUnavailable) {
+                state = VoiceInputState.Error(checkNotNull(error.message))
             } catch (_: AssetDownloadException.Cancelled) {
                 state = VoiceInputState.Idle
             } catch (error: AssetDownloadException) {
@@ -350,32 +362,32 @@ internal class VoiceTranscriptionController(
                     error,
                 )
                 state = VoiceInputState.Error("Could not transcribe voice input.")
+            } finally {
+                withContext(NonCancellable) { llmProvider.releaseVoice(owner) }
             }
         }
 
     private fun preloadTranscriptionModel() {
-        transcriptionPreloadJob?.cancel()
+        voiceOwner = UUID.randomUUID().toString()
+        val owner = voiceOwner
         transcriptionPreloadJob =
             launchVoiceWork(Dispatchers.IO) {
                 try {
-                    maintenance.withMaintenanceSuspended { transcriber.loadModel() }
+                    llmProvider.prewarmVoice(owner)
                 } catch (error: CancellationException) {
                     throw error
                 } catch (error: Throwable) {
-                    Log.w(TAG, "Voice model preload failed", error)
+                    Log.d(TAG, "Voice preload skipped", error)
                 }
             }
     }
 
-    private suspend fun awaitTranscriptionModelPreload() {
-        val preloadJob = transcriptionPreloadJob ?: return
-        try {
-            preloadJob.join()
-        } finally {
-            if (transcriptionPreloadJob == preloadJob) {
-                transcriptionPreloadJob = null
-            }
-        }
+    private fun releaseVoice() {
+        transcriptionPreloadJob?.cancel()
+        transcriptionPreloadJob = null
+        val owner = voiceOwner
+        voiceOwner = UUID.randomUUID().toString()
+        launchVoiceWork(NonCancellable + Dispatchers.IO) { llmProvider.releaseVoice(owner) }
     }
 
     private suspend fun ensureTranscriptionModelDownloaded() {

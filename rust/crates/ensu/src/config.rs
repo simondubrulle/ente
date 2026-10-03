@@ -3,10 +3,11 @@ mod knowledge;
 pub use knowledge::knowledge_dataset;
 pub use knowledge::{AttributionConfig, KnowledgeDatasetConfig, KnowledgeEmbeddingConfig};
 pub(crate) use knowledge::{
-    KNOWLEDGE_ARTIFACT_FILENAMES, KNOWLEDGE_LICENSE_LABEL, KNOWLEDGE_LICENSE_URL,
-    KNOWLEDGE_MANIFEST_FILE, KNOWLEDGE_META_FILE, KNOWLEDGE_OFFSETS_FILE, KNOWLEDGE_VECTORS_FILE,
-    format_knowledge_document_prompt, is_path_safe_component, knowledge_artifact_urls,
-    knowledge_datasets, knowledge_embedding_config, knowledge_index_contract,
+    EMBEDDING_CONTEXT_SIZE, KNOWLEDGE_ARTIFACT_FILENAMES, KNOWLEDGE_LICENSE_LABEL,
+    KNOWLEDGE_LICENSE_URL, KNOWLEDGE_MANIFEST_FILE, KNOWLEDGE_META_FILE, KNOWLEDGE_OFFSETS_FILE,
+    KNOWLEDGE_VECTORS_FILE, format_knowledge_document_prompt, is_path_safe_component,
+    knowledge_artifact_urls, knowledge_datasets, knowledge_embedding_config,
+    knowledge_index_contract,
 };
 
 #[derive(Debug, Clone)]

@@ -1,0 +1,2 @@
+- Keep chat models warm during knowledge and notes retrieval when memory allows, and limit memory used by voice, images, and chat titles on mobile.
+- Warm the selected chat model when Chat opens, retain it across in-app navigation and brief attachment picking, and release idle resources on app backgrounding or memory pressure.

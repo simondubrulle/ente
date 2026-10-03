@@ -65,6 +65,13 @@ impl Context {
         self.context_size
     }
 
+    pub fn release_multimodal(&self) {
+        let _ = self.worker.call(|context| {
+            context.release_multimodal();
+            Ok(())
+        });
+    }
+
     pub fn embed(&self, query: &str) -> Result<Vec<f32>, Error> {
         let query = query.to_owned();
         self.worker.call(move |context| context.embed(&query))
@@ -209,6 +216,11 @@ pub(super) struct LocalContext {
 impl LocalContext {
     pub fn context_size(&self) -> u32 {
         lock(&self.state).cell.borrow_dependent().n_ctx()
+    }
+
+    fn release_multimodal(&self) {
+        let _state = lock(&self.state);
+        *lock(&self.mtmd_context) = None;
     }
 
     fn try_new(
