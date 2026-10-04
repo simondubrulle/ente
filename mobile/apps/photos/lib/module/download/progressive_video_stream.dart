@@ -154,8 +154,7 @@ class ProgressiveVideoStream {
       if (cached == null) {
         _fail(StateError('Video download failed'));
       } else {
-        // The regular pipeline deletes its encrypted input after decryption.
-        commands.send(true);
+        commands.send(cached.path);
       }
     } catch (error) {
       if (_closing == null && !_complete) {
@@ -207,6 +206,10 @@ typedef _Download = ({
 Future<void> _runVideoServer(_Download download) =>
     _VideoServer(download).run();
 
+class _CiphertextGone implements Exception {
+  const _CiphertextGone();
+}
+
 class _VideoServer {
   _VideoServer(this.download);
   final _Download download;
@@ -216,7 +219,7 @@ class _VideoServer {
   HttpServer? _server;
   int _written = 0;
   bool _closed = false;
-  bool _downloadFinished = false;
+  String? _cachedPath;
 
   // Every encrypted Ente record adds 17 authentication bytes.
   int get _length =>
@@ -232,8 +235,8 @@ class _VideoServer {
   Future<void> run() async {
     download.events.send(_commands.sendPort);
     _commands.listen((command) {
-      if (command == true) {
-        _downloadFinished = true;
+      if (command is String) {
+        _cachedPath = command;
         return;
       }
       _closed = true;
@@ -251,26 +254,43 @@ class _VideoServer {
       final path =
           '/${List.generate(24, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}${p.extension(download.output)}';
       _server!.listen((request) => unawaited(_serve(request, path)));
-      await for (final bytes in decryptFileStream(
-        _encryptedBytes(),
-        header: download.header,
-        key: download.key,
-      )) {
-        if (_closed) {
-          return;
+      try {
+        await for (final bytes in decryptFileStream(
+          _encryptedBytes(),
+          header: download.header,
+          key: download.key,
+        )) {
+          if (_closed) {
+            return;
+          }
+          if (_written == 0 && !_hasFrontMovie(bytes)) {
+            download.events.send((unsupported: true));
+            return;
+          }
+          output.writeFromSync(bytes);
+          final first = _written == 0;
+          _written += bytes.length;
+          _wakeReaders();
+          if (first) {
+            download.events.send((
+              source: 'http://127.0.0.1:${_server!.port}$path',
+            ));
+          }
         }
-        if (_written == 0 && !_hasFrontMovie(bytes)) {
+      } on _CiphertextGone {
+        if (_written == 0) {
           download.events.send((unsupported: true));
           return;
         }
-        output.writeFromSync(bytes);
-        final first = _written == 0;
-        _written += bytes.length;
-        _wakeReaders();
-        if (first) {
-          download.events.send((
-            source: 'http://127.0.0.1:${_server!.port}$path',
-          ));
+        // The regular pipeline has authenticated the complete cached file.
+        // Finish the existing output so playback keeps its URL and position.
+        await for (final bytes in File(_cachedPath!).openRead(_written)) {
+          if (_closed) {
+            return;
+          }
+          output.writeFromSync(bytes);
+          _written += bytes.length;
+          _wakeReaders();
         }
       }
       if (_closed) {
@@ -320,8 +340,8 @@ class _VideoServer {
       if (bytes != null) {
         offset += bytes.length;
         yield bytes;
-      } else if (_downloadFinished) {
-        throw const FileSystemException('Encrypted video no longer available');
+      } else if (_cachedPath != null) {
+        throw const _CiphertextGone();
       } else {
         await Future<void>.delayed(const Duration(milliseconds: 100));
       }
