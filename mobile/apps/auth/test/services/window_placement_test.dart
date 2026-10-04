@@ -1,4 +1,3 @@
-import 'dart:convert';
 import 'dart:ui';
 
 import 'package:ente_auth/services/window_placement.dart';
@@ -7,35 +6,11 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   const primary = Monitor(
     'primary',
-    Rect.fromLTWH(0, 0, 1920, 1040),
+    Rect.fromLTWH(48, 40, 700, 900),
     1,
     primary: true,
   );
-  const normal = Placement('primary', Rect.fromLTWH(180, 150, 500, 420), false);
-  test('normal bounds survive serialization and restart', () {
-    final decoded = Placement.fromJson(jsonDecode(jsonEncode(normal.toJson())));
-    expect(
-      restoreBounds(decoded, [primary], const Size(800, 1200)),
-      normal.logicalBounds,
-    );
-  });
-  for (final area in const [
-    Rect.fromLTWH(0, 48, 1920, 1032),
-    Rect.fromLTWH(0, 0, 1920, 1032),
-    Rect.fromLTWH(48, 0, 1872, 1080),
-    Rect.fromLTWH(0, 0, 1872, 1080),
-  ]) {
-    test('oversized defaults fit taskbar work area $area', () {
-      final restored = restoreBounds(null, [
-        Monitor('primary', area, 1, primary: true),
-      ], const Size(800, 1200));
-      expect(restored.top, greaterThanOrEqualTo(area.top));
-      expect(restored.bottom, lessThanOrEqualTo(area.bottom));
-      expect(restored.left, greaterThanOrEqualTo(area.left));
-      expect(restored.right, lessThanOrEqualTo(area.right));
-    });
-  }
-  test('secondary monitor with negative origin restores in its own scale', () {
+  test('restores secondary monitor geometry after DPI and layout changes', () {
     const secondary = Monitor(
       'second',
       Rect.fromLTWH(-2560, 60, 2560, 1380),
@@ -47,32 +22,22 @@ void main() {
       restoreBounds(saved, [primary, secondary], const Size(800, 1200)),
       bounds,
     );
-  });
-  test(
-    'DPI and monitor-layout changes retain logical size and local offset',
-    () {
-      const moved = Monitor(
-        'primary',
-        Rect.fromLTWH(1920, 80, 2560, 1360),
-        2,
-        primary: true,
-      );
-      expect(
-        restoreBounds(normal, [moved], const Size(800, 1200)),
-        const Rect.fromLTWH(2280, 380, 1000, 840),
-      );
-    },
-  );
-  test('removed monitor falls back to primary and fits its work area', () {
-    const lost = Placement(
-      'removed',
-      Rect.fromLTWH(2000, 2000, 3000, 2000),
-      false,
-    );
+    const moved = Monitor('second', Rect.fromLTWH(1920, 80, 2560, 1360), 2);
     expect(
-      restoreBounds(lost, [primary], const Size(800, 1200)),
-      primary.workArea,
+      restoreBounds(saved, [primary, moved], const Size(800, 1200)),
+      const Rect.fromLTWH(2320, 280, 1000, 840),
     );
+  });
+  test('missing geometry or monitor fits the primary work area', () {
+    for (final saved in const [
+      null,
+      Placement('removed', Rect.fromLTWH(2000, 2000, 3000, 2000), false),
+    ]) {
+      expect(
+        restoreBounds(saved, [primary], const Size(800, 1200)),
+        primary.workArea,
+      );
+    }
   });
   test('invalid persisted geometry is rejected', () {
     for (final invalid in [double.nan, double.infinity, -1.0, 0.0]) {

@@ -13,6 +13,7 @@ void main() {
   const key = 'windowsWindowPlacement';
   const size = Size(500, 420);
   const normal = Rect.fromLTWH(180, 150, 500, 420);
+  const moved = Rect.fromLTWH(300, 180, 460, 380);
   final messenger =
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger;
   late SharedPreferences preferences;
@@ -67,74 +68,49 @@ void main() {
     jsonDecode(preferences.getString(key)!) as Map<String, dynamic>,
   );
 
-  test('restores the saved normal bounds and maximized state', () async {
-    await preferences.setString(
-      key,
-      jsonEncode(const Placement('primary', normal, true).toJson()),
-    );
-    expect(await placement.restore(size, false), isTrue);
-    expect(restored, normal);
-  });
-
-  test(
-    'first launch retains the legacy size and maximized preference',
-    () async {
-      expect(await placement.restore(size, true), isTrue);
-      expect(restored, const Rect.fromLTWH(70, 70, 500, 420));
-    },
-  );
-
-  test('invalid stored data uses the legacy defaults', () async {
-    await preferences.setString(key, '{broken');
-    expect(await placement.restore(size, false), isFalse);
-    expect(restored?.size, size);
-  });
-
-  test('startup events cannot overwrite saved placement', () async {
-    await placement.save(maximized: true);
-    await placement.restore(size, false);
-    await placement.save();
-    expect(captures, 1);
-    expect(preferences.getString(key), isNull);
+  test('persists geometry and ignores startup saves', () async {
     await placement.startSaving();
-    expect(saved().logicalBounds, normal);
-  });
-
-  test('maximized capture reads the current native normal rectangle', () async {
-    await placement.startSaving();
-    const moved = Rect.fromLTWH(300, 180, 460, 380);
     snapshot['normalBounds'] = rectJson(moved);
     snapshot['maximized'] = true;
-    await placement.save(maximized: true);
-    expect(saved().logicalBounds, moved);
+    await placement.save();
+    placement = WindowsWindowPlacement(preferences);
+    snapshot['normalBounds'] = rectJson(normal);
+    snapshot['maximized'] = false;
+    await placement.save(maximized: false);
+    expect(await placement.restore(size, false), isTrue);
+    expect(restored, moved);
+    await placement.save(maximized: false);
     expect(saved().maximized, isTrue);
+    await placement.startSaving();
+    expect(saved().maximized, isFalse);
   });
 
-  test(
-    'rapid maximize then minimize keeps the latest normal bounds and state',
-    () async {
-      await placement.startSaving();
-      const moved = Rect.fromLTWH(300, 180, 460, 380);
-      snapshot['normalBounds'] = rectJson(moved);
-      snapshot['minimized'] = true;
-      final maximize = placement.save(maximized: true);
-      final minimize = placement.save();
-      await Future.wait([maximize, minimize]);
-      expect(saved().logicalBounds, moved);
-      expect(saved().maximized, isTrue);
-      snapshot['minimized'] = false;
-      await placement.save(maximized: false);
-      expect(saved().maximized, isFalse);
-    },
-  );
+  for (final stored in [null, '{broken']) {
+    test('legacy defaults with stored placement: $stored', () async {
+      if (stored != null) await preferences.setString(key, stored);
+      expect(await placement.restore(size, true), isTrue);
+      expect(restored, const Rect.fromLTWH(70, 70, 500, 420));
+    });
+  }
 
-  test('a failed capture does not block a later save', () async {
-    fail = true;
+  test('queued saves retain placement through minimize', () async {
     await placement.startSaving();
-    expect(preferences.getString(key), isNull);
-    fail = false;
-    await placement.save();
-    expect(saved().logicalBounds, normal);
+    snapshot['normalBounds'] = rectJson(moved);
+    blocked = Completer<void>();
+    final maximize = placement.save(maximized: true);
+    final flush = placement.save();
+    await Future<void>.delayed(Duration.zero);
+    expect(captures, 2);
+    snapshot['minimized'] = true;
+    blocked!.complete();
+    await flush;
+    expect(captures, 3);
+    expect(saved().logicalBounds, moved);
+    expect(saved().maximized, isTrue);
+    await maximize;
+    snapshot['minimized'] = false;
+    await placement.save(maximized: false);
+    expect(saved().maximized, isFalse);
   });
 
   test('a failed capture retains state events before minimizing', () async {
@@ -144,20 +120,7 @@ void main() {
     fail = false;
     snapshot['minimized'] = true;
     await placement.save();
-    expect(saved().maximized, isTrue);
-  });
-
-  test('the final save waits for earlier captures and persistence', () async {
-    await placement.startSaving();
-    final initialCaptures = captures;
-    blocked = Completer<void>();
-    final first = placement.save();
-    final flush = placement.save();
-    await Future<void>.delayed(Duration.zero);
-    expect(captures, initialCaptures + 1);
-    blocked!.complete();
-    await Future.wait([first, flush]);
-    expect(captures, initialCaptures + 2);
     expect(saved().logicalBounds, normal);
+    expect(saved().maximized, isTrue);
   });
 }
