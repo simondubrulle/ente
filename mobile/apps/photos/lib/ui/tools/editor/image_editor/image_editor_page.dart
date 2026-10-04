@@ -267,7 +267,11 @@ class _ImageEditorPageState extends State<ImageEditorPage> {
             key: editorKey,
             widget.file,
             callbacks: ProImageEditorCallbacks(
-              onCloseEditor: (_) {
+              onCloseEditor: (mode) {
+                if (mode != EditorMode.main) {
+                  Navigator.of(context).pop();
+                  return;
+                }
                 editorKey.currentState?.isPopScopeDisabled = true;
                 _showExitConfirmationDialog(context);
               },
