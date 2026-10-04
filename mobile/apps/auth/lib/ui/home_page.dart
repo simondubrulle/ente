@@ -1772,7 +1772,7 @@ class _HomePageState extends State<HomePage> {
         final list = Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            if (!anyCodeHasError) ...[
+            if (!anyCodeHasError || selectedTag.isNotEmpty || _isTrashOpen) ...[
               SizedBox(
                 height: 48,
                 child: HorizontalScrollArea(
