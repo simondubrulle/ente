@@ -4,16 +4,18 @@ import 'dart:isolate';
 import 'dart:math';
 import 'dart:typed_data';
 
-import 'package:dio/dio.dart';
 import 'package:ente_crypto/ente_crypto.dart';
+import 'package:ente_pure_utils/ente_pure_utils.dart'
+    show isFileSystemPathMissing;
 import 'package:logging/logging.dart';
 import 'package:path/path.dart' as p;
 import 'package:photos/core/cache/video_cache_manager.dart';
 import 'package:photos/core/configuration.dart';
-import 'package:photos/core/network/network.dart';
 import 'package:photos/models/file/file.dart';
 import 'package:photos/models/file/file_type.dart';
-import 'package:photos/module/download/file_url.dart';
+import 'package:photos/module/download/decrypt.dart';
+import 'package:photos/module/download/file.dart';
+import 'package:photos/module/download/manager.dart';
 import 'package:photos/services/collections_service.dart';
 import 'package:photos/utils/file_key.dart';
 
@@ -35,10 +37,10 @@ class ProgressiveVideoStream {
   final _commands = Completer<SendPort>();
   final _exited = Completer<void>();
   final _events = ReceivePort();
-  final _urlRequest = CancelToken();
   Isolate? _worker;
   Directory? _directory;
-  Future<void>? _opening, _closing, _caching;
+  Future<void>? _opening, _closing;
+  bool _complete = false;
   String? url;
 
   /// Remains pending after download completion so player errors can still cause
@@ -54,12 +56,10 @@ class ProgressiveVideoStream {
   Future<void> _start() async {
     final extension = p.extension(file.title ?? '').toLowerCase();
     final size = file.fileSize;
-    final token = Configuration.instance.getToken();
     if (file.fileType != FileType.video ||
         !{'.mp4', '.mov', '.m4v'}.contains(extension) ||
         size == null ||
         size <= 0 ||
-        token == null ||
         file.uploadedFileID == null ||
         file.collectionID == null ||
         file.fileDecryptionHeader == null ||
@@ -74,16 +74,6 @@ class ProgressiveVideoStream {
       }
       return;
     }
-    if (_closing != null) {
-      return;
-    }
-    final signedUrl = await FileUrl.tryGetV3Url(
-      NetworkClient.instance.enteDio,
-      file.uploadedFileID!,
-      FileUrlType.download,
-      headers: {'X-Auth-Token': token},
-      cancelToken: _urlRequest,
-    );
     if (_closing != null) {
       return;
     }
@@ -103,14 +93,8 @@ class ProgressiveVideoStream {
             url = source;
             _source.complete(source);
           }
-        case (received: final int count):
-          if (_closing == null) {
-            onProgress(count, size);
-          }
         case (complete: true):
-          if (_closing == null) {
-            _caching = _cache(output, extension.substring(1));
-          }
+          _complete = true;
         case (unsupported: true):
           if (!_source.isCompleted) {
             _source.complete(null);
@@ -129,14 +113,17 @@ class ProgressiveVideoStream {
     });
     _worker = await Isolate.spawn(_runVideoServer, (
       events: _events.sendPort,
-      source: signedUrl ?? file.downloadUrl,
-      token: signedUrl == null ? token : null,
+      encryptedPath: getEncryptedFilePath(file),
+      resumablePath: DownloadManager.encryptedFilePath(file.uploadedFileID!),
       output: output,
       size: size,
       header: CryptoUtil.base642bin(file.fileDecryptionHeader!),
       key: getFileKey(file),
     ), onExit: _events.sendPort);
-    await _commands.future;
+    final commands = await _commands.future;
+    if (_closing == null) {
+      unawaited(_downloadFile(commands, size));
+    }
   }
 
   void playbackFailed() => _fail(StateError('Progressive player failed'));
@@ -150,23 +137,36 @@ class ProgressiveVideoStream {
     }
   }
 
-  Future<void> _cache(String output, String extension) async {
+  Future<void> _downloadFile(SendPort commands, int size) async {
     try {
-      await VideoCacheManager.instance.putFileStream(
-        file.downloadUrl,
-        File(output).openRead(),
-        fileExtension: extension,
-        maxAge: const Duration(days: 365),
+      final cached = await getFileFromServer(
+        file,
+        throwOnDecryptionFailure: true,
+        progressCallback: (count, _) {
+          if (_closing == null) {
+            onProgress(count, size);
+          }
+        },
       );
+      if (_closing != null || _complete) {
+        return;
+      }
+      if (cached == null) {
+        _fail(StateError('Video download failed'));
+      } else {
+        // The regular pipeline deletes its encrypted input after decryption.
+        commands.send(true);
+      }
     } catch (error) {
-      _logger.warning('Cache failed (${error.runtimeType})');
+      if (_closing == null && !_complete) {
+        _fail(error);
+      }
     }
   }
 
   Future<void> dispose() => _closing ??= _dispose();
 
   Future<void> _dispose() async {
-    _urlRequest.cancel();
     if (!_source.isCompleted) {
       _source.complete(null);
     }
@@ -185,7 +185,6 @@ class ProgressiveVideoStream {
         await _exited.future;
       }
     }
-    await _caching;
     _events.close();
     try {
       await _directory?.delete(recursive: true);
@@ -197,8 +196,8 @@ class ProgressiveVideoStream {
 
 typedef _Download = ({
   SendPort events,
-  String source,
-  String? token,
+  String encryptedPath,
+  String resumablePath,
   String output,
   int size,
   Uint8List header,
@@ -211,13 +210,13 @@ Future<void> _runVideoServer(_Download download) =>
 class _VideoServer {
   _VideoServer(this.download);
   final _Download download;
-  final _client = HttpClient()..connectionTimeout = const Duration(seconds: 30);
   final _commands = ReceivePort();
   final _stopped = Completer<void>();
   Completer<void> _changed = Completer<void>();
   HttpServer? _server;
   int _written = 0;
   bool _closed = false;
+  bool _downloadFinished = false;
 
   // Every encrypted Ente record adds 17 authentication bytes.
   int get _length =>
@@ -232,9 +231,12 @@ class _VideoServer {
 
   Future<void> run() async {
     download.events.send(_commands.sendPort);
-    _commands.listen((_) {
+    _commands.listen((command) {
+      if (command == true) {
+        _downloadFinished = true;
+        return;
+      }
       _closed = true;
-      _client.close(force: true);
       _wakeReaders();
       if (!_stopped.isCompleted) {
         _stopped.complete();
@@ -249,31 +251,8 @@ class _VideoServer {
       final path =
           '/${List.generate(24, (_) => random.nextInt(256).toRadixString(16).padLeft(2, '0')).join()}${p.extension(download.output)}';
       _server!.listen((request) => unawaited(_serve(request, path)));
-      final request = await _client.getUrl(Uri.parse(download.source));
-      // Legacy authenticated endpoints may redirect. Let the existing downloader
-      // handle that path rather than forwarding X-Auth-Token to another host.
-      request.followRedirects = download.token == null;
-      if (download.token != null) {
-        request.headers.set('X-Auth-Token', download.token!);
-      }
-      final response = await request.close().timeout(
-        const Duration(seconds: 30),
-      );
-      if (response.statusCode != HttpStatus.ok ||
-          (response.contentLength >= 0 &&
-              response.contentLength != download.size)) {
-        throw const HttpException('Unexpected encrypted video response');
-      }
-      var received = 0;
-      final input = response.timeout(const Duration(seconds: 30)).map((bytes) {
-        received += bytes.length;
-        if (received > download.size) {
-          throw const FormatException('Video too long');
-        }
-        return bytes;
-      });
       await for (final bytes in decryptFileStream(
-        input,
+        _encryptedBytes(),
         header: download.header,
         key: download.key,
       )) {
@@ -293,12 +272,11 @@ class _VideoServer {
             source: 'http://127.0.0.1:${_server!.port}$path',
           ));
         }
-        download.events.send((received: received));
       }
       if (_closed) {
         return;
       }
-      if (received != download.size || _written != _length) {
+      if (_written != _length) {
         throw const FormatException('Incomplete video');
       }
       output.closeSync();
@@ -312,10 +290,60 @@ class _VideoServer {
     } finally {
       _closed = true;
       _wakeReaders();
-      _client.close(force: true);
       await _server?.close(force: true);
       output?.closeSync();
       _commands.close();
+    }
+  }
+
+  // The downloader owns these files. Reading its prefix also replays saved
+  // chunks when resuming, without moving ciphertext through isolate ports.
+  Stream<List<int>> _encryptedBytes() async* {
+    var offset = 0;
+    while (offset < download.size && !_closed) {
+      final count = min(decryptionChunkSize, download.size - offset);
+      final partOffset = offset % DownloadManager.downloadChunkSize;
+      final partPath = DownloadManager.chunkFilePath(
+        download.resumablePath,
+        offset ~/ DownloadManager.downloadChunkSize + 1,
+      );
+      // Combining appends each part before deleting it. Try the part first,
+      // then the combined file, and finally the non-resumable download path.
+      final bytes =
+          await _readAvailable(
+            partPath,
+            partOffset,
+            min(count, DownloadManager.downloadChunkSize - partOffset),
+          ) ??
+          await _readAvailable(download.resumablePath, offset, count) ??
+          await _readAvailable(download.encryptedPath, offset, count);
+      if (bytes != null) {
+        offset += bytes.length;
+        yield bytes;
+      } else if (_downloadFinished) {
+        throw const FileSystemException('Encrypted video no longer available');
+      } else {
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+      }
+    }
+  }
+
+  Future<Uint8List?> _readAvailable(String path, int offset, int count) async {
+    try {
+      final input = await File(path).open();
+      try {
+        await input.setPosition(offset);
+        final bytes = await input.read(count);
+        return bytes.isEmpty ? null : bytes;
+      } finally {
+        await input.close();
+      }
+    } on FileSystemException catch (error) {
+      // The downloader can remove a part between selecting and opening it.
+      if (!isFileSystemPathMissing(error)) {
+        rethrow;
+      }
+      return null;
     }
   }
 

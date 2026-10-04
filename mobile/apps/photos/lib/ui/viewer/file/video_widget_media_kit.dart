@@ -92,13 +92,6 @@ class _VideoWidgetMediaKitState extends State<VideoWidgetMediaKit>
     );
     super.initState();
     WidgetsBinding.instance.addObserver(this);
-    _playerErrors = player.stream.error.listen((_) {
-      final stream = _progressive;
-      if (stream != null && stream.url != null && stream.url == _loadedSource) {
-        stream.playbackFailed();
-      }
-    });
-
     if (widget.selectedPreview) {
       loadPreview();
     } else {
@@ -352,6 +345,14 @@ class _VideoWidgetMediaKitState extends State<VideoWidgetMediaKit>
         return;
       }
       if (url != null) {
+        _playerErrors ??= player.stream.error.listen((_) {
+          final stream = _progressive;
+          if (stream != null &&
+              stream.url != null &&
+              stream.url == _loadedSource) {
+            stream.playbackFailed();
+          }
+        });
         _setVideoController(url);
         await stream.failure;
         return;
