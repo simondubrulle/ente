@@ -6,8 +6,6 @@ import 'package:ente_crypto/src/crypto.dart';
 import 'package:ffi/ffi.dart';
 import 'package:flutter_sodium/flutter_sodium.dart';
 
-/// Yields authenticated Ente file records. Run on a worker isolate: each pull
-/// synchronously decrypts up to 4 MiB. Cancelling the stream releases its state.
 Stream<Uint8List> decryptFileStream(
   Stream<List<int>> input, {
   required Uint8List header,

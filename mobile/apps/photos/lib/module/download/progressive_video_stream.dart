@@ -19,8 +19,6 @@ import 'package:photos/module/download/manager.dart';
 import 'package:photos/services/collections_service.dart';
 import 'package:photos/utils/file_key.dart';
 
-/// One playback attempt. The caller owns disposal, including when open returns
-/// null. A null source means the existing full-download path should be used.
 class ProgressiveVideoStream {
   static final _logger = Logger('ProgressiveVideo');
 
@@ -43,8 +41,6 @@ class ProgressiveVideoStream {
   bool _complete = false;
   String? url;
 
-  /// Remains pending after download completion so player errors can still cause
-  /// fallback. Disposal completes it normally; download/player errors reject it.
   Future<void> get failure => _failure.future;
 
   Future<String?> open() async {
@@ -221,7 +217,6 @@ class _VideoServer {
   bool _closed = false;
   String? _cachedPath;
 
-  // Every encrypted Ente record adds 17 authentication bytes.
   int get _length =>
       download.size -
       ((download.size + decryptionChunkSize - 1) ~/ decryptionChunkSize) *
@@ -282,8 +277,6 @@ class _VideoServer {
           download.events.send((unsupported: true));
           return;
         }
-        // The regular pipeline has authenticated the complete cached file.
-        // Finish the existing output so playback keeps its URL and position.
         await for (final bytes in File(_cachedPath!).openRead(_written)) {
           if (_closed) {
             return;
@@ -316,8 +309,6 @@ class _VideoServer {
     }
   }
 
-  // The downloader owns these files. Reading its prefix also replays saved
-  // chunks when resuming, without moving ciphertext through isolate ports.
   Stream<List<int>> _encryptedBytes() async* {
     var offset = 0;
     while (offset < download.size && !_closed) {
@@ -327,8 +318,6 @@ class _VideoServer {
         download.resumablePath,
         offset ~/ DownloadManager.downloadChunkSize + 1,
       );
-      // Combining appends each part before deleting it. Try the part first,
-      // then the combined file, and finally the non-resumable download path.
       final bytes =
           await _readAvailable(
             partPath,
@@ -359,7 +348,6 @@ class _VideoServer {
         await input.close();
       }
     } on FileSystemException catch (error) {
-      // The downloader can remove a part between selecting and opening it.
       if (!isFileSystemPathMissing(error)) {
         rethrow;
       }
@@ -381,7 +369,6 @@ class _VideoServer {
       final header = request.method == 'GET'
           ? request.headers.value('Range')
           : null;
-      // Ignore unsupported range syntax (including multiple ranges) with a 200.
       final range = header == null
           ? null
           : RegExp(r'^bytes=(\d*)-(\d*)$').firstMatch(header);
@@ -433,7 +420,6 @@ class _VideoServer {
         }
       }
     } catch (_) {
-      // The player closes range requests when seeking or switching sources.
     } finally {
       try {
         await response.close();
@@ -442,8 +428,6 @@ class _VideoServer {
   }
 }
 
-// Keep all metadata in the first record: the native plugin reads it synchronously.
-// A moov box after mdat, or one extending beyond this record, uses full download.
 bool _hasFrontMovie(Uint8List bytes) {
   final data = ByteData.sublistView(bytes);
   var offset = 0;
@@ -462,10 +446,10 @@ bool _hasFrontMovie(Uint8List bytes) {
       return false;
     }
     if (type == 0x6d6f6f76) {
-      return true; // moov
+      return true;
     }
     if (type == 0x6d646174) {
-      return false; // mdat
+      return false;
     }
     offset += size;
   }

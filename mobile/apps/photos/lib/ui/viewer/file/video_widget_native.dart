@@ -748,7 +748,6 @@ class _VideoWidgetNativeState extends State<VideoWidgetNative>
   }
 
   void _loadNetworkVideo(bool update) {
-    // The native view needs metadata before its asynchronous player is ready.
     if (flagService.progressiveOriginalVideoPlayback &&
         widget.file.hasDimensions &&
         (widget.file.duration ?? 0) > 0) {
@@ -794,7 +793,6 @@ class _VideoWidgetNativeState extends State<VideoWidgetNative>
       return;
     }
     if (Platform.isIOS && stream.url != null) {
-      // iOS reports readiness on AVPlayer, not each replacement item.
       _debouncer.cancelDebounceTimer();
       unawaited(_subscription?.cancel());
       _subscription = null;
