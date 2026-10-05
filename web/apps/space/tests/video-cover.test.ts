@@ -63,7 +63,105 @@ beforeEach(() => {
     });
     vi.stubGlobal("document", { createElement });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+    vi.useRealTimers();
+});
+
+const nativeVideo = () => {
+    vi.stubGlobal("navigator", {
+        userAgent:
+            "Mozilla/5.0 (Android 16) Chrome/140.0.0.0 Mobile Safari/537.36",
+    });
+    vi.stubGlobal("window", { setTimeout, clearTimeout });
+    let frameReady!: VideoFrameRequestCallback;
+    const video = Object.assign(new EventTarget(), {
+        duration: 3.45,
+        videoWidth: 540,
+        videoHeight: 960,
+        currentTime: 0,
+        pause: vi.fn(),
+        removeAttribute: vi.fn(),
+        load: vi.fn(),
+        requestVideoFrameCallback: vi.fn(
+            (callback: VideoFrameRequestCallback) => {
+                frameReady = callback;
+                return 7;
+            },
+        ),
+        cancelVideoFrameCallback: vi.fn(),
+        presentFrame: () => {
+            alpha = 255;
+            frameReady(0, {} as VideoFrameCallbackMetadata);
+        },
+    });
+    createElement.mockImplementationOnce(() => video);
+    return video;
+};
+
+test("cellular metadata preload does not draw an empty cover before the first frame is decoded", async () => {
+    const video = nativeVideo();
+    const revoke = vi.spyOn(URL, "revokeObjectURL");
+    alpha = 0;
+    const pending = spaceVideoCover(new Blob(["video"]), 0);
+    const settled = vi.fn();
+    void pending.then(settled, settled);
+    video.dispatchEvent(new Event("loadeddata"));
+    await vi.waitFor(() =>
+        expect(video.requestVideoFrameCallback).toHaveBeenCalledOnce(),
+    );
+    expect(settled).not.toHaveBeenCalled();
+    expect(createElement).not.toHaveBeenCalledWith("canvas");
+    video.presentFrame();
+    await expect(pending).resolves.toMatchObject({ width: 540, height: 960 });
+    expect(mocks.frames).not.toHaveBeenCalled();
+    expect(video.pause).toHaveBeenCalledOnce();
+    expect(revoke).toHaveBeenCalledOnce();
+});
+
+test("registers the first-frame callback before loading a video on Wi-Fi", async () => {
+    const video = nativeVideo();
+    video.load.mockImplementationOnce(() => {
+        expect(video.requestVideoFrameCallback).toHaveBeenCalledOnce();
+        video.presentFrame();
+        video.dispatchEvent(new Event("loadeddata"));
+    });
+    await expect(
+        spaceVideoCover(new Blob(["video"]), 0),
+    ).resolves.toBeDefined();
+});
+
+test.each(["abort", "error", "timeout"])(
+    "releases a pending frame callback and local video URL on %s",
+    async (reason) => {
+        vi.useFakeTimers();
+        const video = nativeVideo();
+        const revoke = vi.spyOn(URL, "revokeObjectURL");
+        const controller = new AbortController();
+        const pending = spaceVideoCover(
+            new Blob(["video"]),
+            0,
+            controller.signal,
+        );
+        const rejected = expect(pending).rejects.toThrow(
+            reason == "abort"
+                ? "Canceled"
+                : reason == "error"
+                  ? "can't preview"
+                  : "too long to load",
+        );
+        if (reason == "abort") controller.abort();
+        else if (reason == "error") video.dispatchEvent(new Event("error"));
+        else await vi.advanceTimersByTimeAsync(30_000);
+        await rejected;
+        expect(video.cancelVideoFrameCallback).toHaveBeenCalledWith(7);
+        expect(video.pause).toHaveBeenCalledOnce();
+        expect(revoke).toHaveBeenCalledOnce();
+        expect(createElement).not.toHaveBeenCalledWith("canvas");
+        expect(vi.getTimerCount()).toBe(0);
+    },
+);
 
 test.each([
     [
