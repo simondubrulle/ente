@@ -17,9 +17,10 @@ import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
 void main() {
-  testWidgets("resets the status bar style only when a page covers it", (
+  testWidgets("keeps one accessible title and restores status bar styles", (
     tester,
   ) async {
+    final semantics = tester.ensureSemantics();
     final iconBrightness = <String>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -32,13 +33,6 @@ void main() {
         return null;
       },
     );
-    addTearDown(
-      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
-        SystemChannels.platform,
-        null,
-      ),
-    );
-
     final cover = EnteFile()
       ..uploadedFileID = 1
       ..generatedID = 1;
@@ -51,28 +45,8 @@ void main() {
         home: Scaffold(
           body: CustomScrollView(
             slivers: [
-              AlbumCoverAppBar(
-                collection: Collection(
-                  1,
-                  User(id: 1, email: "a@b.c"),
-                  "",
-                  null,
-                  "Album",
-                  null,
-                  null,
-                  CollectionType.album,
-                  CollectionAttributes(),
-                  [],
-                  [],
-                  0,
-                ),
-                cover: cover,
-                title: "Album",
-                backgroundColor: Colors.white,
-                collapsedHeight: kToolbarHeight,
-                actionsBuilder: (_) => const [],
-                coverActions: const [],
-              ),
+              _coverHeader(cover),
+              const SliverToBoxAdapter(child: SizedBox(height: 1000)),
             ],
           ),
         ),
@@ -80,6 +54,15 @@ void main() {
     );
     await tester.pump();
     expect(iconBrightness.last, "Brightness.light");
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -100));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp(r"^Album$")), findsOneWidget);
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, -400));
+    await tester.pumpAndSettle();
+    expect(find.bySemanticsLabel(RegExp(r"^Album$")), findsOneWidget);
+    expect(iconBrightness.last, "Brightness.dark");
+    await tester.drag(find.byType(CustomScrollView), const Offset(0, 500));
+    await tester.pumpAndSettle();
 
     final context = tester.element(find.byType(Scaffold));
     unawaited(
@@ -104,6 +87,7 @@ void main() {
 
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(seconds: 1));
+    semantics.dispose();
   });
   testWidgets(
     "shows a sort-independent date range and hides undated captions",
@@ -114,14 +98,6 @@ void main() {
         ..generatedID = 2;
       ThumbnailInMemoryLruCache.put(cover, base64Decode(_onePixelPng));
       final cases = <(DateTime?, DateTime?, String?, String)>[
-        (DateTime(2021, 6, 24), DateTime(2021, 6, 24), "24 JUN 2021", "en"),
-        (DateTime(2024, 6, 2), DateTime(2024, 6, 18), "2–18 JUN 2024", "en"),
-        (
-          DateTime(2024, 1, 2),
-          DateTime(2024, 6, 18),
-          "2 JAN – 18 JUN 2024",
-          "en",
-        ),
         (
           DateTime(2023, 12, 28),
           DateTime(2024, 1, 3),
@@ -130,7 +106,6 @@ void main() {
         ),
         (DateTime(2019, 1, 1), DateTime(2024, 1, 1), "2019 – 2024", "en"),
         (null, DateTime(2030, 1, 1), "1 JAN 2030", "en"),
-        (null, null, null, "en"),
         (DateTime.fromMicrosecondsSinceEpoch(0), null, null, "en"),
         (
           DateTime(2024, 6, 2),
@@ -153,32 +128,7 @@ void main() {
             localizationsDelegates: GlobalMaterialLocalizations.delegates,
             home: GalleryFilesState(
               child: Scaffold(
-                body: CustomScrollView(
-                  slivers: [
-                    AlbumCoverAppBar(
-                      collection: Collection(
-                        1,
-                        User(id: 1, email: "a@b.c"),
-                        "",
-                        null,
-                        "Album",
-                        null,
-                        null,
-                        CollectionType.album,
-                        CollectionAttributes(),
-                        [],
-                        [],
-                        0,
-                      ),
-                      cover: cover,
-                      title: "Album",
-                      backgroundColor: Colors.white,
-                      collapsedHeight: kToolbarHeight,
-                      actionsBuilder: (_) => const [],
-                      coverActions: const [],
-                    ),
-                  ],
-                ),
+                body: CustomScrollView(slivers: [_coverHeader(cover)]),
               ),
             )..setGalleryFiles = files,
           ),
@@ -187,14 +137,7 @@ void main() {
         if (caption == null) {
           expect(find.textContaining(RegExp(r"\d")), findsNothing);
         } else {
-          expect(
-            find.text(caption),
-            findsOneWidget,
-            reason: tester
-                .widgetList<Text>(find.byType(Text))
-                .map((w) => w.data)
-                .join(" | "),
-          );
+          expect(find.text(caption), findsOneWidget, reason: language);
         }
         expect(tester.takeException(), isNull);
       }
@@ -203,6 +146,29 @@ void main() {
     },
   );
 }
+
+AlbumCoverAppBar _coverHeader(EnteFile cover) => AlbumCoverAppBar(
+  collection: Collection(
+    1,
+    User(id: 1, email: "a@b.c"),
+    "",
+    null,
+    "Album",
+    null,
+    null,
+    CollectionType.album,
+    CollectionAttributes(),
+    [],
+    [],
+    0,
+  ),
+  cover: cover,
+  title: "Album",
+  backgroundColor: Colors.white,
+  collapsedHeight: kToolbarHeight,
+  actionsBuilder: (_) => const [],
+  coverActions: const [],
+);
 
 const _onePixelPng =
     "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==";

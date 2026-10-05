@@ -771,7 +771,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
                 ),
                 Expanded(
                   child: ExcludeSemantics(
-                    excluding: titleOpacity == 0,
+                    excluding: contentOpacity > 0,
                     child: Opacity(
                       opacity: titleOpacity,
                       child: Text(
