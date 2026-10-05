@@ -1420,7 +1420,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             }
                             shouldLoad={
                                 shouldLoadMedia &&
-                                (Boolean(photo.video) ||
+                                ((shouldPreloadVideo && Boolean(photo.video)) ||
                                     Math.abs(index - photoIndex) <= 1)
                             }
                             shouldPreloadVideo={shouldPreloadVideo}
