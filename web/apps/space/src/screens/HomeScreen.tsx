@@ -824,18 +824,15 @@ const FeedPhoto: React.FC<{
                     }}
                 />
             )}
-            {!isPostUnavailable &&
-                isPhotoReady &&
-                video &&
-                shouldPreloadVideo && (
-                    <SpaceInlinePostVideo
-                        imageUrl={displayImageUrl!}
-                        video={video}
-                        isActive={isActive}
-                        muted={muted}
-                        onLoadVideo={onLoadVideo}
-                    />
-                )}
+            {!isPostUnavailable && video && shouldPreloadVideo && (
+                <SpaceInlinePostVideo
+                    imageUrl={displayImageUrl}
+                    video={video}
+                    isActive={isActive}
+                    muted={muted}
+                    onLoadVideo={onLoadVideo}
+                />
+            )}
             {isPostUnavailable && (
                 <Box
                     sx={{
@@ -897,6 +894,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     );
     const [shouldPreloadVideo, setShouldPreloadVideo] = useState(false);
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
+    const hasVideo = feedPhotos.some((photo) => Boolean(photo.video));
     const activePhoto = feedPhotos[photoIndex]!;
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
     React.useEffect(() => registerFeedPost(carouselRef.current!), []);
@@ -1132,6 +1130,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
 
     React.useEffect(() => {
         if (isPostUnavailable) return;
+        if (shouldLoadMedia) return;
         const element = rootRef.current;
         if (!element) return;
         if (
@@ -1139,21 +1138,45 @@ const FeedItem: React.FC<FeedItemProps> = ({
             !("IntersectionObserver" in window)
         ) {
             setShouldLoadMedia(true);
-            setShouldPreloadVideo(true);
             return;
         }
 
         const observer = new IntersectionObserver(
             (entries) => {
-                const isNearby = entries.some((entry) => entry.isIntersecting);
-                setShouldPreloadVideo(isNearby);
-                if (isNearby) setShouldLoadMedia(true);
+                if (entries.some((entry) => entry.isIntersecting)) {
+                    setShouldLoadMedia(true);
+                    observer.disconnect();
+                }
             },
             { rootMargin: feedMediaLoadRootMargin },
         );
         observer.observe(element);
         return () => observer.disconnect();
-    }, [isPostUnavailable]);
+    }, [isPostUnavailable, shouldLoadMedia]);
+
+    React.useEffect(() => {
+        if (!hasVideo || isPostUnavailable) return;
+        const element = rootRef.current!;
+        let observer: IntersectionObserver | undefined;
+        const observe = () => {
+            observer?.disconnect();
+            observer = new IntersectionObserver(
+                (entries) => {
+                    setShouldPreloadVideo(
+                        entries.some((entry) => entry.isIntersecting),
+                    );
+                },
+                { rootMargin: `640px 0px ${window.innerHeight * 3}px 0px` },
+            );
+            observer.observe(element);
+        };
+        observe();
+        window.addEventListener("resize", observe);
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener("resize", observe);
+        };
+    }, [hasVideo, isPostUnavailable]);
 
     React.useEffect(() => {
         if (isPostUnavailable) return;
@@ -1419,8 +1442,8 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     : undefined
                             }
                             shouldLoad={
-                                shouldLoadMedia &&
-                                ((shouldPreloadVideo && Boolean(photo.video)) ||
+                                (shouldPreloadVideo && Boolean(photo.video)) ||
+                                (shouldLoadMedia &&
                                     Math.abs(index - photoIndex) <= 1)
                             }
                             shouldPreloadVideo={shouldPreloadVideo}

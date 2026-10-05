@@ -78,10 +78,13 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-const create = (inline = true) => {
+const create = (
+    inline = true,
+    imageUrl: string | undefined = "blob:poster",
+) => {
     const content = createSpaceVideoContent(
         {
-            imageUrl: "blob:poster",
+            imageUrl,
             video: {
                 asset: { objectKey: "video" } as SpacePostAsset,
                 durationMs: 1000,
@@ -113,6 +116,15 @@ test("background preload keeps the poster controls hidden and does not play", as
     expect(content.button.getAttribute("aria-hidden")).toBe("true");
     expect(content.loading.getAttribute("aria-hidden")).toBe("true");
     expect(content.element.getAttribute("aria-busy")).toBeNull();
+});
+
+test("a video can download and play before its cover image is available", async () => {
+    const content = create(true, "");
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(content.video.paused).toBe(false);
+    expect(content.video.getAttribute("poster")).toBeNull();
 });
 
 test("autoplay joins an in-flight preload without downloading the video again", async () => {

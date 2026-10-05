@@ -3,7 +3,7 @@ import { logToDisk } from "ente-base/log-web";
 import type { SpacePostAssetURLLoader } from "services/space";
 
 export const createSpaceVideoContent = (
-    item: Pick<SpaceViewerPhoto, "imageUrl" | "video">,
+    item: Pick<SpaceViewerPhoto, "video"> & { imageUrl?: string },
     load?: SpacePostAssetURLLoader,
     {
         inline = false,
@@ -23,7 +23,7 @@ export const createSpaceVideoContent = (
     const video = document.createElement("video");
     video.playsInline = true;
     video.preload = "none";
-    video.poster = item.imageUrl;
+    if (item.imageUrl) video.poster = item.imageUrl;
     video.muted = inline || (media.muted ?? false);
     video.loop = inline;
     video.tabIndex = 0;
