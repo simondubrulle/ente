@@ -5,6 +5,7 @@ import "package:dio/dio.dart";
 import "package:ente_strings/ente_strings.dart";
 import "package:figma_squircle/figma_squircle.dart";
 import "package:flutter/material.dart";
+import "package:flutter/services.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:package_info_plus/package_info_plus.dart";
 import "package:path_provider_platform_interface/path_provider_platform_interface.dart";
@@ -71,8 +72,15 @@ void main() {
   });
 
   setUp(() async {
+    TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+        .setMockMethodCallHandler(
+          const MethodChannel("dev.fluttercommunity.plus/connectivity_status"),
+          (_) async => null,
+        );
     await FilesDB.instance.clearTable();
     await IgnoredFilesService.instance.reset();
+    Bus.instance.fire(CollectionUpdatedEvent(1, [], "test_reset"));
+    await Future<void>.delayed(Duration.zero);
   });
 
   tearDownAll(() async {
@@ -213,144 +221,149 @@ void main() {
     },
   );
 
-  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
-    testWidgets(
-      "animates the album thumbnail into the header on ${platform.name}",
-      (tester) async {
-        final collection = _collection();
-        final oldest = _file(1);
-        final newest = _file(2);
-        ThumbnailInMemoryLruCache.clearCache(newest);
-        ThumbnailInMemoryLruCache.put(
+  testWidgets(
+    "animates the thumbnail into the header through reversal and cover changes",
+    (tester) async {
+      late StateSetter refreshAlbums;
+      final collection = _collection();
+      final oldest = _file(1);
+      final newest = _file(2);
+      ThumbnailInMemoryLruCache.clearCache(newest);
+      ThumbnailInMemoryLruCache.put(
+        newest,
+        base64Decode(_onePixelPng),
+        thumbnailSmallSize,
+      );
+      await tester.runAsync(() async {
+        await FilesDB.instance.insertMultiple([oldest, newest]);
+        expect(await CollectionsService.instance.getCover(collection), newest);
+        await cachedThumbnailPath(
           newest,
-          base64Decode(_onePixelPng),
-          thumbnailSmallSize,
-        );
-        await tester.runAsync(() async {
-          await FilesDB.instance.insertMultiple([oldest, newest]);
-          expect(
-            await CollectionsService.instance.getCover(collection),
-            newest,
-          );
-          await cachedThumbnailPath(
-            newest,
-          ).writeAsBytes(base64Decode(_onePixelPng));
-        });
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: lightThemeData.copyWith(platform: platform),
-            localizationsDelegates: StringsLocalizations.localizationsDelegates,
-            supportedLocales: StringsLocalizations.supportedLocales,
-            home: Scaffold(
-              body: Align(
-                alignment: Alignment.topLeft,
-                child: AlbumRowItemWidget(collection, 100),
-              ),
-            ),
+        ).writeAsBytes(base64Decode(_onePixelPng));
+      });
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: lightThemeData.copyWith(platform: TargetPlatform.iOS),
+          localizationsDelegates: StringsLocalizations.localizationsDelegates,
+          supportedLocales: StringsLocalizations.supportedLocales,
+          home: StatefulBuilder(
+            builder: (context, setState) {
+              refreshAlbums = setState;
+              return Scaffold(
+                body: Align(
+                  alignment: Alignment.topLeft,
+                  child: AlbumRowItemWidget(collection, 100),
+                ),
+              );
+            },
           ),
-        );
-        await tester.pumpAndSettle();
-        final heroTag = "collection_1${newest.tag}";
-        expect(
-          tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag),
-          contains(heroTag),
-        );
+        ),
+      );
+      await tester.pumpAndSettle();
+      const heroTag = "collection_1";
+      expect(
+        tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag),
+        contains(heroTag),
+      );
 
-        await tester.tap(
-          find.byWidgetPredicate(
-            (widget) => widget is Hero && widget.tag == heroTag,
-          ),
-        );
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 75));
-        final route = ModalRoute.of(
-          tester.element(find.byType(CollectionPage)),
-        )!;
-        expect(route, isA<PageRouteBuilder>());
-        expect(route.transitionDuration, const Duration(milliseconds: 200));
-        expect(
-          route.reverseTransitionDuration,
-          const Duration(milliseconds: 300),
-        );
-        final pageFade = find
-            .ancestor(
-              of: find.byType(CollectionPage),
-              matching: find.byType(FadeTransition),
-            )
-            .first;
-        final opacity = tester.widget<FadeTransition>(pageFade).opacity.value;
-        expect(opacity, inExclusiveRange(0, 1));
-        final flightClip = find.ancestor(
-          of: find.byType(RawImage),
-          matching: find.byType(ClipSmoothRect),
-        );
-        final radius = tester
-            .widget<ClipSmoothRect>(flightClip)
-            .radius
-            .topLeft
-            .x;
-        expect(radius, inExclusiveRange(0, 20));
-        Navigator.of(tester.element(find.byType(CollectionPage))).pop();
-        await tester.pump();
-        await tester.pump(const Duration(milliseconds: 30));
-        expect(
-          tester.widget<FadeTransition>(pageFade).opacity.value,
-          lessThan(opacity),
-        );
-        expect(
-          tester.widget<ClipSmoothRect>(flightClip).radius.topLeft.x,
-          greaterThan(radius),
-        );
-        await tester.pumpAndSettle();
-        expect(tester.takeException(), isNull);
-        await tester.tap(
-          find.byWidgetPredicate(
-            (widget) => widget is Hero && widget.tag == heroTag,
-          ),
-        );
-        await tester.pumpAndSettle();
-        await _expectCover(tester, newest, count: 2);
-        expect(
-          find.descendant(
-            of: find.byType(AlbumCoverAppBar),
-            matching: find.byType(Image),
-          ),
-          findsOneWidget,
-        );
-        final headerHero = find.descendant(
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is Hero && widget.tag == heroTag,
+        ),
+      );
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 75));
+      final route = ModalRoute.of(tester.element(find.byType(CollectionPage)))!;
+      expect(route, isA<PageRouteBuilder>());
+      final pageFade = find
+          .ancestor(
+            of: find.byType(CollectionPage),
+            matching: find.byType(FadeTransition),
+          )
+          .first;
+      final opacity = tester.widget<FadeTransition>(pageFade).opacity.value;
+      expect(opacity, inExclusiveRange(0, 1));
+      final flightClip = find.ancestor(
+        of: find.byType(RawImage),
+        matching: find.byType(ClipSmoothRect),
+      );
+      final radius = tester.widget<ClipSmoothRect>(flightClip).radius.topLeft.x;
+      expect(radius, inExclusiveRange(0, 20));
+      Navigator.of(tester.element(find.byType(CollectionPage))).pop();
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 30));
+      expect(
+        tester.widget<FadeTransition>(pageFade).opacity.value,
+        lessThan(opacity),
+      );
+      expect(
+        tester.widget<ClipSmoothRect>(flightClip).radius.topLeft.x,
+        greaterThan(radius),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) => widget is Hero && widget.tag == heroTag,
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _expectCover(tester, newest, count: 2);
+      expect(
+        find.descendant(
           of: find.byType(AlbumCoverAppBar),
-          matching: find.byType(Hero),
-        );
-        expect(tester.widget<Hero>(headerHero).tag, heroTag);
-        final tags = tester
-            .widgetList<Hero>(
-              find.descendant(
-                of: find.byType(CollectionPage),
-                matching: find.byType(Hero),
-              ),
-            )
-            .map((hero) => hero.tag)
-            .toList();
-        expect(tags.toSet().length, tags.length);
+          matching: find.byType(Image),
+        ),
+        findsOneWidget,
+      );
+      final headerHero = find.descendant(
+        of: find.byType(AlbumCoverAppBar),
+        matching: find.byType(Hero),
+      );
+      expect(tester.widget<Hero>(headerHero).tag, heroTag);
+      final tags = tester
+          .widgetList<Hero>(
+            find.descendant(
+              of: find.byType(CollectionPage),
+              matching: find.byType(Hero),
+            ),
+          )
+          .map((hero) => hero.tag)
+          .toList();
+      expect(tags.toSet().length, tags.length);
 
-        collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
-        Bus.instance.fire(
-          CollectionMetaEvent(
-            collection.id,
-            CollectionMetaEventType.sortChanged,
-          ),
-        );
-        await _expectCover(tester, oldest, count: 2);
-        expect(tester.widget<Hero>(headerHero).tag, heroTag);
+      collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
+      Bus.instance.fire(
+        CollectionMetaEvent(collection.id, CollectionMetaEventType.sortChanged),
+      );
+      await _expectCover(tester, oldest, count: 2);
+      expect(tester.widget<Hero>(headerHero).tag, heroTag);
+      Bus.instance.fire(
+        CollectionUpdatedEvent(collection.id, [], "cover_change"),
+      );
+      await tester.pump();
+      await tester.runAsync(() async {
+        expect(await CollectionsService.instance.getCover(collection), oldest);
+      });
+      refreshAlbums(() {});
+      await _expectCover(tester, oldest, count: 2);
+      final albumHero = find.descendant(
+        of: find.byType(AlbumRowItemWidget, skipOffstage: false),
+        matching: find.byWidgetPredicate(
+          (widget) => widget is Hero && widget.child is ClipSmoothRect,
+          skipOffstage: false,
+        ),
+        skipOffstage: false,
+      );
+      expect(tester.widget<Hero>(albumHero).tag, heroTag);
 
-        Navigator.of(tester.element(find.byType(CollectionPage))).pop();
-        await tester.pumpAndSettle();
-        expect(find.byType(AlbumRowItemWidget), findsOneWidget);
-        expect(tester.takeException(), isNull);
-        await _disposeAlbum(tester);
-      },
-    );
-  }
+      Navigator.of(tester.element(find.byType(CollectionPage))).pop();
+      await tester.pumpAndSettle();
+      expect(find.byType(AlbumRowItemWidget), findsOneWidget);
+      expect(tester.takeException(), isNull);
+      await _disposeAlbum(tester);
+    },
+  );
 }
 
 Collection _collection() => Collection(

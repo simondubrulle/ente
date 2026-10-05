@@ -37,12 +37,14 @@ import "package:photos/utils/magic_util.dart";
 class CollectionPage extends StatefulWidget {
   final CollectionWithThumbnail c;
   final String tagPrefix;
+  final String? coverHeroTag;
   final bool? hasVerifiedLock;
   final EnteFile? fileToJumpTo;
 
   const CollectionPage(
     this.c, {
     this.tagPrefix = "collection",
+    this.coverHeroTag,
     this.hasVerifiedLock = false,
     this.fileToJumpTo,
     super.key,
@@ -79,7 +81,9 @@ class _CollectionPageState extends State<CollectionPage> {
         widget.c.thumbnail ??
         CollectionsService.instance.getCoverCache(collection);
     _defaultCover = _cover;
-    _coverHeroTag = _cover == null ? null : widget.tagPrefix + _cover!.tag;
+    _coverHeroTag =
+        widget.coverHeroTag ??
+        (_cover == null ? null : widget.tagPrefix + _cover!.tag);
     if (collection.hasCover) {
       unawaited(_loadCover());
     }

@@ -179,6 +179,7 @@ class _CollectionsFlexiGridViewWidgetState
       context,
       CollectionPage(
         tagPrefix: tagPrefix,
+        coverHeroTag: tagPrefix,
         CollectionWithThumbnail(c, thumbnail),
         hasVerifiedLock: hasVerifiedLock,
       ),
