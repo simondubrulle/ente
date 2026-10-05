@@ -696,11 +696,7 @@ export default function PublicAlbumPage() {
 
     const disableGrouping =
         publicCollection?.pubMagicMetadata?.data.sortBy === "fileName";
-    // Trip sections group by date/location, which would break filename order.
-    const layout =
-        disableGrouping && publicAlbumLayout === "trip"
-            ? "masonry"
-            : publicAlbumLayout;
+    const layout = publicAlbumLayout;
     const quickLinkDateRange = quickLinkDateRangeForFiles(publicFiles);
     const isSingleFileAlbum = publicFiles.length === 1;
     const isQuickLinkAlbum =
