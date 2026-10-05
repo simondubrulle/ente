@@ -1,6 +1,7 @@
 import { Box } from "@mui/material";
 import { createSpaceVideoContent } from "components/PostVideoContent";
 import { registerFeedVideo } from "components/feed-video-playback";
+import log from "ente-base/log";
 import React, { useEffect, useRef } from "react";
 import type { SpacePostAssetURLLoader, SpacePostVideo } from "services/space";
 
@@ -34,6 +35,9 @@ export const SpaceInlinePostVideo: React.FC<{
         playback.current = registration;
         player.current = content;
         container.append(content.element);
+        void content.preload().catch((error: unknown) => {
+            log.warn("Failed to preload feed video", error);
+        });
         return () => {
             registration.unregister();
             content.destroy();

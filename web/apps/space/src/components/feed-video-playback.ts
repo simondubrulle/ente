@@ -14,9 +14,11 @@ const posts = new Map<HTMLElement, boolean>();
 const videos = new Map<Element, FeedVideo>();
 let selected: FeedVideo | undefined;
 let manual: FeedVideo | undefined;
+let interactedPost: HTMLElement | undefined;
 let observer: IntersectionObserver | undefined;
 let frame: number | undefined;
-let scrollTimer: ReturnType<typeof setTimeout> | undefined;
+let pending: FeedVideo | undefined;
+let selectionTimer: ReturnType<typeof setTimeout> | undefined;
 
 const select = (next: FeedVideo | undefined) => {
     if (selected == next) return;
@@ -38,7 +40,12 @@ const update = () => {
         }
     }
     if (manual && !manual.active) manual = undefined;
+    if (interactedPost && !isVisible(interactedPost))
+        interactedPost = undefined;
     if (document.hidden) {
+        clearTimeout(selectionTimer);
+        selectionTimer = undefined;
+        pending = undefined;
         select(undefined);
         return;
     }
@@ -61,9 +68,28 @@ const update = () => {
     const next =
         manual ??
         [...videos.values()].find(
-            (video) => video.active && focusedPost?.contains(video.element),
+            (video) =>
+                video.active &&
+                (interactedPost ?? focusedPost)?.contains(video.element),
         );
-    select(scrollTimer != undefined && next != selected ? undefined : next);
+    if (next && next != selected && next != manual) {
+        if (pending != next) {
+            pending = next;
+            clearTimeout(selectionTimer);
+            selectionTimer = setTimeout(() => {
+                selectionTimer = undefined;
+                update();
+            }, 120);
+        }
+        if (selectionTimer != undefined) {
+            select(undefined);
+            return;
+        }
+    }
+    clearTimeout(selectionTimer);
+    selectionTimer = undefined;
+    pending = undefined;
+    select(next);
 };
 
 const scheduleUpdate = () => {
@@ -73,12 +99,9 @@ const scheduleUpdate = () => {
     });
 };
 
-const handleScroll = () => {
-    clearTimeout(scrollTimer);
-    scrollTimer = setTimeout(() => {
-        scrollTimer = undefined;
-        update();
-    }, 150);
+export const focusFeedPost = (element: HTMLElement) => {
+    interactedPost = element;
+    manual = undefined;
     scheduleUpdate();
 };
 
@@ -95,7 +118,7 @@ export const registerFeedPost = (element: HTMLElement) => {
             },
             { threshold: [0, 0.5, 1] },
         );
-        window.addEventListener("scroll", handleScroll, { passive: true });
+        window.addEventListener("scroll", scheduleUpdate, { passive: true });
         window.addEventListener("resize", scheduleUpdate);
         document.addEventListener("visibilitychange", update);
     }
@@ -103,6 +126,7 @@ export const registerFeedPost = (element: HTMLElement) => {
     observer.observe(element);
     return () => {
         posts.delete(element);
+        if (interactedPost == element) interactedPost = undefined;
         observer!.unobserve(element);
         if (manual && element.contains(manual.element)) manual = undefined;
         if (selected && element.contains(selected.element)) select(undefined);
@@ -113,9 +137,10 @@ export const registerFeedPost = (element: HTMLElement) => {
             observer = undefined;
             if (frame != undefined) cancelAnimationFrame(frame);
             frame = undefined;
-            clearTimeout(scrollTimer);
-            scrollTimer = undefined;
-            window.removeEventListener("scroll", handleScroll);
+            clearTimeout(selectionTimer);
+            selectionTimer = undefined;
+            pending = undefined;
+            window.removeEventListener("scroll", scheduleUpdate);
             window.removeEventListener("resize", scheduleUpdate);
             document.removeEventListener("visibilitychange", update);
         }
@@ -143,6 +168,7 @@ export const registerFeedVideo = (
             if (!video.active || document.hidden || !isVisible(element)) return;
             video.manuallyPaused = false;
             manual = video;
+            interactedPost = undefined;
             const wasSelected = selected == video;
             select(video);
             if (wasSelected) player.play();
