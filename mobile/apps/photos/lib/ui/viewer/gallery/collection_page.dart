@@ -55,6 +55,7 @@ class CollectionPage extends StatefulWidget {
 class _CollectionPageState extends State<CollectionPage> {
   final _logger = Logger("CollectionPage");
   final _selectedFiles = SelectedFiles();
+  final _coverAppBarKey = GlobalKey();
   late final _searchFilterDataProvider = SearchFilterDataProvider(
     initialGalleryFilter: AlbumFilter(
       collectionID: widget.c.collection.id,
@@ -66,6 +67,7 @@ class _CollectionPageState extends State<CollectionPage> {
   _collectionUpdatedSubscription;
   EnteFile? _cover;
   EnteFile? _defaultCover;
+  late final String? _coverHeroTag;
   int _coverLoadGeneration = 0;
   int _galleryLoadGeneration = 0;
 
@@ -77,6 +79,7 @@ class _CollectionPageState extends State<CollectionPage> {
         widget.c.thumbnail ??
         CollectionsService.instance.getCoverCache(collection);
     _defaultCover = _cover;
+    _coverHeroTag = _cover == null ? null : widget.tagPrefix + _cover!.tag;
     if (collection.hasCover) {
       unawaited(_loadCover());
     }
@@ -134,6 +137,8 @@ class _CollectionPageState extends State<CollectionPage> {
       _selectedFiles,
       collection: c.collection,
       cover: _cover,
+      coverHeroTag: _coverHeroTag,
+      coverAppBarKey: _coverAppBarKey,
     );
     final gallery = Gallery(
       appBar: appBar,
@@ -177,7 +182,7 @@ class _CollectionPageState extends State<CollectionPage> {
         EventType.deletedFromEverywhere,
         EventType.hide,
       },
-      tagPrefix: tagPrefix,
+      tagPrefix: "${tagPrefix}_files",
       selectedFiles: _selectedFiles,
       initialFiles: initialFiles,
       albumName: c.collection.displayName,
@@ -223,7 +228,7 @@ class _CollectionPageState extends State<CollectionPage> {
                         builder: (context, value, _) {
                           return value
                               ? HierarchicalSearchGallery(
-                                  tagPrefix: tagPrefix,
+                                  tagPrefix: "${tagPrefix}_files",
                                   selectedFiles: _selectedFiles,
                                   appBar: appBar,
                                 )

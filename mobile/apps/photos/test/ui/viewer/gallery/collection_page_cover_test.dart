@@ -3,6 +3,7 @@ import "dart:io";
 
 import "package:dio/dio.dart";
 import "package:ente_strings/ente_strings.dart";
+import "package:figma_squircle/figma_squircle.dart";
 import "package:flutter/material.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:package_info_plus/package_info_plus.dart";
@@ -22,13 +23,19 @@ import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
 import "package:photos/models/ignored_file.dart";
 import "package:photos/models/metadata/collection_magic.dart";
+import "package:photos/models/search/hierarchical/file_type_filter.dart";
+import "package:photos/module/download/thumbnail.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/collections_service.dart";
 import "package:photos/services/favorites_service.dart";
 import "package:photos/services/ignored_files_service.dart";
+import "package:photos/ui/collections/album/row_item.dart";
 import "package:photos/ui/viewer/gallery/collection_page.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
+import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart";
+import "package:photos/ui/viewer/gallery/state/search_filter_data_provider.dart";
+import "package:photos/ui/viewer/hierarchicial_search/app_bar_filter_chips.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 void main() {
@@ -72,6 +79,60 @@ void main() {
     PathProviderPlatform.instance = previousPathProvider;
     await tempDir.delete(recursive: true);
   });
+
+  for (final disableAnimations in [false, true]) {
+    testWidgets(
+      "fades late album recommendations with reduced motion $disableAnimations",
+      (tester) async {
+        final provider = SearchFilterDataProvider(
+          initialGalleryFilter: FileTypeFilter(
+            fileType: FileType.video,
+            typeName: "Videos",
+            occurrence: 1,
+          ),
+        );
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: lightThemeData,
+            localizationsDelegates: StringsLocalizations.localizationsDelegates,
+            supportedLocales: StringsLocalizations.supportedLocales,
+            home: MediaQuery(
+              data: MediaQueryData(disableAnimations: disableAnimations),
+              child: InheritedSearchFilterDataWrapper(
+                searchFilterDataProvider: provider,
+                child: const Scaffold(
+                  body: AppBarFilterChips(animateRecommendations: true),
+                ),
+              ),
+            ),
+          ),
+        );
+        provider.clearAndAddRecommendations([
+          FileTypeFilter(
+            fileType: FileType.image,
+            typeName: "Photos",
+            occurrence: 1,
+          ),
+        ]);
+        await tester.pump();
+        final fade = find
+            .descendant(
+              of: find.byType(AnimatedOpacity),
+              matching: find.byType(FadeTransition),
+            )
+            .first;
+        double opacity() => tester.widget<FadeTransition>(fade).opacity.value;
+        expect(opacity(), disableAnimations ? 1 : 0);
+        await tester.pump(const Duration(milliseconds: 90));
+        if (!disableAnimations) {
+          expect(opacity(), inExclusiveRange(0, 1));
+        }
+        await tester.pumpAndSettle();
+        expect(opacity(), 1);
+        await tester.pumpWidget(const SizedBox.shrink());
+      },
+    );
+  }
 
   testWidgets("uses a pending local photo and excludes ignored photos", (
     tester,
@@ -151,6 +212,145 @@ void main() {
       await _disposeAlbum(tester);
     },
   );
+
+  for (final platform in [TargetPlatform.iOS, TargetPlatform.android]) {
+    testWidgets(
+      "animates the album thumbnail into the header on ${platform.name}",
+      (tester) async {
+        final collection = _collection();
+        final oldest = _file(1);
+        final newest = _file(2);
+        ThumbnailInMemoryLruCache.clearCache(newest);
+        ThumbnailInMemoryLruCache.put(
+          newest,
+          base64Decode(_onePixelPng),
+          thumbnailSmallSize,
+        );
+        await tester.runAsync(() async {
+          await FilesDB.instance.insertMultiple([oldest, newest]);
+          expect(
+            await CollectionsService.instance.getCover(collection),
+            newest,
+          );
+          await cachedThumbnailPath(
+            newest,
+          ).writeAsBytes(base64Decode(_onePixelPng));
+        });
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: lightThemeData.copyWith(platform: platform),
+            localizationsDelegates: StringsLocalizations.localizationsDelegates,
+            supportedLocales: StringsLocalizations.supportedLocales,
+            home: Scaffold(
+              body: Align(
+                alignment: Alignment.topLeft,
+                child: AlbumRowItemWidget(collection, 100),
+              ),
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+        final heroTag = "collection_1${newest.tag}";
+        expect(
+          tester.widgetList<Hero>(find.byType(Hero)).map((hero) => hero.tag),
+          contains(heroTag),
+        );
+
+        await tester.tap(
+          find.byWidgetPredicate(
+            (widget) => widget is Hero && widget.tag == heroTag,
+          ),
+        );
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 75));
+        final route = ModalRoute.of(
+          tester.element(find.byType(CollectionPage)),
+        )!;
+        expect(route, isA<PageRouteBuilder>());
+        expect(route.transitionDuration, const Duration(milliseconds: 200));
+        expect(
+          route.reverseTransitionDuration,
+          const Duration(milliseconds: 300),
+        );
+        final pageFade = find
+            .ancestor(
+              of: find.byType(CollectionPage),
+              matching: find.byType(FadeTransition),
+            )
+            .first;
+        final opacity = tester.widget<FadeTransition>(pageFade).opacity.value;
+        expect(opacity, inExclusiveRange(0, 1));
+        final flightClip = find.ancestor(
+          of: find.byType(RawImage),
+          matching: find.byType(ClipSmoothRect),
+        );
+        final radius = tester
+            .widget<ClipSmoothRect>(flightClip)
+            .radius
+            .topLeft
+            .x;
+        expect(radius, inExclusiveRange(0, 20));
+        Navigator.of(tester.element(find.byType(CollectionPage))).pop();
+        await tester.pump();
+        await tester.pump(const Duration(milliseconds: 30));
+        expect(
+          tester.widget<FadeTransition>(pageFade).opacity.value,
+          lessThan(opacity),
+        );
+        expect(
+          tester.widget<ClipSmoothRect>(flightClip).radius.topLeft.x,
+          greaterThan(radius),
+        );
+        await tester.pumpAndSettle();
+        expect(tester.takeException(), isNull);
+        await tester.tap(
+          find.byWidgetPredicate(
+            (widget) => widget is Hero && widget.tag == heroTag,
+          ),
+        );
+        await tester.pumpAndSettle();
+        await _expectCover(tester, newest, count: 2);
+        expect(
+          find.descendant(
+            of: find.byType(AlbumCoverAppBar),
+            matching: find.byType(Image),
+          ),
+          findsOneWidget,
+        );
+        final headerHero = find.descendant(
+          of: find.byType(AlbumCoverAppBar),
+          matching: find.byType(Hero),
+        );
+        expect(tester.widget<Hero>(headerHero).tag, heroTag);
+        final tags = tester
+            .widgetList<Hero>(
+              find.descendant(
+                of: find.byType(CollectionPage),
+                matching: find.byType(Hero),
+              ),
+            )
+            .map((hero) => hero.tag)
+            .toList();
+        expect(tags.toSet().length, tags.length);
+
+        collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
+        Bus.instance.fire(
+          CollectionMetaEvent(
+            collection.id,
+            CollectionMetaEventType.sortChanged,
+          ),
+        );
+        await _expectCover(tester, oldest, count: 2);
+        expect(tester.widget<Hero>(headerHero).tag, heroTag);
+
+        Navigator.of(tester.element(find.byType(CollectionPage))).pop();
+        await tester.pumpAndSettle();
+        expect(find.byType(AlbumRowItemWidget), findsOneWidget);
+        expect(tester.takeException(), isNull);
+        await _disposeAlbum(tester);
+      },
+    );
+  }
 }
 
 Collection _collection() => Collection(
@@ -256,6 +456,9 @@ class _FakePathProvider extends PathProviderPlatform {
 
   @override
   Future<String?> getApplicationSupportPath() async => path;
+
+  @override
+  Future<String?> getTemporaryPath() async => path;
 }
 
 const _onePixelPng =

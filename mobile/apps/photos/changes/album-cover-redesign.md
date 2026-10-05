@@ -1,1 +1,1 @@
-- Refreshed the album page with a full cover, quick slideshow and map buttons, and a simpler options sheet.
+- Refreshed the album page with a full cover, smooth thumbnail transitions, quick slideshow and map buttons, and a simpler options sheet.

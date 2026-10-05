@@ -41,7 +41,6 @@ import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart
 import "package:photos/ui/viewer/gallery/swipe_selection_wrapper.dart";
 import "package:photos/ui/viewer/gallery/swipe_to_select_helper.dart";
 import "package:photos/utils/hierarchical_search_util.dart";
-import "package:photos/utils/misc_util.dart";
 import "package:photos/utils/widget_util.dart";
 
 typedef GalleryLoader =
@@ -172,7 +171,6 @@ class GalleryState extends State<Gallery> {
   final _scrollController = ScrollController();
   final _headerKey = GlobalKey();
   final _headerHeightNotifier = ValueNotifier<double?>(null);
-  final miscUtil = MiscUtil();
   final scrollBarInUseNotifier = ValueNotifier<bool>(false);
   late GroupType _groupType;
   final scrollbarBottomPaddingNotifier = ValueNotifier<double>(0);
@@ -331,22 +329,10 @@ class GalleryState extends State<Gallery> {
       });
     }
 
-    WidgetsBinding.instance.addPostFrameCallback((_) async {
-      _selectedFilesListener();
-      try {
-        final headerRenderBox = await miscUtil
-            .getNonNullValueWithRetry(
-              () => _headerKey.currentContext?.findRenderObject(),
-              retryInterval: const Duration(milliseconds: 750),
-              id: "headerRenderBox",
-            )
-            .then((value) => value as RenderBox);
-
-        _headerHeightNotifier.value = headerRenderBox.size.height;
-      } catch (e, s) {
-        _logger.warning("Error getting renderBox offset", e, s);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _selectedFilesListener();
       }
-      setState(() {});
     });
 
     widget.selectedFiles?.addListener(_selectedFilesListener);
@@ -917,6 +903,16 @@ class GalleryState extends State<Gallery> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _boundariesProvider?.setTopBoundary(appBarPinnedHeight);
+        }
+      });
+    }
+
+    if (_headerHeightNotifier.value == null && _allGalleryFiles.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        final renderBox = _headerKey.currentContext?.findRenderObject();
+        if (renderBox is RenderBox && renderBox.hasSize) {
+          _headerHeightNotifier.value = renderBox.size.height;
         }
       });
     }

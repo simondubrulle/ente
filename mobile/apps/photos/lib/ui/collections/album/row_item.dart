@@ -125,14 +125,6 @@ class AlbumRowItemWidget extends StatelessWidget {
                               );
                               return Hero(
                                 tag: heroTag,
-                                flightShuttleBuilder:
-                                    (
-                                      flightContext,
-                                      animation,
-                                      flightDirection,
-                                      fromHeroContext,
-                                      toHeroContext,
-                                    ) => (toHeroContext.widget as Hero).child,
                                 transitionOnUserGestures: true,
                                 child: ClipSmoothRect(
                                   radius: SmoothBorderRadius(
@@ -351,6 +343,7 @@ class AlbumRowItemWidget extends StatelessWidget {
             tagPrefix: tagPrefix,
             hasVerifiedLock: hasVerifiedLock,
           ),
+          forceCustomPageRoute: true,
         );
       },
       onLongPress: () {

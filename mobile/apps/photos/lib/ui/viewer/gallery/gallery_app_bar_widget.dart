@@ -77,6 +77,8 @@ class GalleryAppBarWidget extends StatefulWidget {
     Future<void> Function()? onDisableDeviceFolderBackup,
     Collection? collection,
     EnteFile? cover,
+    String? coverHeroTag,
+    Key? coverAppBarKey,
     List<EnteFile>? files,
     PreferredSizeWidget? bottom,
     bool showOverflowMenu = true,
@@ -93,6 +95,8 @@ class GalleryAppBarWidget extends StatefulWidget {
         onDisableDeviceFolderBackup: onDisableDeviceFolderBackup,
         collection: collection,
         cover: cover,
+        coverHeroTag: coverHeroTag,
+        coverAppBarKey: coverAppBarKey,
         files: files,
         bottom: bottom,
         showOverflowMenu: showOverflowMenu,
@@ -159,6 +163,8 @@ class GalleryAppBarWidget extends StatefulWidget {
   final Future<void> Function()? onDisableDeviceFolderBackup;
   final Collection? collection;
   final EnteFile? cover;
+  final String? coverHeroTag;
+  final Key? coverAppBarKey;
   final List<EnteFile>? files;
   final PreferredSizeWidget? bottom;
   final bool showOverflowMenu;
@@ -173,6 +179,8 @@ class GalleryAppBarWidget extends StatefulWidget {
     this.onDisableDeviceFolderBackup,
     this.collection,
     this.cover,
+    this.coverHeroTag,
+    this.coverAppBarKey,
     this.files,
     this.bottom,
     required this.showOverflowMenu,
@@ -332,7 +340,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
         preferredSize: Size.fromHeight(
           AppBarFilterChips.preferredHeight(context),
         ),
-        child: const AppBarFilterChips(),
+        child: AppBarFilterChips(animateRecommendations: widget.cover != null),
       ),
       builder: (context, isSearching, child) {
         if (widget.cover != null && !isSearching) {
@@ -352,8 +360,10 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
   Widget _albumCoverAppBar({PreferredSizeWidget? bottom}) {
     final strings = context.strings;
     return AlbumCoverAppBar(
+      key: widget.coverAppBarKey,
       collection: widget.collection!,
       cover: widget.cover!,
+      heroTag: widget.coverHeroTag,
       title: _appBarTitle,
       backgroundColor: GalleryAppBarWidget.backgroundColor(context),
       collapsedHeight: GalleryAppBarWidget.toolbarHeight,

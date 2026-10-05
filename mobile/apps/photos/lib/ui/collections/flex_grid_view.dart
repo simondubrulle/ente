@@ -182,6 +182,7 @@ class _CollectionsFlexiGridViewWidgetState
         CollectionWithThumbnail(c, thumbnail),
         hasVerifiedLock: hasVerifiedLock,
       ),
+      forceCustomPageRoute: true,
     );
   }
 
@@ -198,6 +199,7 @@ class _CollectionsFlexiGridViewWidgetState
       await routeToPage(
         context,
         CollectionPage(CollectionWithThumbnail(result, null)),
+        forceCustomPageRoute: true,
       );
     } else {
       await showGenericErrorDialog(context: context, error: result);

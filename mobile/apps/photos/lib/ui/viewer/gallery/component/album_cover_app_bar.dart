@@ -2,6 +2,7 @@ import "dart:math" as math;
 import "dart:ui" as ui;
 
 import "package:ente_components/ente_components.dart";
+import "package:figma_squircle/figma_squircle.dart";
 import "package:flutter/material.dart";
 import "package:flutter/rendering.dart";
 import "package:flutter/services.dart";
@@ -11,6 +12,8 @@ import "package:photos/core/constants.dart";
 import "package:photos/core/page_route_observer.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/file.dart";
+import "package:photos/models/file/file_type.dart";
+import "package:photos/ui/viewer/file/file_icons_widget.dart";
 import "package:photos/ui/viewer/file/thumbnail_widget.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
@@ -24,6 +27,7 @@ class AlbumCoverAppBar extends StatefulWidget {
     required this.coverActions,
     required this.backgroundColor,
     required this.collapsedHeight,
+    this.heroTag,
     this.bottom,
   });
 
@@ -34,6 +38,7 @@ class AlbumCoverAppBar extends StatefulWidget {
   final List<Widget> coverActions;
   final Color backgroundColor;
   final double collapsedHeight;
+  final String? heroTag;
   final PreferredSizeWidget? bottom;
 
   static HeaderAppBarGeometry resolveGeometry(
@@ -93,6 +98,9 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
     final colors = context.componentColors;
     final bottomHeight = widget.bottom?.preferredSize.height ?? 0;
     final description = widget.collection.displayDescription;
+    final animation = MediaQuery.disableAnimationsOf(context)
+        ? kAlwaysCompleteAnimation
+        : ModalRoute.of(context)?.animation ?? kAlwaysCompleteAnimation;
 
     return SliverPersistentHeader(
       pinned: true,
@@ -115,6 +123,8 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
         photo: _CoverPhoto(
           cover: widget.cover,
           backgroundColor: widget.backgroundColor,
+          heroTag: widget.heroTag,
+          contentOpacity: animation,
         ),
         content: SizedBox(
           width: MediaQuery.sizeOf(context).width - Spacing.lg * 2,
@@ -139,9 +149,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
               if (description != null) ...[
                 const SizedBox(height: Spacing.sm),
                 Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: _descriptionHorizontalInset,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
                   child: Text(
                     description,
                     maxLines: _descriptionMaxLines,
@@ -213,9 +221,201 @@ class AlbumCoverActionButton extends StatelessWidget {
 }
 
 class _CoverPhoto extends StatelessWidget {
-  const _CoverPhoto({required this.cover, required this.backgroundColor});
+  const _CoverPhoto({
+    required this.cover,
+    required this.backgroundColor,
+    this.heroTag,
+    required this.contentOpacity,
+  });
 
+  final Animation<double> contentOpacity;
   final EnteFile cover;
+  final Color backgroundColor;
+  final String? heroTag;
+
+  @override
+  Widget build(BuildContext context) {
+    final thumbnail = ThumbnailWidget(
+      cover,
+      rawThumbnail: true,
+      thumbnailSize: thumbnailLargeSize,
+      useRequestedThumbnailSizeForLocalCache: true,
+      useCachedThumbnailAsPlaceholder: true,
+    );
+    final photo = Stack(
+      fit: StackFit.expand,
+      clipBehavior: Clip.none,
+      children: [
+        thumbnail,
+        _CoverPhotoScrims(backgroundColor: backgroundColor),
+      ],
+    );
+    if (heroTag == null) {
+      return photo;
+    }
+    const motionCurve = Curves.easeInOut;
+    return Hero(
+      tag: heroTag!,
+      curve: motionCurve,
+      reverseCurve: motionCurve,
+      transitionOnUserGestures: true,
+      placeholderBuilder: (context, size, child) =>
+          SizedBox.fromSize(size: size, child: child),
+      flightShuttleBuilder:
+          (
+            flightContext,
+            animation,
+            flightDirection,
+            fromHeroContext,
+            toHeroContext,
+          ) {
+            final cardContext = flightDirection == HeroFlightDirection.push
+                ? fromHeroContext
+                : toHeroContext;
+            final coverContext = flightDirection == HeroFlightDirection.push
+                ? toHeroContext
+                : fromHeroContext;
+            var card = (cardContext.widget as Hero).child;
+            if (card is SizedBox && card.child != null) {
+              card = card.child!;
+            }
+            final SmoothBorderRadius cardRadius;
+            if (card is ClipSmoothRect) {
+              cardRadius = card.radius;
+              card = card.child;
+            } else if (card is ClipRRect) {
+              final radius = card.borderRadius.resolve(
+                Directionality.of(cardContext),
+              );
+              cardRadius = SmoothBorderRadius.only(
+                topLeft: SmoothRadius(
+                  cornerRadius: radius.topLeft.x,
+                  cornerSmoothing: 0,
+                ),
+                topRight: SmoothRadius(
+                  cornerRadius: radius.topRight.x,
+                  cornerSmoothing: 0,
+                ),
+                bottomLeft: SmoothRadius(
+                  cornerRadius: radius.bottomLeft.x,
+                  cornerSmoothing: 0,
+                ),
+                bottomRight: SmoothRadius(
+                  cornerRadius: radius.bottomRight.x,
+                  cornerSmoothing: 0,
+                ),
+              );
+              card = card.child!;
+            } else {
+              cardRadius = SmoothBorderRadius.zero;
+            }
+            final image =
+                _heroImage(fromHeroContext) ?? _heroImage(cardContext);
+            return _CoverHeroFlight(
+              animation: (ModalRoute.of(coverContext)! as PageRoute).animation!
+                  .drive(CurveTween(curve: motionCurve)),
+              image: image?.image,
+              contentOpacity: contentOpacity,
+              card: card,
+              showVideoIcon: cover.fileType == FileType.video,
+              cardRadius: cardRadius,
+              backgroundColor: backgroundColor,
+            );
+          },
+      child: photo,
+    );
+  }
+}
+
+RenderImage? _heroImage(BuildContext context) {
+  RenderImage? image;
+  void visit(RenderObject renderObject) {
+    if (renderObject is RenderImage && renderObject.image != null) {
+      image ??= renderObject;
+    } else if (image == null) {
+      renderObject.visitChildren(visit);
+    }
+  }
+
+  final renderObject = context.findRenderObject();
+  if (renderObject != null) {
+    visit(renderObject);
+  }
+  return image;
+}
+
+class _CoverHeroFlight extends StatefulWidget {
+  const _CoverHeroFlight({
+    required this.animation,
+    required this.contentOpacity,
+    required this.image,
+    required this.card,
+    required this.showVideoIcon,
+    required this.cardRadius,
+    required this.backgroundColor,
+  });
+
+  final Animation<double> animation;
+  final Animation<double> contentOpacity;
+  final ui.Image? image;
+  final Widget card;
+  final bool showVideoIcon;
+  final SmoothBorderRadius cardRadius;
+  final Color backgroundColor;
+
+  @override
+  State<_CoverHeroFlight> createState() => _CoverHeroFlightState();
+}
+
+class _CoverHeroFlightState extends State<_CoverHeroFlight> {
+  late final ui.Image? _image = widget.image?.clone();
+
+  @override
+  void dispose() {
+    _image?.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return FadeTransition(
+      opacity: ReverseAnimation(widget.contentOpacity),
+      child: AnimatedBuilder(
+        animation: widget.animation,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            if (_image != null)
+              RawImage(image: _image, fit: BoxFit.cover)
+            else
+              widget.card,
+            if (_image != null && widget.showVideoIcon)
+              FadeTransition(
+                opacity: ReverseAnimation(widget.animation),
+                child: const VideoOverlayIcon(),
+              ),
+            FadeTransition(
+              opacity: widget.animation,
+              child: _CoverPhotoScrims(backgroundColor: widget.backgroundColor),
+            ),
+          ],
+        ),
+        builder: (context, child) => ClipSmoothRect(
+          radius: SmoothBorderRadius.lerp(
+            widget.cardRadius,
+            SmoothBorderRadius.zero,
+            widget.animation.value,
+          )!,
+          child: child!,
+        ),
+      ),
+    );
+  }
+}
+
+class _CoverPhotoScrims extends StatelessWidget {
+  const _CoverPhotoScrims({required this.backgroundColor});
+
   final Color backgroundColor;
 
   @override
@@ -224,12 +424,6 @@ class _CoverPhoto extends StatelessWidget {
       fit: StackFit.expand,
       clipBehavior: Clip.none,
       children: [
-        ThumbnailWidget(
-          cover,
-          rawThumbnail: true,
-          thumbnailSize: thumbnailLargeSize,
-          useRequestedThumbnailSizeForLocalCache: true,
-        ),
         const ColoredBox(color: _photoScrimColor),
         Positioned(
           left: 0,
@@ -250,13 +444,17 @@ class _CoverPhoto extends StatelessWidget {
           width: _contentScrimWidth + _contentScrimBlur * 4,
           height: _contentScrimHeight + _contentScrimBlur * 4,
           child: IgnorePointer(
-            child: ClipRect(
-              child: ImageFiltered(
-                imageFilter: ui.ImageFilter.blur(
-                  sigmaX: _contentScrimBlur,
-                  sigmaY: _contentScrimBlur,
+            child: RepaintBoundary(
+              child: ClipRect(
+                child: ImageFiltered(
+                  imageFilter: ui.ImageFilter.blur(
+                    sigmaX: _contentScrimBlur,
+                    sigmaY: _contentScrimBlur,
+                  ),
+                  child: const CustomPaint(
+                    painter: _CoverContentScrimPainter(),
+                  ),
                 ),
-                child: const CustomPaint(painter: _CoverContentScrimPainter()),
               ),
             ),
           ),
@@ -510,7 +708,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
             left: 0,
             right: 0,
             bottom: coverBottomInset - 1,
-            child: photo,
+            child: HeroMode(enabled: collapseOffset == 0, child: photo),
           ),
           Positioned(
             top: 0,
@@ -633,7 +831,6 @@ const _pinnedFadeStart = 0.6;
 const _foregroundSwitchStart = 0.4;
 const _foregroundSwitchEnd = 0.6;
 const _descriptionMaxLines = 3;
-const _descriptionHorizontalInset = 18.0;
 const _coverActionSize = 42.0;
 const _coverActionIconSize = 17.0;
 
