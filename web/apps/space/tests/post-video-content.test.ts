@@ -78,17 +78,21 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-const create = (inline = true) => {
+const create = (
+    inline = true,
+    imageUrl: string | undefined = "blob:poster",
+    options: Parameters<typeof createSpaceVideoContent>[2] = {},
+) => {
     const content = createSpaceVideoContent(
         {
-            imageUrl: "blob:poster",
+            imageUrl,
             video: {
                 asset: { objectKey: "video" } as SpacePostAsset,
                 durationMs: 1000,
             },
         },
         load,
-        { inline },
+        { ...options, inline },
     );
     contents.push(content);
     const [video, button, loading, error] = (
@@ -113,6 +117,15 @@ test("background preload keeps the poster controls hidden and does not play", as
     expect(content.button.getAttribute("aria-hidden")).toBe("true");
     expect(content.loading.getAttribute("aria-hidden")).toBe("true");
     expect(content.element.getAttribute("aria-busy")).toBeNull();
+});
+
+test("a video can download and play before its cover image is available", async () => {
+    const content = create(true, "");
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(content.video.paused).toBe(false);
+    expect(content.video.getAttribute("poster")).toBeNull();
 });
 
 test("autoplay joins an in-flight preload without downloading the video again", async () => {
@@ -221,6 +234,64 @@ test("a timed-out download cannot replace the source after retry", async () => {
     expect(content.video.getAttribute("src")).toBe("blob:video");
     expect(content.video.play).toHaveBeenCalledTimes(1);
     expect(revokeURL).toHaveBeenCalledWith("blob:late");
+});
+
+test("waiting for a download slot does not time out or prevent eventual autoplay", async () => {
+    const download = Promise.withResolvers<string>();
+    const started = Promise.withResolvers<undefined>();
+    load.mockReturnValue(download.promise);
+    const content = create(true, "", { onPlay: () => started.promise });
+    void content.preload();
+    content.play();
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(content.error.hidden).toBe(true);
+    expect(content.loading.getAttribute("aria-hidden")).toBe("false");
+    expect(content.video.play).not.toHaveBeenCalled();
+    started.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(29_000);
+    expect(content.error.hidden).toBe(true);
+    download.resolve("blob:video");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.paused).toBe(false);
+    expect(content.video.play).toHaveBeenCalledTimes(1);
+    expect(load).toHaveBeenCalledTimes(1);
+});
+
+test("the playback timeout still applies once a queued download actually starts", async () => {
+    const download = Promise.withResolvers<string>();
+    const started = Promise.withResolvers<undefined>();
+    load.mockReturnValue(download.promise);
+    const content = create(true, "", { onPlay: () => started.promise });
+    content.play();
+    await vi.advanceTimersByTimeAsync(60_000);
+    started.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(content.error.hidden).toBe(false);
+    download.resolve("blob:late");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.play).not.toHaveBeenCalled();
+    expect(revokeURL).toHaveBeenCalledWith("blob:late");
+});
+
+test("leaving a queued video clears its priority and does not start a stale timeout", async () => {
+    const download = Promise.withResolvers<string>();
+    const started = Promise.withResolvers<undefined>();
+    const onPause = vi.fn();
+    load.mockReturnValue(download.promise);
+    const content = create(true, "", {
+        onPlay: () => started.promise,
+        onPause,
+    });
+    content.play();
+    content.deactivate();
+    expect(onPause).toHaveBeenCalledTimes(1);
+    started.resolve(undefined);
+    await vi.advanceTimersByTimeAsync(60_000);
+    expect(content.error.hidden).toBe(true);
+    expect(content.loading.getAttribute("aria-hidden")).toBe("true");
+    download.resolve("blob:video");
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.play).not.toHaveBeenCalled();
 });
 
 test("fullscreen video still releases its source on deactivation", async () => {

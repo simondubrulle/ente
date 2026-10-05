@@ -1,12 +1,13 @@
 import { Box } from "@mui/material";
 import { createSpaceVideoContent } from "components/PostVideoContent";
 import { registerFeedVideo } from "components/feed-video-playback";
+import { queueFeedVideoLoad } from "components/feed-video-preloading";
 import log from "ente-base/log";
 import React, { useEffect, useRef } from "react";
 import type { SpacePostAssetURLLoader, SpacePostVideo } from "services/space";
 
 export const SpaceInlinePostVideo: React.FC<{
-    imageUrl: string;
+    imageUrl?: string;
     video: SpacePostVideo;
     isActive: boolean;
     muted: boolean;
@@ -20,11 +21,22 @@ export const SpaceInlinePostVideo: React.FC<{
 
     useEffect(() => {
         const container = root.current!;
+        let queuedLoad: ReturnType<typeof queueFeedVideoLoad> | undefined;
         const content = createSpaceVideoContent(
-            { imageUrl, video },
-            onLoadVideo,
+            { video },
+            onLoadVideo
+                ? (asset) => {
+                      queuedLoad?.cancel();
+                      queuedLoad = queueFeedVideoLoad(container, () =>
+                          onLoadVideo(asset),
+                      );
+                      return queuedLoad.promise;
+                  }
+                : undefined,
             {
                 inline: true,
+                onPlay: () => queuedLoad?.prioritize(),
+                onPause: () => queuedLoad?.deprioritize(),
                 onTogglePlayback: (play) => {
                     if (play) registration.play();
                     else registration.pause();
@@ -36,15 +48,23 @@ export const SpaceInlinePostVideo: React.FC<{
         player.current = content;
         container.append(content.element);
         void content.preload().catch((error: unknown) => {
-            log.warn("Failed to preload feed video", error);
+            if (!(error instanceof DOMException && error.name == "AbortError"))
+                log.warn("Failed to preload feed video", error);
         });
         return () => {
             registration.unregister();
             content.destroy();
+            queuedLoad?.cancel();
             content.element.remove();
             player.current = undefined;
             playback.current = undefined;
         };
+    }, [onLoadVideo, video]);
+
+    useEffect(() => {
+        const element = player.current!.video;
+        if (imageUrl) element.poster = imageUrl;
+        else element.removeAttribute("poster");
     }, [imageUrl, onLoadVideo, video]);
 
     useEffect(() => {
@@ -52,11 +72,11 @@ export const SpaceInlinePostVideo: React.FC<{
         content.video.tabIndex = isActive ? 0 : -1;
         content.element.querySelector("button")!.tabIndex = isActive ? 0 : -1;
         playback.current!.setActive(isActive);
-    }, [imageUrl, isActive, onLoadVideo, video]);
+    }, [isActive, onLoadVideo, video]);
 
     useEffect(() => {
         player.current!.video.muted = muted;
-    }, [imageUrl, muted, onLoadVideo, video]);
+    }, [muted, onLoadVideo, video]);
 
     return (
         <Box ref={root} sx={{ position: "absolute", inset: 0, zIndex: 1 }} />
