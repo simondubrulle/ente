@@ -212,7 +212,7 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
                     justifyContent: "center",
                     position: "relative",
                     width: headerChatCircleSize,
-                    "& svg path:first-of-type": { display: "none" },
+                    "& svg path:last-of-type": { display: "none" },
                 }}
             >
                 <HugeiconsIcon

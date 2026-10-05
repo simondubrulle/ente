@@ -111,6 +111,7 @@ interface HomeScreenProps {
     showInviteFriendsToast?: boolean;
     onAddFriend: () => void;
     onPostPhotoSelect: (files: File[]) => void;
+    onRetryPost?: (localPostId: string) => Promise<void>;
     onDeletePost?: (postId: number) => Promise<void> | void;
     onLoadMoreFeedItems?: () => Promise<void> | void;
     onLoadPostAvatar?: SpacePostAvatarURLLoader;
@@ -363,7 +364,7 @@ class FeedMotionList extends React.Component<FeedMotionListProps> {
     }
 }
 
-type FeedTimestampStatus = "failed" | "post-limit" | "posted" | "posting";
+type FeedTimestampStatus = "failed" | "posted" | "posting";
 
 interface FeedPostPhoto extends SpacePostPhoto {
     isUnavailable?: boolean;
@@ -372,6 +373,7 @@ interface FeedPostPhoto extends SpacePostPhoto {
 type FeedPhotoSource = SpacePostPhoto & Pick<SpacePost, "postId" | "spaceId">;
 
 interface FeedItemProps {
+    onRetry?: () => void;
     photoCount?: number;
     photoIndex?: number;
     photos?: FeedPostPhoto[];
@@ -868,6 +870,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     onOpenPhoto,
     onOpenProfile,
     onSetPostLiked,
+    onRetry,
     postId,
     spaceId,
     thumbHash,
@@ -1207,7 +1210,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             minHeight: spaceTouchTargetSize,
                             position: "absolute",
                             right: photoCount > 1 ? 16 : 8,
-                            top: 12,
+                            top: photoCount > 1 ? 4 : 12,
                             zIndex: 3,
                             pointerEvents: "none",
                         }}
@@ -1564,17 +1567,14 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 aria-label={
                                     timestampStatus == "posting"
                                         ? "Posting"
-                                        : timestampStatus == "post-limit"
-                                          ? "Post limit reached. Please contact support."
-                                          : timestampStatus == "failed"
-                                            ? "Failed"
-                                            : "Posted"
+                                        : timestampStatus == "failed"
+                                          ? "Failed"
+                                          : "Posted"
                                 }
                                 sx={{
                                     alignItems: "center",
                                     color:
-                                        timestampStatus == "failed" ||
-                                        timestampStatus == "post-limit"
+                                        timestampStatus == "failed"
                                             ? dangerColor
                                             : feedTimestampForeground,
                                     display: "flex",
@@ -1582,21 +1582,64 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     fontWeight: 500,
                                     lineHeight: "16px",
                                     minHeight: 16,
-                                    whiteSpace:
-                                        timestampStatus == "post-limit"
-                                            ? "normal"
-                                            : "nowrap",
+                                    whiteSpace: "nowrap",
                                 }}
                             >
                                 {timestampStatus == "posted" ? (
                                     <Box component="span">Posted</Box>
-                                ) : timestampStatus == "post-limit" ? (
-                                    <Box component="span">
-                                        Post limit reached. Please contact
-                                        support.
-                                    </Box>
                                 ) : timestampStatus == "failed" ? (
-                                    <Box component="span">Failed</Box>
+                                    <>
+                                        <Box component="span">Failed</Box>
+                                        {onRetry && (
+                                            <>
+                                                <Box
+                                                    component="span"
+                                                    aria-hidden
+                                                    sx={{
+                                                        color: feedTimestampForeground,
+                                                        mx: 0.75,
+                                                    }}
+                                                >
+                                                    ·
+                                                </Box>
+                                                <Box
+                                                    component="button"
+                                                    type="button"
+                                                    aria-label="Retry post"
+                                                    onClick={onRetry}
+                                                    sx={{
+                                                        appearance: "none",
+                                                        bgcolor: "transparent",
+                                                        border: 0,
+                                                        borderRadius: "2px",
+                                                        color: "#FFFFFF",
+                                                        cursor: "pointer",
+                                                        font: "inherit",
+                                                        minHeight: 24,
+                                                        my: -0.5,
+                                                        p: 0,
+                                                        pointerEvents: "auto",
+                                                        textDecoration:
+                                                            "underline",
+                                                        textDecorationColor:
+                                                            "rgba(255, 255, 255, 0.6)",
+                                                        textUnderlineOffset:
+                                                            "2px",
+                                                        "&:hover": {
+                                                            textDecorationColor:
+                                                                "#FFFFFF",
+                                                        },
+                                                        "&:focus-visible": {
+                                                            outline: `2px solid ${green}`,
+                                                            outlineOffset: 2,
+                                                        },
+                                                    }}
+                                                >
+                                                    Retry
+                                                </Box>
+                                            </>
+                                        )}
+                                    </>
                                 ) : (
                                     <>
                                         <Box component="span">Posting</Box>
@@ -1848,6 +1891,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     showInviteFriendsToast = false,
     onAddFriend,
     onPostPhotoSelect,
+    onRetryPost,
     onDeletePost,
     onLoadMoreFeedItems,
     onLoadPostAvatar,
@@ -2174,11 +2218,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onOpenProfile={onOpenProfile}
                 photoCount={item.photoCount}
                 postId={0}
+                onRetry={
+                    onRetryPost ? () => void onRetryPost(item.id) : undefined
+                }
                 timestampStatus={
                     item.status == "failed"
-                        ? item.reason == "post-limit"
-                            ? "post-limit"
-                            : "failed"
+                        ? "failed"
                         : item.postId
                           ? "posted"
                           : "posting"

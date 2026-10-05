@@ -1165,17 +1165,23 @@ export const createCurrentMediaPost = async ({
     signal?: AbortSignal;
 }) => {
     const ctx = await ensureCurrentSpaceContext();
+    let stage = "prepare";
+    let itemIndex: number | undefined;
+    let bytes: number | undefined;
     try {
         if (!session.postId) {
             session.key ??= ctx.generatePostKey();
             session.requestId ??= crypto.randomUUID();
             for (const [index, image] of images.entries()) {
+                itemIndex = index + 1;
                 signal?.throwIfAborted();
                 let upload = session.uploads[index];
                 if (!upload || upload.expiresAt < Date.now()) {
                     upload = { expiresAt: Date.now() + 25 * 60 * 1000 };
                     session.uploads[index] = upload;
                 }
+                stage = "upload-preview";
+                bytes = image.file.size;
                 upload.preview ??= await ctx.uploadPostPhotoAsset(
                     spaceId,
                     session.key,
@@ -1189,7 +1195,9 @@ export const createCurrentMediaPost = async ({
                     signal,
                 );
                 signal?.throwIfAborted();
-                if (image.video)
+                if (image.video) {
+                    stage = "upload-video";
+                    bytes = image.video.file.size;
                     upload.video ??= await ctx.uploadPostVideoAsset(
                         spaceId,
                         session.key,
@@ -1201,8 +1209,12 @@ export const createCurrentMediaPost = async ({
                         },
                         signal,
                     );
+                }
             }
             signal?.throwIfAborted();
+            stage = "create-post";
+            itemIndex = undefined;
+            bytes = undefined;
             session.postId = Number(
                 await ctx.createMediaPost(
                     spaceId,
@@ -1217,6 +1229,12 @@ export const createCurrentMediaPost = async ({
             );
         }
         return session.postId;
+    } catch (error) {
+        log.error(
+            `Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes })}`,
+            error,
+        );
+        throw error;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }

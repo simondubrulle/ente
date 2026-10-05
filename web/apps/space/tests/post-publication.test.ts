@@ -9,6 +9,7 @@ const mocks = vi.hoisted(() => ({
     ctx: {
         generatePostKey: vi.fn(),
         uploadPostPhotoAsset: vi.fn(),
+        uploadPostVideoAsset: vi.fn(),
         createMediaPost: vi.fn(),
         getPost: vi.fn(),
         downloadPostAsset: vi.fn(),
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     release: vi.fn(),
     cacheMedia: vi.fn(),
     cachePost: vi.fn(),
+    logError: vi.fn(),
 }));
 
 vi.mock("services/profile", () => ({
@@ -31,7 +33,9 @@ vi.mock("services/media-cache", () => ({
         `${spaceId}:${key}`,
     clearSpaceMediaURLCache: vi.fn(),
 }));
-vi.mock("ente-base/log", () => ({ default: { warn: vi.fn() } }));
+vi.mock("ente-base/log", () => ({
+    default: { warn: vi.fn(), error: mocks.logError },
+}));
 
 const file = new File(["photo"], "photo.webp", { type: "image/webp" });
 const images = [{ file, width: 1200, height: 800, thumbHash: "hash" }];
@@ -141,4 +145,69 @@ test("a rejected creation is still reported as a failure", async () => {
     ).rejects.toThrow("Post limit reached");
     expect(session.postId).toBeUndefined();
     expect(mocks.ctx.getPost).not.toHaveBeenCalled();
+});
+
+test("retry keeps completed photos and the post request ID", async () => {
+    mocks.ctx.uploadPostPhotoAsset
+        .mockResolvedValueOnce({ objectKey: "first" })
+        .mockRejectedValueOnce(new Error("HTTP 503"))
+        .mockResolvedValueOnce({ objectKey: "second" });
+    const session: SpacePostUploadSession = { uploads: [] };
+    const request = {
+        images: [images[0]!, images[0]!],
+        caption: "Caption",
+        spaceId: "self",
+        session,
+    };
+    await expect(createCurrentMediaPost(request)).rejects.toThrow("HTTP 503");
+    const requestId = session.requestId;
+    expect(mocks.ctx.createMediaPost).not.toHaveBeenCalled();
+    expect(mocks.logError).toHaveBeenCalledWith(
+        expect.stringContaining('"stage":"upload-preview","itemIndex":2'),
+        expect.any(Error),
+    );
+    expect(await createCurrentMediaPost(request)).toBe(501);
+    expect(mocks.ctx.uploadPostPhotoAsset).toHaveBeenCalledTimes(3);
+    expect(mocks.ctx.generatePostKey).toHaveBeenCalledTimes(1);
+    expect(mocks.ctx.createMediaPost).toHaveBeenCalledWith(
+        "self",
+        session.key,
+        [
+            { preview: { objectKey: "first" }, video: undefined },
+            { preview: { objectKey: "second" }, video: undefined },
+        ],
+        requestId,
+        "Caption",
+    );
+});
+
+test("retry after a failed video upload reuses its cover", async () => {
+    mocks.ctx.uploadPostVideoAsset
+        .mockRejectedValueOnce(new Error("Offline"))
+        .mockResolvedValueOnce({ objectKey: "video" });
+    const session: SpacePostUploadSession = { uploads: [] };
+    const request = {
+        images: [{ ...images[0]!, video: { file, durationMs: 1000 } }],
+        caption: "",
+        spaceId: "self",
+        session,
+    };
+    await expect(createCurrentMediaPost(request)).rejects.toThrow("Offline");
+    expect(await createCurrentMediaPost(request)).toBe(501);
+    expect(mocks.ctx.uploadPostPhotoAsset).toHaveBeenCalledTimes(1);
+    expect(mocks.ctx.uploadPostVideoAsset).toHaveBeenCalledTimes(2);
+});
+
+test("retry after a lost creation response keeps the request ID and uploaded assets", async () => {
+    mocks.ctx.createMediaPost.mockRejectedValueOnce(new Error("Lost response"));
+    const session: SpacePostUploadSession = { uploads: [] };
+    const request = { images, caption: "Caption", spaceId: "self", session };
+    await expect(createCurrentMediaPost(request)).rejects.toThrow(
+        "Lost response",
+    );
+    expect(await createCurrentMediaPost(request)).toBe(501);
+    expect(mocks.ctx.uploadPostPhotoAsset).toHaveBeenCalledTimes(1);
+    expect(mocks.ctx.createMediaPost.mock.calls[1]).toEqual(
+        mocks.ctx.createMediaPost.mock.calls[0],
+    );
 });

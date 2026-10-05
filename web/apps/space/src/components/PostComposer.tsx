@@ -255,7 +255,11 @@ export const SpacePostComposer: React.FC<{
             if (!snapshot.drafts.some(({ id }) => id == draft.id))
                 releasePreview(draft);
         }
-        setDrafts(snapshot.drafts);
+        setDrafts(
+            drafts.filter((draft) =>
+                snapshot.drafts.some(({ id }) => id == draft.id),
+            ),
+        );
         setActiveIndex(snapshot.activeIndex);
         setEditorSnapshot(undefined);
     };

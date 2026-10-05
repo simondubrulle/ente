@@ -44,7 +44,6 @@ interface PendingSpaceFeedPost {
 }
 
 export type FailedSpaceFeedPost = Omit<PendingSpaceFeedPost, "status"> & {
-    reason?: "post-limit";
     status: "failed";
 };
 
@@ -93,6 +92,7 @@ export interface SpaceAppState {
         images: SpaceDraftPostImage[],
         caption: string,
     ) => Promise<SpacePost>;
+    retryPost: (localPostId: string) => Promise<void>;
     refreshProfile: (
         options?: RefreshSpaceProfileOptions,
     ) => Promise<SetupProfile | null>;

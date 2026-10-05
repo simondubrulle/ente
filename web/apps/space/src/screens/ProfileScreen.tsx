@@ -1019,7 +1019,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                     justifyContent: "flex-end",
                                     p: 0,
                                     width: spaceTouchTargetSize,
-                                    "& svg path:first-of-type": {
+                                    "& svg path:last-of-type": {
                                         display: "none",
                                     },
                                     "&:focus-visible": {

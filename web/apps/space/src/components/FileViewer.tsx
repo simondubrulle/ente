@@ -1639,7 +1639,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             title="Edit item"
                             disabled={
                                 isDraftPostActionRunning ||
-                                isDraftPostPreviewPending ||
                                 Boolean(draftPostPreparationError)
                             }
                             onClick={() => {

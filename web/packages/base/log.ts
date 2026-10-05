@@ -4,10 +4,16 @@ import { logToDisk as webLogToDisk } from "./log-web";
 import { workerBridge } from "./worker/worker-bridge";
 
 let shouldLogToDisk = true;
+let logSanitizer: ((message: string) => string) | undefined;
 
 export const disableDiskLogs = () => (shouldLogToDisk = false);
 
+export const setLogSanitizer = (sanitize: (message: string) => string) => {
+    logSanitizer = sanitize;
+};
+
 export const logToDisk = (message: string) => {
+    message = logSanitizer?.(message) ?? message;
     const electron = globalThis.electron;
     if (electron) electron.logToDisk(message);
     else if (inWorker()) workerLogToDisk(message);
