@@ -191,9 +191,11 @@ class FileAppBarState extends State<FileAppBar> {
               colors: [
                 Colors.black.withValues(alpha: 0.72),
                 Colors.black.withValues(alpha: 0.6),
+                Colors.black.withValues(alpha: 0.05),
+                Colors.black.withValues(alpha: 0.025),
                 Colors.transparent,
               ],
-              stops: const [0, 0.2, 1],
+              stops: const [0, 0.2, 0.9, 0.95, 1],
             ),
           ),
           child: SafeArea(
