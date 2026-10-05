@@ -1,7 +1,5 @@
 import type { CollectionSelectorAttributes } from "@/components/CollectionSelector";
 import type { GalleryBarMode } from "@/components/gallery/reducer";
-import { StarBorderIcon } from "@/components/icons/StarIcon";
-import { StarOffIcon } from "@/components/icons/StarOffIcon";
 import {
     getAvailableFileActions,
     type FileContextAction,
@@ -16,6 +14,8 @@ import {
     Location01Icon,
     Navigation03Icon,
     RemoveCircleIcon,
+    StarIcon,
+    StarOffIcon,
     Time04Icon,
     Unarchive03Icon,
     UserAdd02Icon,
@@ -350,7 +350,7 @@ const SendLinkButton: React.FC<ButtonishProps> = ({ onClick }) => (
 const FavoriteButton: React.FC<ButtonishProps> = ({ onClick }) => (
     <Tooltip title={t("favorite")}>
         <IconButton {...{ onClick }}>
-            <StarBorderIcon fontSize="small" />
+            <HugeiconsIcon icon={StarIcon} size={20} aria-hidden />
         </IconButton>
     </Tooltip>
 );
@@ -358,7 +358,7 @@ const FavoriteButton: React.FC<ButtonishProps> = ({ onClick }) => (
 const UnfavoriteButton: React.FC<ButtonishProps> = ({ onClick }) => (
     <Tooltip title={t("un_favorite")}>
         <IconButton {...{ onClick }}>
-            <StarOffIcon fontSize="small" />
+            <HugeiconsIcon icon={StarOffIcon} size={20} aria-hidden />
         </IconButton>
     </Tooltip>
 );

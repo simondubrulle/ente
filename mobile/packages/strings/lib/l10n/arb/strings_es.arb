@@ -1,4 +1,8 @@
 {
+  "bringMemoriesTogether": "Reúne tus recuerdos",
+  "createMyAccount": "Crear mi cuenta",
+  "localGalleryPermissionDesc": "Concede permiso para acceder y organizar tus fotos mediante reconocimiento facial. Todo el procesamiento se realiza en tu dispositivo.",
+  "onboardingOrganizeDesc": "Organiza tus fotos y vídeos. Todos tus recuerdos en un solo lugar.",
   "wallpaper": "Fondo de pantalla",
   "setWallpaper": "Establecer fondo de pantalla",
   "wallpaperHome": "Pantalla de inicio",

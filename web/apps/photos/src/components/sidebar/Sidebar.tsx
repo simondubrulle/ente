@@ -1,12 +1,3 @@
-import { DeleteAccount } from "@/components/DeleteAccount";
-import { DropdownInput } from "@/components/DropdownInput";
-import { WatchFolder } from "@/components/WatchFolder";
-import { ShapeIcon } from "@/components/icons/ShapeIcon";
-import { AppLockSettings } from "@/components/sidebar/AppLockSettings";
-import { MLSettings } from "@/components/sidebar/MLSettings";
-import { ReferralSettings } from "@/components/sidebar/ReferralSettings";
-import { SessionsSettings } from "@/components/sidebar/SessionsSettings";
-import { TwoFactorSettings } from "@/components/sidebar/TwoFactorSettings";
 import { downloadAppDialogAttributes } from "@/components/utils/download";
 import exportService from "@/services/export";
 import {
@@ -17,6 +8,7 @@ import { performSidebarAction as performSidebarRegistryAction } from "@/services
 import {
     Delete02Icon,
     Download05Icon,
+    GeometricShapes01Icon,
     ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
@@ -140,7 +132,15 @@ import React, {
     type MouseEventHandler,
 } from "react";
 import { Trans } from "react-i18next";
-import { SubscriptionCard } from "./SubscriptionCard";
+import { DropdownInput } from "./DropdownInput";
+import { ReferralSettings } from "./ReferralSettings";
+import { WatchFolder } from "./WatchFolder";
+import { DeleteAccount } from "./account/DeleteAccount";
+import { SessionsSettings } from "./account/SessionsSettings";
+import { SubscriptionCard } from "./account/SubscriptionCard";
+import { TwoFactorSettings } from "./account/TwoFactorSettings";
+import { AppLockSettings } from "./preferences/AppLockSettings";
+import { MLSettings } from "./preferences/MLSettings";
 
 type SidebarProps = ModalVisibilityProps & {
     normalCollectionSummaries: CollectionSummaries;
@@ -702,7 +702,13 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
     return (
         <>
             <RowButton
-                startIcon={<ShapeIcon />}
+                startIcon={
+                    <HugeiconsIcon
+                        icon={GeometricShapes01Icon}
+                        size={shortcutIconSize}
+                        aria-hidden
+                    />
+                }
                 label={t("section_uncategorized")}
                 caption={summaryCaption(uncategorizedCollectionSummaryID)}
                 onClick={handleOpenUncategorizedSection}

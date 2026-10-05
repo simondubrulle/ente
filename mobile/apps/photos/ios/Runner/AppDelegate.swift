@@ -2,12 +2,11 @@ import AVFoundation
 import Flutter
 import UIKit
 import UserNotifications
-import app_links
 import ente_background_manager
 import workmanager_apple
 
 @main
-@objc class AppDelegate: FlutterAppDelegate {
+@objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
   private static let workmanagerDebugThreadIdentifier =
     "io.ente.frame.workmanager.debug"
   private let startupTrace: BackgroundStartupTrace = {
@@ -15,7 +14,6 @@ import workmanager_apple
     trace.event("app.delegate.initializing")
     return trace
   }()
-  private let foregroundHeartbeat = ForegroundHeartbeat()
 
   override func application(
     _ application: UIApplication,
@@ -57,9 +55,6 @@ import workmanager_apple
       UNUserNotificationCenter.current().delegate = self as UNUserNotificationCenterDelegate
     }
 
-    startupTrace.measure("app.plugins") {
-      GeneratedPluginRegistrant.register(with: self)
-    }
     startupTrace.measure("app.backgroundManager.install") {
       BackgroundManagerPlugin.install(
         isEnabled: { Self.shouldUseNativeBackgroundManager() },
@@ -84,17 +79,14 @@ import workmanager_apple
         withIdentifier: "io.ente.frame.iOSBackgroundProcessing")
     }
 
-    startupTrace.measure("app.links") {
-      if let url = AppLinks.shared.getLink(launchOptions: launchOptions) {
-        // only accept non-homewidget urls for AppLinks
-        if !url.absoluteString.contains("homeWidget") {
-          AppLinks.shared.handleLink(url: url)
-        }
-      }
-    }
-
     return startupTrace.measure("app.super.didFinishLaunching") {
       super.application(application, didFinishLaunchingWithOptions: launchOptions)
+    }
+  }
+
+  func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
+    startupTrace.measure("app.plugins") {
+      GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     }
   }
 
@@ -141,24 +133,6 @@ import workmanager_apple
     }
 
     return json["internalUser"] as? Bool ?? false
-  }
-
-  override func applicationDidBecomeActive(_ application: UIApplication) {
-    startupTrace.event("app.didBecomeActive")
-    foregroundHeartbeat.start()
-    signal(SIGPIPE, SIG_IGN)
-  }
-
-  override func applicationWillEnterForeground(_ application: UIApplication) {
-    startupTrace.event("app.willEnterForeground")
-    foregroundHeartbeat.start()
-    signal(SIGPIPE, SIG_IGN)
-  }
-
-  override func applicationDidEnterBackground(_ application: UIApplication) {
-    startupTrace.event("app.didEnterBackground")
-    foregroundHeartbeat.stop()
-    super.applicationDidEnterBackground(application)
   }
 
   override func userNotificationCenter(

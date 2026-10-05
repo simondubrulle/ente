@@ -1,4 +1,8 @@
 {
+  "bringMemoriesTogether": "Gắn kết những kỷ niệm của bạn",
+  "createMyAccount": "Tạo tài khoản của tôi",
+  "localGalleryPermissionDesc": "Cấp quyền truy cập và sắp xếp ảnh bằng tính năng nhận diện khuôn mặt. Mọi quá trình xử lý đều diễn ra trên thiết bị của bạn.",
+  "onboardingOrganizeDesc": "Sắp xếp ảnh và video của bạn. Mọi kỷ niệm ở cùng một nơi.",
   "wallpaper": "Hình nền",
   "setWallpaper": "Đặt hình nền",
   "wallpaperHome": "Màn hình chính",
