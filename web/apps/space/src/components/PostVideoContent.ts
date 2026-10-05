@@ -7,8 +7,15 @@ export const createSpaceVideoContent = (
     load?: SpacePostAssetURLLoader,
     {
         inline = false,
+        onPlay,
+        onPause,
         onTogglePlayback,
-    }: { inline?: boolean; onTogglePlayback?: (play: boolean) => void } = {},
+    }: {
+        inline?: boolean;
+        onPlay?: () => Promise<void> | void;
+        onPause?: () => void;
+        onTogglePlayback?: (play: boolean) => void;
+    } = {},
 ) => {
     const media = item.video!;
     const element = document.createElement("div");
@@ -98,8 +105,12 @@ export const createSpaceVideoContent = (
         loading.setAttribute("aria-hidden", "true");
         element.removeAttribute("aria-busy");
     };
-    const showLoading = () => {
-        playbackTimeout ??= setTimeout(() => failPlayback("timeout"), 30_000);
+    const showLoading = (startTimeout = true) => {
+        if (startTimeout)
+            playbackTimeout ??= setTimeout(
+                () => failPlayback("timeout"),
+                30_000,
+            );
         if (document.activeElement == button)
             video.focus({ preventScroll: true });
         button.setAttribute("aria-hidden", "true");
@@ -129,6 +140,7 @@ export const createSpaceVideoContent = (
     };
     const pause = () => {
         generation++;
+        onPause?.();
         video.pause();
         showPlayButton();
     };
@@ -184,10 +196,15 @@ export const createSpaceVideoContent = (
         active = true;
         errorMessage.hidden = true;
         const current = ++generation;
-        showLoading();
+        showLoading(false);
         button.disabled = true;
         void (async () => {
-            await preload();
+            await Promise.all([
+                preload(),
+                Promise.resolve(onPlay?.()).then(() => {
+                    if (!disposed && generation == current) showLoading();
+                }),
+            ]);
             if (disposed || generation != current) return;
             if (
                 video.ended ||

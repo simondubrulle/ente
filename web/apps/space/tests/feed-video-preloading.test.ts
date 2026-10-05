@@ -92,6 +92,64 @@ test("updates the priority of queued videos after scrolling", async () => {
     expect(started).toEqual(["first", "second", "later"]);
 });
 
+test("active playback starts while both background downloads are still busy", async () => {
+    enqueue("first", 100);
+    enqueue("second", 500);
+    const active = enqueue("active", 900);
+    enqueue("background", 1200);
+    flush();
+    const ready = active.prioritize();
+    flush();
+    await ready;
+    expect(started).toEqual(["first", "second", "active"]);
+    expect(active.load).toHaveBeenCalledTimes(1);
+    active.download.resolve("blob:active");
+    await active.promise;
+    flush();
+    expect(started).toEqual(["first", "second", "active"]);
+});
+
+test("rapid scrolling keeps downloads bounded and starts the latest active video next", async () => {
+    const first = enqueue("first", 100);
+    enqueue("second", 500);
+    const previous = enqueue("previous", 900);
+    const skipped = enqueue("skipped", 1200);
+    const active = enqueue("active", 1500);
+    flush();
+    const previousReady = previous.prioritize();
+    flush();
+    await previousReady;
+    const skippedReady = skipped.prioritize();
+    const ready = active.prioritize();
+    flush();
+    expect(started).toEqual(["first", "second", "previous"]);
+    first.download.resolve("blob:first");
+    await first.promise;
+    flush();
+    await ready;
+    expect(started).toEqual(["first", "second", "previous", "active"]);
+    skipped.cancel();
+    await expect(skippedReady).rejects.toMatchObject({ name: "AbortError" });
+});
+
+test("an inactive video no longer uses the reserved playback slot", () => {
+    enqueue("first", 100);
+    enqueue("second", 500);
+    const previous = enqueue("previous", 900);
+    flush();
+    void previous.prioritize().catch(() => undefined);
+    previous.deprioritize();
+    flush();
+    expect(started).toEqual(["first", "second"]);
+});
+
+test("promoting an in-flight preload joins its existing download", async () => {
+    const active = enqueue("active", 100);
+    flush();
+    await active.prioritize();
+    expect(active.load).toHaveBeenCalledTimes(1);
+});
+
 test("prioritizes a visible slide and the next post over distant carousel slides", () => {
     enqueue("fifth slide", 100, 1200);
     enqueue("next post", 900);

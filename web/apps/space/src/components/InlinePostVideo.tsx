@@ -35,6 +35,8 @@ export const SpaceInlinePostVideo: React.FC<{
                 : undefined,
             {
                 inline: true,
+                onPlay: () => queuedLoad?.prioritize(),
+                onPause: () => queuedLoad?.deprioritize(),
                 onTogglePlayback: (play) => {
                     if (play) registration.play();
                     else registration.pause();
