@@ -245,44 +245,13 @@ export const SpacePostPhotoEditor: React.FC<{
                 <Box
                     component="button"
                     type="button"
-                    disabled={
-                        isSaving || isPreparing || Boolean(preparationError)
-                    }
-                    aria-busy={isSaving}
-                    onClick={() => void save()}
-                    sx={{ ...buttonSx, justifySelf: "start", p: 0 }}
-                >
-                    <Box
-                        component="span"
-                        sx={{
-                            alignItems: "center",
-                            bgcolor: "#FFFFFF",
-                            borderRadius: "999px",
-                            color: "#171717",
-                            display: "inline-flex",
-                            height: 32,
-                            px: "16px",
-                        }}
-                    >
-                        {isSaving ? "Saving…" : "Done"}
-                    </Box>
-                </Box>
-                <Box
-                    id="space-photo-editor-title"
-                    sx={{ fontSize: 14, fontWeight: 600 }}
-                >
-                    Edit
-                </Box>
-                <Box
-                    component="button"
-                    type="button"
                     aria-label="Cancel edits"
                     onClick={onClose}
                     sx={{
                         ...buttonSx,
-                        justifySelf: "end",
+                        justifySelf: "start",
                         width: 44,
-                        mr: "-8px",
+                        ml: "-8px",
                         p: 0,
                     }}
                 >
@@ -304,6 +273,37 @@ export const SpacePostPhotoEditor: React.FC<{
                             size={20}
                             strokeWidth={1.8}
                         />
+                    </Box>
+                </Box>
+                <Box
+                    id="space-photo-editor-title"
+                    sx={{ fontSize: 14, fontWeight: 600 }}
+                >
+                    Edit
+                </Box>
+                <Box
+                    component="button"
+                    type="button"
+                    disabled={
+                        isSaving || isPreparing || Boolean(preparationError)
+                    }
+                    aria-busy={isSaving}
+                    onClick={() => void save()}
+                    sx={{ ...buttonSx, justifySelf: "end", p: 0 }}
+                >
+                    <Box
+                        component="span"
+                        sx={{
+                            alignItems: "center",
+                            bgcolor: "#FFFFFF",
+                            borderRadius: "999px",
+                            color: "#171717",
+                            display: "inline-flex",
+                            height: 32,
+                            px: "16px",
+                        }}
+                    >
+                        {isSaving ? "Saving…" : "Done"}
                     </Box>
                 </Box>
             </Box>
