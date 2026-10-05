@@ -9,10 +9,10 @@ import "package:flutter/services.dart";
 import "package:hugeicons/hugeicons.dart";
 import "package:intl/intl.dart";
 import "package:photos/core/constants.dart";
-import "package:photos/core/page_route_observer.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
+import "package:photos/services/app_navigation_service.dart";
 import "package:photos/ui/viewer/file/file_icons_widget.dart";
 import "package:photos/ui/viewer/file/thumbnail_widget.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
@@ -71,7 +71,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
     );
     final route = ModalRoute.of(context);
     if (route is PageRoute) {
-      pageRouteObserver.subscribe(this, route);
+      AppNavigationService.instance.routeObserver.subscribe(this, route);
     }
   }
 
@@ -87,7 +87,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
 
   @override
   void dispose() {
-    pageRouteObserver.unsubscribe(this);
+    AppNavigationService.instance.routeObserver.unsubscribe(this);
     SystemChrome.setSystemUIOverlayStyle(_pinnedOverlayStyle);
     WidgetsBinding.instance.scheduleFrame();
     super.dispose();

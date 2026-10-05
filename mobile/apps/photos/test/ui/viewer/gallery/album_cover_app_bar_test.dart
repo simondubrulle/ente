@@ -8,11 +8,11 @@ import "package:flutter_localizations/flutter_localizations.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:intl/date_symbol_data_local.dart";
 import "package:photos/core/cache/thumbnail_in_memory_cache.dart";
-import "package:photos/core/page_route_observer.dart";
 import "package:photos/ente_theme_data.dart";
 import "package:photos/models/api/collection/user.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/file.dart";
+import "package:photos/services/app_navigation_service.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
@@ -47,7 +47,7 @@ void main() {
     await tester.pumpWidget(
       MaterialApp(
         theme: lightThemeData,
-        navigatorObservers: [pageRouteObserver],
+        navigatorObservers: [AppNavigationService.instance.routeObserver],
         home: Scaffold(
           body: CustomScrollView(
             slivers: [
