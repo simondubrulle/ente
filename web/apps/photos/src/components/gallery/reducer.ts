@@ -1762,7 +1762,7 @@ const sortAndUniqueFilteredFiles = (
     );
     const metadata = activeCollection?.pubMagicMetadata?.data;
     // The synced library is already in newest-first order.
-    return metadata?.asc || metadata?.sortBy === "name"
+    return metadata?.asc || metadata?.sortBy === "fileName"
         ? sortCollectionFiles(uniqueFiles, metadata)
         : uniqueFiles;
 };

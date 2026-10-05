@@ -716,8 +716,9 @@ const CollectionHeaderOptions: React.FC<CollectionHeaderProps> = ({
                 overflowMenuIconRef={overflowMenuIconRef}
                 sortAsc={activeCollection?.pubMagicMetadata?.data.asc ?? false}
                 sortBy={
-                    activeCollection?.pubMagicMetadata?.data.sortBy === "name"
-                        ? "name"
+                    activeCollection?.pubMagicMetadata?.data.sortBy ===
+                    "fileName"
+                        ? "fileName"
                         : "date"
                 }
                 onSort={changeSortOrder}
@@ -1042,8 +1043,8 @@ function CollectionSortOrderMenu({
     const options: { by: CollectionSortBy; asc: boolean; label: string }[] = [
         { by: "date", asc: false, label: t("newest_first") },
         { by: "date", asc: true, label: t("oldest_first") },
-        { by: "name", asc: true, label: t("album_sort_name_asc") },
-        { by: "name", asc: false, label: t("album_sort_name_desc") },
+        { by: "fileName", asc: true, label: t("album_sort_name_asc") },
+        { by: "fileName", asc: false, label: t("album_sort_name_desc") },
     ];
     return (
         <Menu

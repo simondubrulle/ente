@@ -2,7 +2,7 @@ import type { CollectionPublicMagicMetadataData } from "./collection";
 import type { EnteFile } from "./file";
 import { fileCreationPhotoSortTime, fileFileName } from "./file-metadata";
 
-export type CollectionSortBy = "date" | "name";
+export type CollectionSortBy = "date" | "fileName";
 
 type SortMetadata = Pick<CollectionPublicMagicMetadataData, "sortBy" | "asc">;
 
@@ -16,7 +16,7 @@ export const sortCollectionFiles = (
     metadata?: SortMetadata,
 ): EnteFile[] => {
     // ponytail: reuse the date sorter so legacy ordering has one implementation.
-    if (metadata?.sortBy !== "name")
+    if (metadata?.sortBy !== "fileName")
         return sortFiles([...files], metadata?.asc);
     const direction = metadata.asc ? 1 : -1;
     return [...files].sort(

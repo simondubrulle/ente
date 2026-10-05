@@ -695,7 +695,7 @@ export default function PublicAlbumPage() {
     }
 
     const disableGrouping =
-        publicCollection?.pubMagicMetadata?.data.sortBy === "name";
+        publicCollection?.pubMagicMetadata?.data.sortBy === "fileName";
     // Trip sections group by date/location, which would break filename order.
     const layout =
         disableGrouping && publicAlbumLayout === "trip"

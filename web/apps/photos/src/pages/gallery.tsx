@@ -2071,7 +2071,7 @@ const Page: React.FC = () => {
                         state.searchSuggestion?.type == "clip" ||
                         (!isInSearchMode &&
                             activeCollection?.pubMagicMetadata?.data.sortBy ===
-                                "name")
+                                "fileName")
                     }
                     enableSelect={true}
                     selected={selected}

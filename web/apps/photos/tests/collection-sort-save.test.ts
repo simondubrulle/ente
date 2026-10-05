@@ -39,7 +39,7 @@ const album = async () =>
                 caption: "Our trip",
                 coverID: 2,
                 layout: "grouped",
-                sortBy: "name",
+                sortBy: "fileName",
                 futureField: "retain",
             },
         },
@@ -63,10 +63,10 @@ async function savedMetadata(collection: Collection) {
 
 test("filename sorting is encrypted with the album key and preserves unrelated metadata", async () => {
     const collection = await album();
-    await updateCollectionSortOrder(collection, true, "name");
+    await updateCollectionSortOrder(collection, true, "fileName");
     expect(await savedMetadata(collection)).toEqual({
         ...collection.pubMagicMetadata!.data,
-        sortBy: "name",
+        sortBy: "fileName",
         asc: true,
     });
 });
@@ -86,7 +86,7 @@ test("a rejected save propagates the error and leaves the local album unchanged"
     const before = structuredClone(collection);
     fetchMock.mockResolvedValueOnce(new Response(null, { status: 409 }));
     await expect(
-        updateCollectionSortOrder(collection, false, "name"),
+        updateCollectionSortOrder(collection, false, "fileName"),
     ).rejects.toThrow();
     expect(collection).toEqual(before);
 });

@@ -51,20 +51,20 @@ describe("album sorting", () => {
             data: { editedName: "img1.jpg" },
         };
         expect(
-            ids(sortCollectionFiles(files, { sortBy: "name", asc: true })),
+            ids(sortCollectionFiles(files, { sortBy: "fileName", asc: true })),
         ).toEqual([3, 2, 1]);
         expect(
-            ids(sortCollectionFiles(files, { sortBy: "name", asc: false })),
+            ids(sortCollectionFiles(files, { sortBy: "fileName", asc: false })),
         ).toEqual([1, 2, 3]);
     });
     test("equal filenames have a deterministic order across syncs", () => {
         const files = [photo(2, "a.jpg"), photo(1, "A.jpg")];
         expect(
-            ids(sortCollectionFiles(files, { sortBy: "name", asc: true })),
+            ids(sortCollectionFiles(files, { sortBy: "fileName", asc: true })),
         ).toEqual([1, 2]);
         expect(
-            sortCollectionFiles([...files].reverse(), { sortBy: "name" }),
-        ).toEqual(sortCollectionFiles(files, { sortBy: "name" }));
+            sortCollectionFiles([...files].reverse(), { sortBy: "fileName" }),
+        ).toEqual(sortCollectionFiles(files, { sortBy: "fileName" }));
     });
     test("future sort modes fall back to legacy date ordering", () => {
         const metadata = { sortBy: "future-mode", asc: true };
@@ -75,7 +75,7 @@ describe("album sorting", () => {
     test("metadata round trips retain ordering and unrelated fields", () => {
         const metadata = {
             asc: true,
-            sortBy: "name",
+            sortBy: "fileName",
             caption: "Trip",
             coverID: 1,
             futureField: "preserve",
