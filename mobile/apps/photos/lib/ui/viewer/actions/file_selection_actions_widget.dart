@@ -95,6 +95,7 @@ class _FileSelectionActionsWidgetState
   final GlobalKey sendLinkButtonKey = GlobalKey();
   final StreamController<double> _progressController =
       StreamController<double>();
+  final ScrollController _scrollController = ScrollController();
 
   bool get _canRemoveOthersFiles =>
       widget.collection != null &&
@@ -118,6 +119,7 @@ class _FileSelectionActionsWidgetState
   @override
   void dispose() {
     _progressController.close();
+    _scrollController.dispose();
     widget.selectedFiles.removeListener(_selectFileChangeListener);
     super.dispose();
   }
@@ -568,7 +570,6 @@ class _FileSelectionActionsWidgetState
     }
 
     if (items.isNotEmpty) {
-      final scrollController = ScrollController();
       // h4ck: https://github.com/flutter/flutter/issues/57920#issuecomment-893970066
       return MediaQuery(
         data: MediaQuery.of(context).removePadding(removeBottom: true),
@@ -577,9 +578,10 @@ class _FileSelectionActionsWidgetState
           child: Scrollbar(
             radius: const Radius.circular(1),
             thickness: 2,
-            controller: scrollController,
+            controller: _scrollController,
             thumbVisibility: true,
             child: SingleChildScrollView(
+              controller: _scrollController,
               physics: const BouncingScrollPhysics(
                 decelerationRate: ScrollDecelerationRate.fast,
               ),

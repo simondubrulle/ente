@@ -1,0 +1,1 @@
+- Fixed the scroll indicator in photo selection actions.
