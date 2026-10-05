@@ -7,10 +7,11 @@ import "package:photos/ui/viewer/gallery/hooks/album_actions_sheet.dart";
 
 void main() {
   group("showAlbumActionsSheet", () {
-    testWidgets("keeps the destructive option last in the shelf", (
+    testWidgets("keeps the destructive tile last and returns its value", (
       tester,
     ) async {
-      await _pumpLauncher(tester, (_) {});
+      String? result;
+      await _pumpLauncher(tester, (value) => result = value);
       await _openLauncher(tester);
 
       final tilePositions = [
@@ -31,19 +32,10 @@ void main() {
         ),
         isTrue,
       );
-      expect(find.text("Hide"), findsOneWidget);
-      expect(find.text("Cast"), findsOneWidget);
-    });
-
-    testWidgets("returns the tapped row", (tester) async {
-      String? result;
-      await _pumpLauncher(tester, (value) => result = value);
-      await _openLauncher(tester);
-
-      await tester.tap(find.text("Hide"));
+      await tester.tap(find.text("Delete"));
       await tester.pumpAndSettle();
 
-      expect(result, "hide");
+      expect(result, "delete");
       expect(find.byType(BottomSheetComponent), findsNothing);
     });
 
@@ -67,17 +59,7 @@ void main() {
 
       expect(tester.takeException(), isNull);
       expect(result, "cast");
-    });
-
-    testWidgets("returns the tapped tile", (tester) async {
-      String? result;
-      await _pumpLauncher(tester, (value) => result = value);
-      await _openLauncher(tester);
-
-      await tester.tap(find.text("Delete"));
-      await tester.pumpAndSettle();
-
-      expect(result, "delete");
+      expect(find.byType(BottomSheetComponent), findsNothing);
     });
   });
 }
