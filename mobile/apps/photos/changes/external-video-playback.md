@@ -1,0 +1,1 @@
+- Updated playback controls for videos opened from other apps.
