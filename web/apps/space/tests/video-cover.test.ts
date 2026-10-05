@@ -3,7 +3,6 @@ import {
     spaceVideoCover,
     spaceVideoFrames,
     spaceVideoInfo,
-    useSoftwareVideoFrames,
 } from "../src/utils/post-video";
 
 const mocks = vi.hoisted(() => ({
@@ -78,9 +77,27 @@ test.each([
     ],
 ])(
     "selects software frames only for Firefox Android (%s)",
-    (userAgent, expected) => {
+    async (userAgent, software) => {
         vi.stubGlobal("navigator", { userAgent });
-        expect(useSoftwareVideoFrames()).toBe(expected);
+        if (!software) {
+            vi.stubGlobal("window", { setTimeout, clearTimeout });
+            const video = Object.assign(new EventTarget(), {
+                duration: 3.45,
+                videoWidth: 540,
+                videoHeight: 960,
+                currentTime: 0,
+                pause: vi.fn(),
+                removeAttribute: vi.fn(),
+                load: () => video.dispatchEvent(new Event("loadeddata")),
+            });
+            createElement.mockImplementationOnce(() => video);
+        }
+        const file = new Blob(["video"]);
+        expect(await spaceVideoFrames(file, [0], 960)).toHaveLength(1);
+        expect(mocks.frames).toHaveBeenCalledTimes(software ? 1 : 0);
+        expect(createElement).toHaveBeenCalledWith(
+            software ? "canvas" : "video",
+        );
     },
 );
 

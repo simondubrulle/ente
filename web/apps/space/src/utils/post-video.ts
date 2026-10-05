@@ -22,7 +22,7 @@ export interface SpaceVideoInfo {
 
 export const maxSpaceVideoDuration = 10;
 
-export const useSoftwareVideoFrames = () =>
+const useSoftwareVideoFrames = () =>
     navigator.userAgent.includes("Android") &&
     navigator.userAgent.includes("Firefox/");
 
@@ -76,7 +76,7 @@ const waitForVideo = (
         if (signal?.aborted) abort();
     });
 
-export const openSpaceVideo = async (file: Blob, signal?: AbortSignal) => {
+const openSpaceVideo = async (file: Blob, signal?: AbortSignal) => {
     signal?.throwIfAborted();
     const video = document.createElement("video");
     const url = URL.createObjectURL(file);
@@ -101,7 +101,7 @@ export const openSpaceVideo = async (file: Blob, signal?: AbortSignal) => {
     }
 };
 
-export const seekSpaceVideo = async (
+const seekSpaceVideo = async (
     video: HTMLVideoElement,
     time: number,
     signal?: AbortSignal,
