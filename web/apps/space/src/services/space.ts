@@ -2,6 +2,7 @@ import type { FriendProfile } from "data/friends";
 import { clientPackageName, desktopAppVersion, isDesktop } from "ente-base/app";
 import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
+import { logToDisk } from "ente-base/log-web";
 import { apiOrigin } from "ente-base/origins";
 import type { UploadedPostAsset } from "ente-space-wasm";
 import {
@@ -1165,17 +1166,23 @@ export const createCurrentMediaPost = async ({
     signal?: AbortSignal;
 }) => {
     const ctx = await ensureCurrentSpaceContext();
+    let stage = "prepare";
+    let itemIndex: number | undefined;
+    let bytes: number | undefined;
     try {
         if (!session.postId) {
             session.key ??= ctx.generatePostKey();
             session.requestId ??= crypto.randomUUID();
             for (const [index, image] of images.entries()) {
+                itemIndex = index + 1;
                 signal?.throwIfAborted();
                 let upload = session.uploads[index];
                 if (!upload || upload.expiresAt < Date.now()) {
                     upload = { expiresAt: Date.now() + 25 * 60 * 1000 };
                     session.uploads[index] = upload;
                 }
+                stage = "upload-preview";
+                bytes = image.file.size;
                 upload.preview ??= await ctx.uploadPostPhotoAsset(
                     spaceId,
                     session.key,
@@ -1189,7 +1196,9 @@ export const createCurrentMediaPost = async ({
                     signal,
                 );
                 signal?.throwIfAborted();
-                if (image.video)
+                if (image.video) {
+                    stage = "upload-video";
+                    bytes = image.video.file.size;
                     upload.video ??= await ctx.uploadPostVideoAsset(
                         spaceId,
                         session.key,
@@ -1201,8 +1210,12 @@ export const createCurrentMediaPost = async ({
                         },
                         signal,
                     );
+                }
             }
             signal?.throwIfAborted();
+            stage = "create-post";
+            itemIndex = undefined;
+            bytes = undefined;
             session.postId = Number(
                 await ctx.createMediaPost(
                     spaceId,
@@ -1217,6 +1230,14 @@ export const createCurrentMediaPost = async ({
             );
         }
         return session.postId;
+    } catch (error) {
+        const uploadError = error as
+            | (Error & { status?: number; code?: string })
+            | undefined;
+        logToDisk(
+            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code })}`,
+        );
+        throw error;
     } finally {
         releaseCurrentSpaceContext(ctx);
     }

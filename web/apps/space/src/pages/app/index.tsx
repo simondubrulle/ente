@@ -41,6 +41,7 @@ const Page: React.FC = () => {
         profile,
         profileLoadError,
         profileLoadStatus,
+        retryPost,
         setFriends,
         setLocalFeedPosts,
         setPendingPostPhotoFiles,
@@ -326,6 +327,7 @@ const Page: React.FC = () => {
                 onInviteFriendsToastClose={closeInviteFriendsToast}
                 onAddFriend={() => setIsAddFriendOpen(true)}
                 onPostPhotoSelect={setPendingPostPhotoFiles}
+                onRetryPost={retryPost}
                 onDeletePost={async (postId) => {
                     const spaceId = profile?.spaceId;
                     if (!spaceId) throw new Error("Missing space.");
