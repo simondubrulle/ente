@@ -1069,12 +1069,22 @@ const FeedItem: React.FC<FeedItemProps> = ({
         firstPhoto.width && firstPhoto.height
             ? firstPhoto.width / firstPhoto.height
             : aspectRatio;
-    const frameAspectRatio = Math.max(
-        minimumPostPhotoFrameAspectRatio,
-        feedPhotos.length > 1
-            ? firstPhotoAspectRatio
-            : photoDimensions.width / photoDimensions.height,
+    const hasMatchingAspectRatios = feedPhotos.every(
+        (photo) =>
+            photo.width &&
+            photo.height &&
+            Math.abs(photo.width / photo.height / firstPhotoAspectRatio - 1) <
+                0.01,
     );
+    const frameAspectRatio =
+        feedPhotos.length > 1
+            ? hasMatchingAspectRatios
+                ? firstPhotoAspectRatio
+                : 1
+            : Math.max(
+                  minimumPostPhotoFrameAspectRatio,
+                  photoDimensions.width / photoDimensions.height,
+              );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
     const showSoundControl =
         !isPostUnavailable && shouldPreloadVideo && Boolean(activePhoto.video);
