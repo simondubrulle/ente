@@ -1,4 +1,5 @@
 import type { SpaceViewerPhoto } from "components/FileViewer";
+import { logToDisk } from "ente-base/log-web";
 import type { SpacePostAssetURLLoader } from "services/space";
 
 export const createSpaceVideoContent = (
@@ -63,19 +64,40 @@ export const createSpaceVideoContent = (
     loading.setAttribute("aria-label", "Loading video");
     loading.innerHTML = '<span class="space-video-spinner"></span>';
     Object.assign(loading.style, { ...controlStyle, pointerEvents: "none" });
-    element.append(video, button, loading);
+    const errorMessage = document.createElement("span");
+    errorMessage.textContent = "Couldn't play this video. Tap to retry.";
+    errorMessage.hidden = true;
+    errorMessage.setAttribute("role", "status");
+    Object.assign(errorMessage.style, {
+        position: "absolute",
+        bottom: "12px",
+        left: "12px",
+        right: "12px",
+        background: "rgba(0, 0, 0, 0.65)",
+        color: "white",
+        borderRadius: "6px",
+        padding: "8px",
+        fontSize: "13px",
+        textAlign: "center",
+        pointerEvents: "none",
+    });
+    element.append(video, button, loading, errorMessage);
     let generation = 0;
     let ownedURL: string | undefined;
     let disposed = false;
     let active = inline;
     let loadingTimer: ReturnType<typeof setTimeout> | undefined;
+    let playbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const hideLoading = () => {
         clearTimeout(loadingTimer);
         loadingTimer = undefined;
+        clearTimeout(playbackTimeout);
+        playbackTimeout = undefined;
         loading.setAttribute("aria-hidden", "true");
         element.removeAttribute("aria-busy");
     };
     const showLoading = () => {
+        playbackTimeout ??= setTimeout(() => failPlayback("timeout"), 30_000);
         if (document.activeElement == button)
             video.focus({ preventScroll: true });
         element.setAttribute("aria-busy", "true");
@@ -112,8 +134,16 @@ export const createSpaceVideoContent = (
         video.removeAttribute("src");
         video.load();
     };
+    const failPlayback = (reason: "timeout" | "media" | "play") => {
+        logToDisk(
+            `[error] Space video playback failed reason=${reason} code=${video.error?.code ?? 0} readyState=${video.readyState} networkState=${video.networkState}`,
+        );
+        reset();
+        errorMessage.hidden = false;
+    };
     const clear = () => {
         active = inline;
+        errorMessage.hidden = true;
         reset();
         if (ownedURL) URL.revokeObjectURL(ownedURL);
         ownedURL = undefined;
@@ -125,6 +155,7 @@ export const createSpaceVideoContent = (
     const play = () => {
         if (button.disabled || !video.paused) return;
         active = true;
+        errorMessage.hidden = true;
         const current = ++generation;
         showLoading();
         button.disabled = true;
@@ -142,7 +173,6 @@ export const createSpaceVideoContent = (
             if (disposed || generation != current) return;
             if (!video.getAttribute("src")) {
                 video.src = url;
-                video.currentTime = media.start ?? 0;
             } else if (
                 video.ended ||
                 (media.end != undefined && video.currentTime >= media.end)
@@ -152,7 +182,7 @@ export const createSpaceVideoContent = (
             await video.play();
             if (generation == current) showPlaying();
         })().catch(() => {
-            if (!disposed && generation == current) showPlayButton();
+            if (!disposed && generation == current) failPlayback("play");
         });
     };
     const togglePlayback = () => {
@@ -189,7 +219,10 @@ export const createSpaceVideoContent = (
         if (!video.paused) showLoading();
     };
     video.onplaying = showPlaying;
-    video.onerror = pause;
+    video.onerror = () => failPlayback("media");
+    video.onloadedmetadata = () => {
+        if (media.start) video.currentTime = media.start;
+    };
     video.ontimeupdate = () => {
         if (media.end != undefined && video.currentTime >= media.end) {
             if (inline) video.currentTime = media.start ?? 0;

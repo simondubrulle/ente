@@ -374,6 +374,7 @@ type FeedPhotoSource = SpacePostPhoto & Pick<SpacePost, "postId" | "spaceId">;
 
 interface FeedItemProps {
     onRetry?: () => void;
+    processing?: string;
     photoCount?: number;
     photoIndex?: number;
     photos?: FeedPostPhoto[];
@@ -871,6 +872,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     onOpenProfile,
     onSetPostLiked,
     onRetry,
+    processing,
     postId,
     spaceId,
     thumbHash,
@@ -1566,7 +1568,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 role="status"
                                 aria-label={
                                     timestampStatus == "posting"
-                                        ? "Posting"
+                                        ? (processing ?? "Posting")
                                         : timestampStatus == "failed"
                                           ? "Failed"
                                           : "Posted"
@@ -1642,7 +1644,9 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     </>
                                 ) : (
                                     <>
-                                        <Box component="span">Posting</Box>
+                                        <Box component="span">
+                                            {processing ?? "Posting"}
+                                        </Box>
                                         <Box
                                             component="span"
                                             aria-hidden
@@ -2221,6 +2225,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onRetry={
                     onRetryPost ? () => void onRetryPost(item.id) : undefined
                 }
+                processing={item.processing}
                 timestampStatus={
                     item.status == "failed"
                         ? "failed"

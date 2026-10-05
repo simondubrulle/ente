@@ -11,8 +11,7 @@ import {
     clampVideoCover,
     initialSpaceVideoEdit,
     maxSpaceVideoDuration,
-    openSpaceVideo,
-    seekSpaceVideo,
+    spaceVideoFrames,
     type SpacePostVideoEdit,
 } from "utils/post-video";
 
@@ -122,38 +121,30 @@ export const SpacePostVideoEditor: React.FC<{
         const urls: string[] = [];
         const timer = window.setTimeout(() => {
             void (async () => {
-                const { video, dispose } = await openSpaceVideo(file, signal);
-                try {
-                    const times = Array.from(
-                        { length: 8 },
-                        (_, i) => visibleStart + (span * (i + 0.5)) / 8,
-                    );
-                    for (const time of times) {
-                        await seekSpaceVideo(video, time, signal);
-                        const canvas = document.createElement("canvas");
-                        canvas.width = 80;
-                        canvas.height = 64;
-                        const scale = Math.max(
-                            80 / video.videoWidth,
-                            64 / video.videoHeight,
+                const times = Array.from(
+                    { length: 8 },
+                    (_, i) => visibleStart + (span * (i + 0.5)) / 8,
+                );
+                const frames = await spaceVideoFrames(file, times, 128, signal);
+                for (const frame of frames) {
+                    const canvas = document.createElement("canvas");
+                    canvas.width = 80;
+                    canvas.height = 64;
+                    const scale = Math.max(80 / frame.width, 64 / frame.height);
+                    const width = frame.width * scale;
+                    const height = frame.height * scale;
+                    canvas
+                        .getContext("2d")!
+                        .drawImage(
+                            frame,
+                            (80 - width) / 2,
+                            (64 - height) / 2,
+                            width,
+                            height,
                         );
-                        const width = video.videoWidth * scale;
-                        const height = video.videoHeight * scale;
-                        canvas
-                            .getContext("2d")!
-                            .drawImage(
-                                video,
-                                (80 - width) / 2,
-                                (64 - height) / 2,
-                                width,
-                                height,
-                            );
-                        urls.push(canvas.toDataURL("image/jpeg", 0.65));
-                    }
-                    if (!signal.aborted) setFrames(urls);
-                } finally {
-                    dispose();
+                    urls.push(canvas.toDataURL("image/jpeg", 0.65));
                 }
+                if (!signal.aborted) setFrames(urls);
             })().catch(() => {
                 if (!signal.aborted) setFrames([]);
             });

@@ -70,7 +70,7 @@ export const SpacePostComposer: React.FC<{
     const inputRef = React.useRef<HTMLInputElement>(null);
     const previewURLsRef = React.useRef(new Set<string>());
     const publishedPreviewURLRef = React.useRef<string>(undefined);
-    const preparingRef = React.useRef(new Set<number>());
+    const preparingRef = React.useRef(new Map<number, AbortController>());
     const draftsRef = React.useRef(drafts);
     draftsRef.current = drafts;
     const mountedRef = React.useRef(false);
@@ -96,8 +96,11 @@ export const SpacePostComposer: React.FC<{
     React.useEffect(() => {
         mountedRef.current = true;
         const urls = previewURLsRef.current;
+        const preparing = preparingRef.current;
         return () => {
             mountedRef.current = false;
+            preparing.forEach((controller) => controller.abort());
+            preparing.clear();
             urls.forEach((url) => {
                 if (url != publishedPreviewURLRef.current)
                     URL.revokeObjectURL(url);
@@ -116,7 +119,12 @@ export const SpacePostComposer: React.FC<{
                 !draft.error &&
                 !preparingRef.current.has(draft.id),
         );
-        pending.forEach((draft) => preparingRef.current.add(draft.id));
+        const controllers = new Map(
+            pending.map((draft) => [draft.id, new AbortController()]),
+        );
+        controllers.forEach((controller, id) =>
+            preparingRef.current.set(id, controller),
+        );
         if (pending.some((draft) => isSpaceVideoFile(draft.file))) {
             void import("utils/video-encoding/web")
                 .then(({ preloadVideoEncoderWeb }) => preloadVideoEncoderWeb())
@@ -127,15 +135,19 @@ export const SpacePostComposer: React.FC<{
         void (async () => {
             for (const draft of pending) {
                 if (!isActiveDraft(draft.id)) continue;
+                const controller = controllers.get(draft.id)!;
+                const { signal } = controller;
                 try {
+                    signal.throwIfAborted();
                     let photo: SpaceViewerPhoto;
                     let videoEdit: SpacePostVideoEdit | undefined;
                     if (isSpaceVideoFile(draft.file)) {
-                        const info = await spaceVideoInfo(draft.file);
+                        const info = await spaceVideoInfo(draft.file, signal);
                         videoEdit = initialSpaceVideoEdit(info.duration);
                         const cover = await spaceVideoCover(
                             draft.file,
                             videoEdit.coverTime,
+                            signal,
                         );
                         const url = URL.createObjectURL(draft.file);
                         previewURLsRef.current.add(url);
@@ -191,6 +203,7 @@ export const SpacePostComposer: React.FC<{
                         ),
                     );
                 } catch (error) {
+                    if (signal.aborted) continue;
                     log.error("Failed to prepare post preview", error);
                     if (isActiveDraft(draft.id))
                         setDrafts((current) =>
@@ -210,7 +223,8 @@ export const SpacePostComposer: React.FC<{
                             ),
                         );
                 } finally {
-                    preparingRef.current.delete(draft.id);
+                    if (preparingRef.current.get(draft.id) == controller)
+                        preparingRef.current.delete(draft.id);
                 }
             }
         })();
@@ -221,6 +235,7 @@ export const SpacePostComposer: React.FC<{
         setDrafts((current) => [...current, ...draftPhotos(files)]);
     };
     const releasePreview = (draft: DraftPhoto) => {
+        preparingRef.current.get(draft.id)?.abort();
         for (const url of new Set([
             draft.photo?.imageUrl,
             draft.originalPhoto?.imageUrl,

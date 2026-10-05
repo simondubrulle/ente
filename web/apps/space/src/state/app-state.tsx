@@ -38,6 +38,7 @@ interface PendingSpaceFeedPost {
     spaceId: string;
     photoCount: number;
     postId?: number;
+    processing?: string;
     status: "pending";
     timestampMs: number;
     width?: number;
