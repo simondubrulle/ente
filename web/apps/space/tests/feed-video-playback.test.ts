@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+    focusFeedPost,
     registerFeedPost,
     registerFeedVideo,
 } from "../src/components/feed-video-playback";
@@ -53,10 +54,11 @@ afterEach(() => {
     vi.useRealTimers();
 });
 
-const flush = () => {
+const flush = (settle = true) => {
     const callbacks = [...frames.values()];
     frames.clear();
     callbacks.forEach((callback) => callback(0));
+    if (settle) vi.advanceTimersByTime(120);
 };
 
 const visibility = (element: HTMLElement, ratio: number) => {
@@ -125,11 +127,10 @@ const addVideo = (
 const scrollTo = (y: number, settle = true) => {
     viewport.scrollY = y;
     viewport.dispatchEvent(new Event("scroll"));
-    flush();
-    if (settle) vi.advanceTimersByTime(150);
+    flush(settle);
 };
 
-test("autoplay waits for scrolling to settle and skips posts passed along the way", () => {
+test("autoplay skips posts that pass through focus briefly", () => {
     addVideo("upper", 100);
     addVideo("middle", 500);
     addVideo("lower", 1000);
@@ -140,22 +141,26 @@ test("autoplay waits for scrolling to settle and skips posts passed along the wa
     scrollTo(900, false);
     vi.advanceTimersByTime(100);
     expect(playing.size).toBe(0);
-    vi.advanceTimersByTime(50);
+    vi.advanceTimersByTime(20);
     expect(transitions).toEqual(["play upper", "stop upper", "play lower"]);
 });
 
-test("observer updates during scrolling do not start playback", () => {
+test("autoplay starts during continuous scrolling when the same post stays focused", () => {
     const video = addVideo("video", 900);
     flush();
     scrollTo(700, false);
     visibility(video.post.element, 1);
-    flush();
+    flush(false);
+    vi.advanceTimersByTime(40);
+    scrollTo(710, false);
+    vi.advanceTimersByTime(40);
+    scrollTo(720, false);
     expect(playing.size).toBe(0);
-    vi.advanceTimersByTime(150);
+    vi.advanceTimersByTime(40);
     expect([...playing]).toEqual(["video"]);
 });
 
-test("manual play takes effect immediately even before scrolling settles", () => {
+test("manual play takes effect immediately during the focus delay", () => {
     const upper = addVideo("upper", -200);
     addVideo("focused", 100);
     flush();
@@ -164,6 +169,38 @@ test("manual play takes effect immediately even before scrolling settles", () =>
     expect([...playing]).toEqual(["upper"]);
     vi.advanceTimersByTime(150);
     expect(transitions).toEqual(["play focused", "stop focused", "play upper"]);
+});
+
+test("the focus delay rechecks position before starting playback", () => {
+    addVideo("upper", 100);
+    addVideo("lower", 600);
+    flush(false);
+    viewport.scrollY = 500;
+    vi.advanceTimersByTime(120);
+    expect(playing.size).toBe(0);
+    vi.advanceTimersByTime(120);
+    expect(transitions).toEqual(["play lower"]);
+});
+
+test("hiding the page cancels pending autoplay", () => {
+    addVideo("video", 100);
+    flush(false);
+    page.hidden = true;
+    page.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(120);
+    expect(playing.size).toBe(0);
+    page.hidden = false;
+    page.dispatchEvent(new Event("visibilitychange"));
+    vi.advanceTimersByTime(120);
+    expect([...playing]).toEqual(["video"]);
+});
+
+test("unmounting a pending video prevents it from starting", () => {
+    const video = addVideo("video", 100);
+    flush(false);
+    video.control.unregister();
+    vi.advanceTimersByTime(120);
+    expect(video.player.play).not.toHaveBeenCalled();
 });
 
 test("a short landscape video plays before a lower video crossing the midpoint", () => {
@@ -251,13 +288,81 @@ test("swiping the focused carousel between videos pauses the old slide first", (
     expect(transitions).toEqual(["play first", "stop first", "play second"]);
 });
 
-test("swiping another carousel to a video does not steal playback", () => {
+test("activating another carousel without a user gesture does not steal playback", () => {
     addVideo("upper", 100);
     const lower = addVideo("lower", 400, false);
     flush();
     lower.control.setActive(true);
     flush();
     expect(transitions).toEqual(["play upper"]);
+});
+
+test("swiping through photos to a video takes priority over an earlier photo post", () => {
+    addPost(100);
+    const carousel = addVideo("carousel", 400, false);
+    flush();
+    for (let index = 0; index < 3; index++) {
+        focusFeedPost(carousel.post.element);
+        flush();
+        expect(playing.size).toBe(0);
+    }
+    carousel.control.setActive(true);
+    flush();
+    expect([...playing]).toEqual(["carousel"]);
+});
+
+test("an explicit carousel swipe transfers playback from the earlier video", () => {
+    addVideo("upper", 100);
+    const carousel = addVideo("carousel", 400, false);
+    flush();
+    focusFeedPost(carousel.post.element);
+    carousel.control.setActive(true);
+    flush();
+    expect(transitions).toEqual(["play upper", "stop upper", "play carousel"]);
+    carousel.control.setActive(false);
+    flush();
+    expect(playing.size).toBe(0);
+});
+
+test("a carousel swipe supersedes an earlier manual video selection", () => {
+    const upper = addVideo("upper", 100);
+    const carousel = addVideo("carousel", 400, false);
+    flush();
+    upper.control.pause();
+    upper.control.play();
+    focusFeedPost(carousel.post.element);
+    carousel.control.setActive(true);
+    flush();
+    expect([...playing]).toEqual(["carousel"]);
+});
+
+test("the interacted carousel keeps focus until it leaves the viewport", () => {
+    const carousel = addVideo("carousel", 100, false);
+    addVideo("lower", 500);
+    flush();
+    focusFeedPost(carousel.post.element);
+    carousel.control.setActive(true);
+    flush();
+    scrollTo(250);
+    expect([...playing]).toEqual(["carousel"]);
+    scrollTo(351);
+    expect([...playing]).toEqual(["lower"]);
+});
+
+test("unmounting the interacted post releases its playback priority", () => {
+    addVideo("upper", 100);
+    const carousel = addVideo("carousel", 400, false);
+    flush();
+    focusFeedPost(carousel.post.element);
+    carousel.control.setActive(true);
+    flush();
+    carousel.control.unregister();
+    carousel.post.cleanup();
+    postCleanups = postCleanups.filter(
+        (cleanup) => cleanup != carousel.post.cleanup,
+    );
+    flush();
+    expect([...playing]).toEqual(["upper"]);
 });
 
 test("tapping a partially visible video overrides autoplay synchronously", () => {

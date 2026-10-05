@@ -11,7 +11,10 @@ import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
-import { registerFeedPost } from "components/feed-video-playback";
+import {
+    focusFeedPost,
+    registerFeedPost,
+} from "components/feed-video-playback";
 import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
@@ -676,6 +679,7 @@ const FeedPhoto: React.FC<{
     onLoadVideo?: SpacePostAssetURLLoader;
     onOpenPhoto?: () => void;
     shouldLoad: boolean;
+    shouldPreloadVideo: boolean;
     thumbHash?: string;
 }> = ({
     imageUrl,
@@ -687,6 +691,7 @@ const FeedPhoto: React.FC<{
     onLoadVideo,
     onOpenPhoto,
     shouldLoad,
+    shouldPreloadVideo,
     thumbHash,
     video,
 }) => {
@@ -819,15 +824,18 @@ const FeedPhoto: React.FC<{
                     }}
                 />
             )}
-            {!isPostUnavailable && isPhotoReady && video && (
-                <SpaceInlinePostVideo
-                    imageUrl={displayImageUrl!}
-                    video={video}
-                    isActive={isActive}
-                    muted={muted}
-                    onLoadVideo={onLoadVideo}
-                />
-            )}
+            {!isPostUnavailable &&
+                isPhotoReady &&
+                video &&
+                shouldPreloadVideo && (
+                    <SpaceInlinePostVideo
+                        imageUrl={displayImageUrl!}
+                        video={video}
+                        isActive={isActive}
+                        muted={muted}
+                        onLoadVideo={onLoadVideo}
+                    />
+                )}
             {isPostUnavailable && (
                 <Box
                     sx={{
@@ -887,6 +895,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     const [shouldLoadMedia, setShouldLoadMedia] = useState(
         !isUnavailable && Boolean(imageUrl) && !isAvatarPending,
     );
+    const [shouldPreloadVideo, setShouldPreloadVideo] = useState(false);
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
     const activePhoto = feedPhotos[photoIndex]!;
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
@@ -982,6 +991,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
             delta += event.deltaX;
             if (Math.abs(delta) < 20) return;
             advanced = true;
+            focusFeedPost(carousel);
             scrollToPhoto(
                 Math.round(carousel.scrollLeft / carousel.clientWidth) +
                     Math.sign(delta),
@@ -1122,7 +1132,6 @@ const FeedItem: React.FC<FeedItemProps> = ({
 
     React.useEffect(() => {
         if (isPostUnavailable) return;
-        if (shouldLoadMedia) return;
         const element = rootRef.current;
         if (!element) return;
         if (
@@ -1130,21 +1139,21 @@ const FeedItem: React.FC<FeedItemProps> = ({
             !("IntersectionObserver" in window)
         ) {
             setShouldLoadMedia(true);
+            setShouldPreloadVideo(true);
             return;
         }
 
         const observer = new IntersectionObserver(
             (entries) => {
-                if (entries.some((entry) => entry.isIntersecting)) {
-                    setShouldLoadMedia(true);
-                    observer.disconnect();
-                }
+                const isNearby = entries.some((entry) => entry.isIntersecting);
+                setShouldPreloadVideo(isNearby);
+                if (isNearby) setShouldLoadMedia(true);
             },
             { rootMargin: feedMediaLoadRootMargin },
         );
         observer.observe(element);
         return () => observer.disconnect();
-    }, [isPostUnavailable, shouldLoadMedia]);
+    }, [isPostUnavailable]);
 
     React.useEffect(() => {
         if (isPostUnavailable) return;
@@ -1323,6 +1332,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 return;
                             }
                             swipe.dragging = true;
+                            focusFeedPost(event.currentTarget);
                             suppressPhotoClickRef.current = true;
                             event.currentTarget.setPointerCapture(
                                 event.pointerId,
@@ -1361,6 +1371,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         )
                             return;
                         event.preventDefault();
+                        focusFeedPost(event.currentTarget);
                         const index = Math.max(
                             0,
                             Math.min(
@@ -1409,8 +1420,10 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             }
                             shouldLoad={
                                 shouldLoadMedia &&
-                                Math.abs(index - photoIndex) <= 1
+                                (Boolean(photo.video) ||
+                                    Math.abs(index - photoIndex) <= 1)
                             }
+                            shouldPreloadVideo={shouldPreloadVideo}
                             thumbHash={photo.thumbHash}
                             video={photo.video}
                         />
