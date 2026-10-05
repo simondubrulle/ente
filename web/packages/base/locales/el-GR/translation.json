@@ -955,6 +955,8 @@
     "hide": "Απόκρυψη",
     "unhide": "Επανεμφάνιση",
     "sort_by": "Ταξινόμηση κατά",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Νεότερα πρώτα",
     "oldest_first": "Παλαιότερα πρώτα",
     "most_relevant": "",

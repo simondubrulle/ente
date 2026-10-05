@@ -955,6 +955,8 @@
     "hide": "Ocultar",
     "unhide": "Mostrar",
     "sort_by": "Ordenar por",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Mais recentes primeiro",
     "oldest_first": "Mais antigo primeiro",
     "most_relevant": "Mais relevante",

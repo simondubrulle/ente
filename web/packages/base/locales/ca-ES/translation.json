@@ -955,6 +955,8 @@
     "hide": "Amaga",
     "unhide": "Mostra",
     "sort_by": "Ordena per",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Més nous primer",
     "oldest_first": "Més antics primer",
     "most_relevant": "Més rellevant",

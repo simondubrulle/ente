@@ -955,6 +955,8 @@
     "hide": "Sembunyikan",
     "unhide": "",
     "sort_by": "Urut berdasarkan",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "",
     "oldest_first": "",
     "most_relevant": "",
