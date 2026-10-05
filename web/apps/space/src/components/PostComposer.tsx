@@ -255,7 +255,11 @@ export const SpacePostComposer: React.FC<{
             if (!snapshot.drafts.some(({ id }) => id == draft.id))
                 releasePreview(draft);
         }
-        setDrafts(snapshot.drafts);
+        setDrafts(
+            drafts.filter((draft) =>
+                snapshot.drafts.some(({ id }) => id == draft.id),
+            ),
+        );
         setActiveIndex(snapshot.activeIndex);
         setEditorSnapshot(undefined);
     };
@@ -318,8 +322,7 @@ export const SpacePostComposer: React.FC<{
             })),
         [drafts],
     );
-    const showPhotoStrip = files.length > 1;
-    const controls = showPhotoStrip && (
+    const controls = drafts.length > 1 && (
         <SpacePostPhotoStrip
             activeIndex={activeIndex}
             disabled={isPublishing}
@@ -353,6 +356,11 @@ export const SpacePostComposer: React.FC<{
                 onClose={() => {
                     if (!isPublishing || isExiting) onClose();
                 }}
+                onAddDraftPhoto={
+                    drafts.length == 1
+                        ? () => inputRef.current?.click()
+                        : undefined
+                }
                 onEditDraftPhoto={() => {
                     if (!isPublishing)
                         setEditorSnapshot({ drafts, activeIndex });
@@ -380,7 +388,6 @@ export const SpacePostComposer: React.FC<{
             {editorSnapshot && (
                 <SpacePostPhotoEditor
                     initialIndex={activeIndex}
-                    showPhotoStrip={showPhotoStrip}
                     onAdd={addPhotos}
                     onClose={cancelEdits}
                     onDone={applyEdits}

@@ -4,7 +4,10 @@ import type { SpacePostAssetURLLoader } from "services/space";
 export const createSpaceVideoContent = (
     item: Pick<SpaceViewerPhoto, "imageUrl" | "video">,
     load?: SpacePostAssetURLLoader,
-    { inline = false }: { inline?: boolean } = {},
+    {
+        inline = false,
+        onTogglePlayback,
+    }: { inline?: boolean; onTogglePlayback?: (play: boolean) => void } = {},
 ) => {
     const media = item.video!;
     const element = document.createElement("div");
@@ -20,7 +23,8 @@ export const createSpaceVideoContent = (
     video.playsInline = true;
     video.preload = "none";
     video.poster = item.imageUrl;
-    video.muted = media.muted ?? false;
+    video.muted = inline || (media.muted ?? false);
+    video.loop = inline;
     video.tabIndex = 0;
     video.setAttribute("role", "button");
     video.setAttribute("aria-label", "Play video");
@@ -146,15 +150,15 @@ export const createSpaceVideoContent = (
                 video.currentTime = media.start ?? 0;
             }
             await video.play();
-            if (generation != current) video.pause();
-            else showPlaying();
+            if (generation == current) showPlaying();
         })().catch(() => {
             if (!disposed && generation == current) showPlayButton();
         });
     };
     const togglePlayback = () => {
         if (button.disabled) return;
-        if (video.paused) play();
+        if (onTogglePlayback) onTogglePlayback(video.paused);
+        else if (video.paused) play();
         else pause();
     };
     button.onclick = togglePlayback;
@@ -188,7 +192,8 @@ export const createSpaceVideoContent = (
     video.onerror = pause;
     video.ontimeupdate = () => {
         if (media.end != undefined && video.currentTime >= media.end) {
-            reset();
+            if (inline) video.currentTime = media.start ?? 0;
+            else reset();
         }
     };
     element.addEventListener("pointerdown", (event) => {

@@ -2,6 +2,8 @@ import {
     FavouriteIcon,
     MultiplicationSignIcon,
     UserAdd02Icon,
+    VolumeHighIcon,
+    VolumeOffIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Skeleton } from "@mui/material";
@@ -9,6 +11,7 @@ import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
+import { registerFeedPost } from "components/feed-video-playback";
 import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
@@ -108,6 +111,7 @@ interface HomeScreenProps {
     showInviteFriendsToast?: boolean;
     onAddFriend: () => void;
     onPostPhotoSelect: (files: File[]) => void;
+    onRetryPost?: (localPostId: string) => Promise<void>;
     onDeletePost?: (postId: number) => Promise<void> | void;
     onLoadMoreFeedItems?: () => Promise<void> | void;
     onLoadPostAvatar?: SpacePostAvatarURLLoader;
@@ -360,7 +364,7 @@ class FeedMotionList extends React.Component<FeedMotionListProps> {
     }
 }
 
-type FeedTimestampStatus = "failed" | "post-limit" | "posted" | "posting";
+type FeedTimestampStatus = "failed" | "posted" | "posting";
 
 interface FeedPostPhoto extends SpacePostPhoto {
     isUnavailable?: boolean;
@@ -369,6 +373,7 @@ interface FeedPostPhoto extends SpacePostPhoto {
 type FeedPhotoSource = SpacePostPhoto & Pick<SpacePost, "postId" | "spaceId">;
 
 interface FeedItemProps {
+    onRetry?: () => void;
     photoCount?: number;
     photoIndex?: number;
     photos?: FeedPostPhoto[];
@@ -645,7 +650,11 @@ const FeedPhotoOverlay: React.FC<{
                 zIndex: 2,
             }}
         >
-            <SpacePostPhotosDots index={photoIndex} count={photoCount} />
+            <SpacePostPhotosDots
+                index={photoIndex}
+                count={photoCount}
+                activeColor={green}
+            />
             {caption && (
                 <Box title={caption} sx={{ minWidth: 0, width: "100%" }}>
                     <SpaceCaptionText caption={caption} lineClamp={2} />
@@ -660,6 +669,7 @@ const FeedPhoto: React.FC<{
     imageUrl?: string;
     isActive: boolean;
     isUnavailable: boolean;
+    muted: boolean;
     name: string;
     onLoadImage?: () => Promise<string | undefined>;
     onLoadVideo?: SpacePostAssetURLLoader;
@@ -670,6 +680,7 @@ const FeedPhoto: React.FC<{
     imageUrl,
     isActive,
     isUnavailable,
+    muted,
     name,
     onLoadImage,
     onLoadVideo,
@@ -812,6 +823,7 @@ const FeedPhoto: React.FC<{
                     imageUrl={displayImageUrl!}
                     video={video}
                     isActive={isActive}
+                    muted={muted}
                     onLoadVideo={onLoadVideo}
                 />
             )}
@@ -858,6 +870,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     onOpenPhoto,
     onOpenProfile,
     onSetPostLiked,
+    onRetry,
     postId,
     spaceId,
     thumbHash,
@@ -867,6 +880,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     viewerLiked,
 }) => {
     const [isLiked, setIsLiked] = useState(viewerLiked);
+    const [muted, setMuted] = useState(true);
     const [likePopID, setLikePopID] = useState(0);
     const [shouldLoadMedia, setShouldLoadMedia] = useState(
         !isUnavailable && Boolean(imageUrl) && !isAvatarPending,
@@ -874,6 +888,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
     const activePhoto = feedPhotos[photoIndex]!;
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
+    React.useEffect(() => registerFeedPost(carouselRef.current!), []);
     const photoAnimationRef = React.useRef<number | null>(null);
     const swipeRef = React.useRef<{
         pointerID: number;
@@ -1051,6 +1066,8 @@ const FeedItem: React.FC<FeedItemProps> = ({
             : photoDimensions.width / photoDimensions.height,
     );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
+    const showSoundControl =
+        !isPostUnavailable && isPhotoReady && Boolean(activePhoto.video);
     const canOpenPhoto =
         !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
     const openPhoto = (focusReplyOnOpen = false, index = photoIndex) => {
@@ -1185,17 +1202,75 @@ const FeedItem: React.FC<FeedItemProps> = ({
                     },
                 }}
             >
-                {photoCount > 1 && (
+                {(photoCount > 1 || showSoundControl) && (
                     <Box
                         sx={{
+                            alignItems: "center",
                             display: "flex",
+                            minHeight: spaceTouchTargetSize,
                             position: "absolute",
-                            right: 16,
-                            top: 16,
+                            right: photoCount > 1 ? 16 : 8,
+                            top: photoCount > 1 ? 4 : 12,
                             zIndex: 3,
                             pointerEvents: "none",
                         }}
                     >
+                        {showSoundControl && (
+                            <Box
+                                component="button"
+                                type="button"
+                                aria-label={
+                                    muted ? "Unmute video" : "Mute video"
+                                }
+                                tabIndex={isViewerOpen ? -1 : 0}
+                                onClick={() => setMuted(!muted)}
+                                sx={{
+                                    alignItems: "center",
+                                    appearance: "none",
+                                    bgcolor: "transparent",
+                                    border: 0,
+                                    borderRadius: "50%",
+                                    color: "#FFFFFF",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    flexShrink: 0,
+                                    height: spaceTouchTargetSize,
+                                    justifyContent: "center",
+                                    p: 0,
+                                    pointerEvents: "auto",
+                                    width: spaceTouchTargetSize,
+                                    "&:focus-visible": {
+                                        outline: `2px solid ${green}`,
+                                        outlineOffset: -4,
+                                    },
+                                    "&:hover > span": {
+                                        bgcolor: "rgba(32, 32, 32, 0.75)",
+                                    },
+                                }}
+                            >
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        alignItems: "center",
+                                        bgcolor: "rgba(32, 32, 32, 0.55)",
+                                        borderRadius: "50%",
+                                        display: "flex",
+                                        height: 28,
+                                        justifyContent: "center",
+                                        width: 28,
+                                    }}
+                                >
+                                    <HugeiconsIcon
+                                        icon={
+                                            muted
+                                                ? VolumeOffIcon
+                                                : VolumeHighIcon
+                                        }
+                                        size={16}
+                                    />
+                                </Box>
+                            </Box>
+                        )}
                         <SpacePostPhotosCounter
                             compact
                             index={photoIndex}
@@ -1317,6 +1392,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             isUnavailable={
                                 isUnavailable || Boolean(photo.isUnavailable)
                             }
+                            muted={muted}
                             name={name}
                             onLoadImage={
                                 onLoadImage
@@ -1367,7 +1443,13 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         minHeight: 32,
                         pointerEvents: "none",
                         position: "absolute",
-                        right: photoCount > 1 ? 68 : 12,
+                        right: showSoundControl
+                            ? photoCount > 1
+                                ? 112
+                                : 64
+                            : photoCount > 1
+                              ? 68
+                              : 12,
                         top: 12,
                         zIndex: 2,
                     }}
@@ -1485,17 +1567,14 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 aria-label={
                                     timestampStatus == "posting"
                                         ? "Posting"
-                                        : timestampStatus == "post-limit"
-                                          ? "Post limit reached. Please contact support."
-                                          : timestampStatus == "failed"
-                                            ? "Failed"
-                                            : "Posted"
+                                        : timestampStatus == "failed"
+                                          ? "Failed"
+                                          : "Posted"
                                 }
                                 sx={{
                                     alignItems: "center",
                                     color:
-                                        timestampStatus == "failed" ||
-                                        timestampStatus == "post-limit"
+                                        timestampStatus == "failed"
                                             ? dangerColor
                                             : feedTimestampForeground,
                                     display: "flex",
@@ -1503,21 +1582,64 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     fontWeight: 500,
                                     lineHeight: "16px",
                                     minHeight: 16,
-                                    whiteSpace:
-                                        timestampStatus == "post-limit"
-                                            ? "normal"
-                                            : "nowrap",
+                                    whiteSpace: "nowrap",
                                 }}
                             >
                                 {timestampStatus == "posted" ? (
                                     <Box component="span">Posted</Box>
-                                ) : timestampStatus == "post-limit" ? (
-                                    <Box component="span">
-                                        Post limit reached. Please contact
-                                        support.
-                                    </Box>
                                 ) : timestampStatus == "failed" ? (
-                                    <Box component="span">Failed</Box>
+                                    <>
+                                        <Box component="span">Failed</Box>
+                                        {onRetry && (
+                                            <>
+                                                <Box
+                                                    component="span"
+                                                    aria-hidden
+                                                    sx={{
+                                                        color: feedTimestampForeground,
+                                                        mx: 0.75,
+                                                    }}
+                                                >
+                                                    ·
+                                                </Box>
+                                                <Box
+                                                    component="button"
+                                                    type="button"
+                                                    aria-label="Retry post"
+                                                    onClick={onRetry}
+                                                    sx={{
+                                                        appearance: "none",
+                                                        bgcolor: "transparent",
+                                                        border: 0,
+                                                        borderRadius: "2px",
+                                                        color: "#FFFFFF",
+                                                        cursor: "pointer",
+                                                        font: "inherit",
+                                                        minHeight: 24,
+                                                        my: -0.5,
+                                                        p: 0,
+                                                        pointerEvents: "auto",
+                                                        textDecoration:
+                                                            "underline",
+                                                        textDecorationColor:
+                                                            "rgba(255, 255, 255, 0.6)",
+                                                        textUnderlineOffset:
+                                                            "2px",
+                                                        "&:hover": {
+                                                            textDecorationColor:
+                                                                "#FFFFFF",
+                                                        },
+                                                        "&:focus-visible": {
+                                                            outline: `2px solid ${green}`,
+                                                            outlineOffset: 2,
+                                                        },
+                                                    }}
+                                                >
+                                                    Retry
+                                                </Box>
+                                            </>
+                                        )}
+                                    </>
                                 ) : (
                                     <>
                                         <Box component="span">Posting</Box>
@@ -1769,6 +1891,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     showInviteFriendsToast = false,
     onAddFriend,
     onPostPhotoSelect,
+    onRetryPost,
     onDeletePost,
     onLoadMoreFeedItems,
     onLoadPostAvatar,
@@ -2095,11 +2218,12 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onOpenProfile={onOpenProfile}
                 photoCount={item.photoCount}
                 postId={0}
+                onRetry={
+                    onRetryPost ? () => void onRetryPost(item.id) : undefined
+                }
                 timestampStatus={
                     item.status == "failed"
-                        ? item.reason == "post-limit"
-                            ? "post-limit"
-                            : "failed"
+                        ? "failed"
                         : item.postId
                           ? "posted"
                           : "posting"

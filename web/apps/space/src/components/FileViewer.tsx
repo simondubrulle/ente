@@ -1,4 +1,5 @@
 import {
+    Add01Icon,
     ArrowLeft02Icon,
     ArrowRight02Icon,
     Cancel01Icon,
@@ -146,6 +147,7 @@ interface SpaceFileViewerProps {
     draftPostPreparationError?: string;
     isDraftPostPreviewPending?: boolean;
     onClose: () => void;
+    onAddDraftPhoto?: () => void;
     onEditDraftPhoto?: () => void;
     onDeletePost?: () => Promise<void> | void;
     onDraftPostExitAnimationStart?: () => void;
@@ -234,6 +236,29 @@ const viewerHeaderButtonSx = {
     position: "relative",
     width: spaceTouchTargetSize,
     "&:focus-visible": { outline: `2px solid ${green}`, outlineOffset: 2 },
+};
+
+const draftHeaderButtonSx = {
+    ...viewerHeaderButtonSx,
+    borderRadius: "999px",
+    fontFamily: "inherit",
+    fontSize: 12,
+    fontWeight: 600,
+    left: 0,
+    minWidth: spaceTouchTargetSize,
+    mx: 0,
+    width: "auto",
+    "&:disabled": { opacity: 0.3, cursor: "default" },
+};
+
+const draftHeaderButtonContentSx = {
+    alignItems: "center",
+    bgcolor: "#242424",
+    borderRadius: "999px",
+    display: "flex",
+    gap: "6px",
+    height: 32,
+    px: "10px",
 };
 
 const resizeCaptionInput = (
@@ -374,6 +399,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
     focusReplyOnOpen = false,
     isDraftPostPreviewPending = false,
     onClose,
+    onAddDraftPhoto,
     onEditDraftPhoto,
     onDeletePost,
     onDraftPostExitAnimationStart,
@@ -1402,7 +1428,8 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     gridTemplateColumns: "minmax(0, 1fr) auto",
                     minHeight: viewerHeaderHeight,
                     position: "relative",
-                    px: "16px",
+                    pl: "16px",
+                    pr: isDraftPost ? "8px" : "16px",
                     width: "100%",
                     zIndex: 2,
                 }}
@@ -1581,6 +1608,29 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             />
                         </Box>
                     )}
+                    {isDraftPost && onAddDraftPhoto && (
+                        <Box
+                            component="button"
+                            type="button"
+                            aria-label="Add photos or videos"
+                            title="Add photos or videos"
+                            disabled={isDraftPostActionRunning}
+                            onClick={onAddDraftPhoto}
+                            sx={draftHeaderButtonSx}
+                        >
+                            <Box
+                                component="span"
+                                sx={draftHeaderButtonContentSx}
+                            >
+                                <HugeiconsIcon
+                                    icon={Add01Icon}
+                                    size={20}
+                                    strokeWidth={1.8}
+                                />
+                                Add
+                            </Box>
+                        </Box>
+                    )}
                     {isDraftPost && onEditDraftPhoto && (
                         <Box
                             component="button"
@@ -1589,7 +1639,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             title="Edit item"
                             disabled={
                                 isDraftPostActionRunning ||
-                                isDraftPostPreviewPending ||
                                 Boolean(draftPostPreparationError)
                             }
                             onClick={() => {
@@ -1598,26 +1647,27 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                                 );
                                 onEditDraftPhoto();
                             }}
-                            sx={{
-                                ...viewerHeaderButtonSx,
-                                mr: postPhotoCount > 1 ? "8px" : 0,
-                                "&:disabled": {
-                                    opacity: 0.3,
-                                    cursor: "default",
-                                },
-                            }}
+                            sx={draftHeaderButtonSx}
                         >
-                            <HugeiconsIcon
-                                icon={Edit03Icon}
-                                size={16}
-                                strokeWidth={1.8}
-                            />
+                            <Box
+                                component="span"
+                                sx={draftHeaderButtonContentSx}
+                            >
+                                <HugeiconsIcon
+                                    icon={Edit03Icon}
+                                    size={16}
+                                    strokeWidth={1.8}
+                                />
+                                Edit
+                            </Box>
                         </Box>
                     )}
-                    <SpacePostPhotosCounter
-                        index={postPhotoIndex}
-                        count={postPhotoCount}
-                    />
+                    {!isDraftPost && (
+                        <SpacePostPhotosCounter
+                            index={postPhotoIndex}
+                            count={postPhotoCount}
+                        />
+                    )}
                     <Box
                         component="button"
                         type="button"
@@ -1628,13 +1678,35 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                         }
                         disabled={isDraftPostActionRunning}
                         onClick={closeViewer}
-                        sx={viewerHeaderButtonSx}
+                        sx={
+                            isDraftPost
+                                ? draftHeaderButtonSx
+                                : viewerHeaderButtonSx
+                        }
                     >
-                        <HugeiconsIcon
-                            icon={Cancel01Icon}
-                            size={20}
-                            strokeWidth={1.8}
-                        />
+                        {isDraftPost ? (
+                            <Box
+                                component="span"
+                                sx={{
+                                    ...draftHeaderButtonContentSx,
+                                    width: 32,
+                                    p: 0,
+                                    justifyContent: "center",
+                                }}
+                            >
+                                <HugeiconsIcon
+                                    icon={Cancel01Icon}
+                                    size={20}
+                                    strokeWidth={1.8}
+                                />
+                            </Box>
+                        ) : (
+                            <HugeiconsIcon
+                                icon={Cancel01Icon}
+                                size={20}
+                                strokeWidth={1.8}
+                            />
+                        )}
                     </Box>
                 </Box>
                 {canManagePost && (
