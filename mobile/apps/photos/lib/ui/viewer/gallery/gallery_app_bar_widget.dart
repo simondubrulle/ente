@@ -371,17 +371,19 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
       actionsBuilder: (foregroundColor) =>
           _getDefaultActions(context, foregroundColor: foregroundColor),
       coverActions: [
-        AlbumCoverActionButton(
-          icon: HugeIcons.strokeRoundedPlay,
-          tooltip: strings.slideshow,
-          onTap: _startAlbumSlideshow,
-        ),
-        if (galleryType.showMap())
+        if (widget.selectedFiles.files.isEmpty) ...[
           AlbumCoverActionButton(
-            icon: HugeIcons.strokeRoundedMapsLocation02,
-            tooltip: strings.map,
-            onTap: showOnMap,
+            icon: HugeIcons.strokeRoundedPlay,
+            tooltip: strings.slideshow,
+            onTap: _startAlbumSlideshow,
           ),
+          if (galleryType.showMap())
+            AlbumCoverActionButton(
+              icon: HugeIcons.strokeRoundedMapsLocation02,
+              tooltip: strings.map,
+              onTap: showOnMap,
+            ),
+        ],
       ],
     );
   }

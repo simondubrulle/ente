@@ -33,6 +33,7 @@ import "package:photos/services/ignored_files_service.dart";
 import "package:photos/ui/collections/album/row_item.dart";
 import "package:photos/ui/viewer/gallery/collection_page.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
+import "package:photos/ui/viewer/gallery/gallery_app_bar_widget.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart";
 import "package:photos/ui/viewer/gallery/state/search_filter_data_provider.dart";
@@ -182,6 +183,16 @@ void main() {
       });
       await _pumpAlbum(tester, collection);
       await _expectCover(tester, newest, count: 2);
+      final selectedFiles = tester
+          .widget<GalleryAppBarWidget>(find.byType(GalleryAppBarWidget))
+          .selectedFiles;
+      expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
+      selectedFiles.toggleSelection(newest);
+      await tester.pump();
+      expect(find.byType(AlbumCoverActionButton), findsNothing);
+      selectedFiles.toggleSelection(newest);
+      await tester.pump();
+      expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
 
       collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
       Bus.instance.fire(
