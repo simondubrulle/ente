@@ -2,6 +2,8 @@ import {
     FavouriteIcon,
     MultiplicationSignIcon,
     UserAdd02Icon,
+    VolumeHighIcon,
+    VolumeOffIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Skeleton } from "@mui/material";
@@ -9,6 +11,7 @@ import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
+import { registerFeedPost } from "components/feed-video-playback";
 import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
@@ -645,7 +648,11 @@ const FeedPhotoOverlay: React.FC<{
                 zIndex: 2,
             }}
         >
-            <SpacePostPhotosDots index={photoIndex} count={photoCount} />
+            <SpacePostPhotosDots
+                index={photoIndex}
+                count={photoCount}
+                activeColor={green}
+            />
             {caption && (
                 <Box title={caption} sx={{ minWidth: 0, width: "100%" }}>
                     <SpaceCaptionText caption={caption} lineClamp={2} />
@@ -660,6 +667,7 @@ const FeedPhoto: React.FC<{
     imageUrl?: string;
     isActive: boolean;
     isUnavailable: boolean;
+    muted: boolean;
     name: string;
     onLoadImage?: () => Promise<string | undefined>;
     onLoadVideo?: SpacePostAssetURLLoader;
@@ -670,6 +678,7 @@ const FeedPhoto: React.FC<{
     imageUrl,
     isActive,
     isUnavailable,
+    muted,
     name,
     onLoadImage,
     onLoadVideo,
@@ -812,6 +821,7 @@ const FeedPhoto: React.FC<{
                     imageUrl={displayImageUrl!}
                     video={video}
                     isActive={isActive}
+                    muted={muted}
                     onLoadVideo={onLoadVideo}
                 />
             )}
@@ -867,6 +877,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     viewerLiked,
 }) => {
     const [isLiked, setIsLiked] = useState(viewerLiked);
+    const [muted, setMuted] = useState(true);
     const [likePopID, setLikePopID] = useState(0);
     const [shouldLoadMedia, setShouldLoadMedia] = useState(
         !isUnavailable && Boolean(imageUrl) && !isAvatarPending,
@@ -874,6 +885,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
     const activePhoto = feedPhotos[photoIndex]!;
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
+    React.useEffect(() => registerFeedPost(carouselRef.current!), []);
     const photoAnimationRef = React.useRef<number | null>(null);
     const swipeRef = React.useRef<{
         pointerID: number;
@@ -1051,6 +1063,8 @@ const FeedItem: React.FC<FeedItemProps> = ({
             : photoDimensions.width / photoDimensions.height,
     );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
+    const showSoundControl =
+        !isPostUnavailable && isPhotoReady && Boolean(activePhoto.video);
     const canOpenPhoto =
         !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
     const openPhoto = (focusReplyOnOpen = false, index = photoIndex) => {
@@ -1185,17 +1199,75 @@ const FeedItem: React.FC<FeedItemProps> = ({
                     },
                 }}
             >
-                {photoCount > 1 && (
+                {(photoCount > 1 || showSoundControl) && (
                     <Box
                         sx={{
+                            alignItems: "center",
                             display: "flex",
+                            minHeight: spaceTouchTargetSize,
                             position: "absolute",
-                            right: 16,
-                            top: 16,
+                            right: photoCount > 1 ? 16 : 8,
+                            top: 12,
                             zIndex: 3,
                             pointerEvents: "none",
                         }}
                     >
+                        {showSoundControl && (
+                            <Box
+                                component="button"
+                                type="button"
+                                aria-label={
+                                    muted ? "Unmute video" : "Mute video"
+                                }
+                                tabIndex={isViewerOpen ? -1 : 0}
+                                onClick={() => setMuted(!muted)}
+                                sx={{
+                                    alignItems: "center",
+                                    appearance: "none",
+                                    bgcolor: "transparent",
+                                    border: 0,
+                                    borderRadius: "50%",
+                                    color: "#FFFFFF",
+                                    cursor: "pointer",
+                                    display: "flex",
+                                    flexShrink: 0,
+                                    height: spaceTouchTargetSize,
+                                    justifyContent: "center",
+                                    p: 0,
+                                    pointerEvents: "auto",
+                                    width: spaceTouchTargetSize,
+                                    "&:focus-visible": {
+                                        outline: `2px solid ${green}`,
+                                        outlineOffset: -4,
+                                    },
+                                    "&:hover > span": {
+                                        bgcolor: "rgba(32, 32, 32, 0.75)",
+                                    },
+                                }}
+                            >
+                                <Box
+                                    component="span"
+                                    sx={{
+                                        alignItems: "center",
+                                        bgcolor: "rgba(32, 32, 32, 0.55)",
+                                        borderRadius: "50%",
+                                        display: "flex",
+                                        height: 28,
+                                        justifyContent: "center",
+                                        width: 28,
+                                    }}
+                                >
+                                    <HugeiconsIcon
+                                        icon={
+                                            muted
+                                                ? VolumeOffIcon
+                                                : VolumeHighIcon
+                                        }
+                                        size={16}
+                                    />
+                                </Box>
+                            </Box>
+                        )}
                         <SpacePostPhotosCounter
                             compact
                             index={photoIndex}
@@ -1317,6 +1389,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             isUnavailable={
                                 isUnavailable || Boolean(photo.isUnavailable)
                             }
+                            muted={muted}
                             name={name}
                             onLoadImage={
                                 onLoadImage
@@ -1367,7 +1440,13 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         minHeight: 32,
                         pointerEvents: "none",
                         position: "absolute",
-                        right: photoCount > 1 ? 68 : 12,
+                        right: showSoundControl
+                            ? photoCount > 1
+                                ? 112
+                                : 64
+                            : photoCount > 1
+                              ? 68
+                              : 12,
                         top: 12,
                         zIndex: 2,
                     }}

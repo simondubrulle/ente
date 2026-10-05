@@ -74,7 +74,6 @@ const buttonSx = {
 export const SpacePostPhotoEditor: React.FC<{
     photos: SpaceEditablePostPhoto[];
     initialIndex: number;
-    showPhotoStrip: boolean;
     onAdd: (files: File[]) => void;
     onClose: () => void;
     onDone: (
@@ -82,14 +81,7 @@ export const SpacePostPhotoEditor: React.FC<{
         activeIndex: number,
         photoIDs: number[],
     ) => void;
-}> = ({
-    photos: initialPhotos,
-    initialIndex,
-    showPhotoStrip,
-    onAdd,
-    onClose,
-    onDone,
-}) => {
+}> = ({ photos: initialPhotos, initialIndex, onAdd, onClose, onDone }) => {
     const [photos, setPhotos] = React.useState(initialPhotos);
     const [activeID, setActiveID] = React.useState(
         initialPhotos[initialIndex]!.id,
@@ -112,6 +104,7 @@ export const SpacePostPhotoEditor: React.FC<{
         (photo) => photo.preparationError,
     )?.preparationError;
     const isPreparing = photos.some((photo) => photo.isLoading);
+    const showPhotoStrip = photos.length > 1;
     const aspectIndex = aspects.findIndex(({ value }) => value == edit.aspect);
     const size = rotatedImageSize(photo, edit.rotationDegrees);
     const crop = edit.cropArea ?? fullImageCrop(size);
@@ -252,60 +245,12 @@ export const SpacePostPhotoEditor: React.FC<{
                 <Box
                     component="button"
                     type="button"
-                    aria-label="Cancel edits"
-                    onClick={onClose}
-                    sx={{
-                        ...buttonSx,
-                        justifySelf: "start",
-                        width: 44,
-                        ml: "-16px",
-                        p: 0,
-                    }}
-                >
-                    <HugeiconsIcon
-                        icon={Cancel01Icon}
-                        size={20}
-                        strokeWidth={1.8}
-                    />
-                </Box>
-                <Box
-                    id="space-photo-editor-title"
-                    sx={{
-                        alignItems: "center",
-                        display: "flex",
-                        gap: "8px",
-                        fontSize: 14,
-                        fontWeight: 600,
-                    }}
-                >
-                    Edit
-                    {photos.length > 1 && (
-                        <Box
-                            component="span"
-                            sx={{
-                                color: "#A6A6A6",
-                                fontSize: 12,
-                                fontWeight: 500,
-                            }}
-                        >
-                            {activeIndex + 1} / {photos.length}
-                        </Box>
-                    )}
-                </Box>
-                <Box
-                    component="button"
-                    type="button"
                     disabled={
                         isSaving || isPreparing || Boolean(preparationError)
                     }
                     aria-busy={isSaving}
                     onClick={() => void save()}
-                    sx={{
-                        ...buttonSx,
-                        justifySelf: "end",
-                        borderRadius: "999px",
-                        p: 0,
-                    }}
+                    sx={{ ...buttonSx, justifySelf: "start", p: 0 }}
                 >
                     <Box
                         component="span"
@@ -320,6 +265,45 @@ export const SpacePostPhotoEditor: React.FC<{
                         }}
                     >
                         {isSaving ? "Saving…" : "Done"}
+                    </Box>
+                </Box>
+                <Box
+                    id="space-photo-editor-title"
+                    sx={{ fontSize: 14, fontWeight: 600 }}
+                >
+                    Edit
+                </Box>
+                <Box
+                    component="button"
+                    type="button"
+                    aria-label="Cancel edits"
+                    onClick={onClose}
+                    sx={{
+                        ...buttonSx,
+                        justifySelf: "end",
+                        width: 44,
+                        mr: "-8px",
+                        p: 0,
+                    }}
+                >
+                    <Box
+                        component="span"
+                        sx={{
+                            alignItems: "center",
+                            bgcolor: "#242424",
+                            borderRadius: "50%",
+                            color: "#E4E4E4",
+                            display: "flex",
+                            height: 32,
+                            justifyContent: "center",
+                            width: 32,
+                        }}
+                    >
+                        <HugeiconsIcon
+                            icon={Cancel01Icon}
+                            size={20}
+                            strokeWidth={1.8}
+                        />
                     </Box>
                 </Box>
             </Box>
