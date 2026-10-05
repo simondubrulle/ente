@@ -43,7 +43,7 @@ interface PendingSpaceFeedPost {
     width?: number;
 }
 
-export type FailedSpaceFeedPost = Omit<PendingSpaceFeedPost, "status"> & {
+type FailedSpaceFeedPost = Omit<PendingSpaceFeedPost, "status"> & {
     status: "failed";
 };
 
