@@ -4,6 +4,7 @@ import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
 import 'package:flutter/material.dart';
 import "package:hugeicons/hugeicons.dart";
+import "package:logging/logging.dart";
 import 'package:photos/core/configuration.dart';
 import 'package:photos/core/event_bus.dart';
 import 'package:photos/db/files_db.dart';
@@ -52,6 +53,7 @@ class CollectionPage extends StatefulWidget {
 }
 
 class _CollectionPageState extends State<CollectionPage> {
+  final _logger = Logger("CollectionPage");
   final _selectedFiles = SelectedFiles();
   late final _searchFilterDataProvider = SearchFilterDataProvider(
     initialGalleryFilter: AlbumFilter(
@@ -63,6 +65,9 @@ class _CollectionPageState extends State<CollectionPage> {
   late final StreamSubscription<CollectionUpdatedEvent>
   _collectionUpdatedSubscription;
   EnteFile? _cover;
+  EnteFile? _defaultCover;
+  int _coverLoadGeneration = 0;
+  int _galleryLoadGeneration = 0;
 
   @override
   void initState() {
@@ -71,7 +76,10 @@ class _CollectionPageState extends State<CollectionPage> {
     _cover =
         widget.c.thumbnail ??
         CollectionsService.instance.getCoverCache(collection);
-    _loadCover();
+    _defaultCover = _cover;
+    if (collection.hasCover) {
+      unawaited(_loadCover());
+    }
     _collectionUpdatedSubscription = Bus.instance
         .on<CollectionUpdatedEvent>()
         .where((event) => event.collectionID == collection.id)
@@ -85,10 +93,22 @@ class _CollectionPageState extends State<CollectionPage> {
   }
 
   Future<void> _loadCover() async {
-    final cover = await CollectionsService.instance.getCover(
-      widget.c.collection,
-    );
-    if (mounted && cover != _cover) {
+    final generation = ++_coverLoadGeneration;
+    final collection = widget.c.collection;
+    var cover = _defaultCover;
+    if (collection.hasCover) {
+      try {
+        cover =
+            await FilesDB.instance.getUploadedFile(
+              collection.pubMagicMetadata.coverID!,
+              collection.id,
+            ) ??
+            _defaultCover;
+      } catch (e, s) {
+        _logger.warning("Failed to load album cover", e, s);
+      }
+    }
+    if (mounted && generation == _coverLoadGeneration) {
       setState(() => _cover = cover);
     }
   }
@@ -118,6 +138,7 @@ class _CollectionPageState extends State<CollectionPage> {
     final gallery = Gallery(
       appBar: appBar,
       asyncLoader: (creationStartTime, creationEndTime, {limit, asc}) async {
+        final generation = ++_galleryLoadGeneration;
         final FileLoadResult result = await FilesDB.instance
             .getFilesInCollection(
               c.collection.id,
@@ -133,6 +154,12 @@ class _CollectionPageState extends State<CollectionPage> {
               f.uploadedFileID == null &&
               IgnoredFilesService.instance.shouldSkipUpload(ignoredIDs, f),
         );
+        if (mounted &&
+            generation == _galleryLoadGeneration &&
+            asc == (c.collection.pubMagicMetadata.asc ?? false)) {
+          _defaultCover = result.files.firstOrNull;
+          await _loadCover();
+        }
         return result;
       },
       reloadEvent: Bus.instance.on<CollectionUpdatedEvent>().where(

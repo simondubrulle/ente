@@ -3,7 +3,6 @@ import "package:ente_strings/ente_strings.dart";
 import "package:flutter/material.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:photos/ente_theme_data.dart";
-import "package:photos/ui/components/bottom_action_bar/selection_action_button_widget.dart";
 import "package:photos/ui/viewer/gallery/hooks/album_actions_sheet.dart";
 
 void main() {
@@ -14,10 +13,24 @@ void main() {
       await _pumpLauncher(tester, (_) {});
       await _openLauncher(tester);
 
-      final tileLabels = tester
-          .widgetList<SelectionActionButton>(find.byType(SelectionActionButton))
-          .map((tile) => tile.labelText);
-      expect(tileLabels, ["Edit", "Pin", "Archive", "Delete"]);
+      final tilePositions = [
+        "Edit",
+        "Pin",
+        "Archive",
+        "Delete",
+      ].map((label) => tester.getTopLeft(find.text(label))).toList();
+      expect(
+        tilePositions.map((position) => position.dx),
+        orderedEquals(
+          [...tilePositions.map((position) => position.dx)]..sort(),
+        ),
+      );
+      expect(
+        tilePositions.every(
+          (position) => position.dy < tester.getTopLeft(find.text("Hide")).dy,
+        ),
+        isTrue,
+      );
       expect(find.text("Hide"), findsOneWidget);
       expect(find.text("Cast"), findsOneWidget);
     });

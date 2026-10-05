@@ -1,7 +1,7 @@
 import "dart:math" as math;
+import "dart:ui" as ui;
 
 import "package:ente_components/ente_components.dart";
-import "package:ente_strings/ente_strings.dart";
 import "package:flutter/material.dart";
 import "package:flutter/rendering.dart";
 import "package:flutter/services.dart";
@@ -11,10 +11,9 @@ import "package:photos/core/constants.dart";
 import "package:photos/core/page_route_observer.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/file.dart";
-import "package:photos/services/collections_service.dart";
 import "package:photos/ui/viewer/file/thumbnail_widget.dart";
+import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
-// Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=25285-293816&m=dev
 class AlbumCoverAppBar extends StatefulWidget {
   const AlbumCoverAppBar({
     super.key,
@@ -71,8 +70,6 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
     }
   }
 
-  // The page below stays painted, so its style region would keep applying
-  // the cover's light style to the page above it.
   @override
   void didPushNext() {
     setState(() => _isCovered = true);
@@ -86,7 +83,6 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
   @override
   void dispose() {
     pageRouteObserver.unsubscribe(this);
-    // Pages without their own overlay style would keep the cover's light one.
     SystemChrome.setSystemUIOverlayStyle(_pinnedOverlayStyle);
     WidgetsBinding.instance.scheduleFrame();
     super.dispose();
@@ -122,74 +118,49 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
         ),
         content: SizedBox(
           width: MediaQuery.sizeOf(context).width - Spacing.lg * 2,
-          child: Stack(
-            clipBehavior: Clip.none,
-            alignment: Alignment.center,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
             children: [
-              const Positioned(
-                left: -_contentScrimOutset,
-                right: -_contentScrimOutset,
-                top: -_contentScrimOutset,
-                bottom: -_contentScrimOutset,
-                child: IgnorePointer(
-                  child: FittedBox(
-                    fit: BoxFit.fill,
-                    child: SizedBox.square(
-                      dimension: 1,
-                      child: DecoratedBox(
-                        decoration: BoxDecoration(
-                          gradient: RadialGradient(
-                            colors: [_scrimColor, _transparentScrimColor],
-                          ),
-                        ),
-                      ),
-                    ),
+              _CoverCaption(
+                GalleryFilesState.maybeOf(context)?.galleryFilesOrNull,
+              ),
+              Semantics(
+                header: true,
+                child: Text(
+                  widget.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyles.display1.copyWith(
+                    color: colors.specialWhite,
                   ),
                 ),
               ),
-              Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _CoverCaption(widget.collection),
-                  Semantics(
-                    header: true,
-                    child: Text(
-                      widget.title,
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyles.display1.copyWith(
-                        color: colors.specialWhite,
-                      ),
+              if (description != null) ...[
+                const SizedBox(height: Spacing.sm),
+                Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: _descriptionHorizontalInset,
+                  ),
+                  child: Text(
+                    description,
+                    maxLines: _descriptionMaxLines,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyles.mini.copyWith(
+                      color: colors.specialWhite.withValues(alpha: 0.92),
                     ),
                   ),
-                  if (description != null) ...[
-                    const SizedBox(height: Spacing.sm),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: Spacing.lg,
-                      ),
-                      child: Text(
-                        description,
-                        maxLines: _descriptionMaxLines,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: TextStyles.mini.copyWith(
-                          color: colors.specialWhite.withValues(alpha: 0.92),
-                        ),
-                      ),
-                    ),
-                  ],
-                  if (widget.coverActions.isNotEmpty) ...[
-                    const SizedBox(height: Spacing.md),
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      spacing: Spacing.md,
-                      children: widget.coverActions,
-                    ),
-                  ],
-                ],
-              ),
+                ),
+              ],
+              if (widget.coverActions.isNotEmpty) ...[
+                const SizedBox(height: _contentSpacing),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: Spacing.md,
+                  children: widget.coverActions,
+                ),
+              ],
             ],
           ),
         ),
@@ -260,23 +231,32 @@ class _CoverPhoto extends StatelessWidget {
           useRequestedThumbnailSizeForLocalCache: true,
         ),
         const ColoredBox(color: _photoScrimColor),
-        // Overshoots the photo so its antialiased edge cannot show through.
         Positioned(
           left: 0,
           right: 0,
-          bottom: -_coverDissolveOvershoot,
-          height: _coverDissolveHeight + _coverDissolveOvershoot,
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-                colors: [backgroundColor.withValues(alpha: 0), backgroundColor],
-                stops: const [
-                  0,
-                  _coverDissolveHeight /
-                      (_coverDissolveHeight + _coverDissolveOvershoot),
-                ],
+          bottom: 0,
+          height: _coverDissolveHeight,
+          child: CustomPaint(painter: _CoverDissolvePainter(backgroundColor)),
+        ),
+        Positioned(
+          top:
+              MediaQuery.paddingOf(context).top +
+              _contentScrimTop -
+              _contentScrimBlur * 2,
+          left:
+              (MediaQuery.sizeOf(context).width - _contentScrimWidth) / 2 -
+              0.5 -
+              _contentScrimBlur * 2,
+          width: _contentScrimWidth + _contentScrimBlur * 4,
+          height: _contentScrimHeight + _contentScrimBlur * 4,
+          child: IgnorePointer(
+            child: ClipRect(
+              child: ImageFiltered(
+                imageFilter: ui.ImageFilter.blur(
+                  sigmaX: _contentScrimBlur,
+                  sigmaY: _contentScrimBlur,
+                ),
+                child: const CustomPaint(painter: _CoverContentScrimPainter()),
               ),
             ),
           ),
@@ -286,62 +266,163 @@ class _CoverPhoto extends StatelessWidget {
   }
 }
 
-class _CoverCaption extends StatelessWidget {
-  const _CoverCaption(this.collection);
+class _CoverContentScrimPainter extends CustomPainter {
+  const _CoverContentScrimPainter();
 
-  final Collection collection;
-
-  Future<({int count, int? newestFileTime})> _loadSummary() async {
-    final collectionsService = CollectionsService.instance;
-    final count = await collectionsService.getFileCount(collection);
-    final newestFileTimes = await collectionsService
-        .getCollectionIDToNewestFileTime();
-    return (count: count, newestFileTime: newestFileTimes[collection.id]);
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.translate(size.width / 2, size.height / 2);
+    canvas.scale(_contentScrimWidth / 2, _contentScrimHeight / 2);
+    canvas.drawCircle(
+      Offset.zero,
+      1,
+      Paint()
+        ..shader = ui.Gradient.radial(Offset.zero, 1, const [
+          Color.from(
+            alpha: 0.24,
+            red: 0.0585186,
+            green: 0.0585186,
+            blue: 0.0585186,
+          ),
+          Color.from(
+            alpha: 0.096,
+            red: 0.0224357,
+            green: 0.0224357,
+            blue: 0.0224357,
+          ),
+        ]),
+    );
+    canvas.restore();
   }
 
   @override
+  bool shouldRepaint(_CoverContentScrimPainter oldDelegate) => false;
+}
+
+class _CoverDissolvePainter extends CustomPainter {
+  const _CoverDissolvePainter(this.backgroundColor);
+
+  final Color backgroundColor;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final direction = Offset(
+      0.0221519917 / size.width,
+      0.9999704361 / size.height,
+    );
+    final center = size.center(Offset.zero);
+    const centerPosition = 0.0221519917 / 2 + 0.9999704361 / 2 - 0.0110464599;
+    final vector = direction / direction.distanceSquared;
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()
+        ..shader = ui.Gradient.linear(
+          center - vector * centerPosition,
+          center + vector * (1 - centerPosition),
+          [backgroundColor.withValues(alpha: 0), backgroundColor],
+        ),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_CoverDissolvePainter oldDelegate) =>
+      oldDelegate.backgroundColor != backgroundColor;
+}
+
+class _CoverCaption extends StatelessWidget {
+  const _CoverCaption(this.files);
+
+  final List<EnteFile>? files;
+
+  @override
   Widget build(BuildContext context) {
-    return FutureBuilder(
-      future: _loadSummary(),
-      builder: (context, snapshot) {
-        final summary = snapshot.data;
-        if (summary == null) {
-          return const SizedBox.shrink();
-        }
+    final files = this.files;
+    if (files == null) {
+      return const SizedBox.shrink();
+    }
+    int? oldestFileTime;
+    int? newestFileTime;
+    for (final file in files) {
+      final creationTime = file.creationTime;
+      if (creationTime != null && creationTime != 0) {
+        oldestFileTime = math.min(oldestFileTime ?? creationTime, creationTime);
+        newestFileTime = math.max(newestFileTime ?? creationTime, creationTime);
+      }
+    }
+    if (oldestFileTime == null || newestFileTime == null) {
+      return const SizedBox.shrink();
+    }
+    final start = DateTime.fromMicrosecondsSinceEpoch(oldestFileTime);
+    final end = DateTime.fromMicrosecondsSinceEpoch(newestFileTime);
+    final locale = Localizations.localeOf(context).toString();
+    final dayPattern = locale == "en"
+        ? "d MMM y"
+        : DateFormat.yMMMd(locale).pattern!;
+    final monthDayPattern = locale == "en"
+        ? "d MMM"
+        : DateFormat.MMMd(locale).pattern!;
+    final yearRange =
+        "${DateFormat.y(locale).format(start)} – ${DateFormat.y(locale).format(end)}";
+    final monthRange = start.year == end.year
+        ? start.month == end.month
+              ? DateFormat.yMMM(locale).format(end)
+              : "${DateFormat.MMM(locale).format(start)} – ${DateFormat.yMMM(locale).format(end)}"
+        : "${DateFormat.yMMM(locale).format(start)} – ${DateFormat.yMMM(locale).format(end)}";
+    final String dayRange;
+    if (start.year != end.year) {
+      dayRange =
+          "${DateFormat(dayPattern, locale).format(start)} – ${DateFormat(dayPattern, locale).format(end)}";
+    } else if (start.month != end.month) {
+      dayRange =
+          "${DateFormat(monthDayPattern, locale).format(start)} – ${DateFormat(dayPattern, locale).format(end)}";
+    } else if (start.day != end.day) {
+      final days =
+          "${NumberFormat("0", locale).format(start.day)}–${NumberFormat("0", locale).format(end.day)}";
+      dayRange = DateFormat(
+        dayPattern.replaceAllMapped(
+          RegExp("('(?:[^']|'')*')|d+"),
+          (match) => match.group(1) ?? "'$days'",
+        ),
+        locale,
+      ).format(end);
+    } else {
+      dayRange = DateFormat(dayPattern, locale).format(end);
+    }
+    final captions = end.year - start.year >= 2
+        ? [yearRange]
+        : [dayRange, monthRange, yearRange];
+    final style = TextStyles.tiny.copyWith(
+      color: context.componentColors.specialWhite.withValues(alpha: 0.82),
+    );
 
-        final newestFileTime = summary.newestFileTime;
-        final caption = [
-          context.strings.memoryCount(
-            count: summary.count,
-            formattedCount: NumberFormat().format(summary.count),
-          ),
-          if (newestFileTime != null)
-            DateFormat.yMMM(
-              Localizations.localeOf(context).languageCode,
-            ).format(DateTime.fromMicrosecondsSinceEpoch(newestFileTime)),
-        ].join(" · ");
-
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final caption = captions.firstWhere((caption) {
+          final painter = TextPainter(
+            text: TextSpan(text: caption.toUpperCase(), style: style),
+            textDirection: Directionality.of(context),
+            textScaler: MediaQuery.textScalerOf(context),
+            maxLines: 1,
+          )..layout();
+          final fits = painter.width <= constraints.maxWidth - Spacing.md * 2;
+          painter.dispose();
+          return fits;
+        }, orElse: () => captions.last);
         return Padding(
-          padding: const EdgeInsets.only(bottom: Spacing.md),
-          child: DecoratedBox(
-            decoration: const ShapeDecoration(
-              color: _captionFillColor,
-              shape: StadiumBorder(),
-            ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(
-                horizontal: Spacing.md,
-                vertical: Spacing.sm,
+          padding: const EdgeInsets.only(bottom: _contentSpacing),
+          child: Center(
+            child: DecoratedBox(
+              decoration: const ShapeDecoration(
+                color: _captionFillColor,
+                shape: StadiumBorder(),
               ),
-              child: Text(
-                caption.toUpperCase(),
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyles.tiny.copyWith(
-                  color: context.componentColors.specialWhite.withValues(
-                    alpha: 0.82,
-                  ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: Spacing.md,
+                  vertical: Spacing.sm,
                 ),
+                child: Text(caption.toUpperCase(), maxLines: 1, style: style),
               ),
             ),
           ),
@@ -428,7 +509,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
             top: -collapseOffset,
             left: 0,
             right: 0,
-            bottom: coverBottomInset,
+            bottom: coverBottomInset - 1,
             child: photo,
           ),
           Positioned(
@@ -470,12 +551,15 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
               ),
             ),
           Positioned(
-            top: topPadding,
+            top:
+                topPadding +
+                (Spacing.lg - (collapsedHeight - _headerIconSize) / 2) *
+                    (1 - pinnedProgress),
             left: Spacing.lg,
             right: Spacing.lg,
             height: collapsedHeight,
             child: Row(
-              spacing: Spacing.sm,
+              spacing: Spacing.md,
               children: [
                 IconButtonComponent(
                   tooltip: MaterialLocalizations.of(context).backButtonTooltip,
@@ -503,7 +587,11 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
                     ),
                   ),
                 ),
-                ...actionsBuilder(foregroundColor),
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  spacing: _headerActionSpacing,
+                  children: actionsBuilder(foregroundColor),
+                ),
               ],
             ),
           ),
@@ -530,23 +618,29 @@ double _coverBottomInset(double bottomHeight) {
 
 const _coverHeight = 441.0;
 const _coverDissolveHeight = 100.0;
-const _coverDissolveOvershoot = 1.0;
 const _topScrimHeight = 31.0;
 const _bottomOverlap = 25.0;
-const _contentBottomGap = 108.0;
-const _contentScrimOutset = 56.0;
+const _contentBottomGap = 107.0;
+const _contentSpacing = 22.0;
+const _contentScrimTop = 146.0;
+const _contentScrimWidth = 308.0;
+const _contentScrimHeight = 157.0;
+const _contentScrimBlur = 54.25;
+const _headerIconSize = 38.0;
+const _headerActionSpacing = 6.0;
 const _contentFadeExtent = 120.0;
 const _pinnedFadeStart = 0.6;
 const _foregroundSwitchStart = 0.4;
 const _foregroundSwitchEnd = 0.6;
 const _descriptionMaxLines = 3;
+const _descriptionHorizontalInset = 18.0;
 const _coverActionSize = 42.0;
 const _coverActionIconSize = 17.0;
 
-const _photoScrimColor = Color(0x3D000000);
+const _photoScrimColor = Color.from(alpha: 0.24, red: 0, green: 0, blue: 0);
 const _scrimColor = Color(0x33000000);
 const _transparentScrimColor = Color(0x00000000);
-const _captionFillColor = Color(0x52000000);
+const _captionFillColor = Color.from(alpha: 0.32, red: 0, green: 0, blue: 0);
 const _coverActionFillColor = Color(0x66000000);
 
 const _coverOverlayStyle = SystemUiOverlayStyle(

@@ -1,8 +1,6 @@
 import "package:ente_components/ente_components.dart";
 import "package:flutter/material.dart";
-import "package:photos/ui/components/bottom_action_bar/selection_action_button_widget.dart";
 
-// Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/Ente-Visual-Design?node-id=25316-7380&m=dev
 Future<T?> showAlbumActionsSheet<T>(
   BuildContext context,
   List<EntePopupMenuOption<T>> options,
@@ -20,72 +18,135 @@ Future<T?> showAlbumActionsSheet<T>(
 
   return showBottomSheetComponent<T>(
     context: context,
+    barrierColor: context.componentColors.specialScrim.withValues(alpha: 0.4),
     builder: (context) {
       final colors = context.componentColors;
-      return BottomSheetComponent(
-        showCloseButton: false,
-        backgroundColor: colors.fillLight,
-        padding: const EdgeInsets.only(top: Spacing.lg, bottom: Spacing.sm),
-        content: ConstrainedBox(
-          constraints: BoxConstraints(
-            maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
+      return DecoratedBox(
+        decoration: const BoxDecoration(
+          borderRadius: BorderRadius.vertical(
+            top: Radius.circular(Radii.bottomSheet),
           ),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Container(
-                  width: 36,
-                  height: 5,
-                  decoration: BoxDecoration(
-                    color: colors.textLightest,
-                    borderRadius: BorderRadius.circular(3),
-                  ),
-                ),
-                const SizedBox(height: Spacing.xxl),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    spacing: Spacing.xs,
-                    children: [
-                      for (final option in tiles)
-                        Expanded(
-                          child: SelectionActionButton(
-                            labelText: option.label,
-                            iconWidget:
-                                option.leadingWidget ?? const SizedBox.shrink(),
-                            isCritical: option.labelColor != null,
-                            color: colors.textLight,
-                            onTap: () =>
-                                Navigator.of(context).pop(option.value),
-                          ),
-                        ),
-                    ],
-                  ),
-                ),
-                if (rows.isNotEmpty)
-                  const DividerComponent(
-                    padding: EdgeInsets.fromLTRB(
-                      Spacing.lg,
-                      Spacing.lg,
-                      Spacing.lg,
-                      Spacing.xl,
+          boxShadow: [
+            BoxShadow(
+              color: Color.from(alpha: 0.18, red: 0, green: 0, blue: 0),
+              offset: Offset(0, -2),
+              blurRadius: 80,
+            ),
+          ],
+        ),
+        child: BottomSheetComponent(
+          showCloseButton: false,
+          backgroundColor: colors.fillLight,
+          padding: const EdgeInsets.only(top: Spacing.lg, bottom: Spacing.sm),
+          content: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxHeight: MediaQuery.sizeOf(context).height * _maxHeightFraction,
+            ),
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 36,
+                    height: 5,
+                    decoration: BoxDecoration(
+                      color: colors.textLightest,
+                      borderRadius: BorderRadius.circular(3),
                     ),
                   ),
-                for (final option in rows)
-                  _AlbumActionRow(
-                    option: option,
-                    onTap: () => Navigator.of(context).pop(option.value),
+                  const SizedBox(height: Spacing.xxl),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: Spacing.md),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      spacing: Spacing.xs,
+                      children: [
+                        for (final option in tiles)
+                          Expanded(
+                            child: _AlbumActionTile(
+                              option: option,
+                              onTap: () =>
+                                  Navigator.of(context).pop(option.value),
+                            ),
+                          ),
+                      ],
+                    ),
                   ),
-                const SizedBox(height: Spacing.lg),
-              ],
+                  if (rows.isNotEmpty)
+                    const DividerComponent(
+                      padding: EdgeInsets.fromLTRB(
+                        Spacing.lg,
+                        Spacing.lg,
+                        Spacing.lg,
+                        Spacing.xl,
+                      ),
+                    ),
+                  for (final option in rows)
+                    _AlbumActionRow(
+                      option: option,
+                      onTap: () => Navigator.of(context).pop(option.value),
+                    ),
+                  const SizedBox(height: Spacing.lg),
+                ],
+              ),
             ),
           ),
         ),
       );
     },
   );
+}
+
+class _AlbumActionTile<T> extends StatelessWidget {
+  const _AlbumActionTile({required this.option, required this.onTap});
+
+  final EntePopupMenuOption<T> option;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final colors = context.componentColors;
+    final foreground = option.labelColor ?? colors.textLight;
+    return Semantics(
+      button: true,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(Radii.md),
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minHeight: option.labelColor == null ? 0 : 64,
+          ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: Spacing.xs),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                SizedBox.square(
+                  dimension: 34,
+                  child: Center(
+                    child: IconTheme.merge(
+                      data: IconThemeData(
+                        color: foreground,
+                        size: IconSizes.small,
+                      ),
+                      child: option.leadingWidget ?? const SizedBox.shrink(),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: Spacing.xs),
+                Text(
+                  option.label,
+                  textAlign: TextAlign.center,
+                  style: TextStyles.mini.copyWith(color: foreground),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class _AlbumActionRow<T> extends StatelessWidget {
