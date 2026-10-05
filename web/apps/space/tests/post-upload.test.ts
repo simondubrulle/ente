@@ -343,8 +343,60 @@ test("preserves the unfinished upload limit code without retrying it", async () 
     try {
         await expect(
             createPhotoPost("test-space", [photo(0)], "Caption"),
-        ).rejects.toThrow("SPACE_UPLOAD_LIMIT_REACHED");
+        ).rejects.toMatchObject({
+            status: 429,
+            code: "SPACE_UPLOAD_LIMIT_REACHED",
+        });
         expect(attempts).toBe(1);
+    } finally {
+        ctx.free();
+    }
+});
+
+test.each([503, "network"] as const)(
+    "exposes structured diagnostics after exhausting %s upload retries",
+    async (failure) => {
+        vi.useFakeTimers();
+        const { ctx, createPhotoPost } = await uploadFixture(
+            false,
+            (request) => {
+                if (request.method != "PUT") return undefined;
+                if (failure == "network")
+                    return Promise.reject(new TypeError("Failed to fetch"));
+                return Promise.resolve(new Response("", { status: failure }));
+            },
+        );
+        try {
+            const rejection = expect(
+                createPhotoPost("test-space", [photo(0)], "Caption"),
+            ).rejects.toMatchObject(
+                failure == "network"
+                    ? { code: "network_error" }
+                    : { status: 503 },
+            );
+            await vi.runAllTimersAsync();
+            await rejection;
+        } finally {
+            ctx.free();
+        }
+    },
+);
+
+test("exposes the permanent post limit as a diagnostic code", async () => {
+    const { ctx, createPhotoPost } = await uploadFixture(false, (request) => {
+        if (request.method != "POST" || !request.url.endsWith("/posts"))
+            return undefined;
+        return Promise.resolve(
+            Response.json({ code: "CONFLICT" }, { status: 409 }),
+        );
+    });
+    try {
+        await expect(
+            createPhotoPost("test-space", [photo(0)], "Caption"),
+        ).rejects.toMatchObject({
+            name: "post_limit_reached",
+            code: "post_limit_reached",
+        });
     } finally {
         ctx.free();
     }

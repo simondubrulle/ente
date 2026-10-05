@@ -37,7 +37,6 @@ import {
     spaceTextMuted,
 } from "styles/colors";
 import { spaceTouchTargetSize } from "styles/touch-targets";
-import { sanitizeSpaceLog } from "utils/logs";
 
 const green = "#08C225";
 const textBase = spaceText;
@@ -563,7 +562,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         label="Download logs"
                         onClick={() =>
                             saveStringAsFile(
-                                savedLogs(sanitizeSpaceLog),
+                                savedLogs(),
                                 `ente-space-logs-${Date.now()}.txt`,
                             )
                         }

@@ -8,7 +8,6 @@ import "configure-zod";
 import { CustomHead } from "ente-base/components/Head";
 import { useSetupLogs } from "ente-base/components/utils/hooks-app";
 import { shareTheme } from "ente-base/components/utils/theme";
-import { setLogSanitizer } from "ente-base/log";
 import { captureSpacePWAInstallPrompt } from "hooks/use-pwa-install-prompt";
 import type { AppProps } from "next/app";
 import { useRouter } from "next/router";
@@ -27,10 +26,7 @@ import {
     spaceTextMuted,
 } from "styles/colors";
 import "styles/globals.css";
-import { sanitizeSpaceLog } from "utils/logs";
 import { spacePageTitle } from "utils/page-titles";
-
-setLogSanitizer(sanitizeSpaceLog);
 
 const interFontURL = new URL(
     "@fontsource-variable/inter/files/inter-latin-wght-normal.woff2",
@@ -103,7 +99,7 @@ const spaceTheme = createTheme(
 );
 
 const App: React.FC<AppProps> = ({ Component, pageProps }) => {
-    useSetupLogs();
+    useSetupLogs({ disableDiskLogs: true });
     const router = useRouter();
     const publicProfileManifest = router.pathname == "/profile-link";
 

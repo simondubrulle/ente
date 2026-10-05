@@ -97,18 +97,15 @@ const logEntries = (): unknown[] => {
     return o.logs;
 };
 
-export const savedLogs = (sanitize?: (message: string) => string) =>
-    logEntries()
-        .map((entry) => formatEntry(entry, sanitize))
-        .join("\n");
+export const savedLogs = () => logEntries().map(formatEntry).join("\n");
 
-const formatEntry = (e: unknown, sanitize?: (message: string) => string) => {
+const formatEntry = (e: unknown) => {
     if (e && typeof e == "object" && "timestamp" in e && "logLine" in e) {
         const timestamp = e.timestamp;
         const logLine = e.logLine;
         if (typeof timestamp == "number" && typeof logLine == "string") {
-            return `[${new Date(timestamp).toISOString()}] ${sanitize?.(logLine) ?? logLine}`;
+            return `[${new Date(timestamp).toISOString()}] ${logLine}`;
         }
     }
-    return sanitize?.(String(e)) ?? String(e);
+    return String(e);
 };

@@ -2,6 +2,7 @@ import type { FriendProfile } from "data/friends";
 import { clientPackageName, desktopAppVersion, isDesktop } from "ente-base/app";
 import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
+import { logToDisk } from "ente-base/log-web";
 import { apiOrigin } from "ente-base/origins";
 import type { UploadedPostAsset } from "ente-space-wasm";
 import {
@@ -1230,9 +1231,11 @@ export const createCurrentMediaPost = async ({
         }
         return session.postId;
     } catch (error) {
-        log.error(
-            `Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes })}`,
-            error,
+        const uploadError = error as
+            | (Error & { status?: number; code?: string })
+            | undefined;
+        logToDisk(
+            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code })}`,
         );
         throw error;
     } finally {

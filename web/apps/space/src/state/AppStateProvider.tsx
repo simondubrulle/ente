@@ -1,5 +1,6 @@
 import { retryAsyncOperation } from "ente-base/http";
 import log from "ente-base/log";
+import { logToDisk } from "ente-base/log-web";
 import React, {
     useCallback,
     useEffect,
@@ -212,9 +213,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                           image.rotationDegrees,
                                       );
                             } catch (error) {
-                                log.error(
-                                    `Space post preparation failed request=${session.requestId} item=${index + 1}/${images.length} type=${image.file.type} bytes=${image.file.size}`,
-                                    error,
+                                logToDisk(
+                                    `[error] Space post preparation failed request=${session.requestId} item=${index + 1}/${images.length} media=${image.video ? "video" : "photo"} bytes=${image.file.size}`,
                                 );
                                 throw error;
                             }
@@ -229,8 +229,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                         });
                         const posted = { ...publication.post, postId };
                         postUploadsRef.current.delete(localPostId);
-                        log.info(
-                            `Space post published request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
+                        logToDisk(
+                            `[info] Space post published request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
                         );
                         if (profileRef.current?.spaceId != spaceId)
                             return posted;
@@ -315,9 +315,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                         void readback();
                         return posted;
                     } catch (error) {
-                        log.error(
-                            `Space post failed request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
-                            error,
+                        logToDisk(
+                            `[error] Space post failed request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
                         );
                         failLocalFeedPost(setLocalFeedPosts, localPostId);
                         if (postPublishGenerationRef.current == generation) {
