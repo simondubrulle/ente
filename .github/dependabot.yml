@@ -20,7 +20,7 @@ updates:
         versions: [">=3.9.9"]
       # Remove after migrating Space away from the baseUrl compiler option.
       - dependency-name: "typescript"
-        versions: [">=7.0.2"]
+        versions: [">=7.0.0"]
       # Remove after adapting existing code to the new lint rules.
       - dependency-name: "typescript-eslint"
         versions: [">=8.70.1"]
@@ -37,9 +37,9 @@ updates:
         versions: [">=20.1.2"]
       # Remove after migrating the existing virtualized lists from the v1 APIs.
       - dependency-name: "react-virtualized-auto-sizer"
-        versions: [">=2.0.3"]
+        versions: [">=2.0.0"]
       - dependency-name: "react-window"
-        versions: [">=2.3.3"]
+        versions: [">=2.0.0"]
       - dependency-name: "@types/react-window"
         versions: [">=2.0.0"]
       # Remove after replacing the redirectToCheckout API used by Payments.
