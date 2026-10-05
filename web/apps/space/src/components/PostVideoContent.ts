@@ -1,13 +1,21 @@
 import type { SpaceViewerPhoto } from "components/FileViewer";
+import { logToDisk } from "ente-base/log-web";
 import type { SpacePostAssetURLLoader } from "services/space";
 
 export const createSpaceVideoContent = (
-    item: Pick<SpaceViewerPhoto, "imageUrl" | "video">,
+    item: Pick<SpaceViewerPhoto, "video"> & { imageUrl?: string },
     load?: SpacePostAssetURLLoader,
     {
         inline = false,
+        onPlay,
+        onPause,
         onTogglePlayback,
-    }: { inline?: boolean; onTogglePlayback?: (play: boolean) => void } = {},
+    }: {
+        inline?: boolean;
+        onPlay?: () => Promise<void> | void;
+        onPause?: () => void;
+        onTogglePlayback?: (play: boolean) => void;
+    } = {},
 ) => {
     const media = item.video!;
     const element = document.createElement("div");
@@ -22,7 +30,7 @@ export const createSpaceVideoContent = (
     const video = document.createElement("video");
     video.playsInline = true;
     video.preload = "none";
-    video.poster = item.imageUrl;
+    if (item.imageUrl) video.poster = item.imageUrl;
     video.muted = inline || (media.muted ?? false);
     video.loop = inline;
     video.tabIndex = 0;
@@ -40,7 +48,7 @@ export const createSpaceVideoContent = (
     button.innerHTML =
         '<svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" style="display: block"><path d="M6 3v18l15-9z"/></svg>';
     button.setAttribute("aria-label", "Play video");
-    button.setAttribute("aria-hidden", String(!inline));
+    button.setAttribute("aria-hidden", "true");
     const controlStyle = {
         position: "absolute",
         top: "50%",
@@ -63,21 +71,49 @@ export const createSpaceVideoContent = (
     loading.setAttribute("aria-label", "Loading video");
     loading.innerHTML = '<span class="space-video-spinner"></span>';
     Object.assign(loading.style, { ...controlStyle, pointerEvents: "none" });
-    element.append(video, button, loading);
+    const errorMessage = document.createElement("span");
+    errorMessage.textContent = "Couldn't play this video. Tap to retry.";
+    errorMessage.hidden = true;
+    errorMessage.setAttribute("role", "status");
+    Object.assign(errorMessage.style, {
+        position: "absolute",
+        bottom: "12px",
+        left: "12px",
+        right: "12px",
+        background: "rgba(0, 0, 0, 0.65)",
+        color: "white",
+        borderRadius: "6px",
+        padding: "8px",
+        fontSize: "13px",
+        textAlign: "center",
+        pointerEvents: "none",
+    });
+    element.append(video, button, loading, errorMessage);
     let generation = 0;
+    let sourceGeneration = 0;
+    let pendingLoad: Promise<void> | undefined;
     let ownedURL: string | undefined;
     let disposed = false;
-    let active = inline;
+    let active = false;
     let loadingTimer: ReturnType<typeof setTimeout> | undefined;
+    let playbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const hideLoading = () => {
         clearTimeout(loadingTimer);
         loadingTimer = undefined;
+        clearTimeout(playbackTimeout);
+        playbackTimeout = undefined;
         loading.setAttribute("aria-hidden", "true");
         element.removeAttribute("aria-busy");
     };
-    const showLoading = () => {
+    const showLoading = (startTimeout = true) => {
+        if (startTimeout)
+            playbackTimeout ??= setTimeout(
+                () => failPlayback("timeout"),
+                30_000,
+            );
         if (document.activeElement == button)
             video.focus({ preventScroll: true });
+        button.setAttribute("aria-hidden", "true");
         element.setAttribute("aria-busy", "true");
         if (
             loadingTimer == undefined &&
@@ -104,16 +140,27 @@ export const createSpaceVideoContent = (
     };
     const pause = () => {
         generation++;
+        onPause?.();
         video.pause();
         showPlayButton();
     };
     const reset = () => {
+        sourceGeneration++;
+        pendingLoad = undefined;
         pause();
         video.removeAttribute("src");
         video.load();
     };
+    const failPlayback = (reason: "timeout" | "media" | "play") => {
+        logToDisk(
+            `[error] Space video playback failed reason=${reason} code=${video.error?.code ?? 0} readyState=${video.readyState} networkState=${video.networkState}`,
+        );
+        reset();
+        errorMessage.hidden = false;
+    };
     const clear = () => {
-        active = inline;
+        active = false;
+        errorMessage.hidden = true;
         reset();
         if (ownedURL) URL.revokeObjectURL(ownedURL);
         ownedURL = undefined;
@@ -122,28 +169,44 @@ export const createSpaceVideoContent = (
         if (document.hidden) pause();
     };
     document.addEventListener("visibilitychange", visibility);
-    const play = () => {
-        if (button.disabled || !video.paused) return;
-        active = true;
-        const current = ++generation;
-        showLoading();
-        button.disabled = true;
-        void (async () => {
+    const preload = () => {
+        if (disposed || video.getAttribute("src")) return Promise.resolve();
+        if (pendingLoad) return pendingLoad;
+        const current = sourceGeneration;
+        pendingLoad = (async () => {
             let url = media.url ?? ownedURL;
             if (!url) {
                 if (!media.asset || !load) throw new Error("Video unavailable");
                 url = await load(media.asset);
-                if (disposed || generation != current) {
+                if (sourceGeneration != current) {
                     URL.revokeObjectURL(url);
                     return;
                 }
                 ownedURL = url;
             }
+            video.preload = "auto";
+            video.src = url;
+        })().finally(() => {
+            if (sourceGeneration == current) pendingLoad = undefined;
+        });
+        return pendingLoad;
+    };
+    const play = () => {
+        if (button.disabled || !video.paused) return;
+        active = true;
+        errorMessage.hidden = true;
+        const current = ++generation;
+        showLoading(false);
+        button.disabled = true;
+        void (async () => {
+            await Promise.all([
+                preload(),
+                Promise.resolve(onPlay?.()).then(() => {
+                    if (!disposed && generation == current) showLoading();
+                }),
+            ]);
             if (disposed || generation != current) return;
-            if (!video.getAttribute("src")) {
-                video.src = url;
-                video.currentTime = media.start ?? 0;
-            } else if (
+            if (
                 video.ended ||
                 (media.end != undefined && video.currentTime >= media.end)
             ) {
@@ -152,7 +215,7 @@ export const createSpaceVideoContent = (
             await video.play();
             if (generation == current) showPlaying();
         })().catch(() => {
-            if (!disposed && generation == current) showPlayButton();
+            if (!disposed && generation == current) failPlayback("play");
         });
     };
     const togglePlayback = () => {
@@ -189,7 +252,13 @@ export const createSpaceVideoContent = (
         if (!video.paused) showLoading();
     };
     video.onplaying = showPlaying;
-    video.onerror = pause;
+    video.onerror = () => {
+        if (active) failPlayback("media");
+        else reset();
+    };
+    video.onloadedmetadata = () => {
+        if (media.start) video.currentTime = media.start;
+    };
     video.ontimeupdate = () => {
         if (media.end != undefined && video.currentTime >= media.end) {
             if (inline) video.currentTime = media.start ?? 0;
@@ -203,9 +272,15 @@ export const createSpaceVideoContent = (
     return {
         element,
         video,
+        preload,
         play,
         pause,
-        deactivate: clear,
+        deactivate: () => {
+            if (inline) {
+                errorMessage.hidden = true;
+                pause();
+            } else clear();
+        },
         destroy: () => {
             disposed = true;
             clear();

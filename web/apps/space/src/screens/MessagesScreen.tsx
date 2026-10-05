@@ -3058,6 +3058,15 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                                     messageContextMenu?.message
                                                         .id
                                                 }
+                                                onPointerDown={(
+                                                    event: React.PointerEvent<HTMLElement>,
+                                                ) => {
+                                                    if (
+                                                        event.target ==
+                                                        event.currentTarget
+                                                    )
+                                                        closeMessageActions();
+                                                }}
                                                 onKeyDown={(
                                                     event: React.KeyboardEvent<HTMLElement>,
                                                 ) => {

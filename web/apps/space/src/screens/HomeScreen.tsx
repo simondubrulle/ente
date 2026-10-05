@@ -11,7 +11,10 @@ import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
-import { registerFeedPost } from "components/feed-video-playback";
+import {
+    focusFeedPost,
+    registerFeedPost,
+} from "components/feed-video-playback";
 import { SpaceFeedPostButton } from "components/FeedPostButton";
 import {
     SpaceFileViewer,
@@ -374,6 +377,7 @@ type FeedPhotoSource = SpacePostPhoto & Pick<SpacePost, "postId" | "spaceId">;
 
 interface FeedItemProps {
     onRetry?: () => void;
+    processing?: string;
     photoCount?: number;
     photoIndex?: number;
     photos?: FeedPostPhoto[];
@@ -675,6 +679,7 @@ const FeedPhoto: React.FC<{
     onLoadVideo?: SpacePostAssetURLLoader;
     onOpenPhoto?: () => void;
     shouldLoad: boolean;
+    shouldPreloadVideo: boolean;
     thumbHash?: string;
 }> = ({
     imageUrl,
@@ -686,6 +691,7 @@ const FeedPhoto: React.FC<{
     onLoadVideo,
     onOpenPhoto,
     shouldLoad,
+    shouldPreloadVideo,
     thumbHash,
     video,
 }) => {
@@ -818,9 +824,9 @@ const FeedPhoto: React.FC<{
                     }}
                 />
             )}
-            {!isPostUnavailable && isPhotoReady && video && (
+            {!isPostUnavailable && video && shouldPreloadVideo && (
                 <SpaceInlinePostVideo
-                    imageUrl={displayImageUrl!}
+                    imageUrl={displayImageUrl}
                     video={video}
                     isActive={isActive}
                     muted={muted}
@@ -871,6 +877,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     onOpenProfile,
     onSetPostLiked,
     onRetry,
+    processing,
     postId,
     spaceId,
     thumbHash,
@@ -885,7 +892,9 @@ const FeedItem: React.FC<FeedItemProps> = ({
     const [shouldLoadMedia, setShouldLoadMedia] = useState(
         !isUnavailable && Boolean(imageUrl) && !isAvatarPending,
     );
+    const [shouldPreloadVideo, setShouldPreloadVideo] = useState(false);
     const feedPhotos = photos ?? [{ imageUrl, thumbHash }];
+    const hasVideo = feedPhotos.some((photo) => Boolean(photo.video));
     const activePhoto = feedPhotos[photoIndex]!;
     const carouselRef = React.useRef<HTMLDivElement | null>(null);
     React.useEffect(() => registerFeedPost(carouselRef.current!), []);
@@ -980,6 +989,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
             delta += event.deltaX;
             if (Math.abs(delta) < 20) return;
             advanced = true;
+            focusFeedPost(carousel);
             scrollToPhoto(
                 Math.round(carousel.scrollLeft / carousel.clientWidth) +
                     Math.sign(delta),
@@ -1059,15 +1069,25 @@ const FeedItem: React.FC<FeedItemProps> = ({
         firstPhoto.width && firstPhoto.height
             ? firstPhoto.width / firstPhoto.height
             : aspectRatio;
-    const frameAspectRatio = Math.max(
-        minimumPostPhotoFrameAspectRatio,
-        feedPhotos.length > 1
-            ? firstPhotoAspectRatio
-            : photoDimensions.width / photoDimensions.height,
+    const hasMatchingAspectRatios = feedPhotos.every(
+        (photo) =>
+            photo.width &&
+            photo.height &&
+            Math.abs(photo.width / photo.height / firstPhotoAspectRatio - 1) <
+                0.01,
     );
+    const frameAspectRatio =
+        feedPhotos.length > 1
+            ? hasMatchingAspectRatios
+                ? firstPhotoAspectRatio
+                : 1
+            : Math.max(
+                  minimumPostPhotoFrameAspectRatio,
+                  photoDimensions.width / photoDimensions.height,
+              );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
     const showSoundControl =
-        !isPostUnavailable && isPhotoReady && Boolean(activePhoto.video);
+        !isPostUnavailable && shouldPreloadVideo && Boolean(activePhoto.video);
     const canOpenPhoto =
         !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
     const openPhoto = (focusReplyOnOpen = false, index = photoIndex) => {
@@ -1143,6 +1163,30 @@ const FeedItem: React.FC<FeedItemProps> = ({
         observer.observe(element);
         return () => observer.disconnect();
     }, [isPostUnavailable, shouldLoadMedia]);
+
+    React.useEffect(() => {
+        if (!hasVideo || isPostUnavailable) return;
+        const element = rootRef.current!;
+        let observer: IntersectionObserver | undefined;
+        const observe = () => {
+            observer?.disconnect();
+            observer = new IntersectionObserver(
+                (entries) => {
+                    setShouldPreloadVideo(
+                        entries.some((entry) => entry.isIntersecting),
+                    );
+                },
+                { rootMargin: `640px 0px ${window.innerHeight * 3}px 0px` },
+            );
+            observer.observe(element);
+        };
+        observe();
+        window.addEventListener("resize", observe);
+        return () => {
+            observer?.disconnect();
+            window.removeEventListener("resize", observe);
+        };
+    }, [hasVideo, isPostUnavailable]);
 
     React.useEffect(() => {
         if (isPostUnavailable) return;
@@ -1321,6 +1365,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 return;
                             }
                             swipe.dragging = true;
+                            focusFeedPost(event.currentTarget);
                             suppressPhotoClickRef.current = true;
                             event.currentTarget.setPointerCapture(
                                 event.pointerId,
@@ -1359,6 +1404,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                         )
                             return;
                         event.preventDefault();
+                        focusFeedPost(event.currentTarget);
                         const index = Math.max(
                             0,
                             Math.min(
@@ -1406,9 +1452,11 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     : undefined
                             }
                             shouldLoad={
-                                shouldLoadMedia &&
-                                Math.abs(index - photoIndex) <= 1
+                                (shouldPreloadVideo && Boolean(photo.video)) ||
+                                (shouldLoadMedia &&
+                                    Math.abs(index - photoIndex) <= 1)
                             }
+                            shouldPreloadVideo={shouldPreloadVideo}
                             thumbHash={photo.thumbHash}
                             video={photo.video}
                         />
@@ -1566,7 +1614,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                 role="status"
                                 aria-label={
                                     timestampStatus == "posting"
-                                        ? "Posting"
+                                        ? (processing ?? "Posting")
                                         : timestampStatus == "failed"
                                           ? "Failed"
                                           : "Posted"
@@ -1642,7 +1690,9 @@ const FeedItem: React.FC<FeedItemProps> = ({
                                     </>
                                 ) : (
                                     <>
-                                        <Box component="span">Posting</Box>
+                                        <Box component="span">
+                                            {processing ?? "Posting"}
+                                        </Box>
                                         <Box
                                             component="span"
                                             aria-hidden
@@ -2221,6 +2271,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 onRetry={
                     onRetryPost ? () => void onRetryPost(item.id) : undefined
                 }
+                processing={item.processing}
                 timestampStatus={
                     item.status == "failed"
                         ? "failed"

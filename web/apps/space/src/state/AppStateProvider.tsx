@@ -89,6 +89,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
     const profileLoadGenerationRef = useRef(0);
     const postPublishGenerationRef = useRef(0);
     const postReadbacksRef = useRef(new Map<string, () => Promise<void>>());
+    const postPreparationsRef = useRef(new Map<string, AbortController>());
     const postUploadsRef = useRef(
         new Map<string, () => ReturnType<SpaceAppState["publishPost"]>>(),
     );
@@ -96,6 +97,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
     useEffect(() => {
         const readbacks = postReadbacksRef.current;
         const uploads = postUploadsRef.current;
+        const preparations = postPreparationsRef.current;
         const retryReadbacks = () => {
             readbacks.forEach((readback) => void readback());
         };
@@ -106,6 +108,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
             window.removeEventListener("focus", retryReadbacks);
             readbacks.clear();
             uploads.clear();
+            preparations.forEach((controller) => controller.abort());
+            preparations.clear();
         };
     }, []);
 
@@ -178,6 +182,11 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 },
             };
             const prepared: PreparedSpacePostMedia[] = [];
+            const videoCount = images.filter((image) => image.video).length;
+            const mediaCounts = {
+                photo: images.length - videoCount,
+                video: videoCount,
+            };
             const session: SpacePostUploadSession = {
                 requestId: crypto.randomUUID(),
                 uploads: [],
@@ -189,23 +198,50 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 const generation = ++postPublishGenerationRef.current;
                 const startedAt = Date.now();
                 attempt += 1;
+                const controller = new AbortController();
+                const { signal } = controller;
+                postPreparationsRef.current.set(localPostId, controller);
                 setPostPublication(publication);
                 setLocalFeedPosts((current) =>
                     current.map((item) =>
                         item.id == localPostId && item.status == "failed"
-                            ? { ...item, status: "pending" }
+                            ? {
+                                  ...item,
+                                  status: "pending",
+                                  processing: undefined,
+                              }
                             : item,
                     ),
                 );
                 pending = (async () => {
                     try {
+                        const processingCounts = { photo: 0, video: 0 };
                         for (const [index, image] of images.entries()) {
+                            signal.throwIfAborted();
+                            const mediaType = image.video ? "video" : "photo";
+                            const mediaIndex = ++processingCounts[mediaType];
                             if (prepared[index]) continue;
+                            if (videoCount > 0 || images.length >= 3) {
+                                const count = mediaCounts[mediaType];
+                                const processing =
+                                    images.length == 1
+                                        ? "Processing"
+                                        : `Processing ${mediaType}${count > 1 ? ` ${mediaIndex}/${count}` : ""}`;
+                                setLocalFeedPosts((current) =>
+                                    current.map((item) =>
+                                        item.id == localPostId &&
+                                        item.status == "pending"
+                                            ? { ...item, processing }
+                                            : item,
+                                    ),
+                                );
+                            }
                             try {
                                 prepared[index] = image.video
                                     ? await prepareSpaceVideo(
                                           image.file,
                                           image.video,
+                                          signal,
                                       )
                                     : await prepareSpacePostImageFromEdit(
                                           image.file,
@@ -219,6 +255,16 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                 throw error;
                             }
                         }
+                        signal.throwIfAborted();
+                        postPreparationsRef.current.delete(localPostId);
+                        setLocalFeedPosts((current) =>
+                            current.map((item) =>
+                                item.id == localPostId &&
+                                item.status == "pending"
+                                    ? { ...item, processing: undefined }
+                                    : item,
+                            ),
+                        );
                         if (!postUploadsRef.current.has(localPostId))
                             throw new DOMException("Canceled", "AbortError");
                         const postId = await createCurrentMediaPost({
@@ -328,6 +374,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                         throw error;
                     }
                 })().finally(() => {
+                    postPreparationsRef.current.delete(localPostId);
                     pending = undefined;
                 });
                 return pending;
@@ -514,6 +561,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
         postPublishGenerationRef.current += 1;
         postReadbacksRef.current.clear();
         postUploadsRef.current.clear();
+        postPreparationsRef.current.forEach((controller) => controller.abort());
+        postPreparationsRef.current.clear();
         setPostPublication(null);
         setPendingLoginCredentials(null);
         setPendingPasskeyVerification(null);
