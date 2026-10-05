@@ -38,14 +38,20 @@ const flush = () => {
 };
 
 const enqueue = (name: string, top: number, slideOffset = 0) => {
-    const position = { top, slideOffset };
+    const position = { top, slideOffset, isConnected: true };
     const element = {
+        get isConnected() {
+            return position.isConnected;
+        },
         getBoundingClientRect: () => ({
             top: position.top - viewport.scrollY,
             bottom: position.top + 300 - viewport.scrollY,
             left: 100 + position.slideOffset,
         }),
-        closest: () => ({ getBoundingClientRect: () => ({ left: 100 }) }),
+        closest: () =>
+            position.isConnected
+                ? { getBoundingClientRect: () => ({ left: 100 }) }
+                : null,
     } as unknown as HTMLElement;
     const download = Promise.withResolvers<string>();
     const load = vi.fn(() => {
@@ -116,6 +122,29 @@ test("canceling a queued preload prevents its network request", async () => {
     flush();
     expect(started).toEqual([]);
     expect(frames.size).toBe(0);
+});
+
+test("detaching a queued video before cleanup does not block other downloads", async () => {
+    const detached = enqueue("detached", 100);
+    enqueue("next", 500);
+    enqueue("last", 900);
+    detached.position.isConnected = false;
+    flush();
+    expect(started).toEqual(["next", "last"]);
+    expect(detached.load).not.toHaveBeenCalled();
+    await expect(detached.promise).rejects.toMatchObject({
+        name: "AbortError",
+    });
+});
+
+test("a detached video is canceled even when it is the only queued request", async () => {
+    const detached = enqueue("detached", 100);
+    detached.position.isConnected = false;
+    flush();
+    expect(started).toEqual([]);
+    await expect(detached.promise).rejects.toMatchObject({
+        name: "AbortError",
+    });
 });
 
 test("an in-flight download retains its slot when its post is unmounted", async () => {

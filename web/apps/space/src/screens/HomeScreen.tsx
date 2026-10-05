@@ -1077,7 +1077,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
     const showSoundControl =
-        !isPostUnavailable && isPhotoReady && Boolean(activePhoto.video);
+        !isPostUnavailable && shouldPreloadVideo && Boolean(activePhoto.video);
     const canOpenPhoto =
         !isPostUnavailable && isPhotoReady && Boolean(onOpenPhoto);
     const openPhoto = (focusReplyOnOpen = false, index = photoIndex) => {

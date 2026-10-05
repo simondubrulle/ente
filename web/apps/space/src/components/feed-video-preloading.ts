@@ -22,6 +22,14 @@ const schedule = () => {
     if (!queued.size || inFlight >= 2) return;
     frame ??= requestAnimationFrame(() => {
         frame = undefined;
+        for (const request of queued) {
+            if (!request.element.isConnected) {
+                queued.delete(request);
+                request.reject(
+                    new DOMException("Video preload canceled", "AbortError"),
+                );
+            }
+        }
         const next = [...queued].sort((a, b) => distance(a) - distance(b));
         for (const request of next) {
             if (inFlight >= 2) break;
