@@ -16,6 +16,7 @@ import {
     MenuItem,
     MenuList,
     Popper,
+    useMediaQuery,
 } from "@mui/material";
 import { SpaceActionToast } from "components/ActionToast";
 import { SpaceAvatarImage } from "components/AvatarImage";
@@ -1034,7 +1035,7 @@ const CopyIcon: React.FC = () => (
     </svg>
 );
 
-const messageActionsTransitionDuration = { enter: 140, exit: 100 };
+const messageActionsTransitionDuration = { enter: 300, exit: 100 };
 
 const MessageActionMenuItem: React.FC<{
     icon: React.ReactNode;
@@ -1557,6 +1558,23 @@ const MessageBubble: React.FC<{
         | undefined
     >(undefined);
     const [swipeOffset, setSwipeOffset] = React.useState(0);
+    const reactionRef = React.useRef<HTMLSpanElement>(null);
+    const previousReactionRef = React.useRef(message.reaction);
+
+    React.useEffect(() => {
+        if (previousReactionRef.current == message.reaction) return;
+        previousReactionRef.current = message.reaction;
+        if (window.matchMedia("(prefers-reduced-motion: reduce)").matches)
+            return;
+        const animation = reactionRef.current?.animate(
+            [
+                { opacity: 0, transform: "scale(0.85)" },
+                { opacity: 1, transform: "scale(1)" },
+            ],
+            { duration: 160, easing: "ease-out" },
+        );
+        return () => animation?.cancel();
+    }, [message.reaction]);
 
     const clearLongPressTimer = React.useCallback(() => {
         if (longPressTimerRef.current == undefined) return;
@@ -1920,6 +1938,7 @@ const MessageBubble: React.FC<{
                                 </Box>
                                 {!isUnavailable && message.reaction && (
                                     <Box
+                                        ref={reactionRef}
                                         component="span"
                                         role="img"
                                         aria-label={`Reaction: ${emojiName(message.reaction)}`}
@@ -2028,6 +2047,9 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     );
     const ignoreMessageActionsMouseAwayUntilRef = React.useRef(0);
     const activityPostLoadsInFlightRef = React.useRef<Set<string>>(new Set());
+    const prefersReducedMotion = useMediaQuery(
+        "(prefers-reduced-motion: reduce)",
+    );
     const isThreadOpen = Boolean(selectedFriend);
     const canInteract =
         isThreadOpen && !isThreadReadOnly && !isThreadRecipientLoading;
@@ -3006,6 +3028,10 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                     >
                                         <Grow
                                             {...(TransitionProps ?? {})}
+                                            easing={{
+                                                enter: "cubic-bezier(0.18, 0.9, 0.3, 1.18)",
+                                                exit: "ease-in",
+                                            }}
                                             style={{
                                                 transformOrigin: `${
                                                     placement.endsWith("end")
@@ -3022,7 +3048,9 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                                 clearClosedMessageActions();
                                             }}
                                             timeout={
-                                                messageActionsTransitionDuration
+                                                prefersReducedMotion
+                                                    ? 0
+                                                    : messageActionsTransitionDuration
                                             }
                                         >
                                             <Box
