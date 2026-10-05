@@ -149,7 +149,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
               if (description != null) ...[
                 const SizedBox(height: Spacing.sm),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: Spacing.lg),
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   child: Text(
                     description,
                     maxLines: _descriptionMaxLines,
