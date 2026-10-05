@@ -49,8 +49,11 @@ const waitForVideo = (
     signal?: AbortSignal,
 ) =>
     new Promise<void>((resolve, reject) => {
+        let frameCallback: number | undefined;
         const finish = (error?: Error) => {
             window.clearTimeout(timer);
+            if (frameCallback != undefined)
+                video.cancelVideoFrameCallback(frameCallback);
             video.removeEventListener(event, ready);
             video.removeEventListener("error", failed);
             signal?.removeEventListener("abort", abort);
@@ -70,7 +73,12 @@ const waitForVideo = (
             () => finish(new Error("The video took too long to load.")),
             30_000,
         );
-        video.addEventListener(event, ready, { once: true });
+        if (
+            event == "loadeddata" &&
+            typeof video.requestVideoFrameCallback == "function"
+        )
+            frameCallback = video.requestVideoFrameCallback(ready);
+        else video.addEventListener(event, ready, { once: true });
         video.addEventListener("error", failed, { once: true });
         signal?.addEventListener("abort", abort, { once: true });
         if (signal?.aborted) abort();
