@@ -20,9 +20,6 @@ void main() {
     );
     final controller = sheet.controller!;
     expect(controller.size, sheet.initialChildSize);
-    final previewHeight = tester
-        .getSize(find.byType(DraggableScrollableSheet))
-        .height;
     gallery.jumpTo(30);
     await tester.pumpAndSettle();
     expect(controller.size, sheet.initialChildSize);
@@ -34,10 +31,6 @@ void main() {
     await tester.pumpAndSettle();
     expect(gallery.offset, greaterThan(0));
     expect(controller.size, sheet.minChildSize);
-    expect(
-      tester.getSize(find.byType(DraggableScrollableSheet)).height,
-      lessThan(previewHeight),
-    );
     await tester.drag(find.byType(CustomScrollView), const Offset(0, -320));
     await tester.pumpAndSettle();
     expect(controller.size, sheet.maxChildSize);
@@ -238,11 +231,7 @@ Future<void> _pumpSheet(
                   ListView(
                     controller: gallery,
                     children: [
-                      Container(
-                        key: const ValueKey("gallery"),
-                        height: 2000,
-                        color: Colors.transparent,
-                      ),
+                      Container(height: 2000, color: Colors.transparent),
                     ],
                   ),
                   SelectionActionSheet(

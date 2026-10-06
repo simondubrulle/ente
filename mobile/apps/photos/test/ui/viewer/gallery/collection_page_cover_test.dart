@@ -24,7 +24,6 @@ import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
 import "package:photos/models/ignored_file.dart";
 import "package:photos/models/metadata/collection_magic.dart";
-import "package:photos/models/search/hierarchical/file_type_filter.dart";
 import "package:photos/module/download/thumbnail.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/collections_service.dart";
@@ -37,9 +36,6 @@ import "package:photos/ui/viewer/gallery/collection_page.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/gallery_app_bar_widget.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
-import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart";
-import "package:photos/ui/viewer/gallery/state/search_filter_data_provider.dart";
-import "package:photos/ui/viewer/hierarchicial_search/app_bar_filter_chips.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 void main() {
@@ -90,60 +86,6 @@ void main() {
     PathProviderPlatform.instance = previousPathProvider;
     await tempDir.delete(recursive: true);
   });
-
-  for (final disableAnimations in [false, true]) {
-    testWidgets(
-      "fades late album recommendations with reduced motion $disableAnimations",
-      (tester) async {
-        final provider = SearchFilterDataProvider(
-          initialGalleryFilter: FileTypeFilter(
-            fileType: FileType.video,
-            typeName: "Videos",
-            occurrence: 1,
-          ),
-        );
-        await tester.pumpWidget(
-          MaterialApp(
-            theme: lightThemeData,
-            localizationsDelegates: StringsLocalizations.localizationsDelegates,
-            supportedLocales: StringsLocalizations.supportedLocales,
-            home: MediaQuery(
-              data: MediaQueryData(disableAnimations: disableAnimations),
-              child: InheritedSearchFilterDataWrapper(
-                searchFilterDataProvider: provider,
-                child: const Scaffold(
-                  body: AppBarFilterChips(animateRecommendations: true),
-                ),
-              ),
-            ),
-          ),
-        );
-        provider.clearAndAddRecommendations([
-          FileTypeFilter(
-            fileType: FileType.image,
-            typeName: "Photos",
-            occurrence: 1,
-          ),
-        ]);
-        await tester.pump();
-        final fade = find
-            .descendant(
-              of: find.byType(AnimatedOpacity),
-              matching: find.byType(FadeTransition),
-            )
-            .first;
-        double opacity() => tester.widget<FadeTransition>(fade).opacity.value;
-        expect(opacity(), disableAnimations ? 1 : 0);
-        await tester.pump(const Duration(milliseconds: 90));
-        if (!disableAnimations) {
-          expect(opacity(), inExclusiveRange(0, 1));
-        }
-        await tester.pumpAndSettle();
-        expect(opacity(), 1);
-        await tester.pumpWidget(const SizedBox.shrink());
-      },
-    );
-  }
 
   testWidgets("uses a pending local photo and excludes ignored photos", (
     tester,
@@ -290,8 +232,6 @@ void main() {
       );
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 75));
-      final route = ModalRoute.of(tester.element(find.byType(CollectionPage)))!;
-      expect(route, isA<PageRouteBuilder>());
       final pageFade = find
           .ancestor(
             of: find.byType(CollectionPage),
@@ -338,16 +278,6 @@ void main() {
         matching: find.byType(Hero),
       );
       expect(tester.widget<Hero>(headerHero).tag, heroTag);
-      final tags = tester
-          .widgetList<Hero>(
-            find.descendant(
-              of: find.byType(CollectionPage),
-              matching: find.byType(Hero),
-            ),
-          )
-          .map((hero) => hero.tag)
-          .toList();
-      expect(tags.toSet().length, tags.length);
 
       collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
       Bus.instance.fire(

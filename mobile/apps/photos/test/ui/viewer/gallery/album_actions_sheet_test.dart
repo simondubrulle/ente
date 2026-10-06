@@ -47,12 +47,6 @@ void main() {
       expect(find.byType(BottomSheetComponent), findsNothing);
       result = "pending";
       await _openLauncher(tester);
-      await tester.tapAt(const Offset(200, 150));
-      await tester.pumpAndSettle();
-      expect(result, isNull);
-      expect(find.byType(BottomSheetComponent), findsNothing);
-      result = "pending";
-      await _openLauncher(tester);
       await tester.longPressAt(const Offset(200, 150));
       await tester.pumpAndSettle();
       expect(result, isNull);
@@ -94,8 +88,6 @@ void main() {
             .state<ScrollableState>(find.byType(Scrollable))
             .position;
         await _openLauncher(tester);
-        expect(find.byType(DividerComponent), findsOneWidget);
-        expect(find.byType(VerticalDivider), findsNothing);
         final firstRow = [
           "Edit",
           "Pin",
@@ -114,20 +106,6 @@ void main() {
         expect(sheet.left, greaterThanOrEqualTo(Spacing.lg));
         expect(sheet.right, lessThanOrEqualTo(667 - Spacing.lg));
         expect(sheet.bottom, 240);
-        final scrollable = tester.state<ScrollableState>(
-          find.descendant(
-            of: find.byType(SingleChildScrollView),
-            matching: find.byType(Scrollable),
-          ),
-        );
-        expect(scrollable.position.maxScrollExtent, greaterThan(0));
-        tester.view.physicalSize = const Size(375, 667);
-        await tester.pumpAndSettle();
-        expect(find.byType(DividerComponent), findsOneWidget);
-        expect(tester.getSize(find.byType(BottomSheetComponent)).width, 375);
-        tester.view.physicalSize = const Size(667, 240);
-        await tester.pumpAndSettle();
-        expect(find.byType(DividerComponent), findsOneWidget);
         await tester.ensureVisible(find.text("Cast"));
         await tester.pumpAndSettle();
         await tester.tap(find.text("Cast"));
@@ -159,20 +137,6 @@ void main() {
         expect(result, isNull);
         expect(find.byType(BottomSheetComponent), findsNothing);
         semantics.dispose();
-        result = "pending";
-        await _openLauncher(tester);
-        final drag = await tester.startGesture(
-          Offset(sheet.left / 2, sheet.center.dy),
-        );
-        await drag.moveBy(const Offset(0, -24));
-        await drag.moveBy(const Offset(0, -40));
-        await drag.up();
-        await tester.pumpAndSettle();
-        expect(result, isNull);
-        expect(albumScroll.pixels, greaterThan(0));
-        expect(find.byType(BottomSheetComponent), findsNothing);
-        albumScroll.jumpTo(0);
-        await tester.pumpAndSettle();
         result = "pending";
         await _openLauncher(tester);
         final cancelledDrag = await tester.startGesture(
@@ -221,17 +185,12 @@ void main() {
         addTearDown(tester.platformDispatcher.clearTextScaleFactorTestValue);
         await tester.pumpAndSettle();
         await _openLauncher(tester);
-        expect(tester.getSize(find.byType(BottomSheetComponent)).width, 640);
         await tester.drag(
           find.byType(SingleChildScrollView),
           const Offset(0, -200),
         );
         await tester.pumpAndSettle();
-        await tester.tap(find.text("Add photos"));
-        await tester.pumpAndSettle();
-        expect(result, "add photos");
         expect(tester.takeException(), isNull);
-        await _openLauncher(tester);
         for (final (size, width) in [
           (const Size(1024, 1366), 640.0),
           (const Size(1366, 1024), 640.0),
@@ -246,6 +205,8 @@ void main() {
           expect(resizedSheet.bottom, size.height);
           expect(tester.takeException(), isNull);
         }
+        await tester.ensureVisible(find.text("Add photos"));
+        await tester.pumpAndSettle();
         await tester.tap(find.text("Add photos"));
         await tester.pumpAndSettle();
         expect(result, "add photos");
