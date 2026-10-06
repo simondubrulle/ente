@@ -18,6 +18,7 @@ import "package:photos/events/memories_setting_changed.dart";
 import "package:photos/events/memory_seen_event.dart";
 import "package:photos/events/sync_status_update_event.dart";
 import "package:photos/locale.dart";
+import "package:photos/main.dart" show isIOSBackgroundRefresh;
 import "package:photos/models/file/file.dart";
 import "package:photos/models/memories/memories_cache.dart";
 import "package:photos/models/memories/memory.dart";
@@ -31,7 +32,6 @@ import "package:photos/services/language_service.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
 import "package:photos/services/machine_learning/ml_run_control.dart";
-import "package:photos/services/machine_learning/ml_run_policy.dart";
 import "package:photos/services/memories/photo_selector.dart";
 import "package:photos/services/notification_service.dart";
 import "package:photos/services/search_service.dart";
@@ -695,7 +695,6 @@ class MemoriesCacheService {
   }
 
   Future<void> _calculateRegularFillers() async {
-    if (MlRunPolicy.remoteSyncOnly) return;
     if (_cachedMemories == null) {
       _cachedMemories = await smartMemoriesService.calcSimpleMemories();
       Bus.instance.fire(MemoriesChangedEvent());
@@ -906,7 +905,7 @@ class MemoriesCacheService {
   }
 
   Future<void> updateCache({bool forced = false, MlRunControl? control}) async {
-    if (MlRunPolicy.remoteSyncOnly) return;
+    if (isIOSBackgroundRefresh) return;
     if (!showAnyMemories) {
       return;
     }

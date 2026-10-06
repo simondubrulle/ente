@@ -47,7 +47,6 @@ import 'package:photos/services/favorites_service.dart';
 import 'package:photos/services/home_widget_service.dart';
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_run_control.dart";
-import "package:photos/services/machine_learning/ml_run_policy.dart";
 import 'package:photos/services/machine_learning/ml_service.dart';
 import 'package:photos/services/machine_learning/semantic_search/semantic_search_service.dart';
 import "package:photos/services/memories/memory_music_service.dart";
@@ -93,6 +92,7 @@ const kBGProcessingTaskMLLockWaitIOS = Duration(seconds: 60);
 const kBGTaskMLSelfStopAndroid = Duration(minutes: 9);
 const kBGProcessingTaskMLSelfStopAndroid = Duration(minutes: 8);
 bool isProcessBg = true;
+bool isIOSBackgroundRefresh = false;
 bool _stopHearBeat = false;
 bool _isSyncInitialized = false;
 bool _isRustInitialized = false;
@@ -254,6 +254,8 @@ Future<void> runBackgroundTask(
   MlRunControl? control,
   bool Function()? shouldStop,
 }) async {
+  isIOSBackgroundRefresh =
+      Platform.isIOS && taskId == BgTaskUtils.iOSBackgroundAppRefreshTask;
   // Created at task start so a stop that fires before ML begins stays
   // latched for the whole task.
   final mlRunControl = control ?? MlRunControl();
@@ -289,12 +291,7 @@ Future<void> runBackgroundTask(
       "[BG TASK] No recent foreground activity, proceeding with background work",
     );
 
-    await MlRunPolicy.run(
-      remoteSyncOnly:
-          Platform.isIOS && taskId == BgTaskUtils.iOSBackgroundAppRefreshTask,
-      action: () =>
-          _runMinimally(taskId, tlog, mlRunControl, mlLockWait, shouldStop),
-    );
+    await _runMinimally(taskId, tlog, mlRunControl, mlLockWait, shouldStop);
   } finally {
     mlSelfStopTimer?.cancel();
     mlForegroundWatchTimer.cancel();
@@ -417,7 +414,7 @@ Future<void> _runMinimally(
           if (shouldStop?.call() ?? false) return;
           final disposition = await MLService.instance.runAllML(
             force: false,
-            remoteSyncOnly: MlRunPolicy.remoteSyncOnly,
+            remoteSyncOnly: isIOSBackgroundRefresh,
             allowImageIndexing: BgTaskUtils.allowsImageIndexing(taskId),
             maxFilesToIndex: BgTaskUtils.isRefreshTask(taskId) ? 100 : null,
             control: mlRunControl,
