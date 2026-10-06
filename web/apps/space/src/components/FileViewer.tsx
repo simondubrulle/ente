@@ -30,6 +30,7 @@ import log from "ente-base/log";
 import type PhotoSwipe from "photoswipe";
 import React from "react";
 import type { SpaceInviteIntent } from "services/invite";
+import { SpaceMediaRateLimitError } from "services/media-load";
 import type {
     SpacePostAsset,
     SpacePostAssetURLLoader,
@@ -425,8 +426,9 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         Record<string, string>
     >({});
     const [photoLoadErrors, setPhotoLoadErrors] = React.useState<
-        Record<string, true>
+        Record<string, { retryAt?: number }>
     >({});
+    const [now, setNow] = React.useState(Date.now);
     const photoLoadsRef = React.useRef(new Set<string>());
     const photoKey = (item: SpaceViewerPhoto) =>
         item.imageAsset
@@ -479,6 +481,8 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
     activeReplyKeyRef.current = activeReplyKey;
     const activePostKey = `${activePhoto.spaceId ?? ""}:${activePhoto.postId ?? ""}`;
     const hasPhotoLoadError = Boolean(photoLoadErrors[activePhotoKey]);
+    const photoRetryAt = photoLoadErrors[activePhotoKey]?.retryAt;
+    const isPhotoRateLimited = photoRetryAt !== undefined && now < photoRetryAt;
     const canUpdatePostCaption =
         !isDraftPost &&
         Boolean(activePhoto.postId) &&
@@ -1026,7 +1030,12 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     log.warn("Failed to load post photo", error);
                     setPhotoLoadErrors((current) => ({
                         ...current,
-                        [key]: true,
+                        [key]: {
+                            retryAt:
+                                error instanceof SpaceMediaRateLimitError
+                                    ? error.retryAt
+                                    : undefined,
+                        },
                     }));
                 })
                 .finally(() => {
@@ -1034,6 +1043,16 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                 });
         }
     }, [activePhotoIndex, onLoadPhoto, viewerPhotoKeys, photoLoadErrors]);
+
+    React.useEffect(() => {
+        if (photoRetryAt === undefined) return;
+        setNow(Date.now());
+        const timer = window.setTimeout(
+            () => setNow(Date.now()),
+            Math.max(0, photoRetryAt - Date.now()),
+        );
+        return () => window.clearTimeout(timer);
+    }, [photoRetryAt]);
 
     React.useEffect(() => {
         const pswp = pswpRef.current;
@@ -1908,6 +1927,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     <Box
                         component="button"
                         type="button"
+                        disabled={isPhotoRateLimited}
                         onClick={() =>
                             setPhotoLoadErrors((current) => {
                                 return Object.fromEntries(
@@ -1924,9 +1944,13 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             color: textBase,
                             cursor: "pointer",
                             p: 2,
+                            textWrap: "balance",
+                            "&:disabled": { cursor: "default" },
                         }}
                     >
-                        Couldn&apos;t load photo. Retry
+                        {isPhotoRateLimited
+                            ? "Couldn't load photo. Please try again later."
+                            : "Couldn't load photo. Retry"}
                     </Box>
                 </Box>
             )}

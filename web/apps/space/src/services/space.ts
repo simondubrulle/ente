@@ -405,10 +405,7 @@ const accountPostAssetURLFromAsset = (
 ) =>
     cachedSpaceMediaBlobURL(
         postAssetCacheKey(asset),
-        () =>
-            loadSpaceMedia(() =>
-                ctx.downloadPostAsset(asset, viewerSpaceId ?? null),
-            ),
+        () => ctx.downloadPostAsset(asset, viewerSpaceId ?? null),
         asset.mediaType,
     );
 
@@ -566,7 +563,7 @@ export const openPublicSpaceLink = async (
             loadPostImage: (asset) =>
                 cachedSpaceMediaBlobURL(
                     postAssetCacheKey(asset),
-                    () => loadSpaceMedia(() => ctx.downloadPostAsset(asset)),
+                    () => ctx.downloadPostAsset(asset),
                     asset.mediaType,
                 ),
             loadProfileMedia: async () => {
