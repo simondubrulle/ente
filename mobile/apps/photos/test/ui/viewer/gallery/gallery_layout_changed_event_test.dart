@@ -105,18 +105,22 @@ void main() {
   });
 
   testWidgets(
-    "both layout menus notify galleries when only the strategy changes",
+    "selecting or reselecting Flex in either menu sets grid size 2 and notifies galleries",
     (tester) async {
       var events = 0;
       final subscription = Bus.instance.on<GalleryLayoutChangedEvent>().listen(
         (_) => events++,
       );
       addTearDown(subscription.cancel);
-      for (final quickMenu in [true, false]) {
+      for (final (quickMenu, initialStrategy) in [
+        (true, JustifiedLayoutStrategy.comfortLarge),
+        (false, JustifiedLayoutStrategy.comfortLarge),
+        (true, JustifiedLayoutStrategy.flex),
+        (false, JustifiedLayoutStrategy.flex),
+      ]) {
         await localSettings.setGalleryLayoutType(GalleryLayoutType.justified);
-        await localSettings.setJustifiedLayoutStrategy(
-          JustifiedLayoutStrategy.comfortLarge,
-        );
+        await localSettings.setJustifiedLayoutStrategy(initialStrategy);
+        await localSettings.setPhotoGridSize(4);
         events = 0;
         await tester.pumpWidget(
           MaterialApp(
@@ -149,7 +153,7 @@ void main() {
         }
         expect(find.text("Justified · Comfort"), findsNothing);
         expect(find.text("Justified · Flex Full Rows"), findsNothing);
-        await tester.tap(find.text("Justified · Flex (i)"));
+        await tester.tap(find.text("Justified · Flex (i)").hitTestable());
         await tester.pumpAndSettle();
         expect(
           localSettings.getGalleryLayoutType(),
@@ -159,7 +163,18 @@ void main() {
           localSettings.getJustifiedLayoutStrategy(),
           JustifiedLayoutStrategy.flex,
         );
+        expect(localSettings.getPhotoGridSize(), 2);
         expect(events, 1);
+        if (!quickMenu) {
+          expect(find.text("2"), findsOneWidget);
+          await tester.tap(find.text("Layout (i)"));
+          await tester.pumpAndSettle();
+          await tester.tap(find.text("Grid"));
+          await tester.pumpAndSettle();
+          expect(localSettings.getGalleryLayoutType(), GalleryLayoutType.grid);
+          expect(localSettings.getPhotoGridSize(), 2);
+          expect(events, 2);
+        }
         await tester.pumpWidget(const SizedBox.shrink());
         await tester.pumpAndSettle();
       }
