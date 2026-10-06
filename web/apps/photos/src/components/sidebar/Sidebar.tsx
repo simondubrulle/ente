@@ -986,9 +986,13 @@ const Account: React.FC<AccountProps> = ({
         }
 
         const period = userDetails.subscription.period;
-        const billingLabel = period
-            ? t(period == "year" ? "yearly" : "monthly")
-            : undefined;
+        const canShowBillingPeriod =
+            !isSubscriptionFree(userDetails.subscription) &&
+            (!isPartOfFamily(userDetails) || isFamilyAdmin(userDetails));
+        const billingLabel =
+            canShowBillingPeriod && period
+                ? t(period == "year" ? "yearly" : "monthly")
+                : undefined;
 
         planSubtext = [formattedStorageByteSize(storage), billingLabel]
             .filter(Boolean)
