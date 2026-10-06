@@ -33,10 +33,7 @@ import {
 } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { RecoveryKey } from "ente-accounts/components/RecoveryKey";
-import {
-    getPasskeyCount,
-    openAccountsManagePasskeysPage,
-} from "ente-accounts/services/passkey";
+import { openAccountsManagePasskeysPage } from "ente-accounts/services/passkey";
 import { getActiveSessions } from "ente-accounts/services/sessions";
 import { isDesktop } from "ente-base/app";
 import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
@@ -958,7 +955,6 @@ const Account: React.FC<AccountProps> = ({
     const { showMiniDialog } = useBaseContext();
     const userDetails = useUserDetailsSnapshot();
     const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>();
-    const [passkeyCount, setPasskeyCount] = useState<number>();
     const [sessionCount, setSessionCount] = useState<number>();
 
     const accountLabel = (label: string, subtext?: string) => (
@@ -1019,12 +1015,10 @@ const Account: React.FC<AccountProps> = ({
         let cancelled = false;
         void Promise.all([
             get2FAStatus().catch(() => undefined),
-            getPasskeyCount().catch(() => undefined),
             getActiveSessions().catch(() => undefined),
-        ]).then(([twoFactor, passkeys, sessions]) => {
+        ]).then(([twoFactor, sessions]) => {
             if (cancelled) return;
             setTwoFactorEnabled(twoFactor);
-            setPasskeyCount(passkeys);
             setSessionCount(sessions?.length);
         });
         return () => {
@@ -1185,14 +1179,7 @@ const Account: React.FC<AccountProps> = ({
                     />
                     <RowButtonDivider />
                     <RowButton
-                        label={accountLabel(
-                            t("passkeys"),
-                            passkeyCount === undefined
-                                ? undefined
-                                : t("account_passkeys", {
-                                      count: passkeyCount,
-                                  }),
-                        )}
+                        label={accountLabel(t("passkeys"))}
                         onClick={handlePasskeys}
                     />
                     <RowButtonDivider />

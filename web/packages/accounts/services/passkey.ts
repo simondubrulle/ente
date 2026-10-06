@@ -18,21 +18,6 @@ import { apiURL } from "ente-base/origins";
 import { z } from "zod";
 import { unstashRedirect } from "./redirect";
 
-export const getPasskeyCount = async () => {
-    const { accountsToken } = await getAccountsTokenAndURL();
-    const res = await fetch(await apiURL("/passkeys"), {
-        headers: {
-            "X-Auth-Token": accountsToken,
-            "X-Client-Package": clientPackageName,
-        },
-    });
-    ensureOk(res);
-    const { passkeys } = z
-        .object({ passkeys: z.array(z.unknown()).nullish() })
-        .parse(await res.json());
-    return passkeys?.length ?? 0;
-};
-
 export const passkeyVerificationRedirectURL = (
     accountsURL: string,
     passkeySessionID: string,

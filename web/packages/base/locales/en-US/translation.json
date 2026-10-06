@@ -1,8 +1,6 @@
 {
     "account_two_factor_on": "On",
     "account_two_factor_off": "Off",
-    "account_passkeys_one": "{{count}} key",
-    "account_passkeys_other": "{{count}} keys",
     "account_sessions_one": "{{count}} device",
     "account_sessions_other": "{{count}} devices",
     "account_family_members_one": "{{count}} member",
