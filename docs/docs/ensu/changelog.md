@@ -9,9 +9,9 @@ A short summary list of changes to the Ensu mobile and desktop apps. For a more 
 
 ## v0.1.21 - Oct 2026
 
-- Improved follow-up questions about notes and packs, with checks for changed or unavailable sources.
-- Improved continuity in long text conversations with saved summaries and retrieval of earlier details.
-- Opening Ensu again on Windows and Linux now brings the existing window forward, preventing duplicate instances from making Your Notes unavailable.
+- Improved follow-up questions about notes and packs.
+- Improved continuity in long text conversations with saved summaries.
+- Fixed issue regarding duplicate instances making Notes unavailable.
 
 ## v0.1.20 - Sep 2026
 
