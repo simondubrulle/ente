@@ -23,4 +23,3 @@
 /two-factor/verify    /two-factor/verify    200
 /verify    /verify    200
 /:spaceUsername    /profile-link    200
-/*    /index.html    200
