@@ -196,7 +196,12 @@ class SettingsSearchRegistry {
     List<SettingsSearchItem> items,
   ) {
     final l10n = context.strings;
-    final titles = {l10n.data, l10n.security};
+    final titles = {
+      l10n.data,
+      l10n.security,
+      l10n.localBackupSidebarTitle,
+      l10n.language,
+    };
     return [
       for (final item in items)
         if (titles.contains(item.title))
