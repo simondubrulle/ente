@@ -982,7 +982,7 @@ const Account: React.FC<AccountProps> = ({
             const familyStorage =
                 (userDetails.familyData?.storage ?? 0) +
                 userDetails.storageBonus;
-            storage = memberLimit || familyStorage;
+            storage = memberLimit ?? familyStorage;
         }
 
         const period = userDetails.subscription.period;
