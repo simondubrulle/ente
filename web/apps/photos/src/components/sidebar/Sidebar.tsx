@@ -33,7 +33,11 @@ import {
 } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { RecoveryKey } from "ente-accounts/components/RecoveryKey";
-import { openAccountsManagePasskeysPage } from "ente-accounts/services/passkey";
+import {
+    getPasskeyCount,
+    openAccountsManagePasskeysPage,
+} from "ente-accounts/services/passkey";
+import { getActiveSessions } from "ente-accounts/services/sessions";
 import { isDesktop } from "ente-base/app";
 import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
 import { LinkButton } from "ente-base/components/LinkButton";
@@ -76,6 +80,7 @@ import {
     isHLSGenerationSupported,
     toggleHLSGeneration,
 } from "ente-gallery/services/video";
+import { formattedStorageByteSize } from "ente-gallery/utils/units";
 import {
     useAppLockSnapshot,
     useHLSGenerationStatusSnapshot,
@@ -99,6 +104,7 @@ import {
     updateCustomDomain,
     updateMapEnabled,
 } from "ente-new/photos/services/settings";
+import { get2FAStatus } from "ente-new/photos/services/user";
 import {
     familyAdminEmail,
     hasExceededStorageQuota,
@@ -951,6 +957,42 @@ const Account: React.FC<AccountProps> = ({
 }) => {
     const { showMiniDialog } = useBaseContext();
     const userDetails = useUserDetailsSnapshot();
+    const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>();
+    const [passkeyCount, setPasskeyCount] = useState<number>();
+    const [sessionCount, setSessionCount] = useState<number>();
+
+    const accountLabel = (label: string, subtext?: string) => (
+        <Stack sx={{ gap: 0.5, alignItems: "flex-start", textAlign: "left" }}>
+            <Typography sx={{ fontWeight: "medium" }}>{label}</Typography>
+            {subtext && (
+                <Typography
+                    variant="small"
+                    sx={{ color: "text.muted", fontWeight: 400 }}
+                >
+                    {subtext}
+                </Typography>
+            )}
+        </Stack>
+    );
+    const planSubtext = userDetails
+        ? [
+              formattedStorageByteSize(userDetails.subscription.storage),
+              userDetails.subscription.period
+                  ? t(
+                        userDetails.subscription.period == "year"
+                            ? "yearly"
+                            : "monthly",
+                    )
+                  : undefined,
+              userDetails.familyData
+                  ? t("account_family_members", {
+                        count: userDetails.familyData.members.length,
+                    })
+                  : undefined,
+          ]
+              .filter(Boolean)
+              .join(" · ")
+        : undefined;
 
     const router = useRouter();
 
@@ -966,6 +1008,29 @@ const Account: React.FC<AccountProps> = ({
         useModalVisibility();
     const { show: showDeleteAccount, props: deleteAccountVisibilityProps } =
         useModalVisibility();
+
+    useEffect(() => {
+        if (
+            !open ||
+            twoFactorVisibilityProps.open ||
+            sessionsVisibilityProps.open
+        )
+            return;
+        let cancelled = false;
+        void Promise.all([
+            get2FAStatus().catch(() => undefined),
+            getPasskeyCount().catch(() => undefined),
+            getActiveSessions().catch(() => undefined),
+        ]).then(([twoFactor, passkeys, sessions]) => {
+            if (cancelled) return;
+            setTwoFactorEnabled(twoFactor);
+            setPasskeyCount(passkeys);
+            setSessionCount(sessions?.length);
+        });
+        return () => {
+            cancelled = true;
+        };
+    }, [open, twoFactorVisibilityProps.open, sessionsVisibilityProps.open]);
 
     const isNonAdminFamilyMember = useMemo(
         () =>
@@ -1094,7 +1159,7 @@ const Account: React.FC<AccountProps> = ({
             <Stack sx={{ px: 2, py: 1, gap: 3 }}>
                 <RowButtonGroup>
                     <RowButton
-                        label={t("manage_plan")}
+                        label={accountLabel(t("manage_plan"), planSubtext)}
                         onClick={handleManageSubscription}
                     />
                 </RowButtonGroup>
@@ -1106,14 +1171,40 @@ const Account: React.FC<AccountProps> = ({
                 </RowButtonGroup>
                 <RowButtonGroup>
                     <RowButton
-                        label={t("two_factor")}
+                        label={accountLabel(
+                            t("two_factor"),
+                            twoFactorEnabled === undefined
+                                ? undefined
+                                : t(
+                                      twoFactorEnabled
+                                          ? "account_two_factor_on"
+                                          : "account_two_factor_off",
+                                  ),
+                        )}
                         onClick={showTwoFactor}
                     />
                     <RowButtonDivider />
-                    <RowButton label={t("passkeys")} onClick={handlePasskeys} />
+                    <RowButton
+                        label={accountLabel(
+                            t("passkeys"),
+                            passkeyCount === undefined
+                                ? undefined
+                                : t("account_passkeys", {
+                                      count: passkeyCount,
+                                  }),
+                        )}
+                        onClick={handlePasskeys}
+                    />
                     <RowButtonDivider />
                     <RowButton
-                        label={t("active_sessions")}
+                        label={accountLabel(
+                            t("active_sessions"),
+                            sessionCount === undefined
+                                ? undefined
+                                : t("account_sessions", {
+                                      count: sessionCount,
+                                  }),
+                        )}
                         onClick={handleActiveSessions}
                     />
                 </RowButtonGroup>
@@ -1124,7 +1215,10 @@ const Account: React.FC<AccountProps> = ({
                     />
                     <RowButtonDivider />
                     <RowButton
-                        label={t("change_email")}
+                        label={accountLabel(
+                            t("change_email"),
+                            userDetails?.email,
+                        )}
                         onClick={handleChangeEmail}
                     />
                 </RowButtonGroup>
