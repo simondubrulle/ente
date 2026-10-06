@@ -94,7 +94,6 @@ final class ChatViewModel: ObservableObject {
     private var warmupSuppressed = false
     private var warmupTask: Task<Void, Never>?
     private var warmupAttempt: (owner: UUID, selection: ModelReadyKey)?
-    private var warmupObservation: AnyCancellable?
 
     private let provider: LlmProvider
     private let knowledgeEmbedding: KnowledgeEmbeddingConfig
@@ -154,7 +153,6 @@ final class ChatViewModel: ObservableObject {
         provider.modelMaintenance = notesStore
         let voiceTranscriber = VoiceTranscriptionService(
             provider: provider, assetStore: assetStore)
-        voiceTranscriber.modelMaintenance = notesStore
         let knowledgeProvider = KnowledgeProvider(assetStore: assetStore)
         let knowledgeStore = KnowledgeStore(
             datasets: config.knowledgeDatasets, provider: knowledgeProvider)
@@ -232,10 +230,6 @@ final class ChatViewModel: ObservableObject {
         }
         refreshDeviceCapability()
         refreshModelDownloadInfo()
-        warmupObservation = Publishers.CombineLatest(knowledgeStore.$packs, notesStore.$collections)
-            .sink { [weak self] _ in
-                Task { @MainActor [weak self] in self?.refreshChatWarmup() }
-            }
         Task {
             async let knowledge: Void = knowledgeStore.bootstrap()
             async let notes: Void = notesStore.bootstrap()
@@ -1278,6 +1272,7 @@ final class ChatViewModel: ObservableObject {
                         return
                     }
                     if error is ModelMemoryUnavailable {
+                        guard !Task.isCancelled, activeGenerationId == generationId else { return }
                         generationErrorMessage = error.localizedDescription
                         return
                     }
@@ -1346,7 +1341,6 @@ final class ChatViewModel: ObservableObject {
             let normalSystemPrompt = systemPrompt()
             var activeCitations: [GroundedSource] = []
             var conversationPrepared = false
-            var generationFinalized = false
 
             let buffer = OSAllocatedUnfairLock(initialState: StreamingBuffer())
             let uiUpdateInterval: TimeInterval = 0.05
@@ -1396,8 +1390,6 @@ final class ChatViewModel: ObservableObject {
                 ) -> Void = {
                     [self]
                     result, preparation, citations in
-                    guard !generationFinalized else { return }
-                    generationFinalized = true
                     let snapshot = buffer.withLock { $0 }
                     let interrupted: Bool
                     let totalTimeMs: Int64?
@@ -1431,9 +1423,8 @@ final class ChatViewModel: ObservableObject {
                         preparation: preparation)
                 }
             do {
-                let summary: GenerationSummary
                 if prompt.imageFiles.isEmpty {
-                    summary = try await self.generatePreparedChat(
+                    try await self.generatePreparedChat(
                         selection,
                         request: ConversationRequest(
                             sessionUuid: userNode.sessionId.uuidString,
@@ -1473,8 +1464,8 @@ final class ChatViewModel: ObservableObject {
                         hasOutput: { buffer.withLock { !$0.text.isEmpty } }, onToken: onToken
                     )
                     switch result {
-                    case let .generated(generated):
-                        summary = generated
+                    case let .generated(summary):
+                        finish(.success(summary), nil, activeCitations)
                     case let .overflow(inputTokens, inputBudget, limits):
                         overflowBypassMessageId = nil
                         pendingOverflow = PendingOverflow(
@@ -1493,9 +1484,8 @@ final class ChatViewModel: ObservableObject {
                         return
                     }
                 }
-
-                finish(.success(summary), nil, activeCitations)
             } catch {
+                if activeGenerationId == generationId { refreshModelDownloadInfo() }
                 finish(.failure(error), nil, activeCitations)
             }
             if embeddingAssetInvalid {
@@ -1599,12 +1589,12 @@ final class ChatViewModel: ObservableObject {
         onProgress: @escaping @MainActor () -> Void,
         onPrepared: @escaping @MainActor (ConversationPreparation) -> Void,
         onFinished:
-            @escaping @MainActor (Result<GenerationSummary, Error>, ConversationPreparation?) ->
+            @escaping @MainActor (Result<GenerationSummary, Error>, ConversationPreparation) ->
             Void,
         onToken: @escaping @Sendable (String) -> Void
-    ) async throws -> GenerationSummary {
+    ) async throws {
         let db = chatDb
-        return try await provider.withConversationContext(
+        try await provider.withConversationContext(
             selection,
             onProgress: { progress in
                 Task { @MainActor in self.handleProgress(progress) }
@@ -1637,10 +1627,8 @@ final class ChatViewModel: ObservableObject {
                     onToken: onToken
                 )
                 onFinished(.success(summary), preparation)
-                return summary
             } catch {
                 onFinished(.failure(error), preparation)
-                throw error
             }
         }
     }

@@ -110,6 +110,16 @@ impl LlmModel {
         Ok(Arc::new(LlmContext { handle }))
     }
 
+    pub fn new_title_context(
+        &self,
+        chat_context_size: u32,
+        n_threads: Option<i32>,
+    ) -> Result<Arc<LlmContext>, LlmError> {
+        let handle = llm::Context::new_title(&self.handle, chat_context_size, n_threads)
+            .map_err(LlmError::from)?;
+        Ok(Arc::new(LlmContext { handle }))
+    }
+
     pub fn new_embedding_context(
         &self,
         n_threads: Option<i32>,

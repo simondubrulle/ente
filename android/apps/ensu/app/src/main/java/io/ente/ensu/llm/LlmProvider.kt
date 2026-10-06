@@ -103,10 +103,10 @@ class LlmProvider(
         return headroom != null && headroom >= budget.requiredBytes
     }
 
-    private fun hasRequiredWorkReserve(): Boolean {
-        val headroom = deviceCapabilityProvider.modelMemoryHeadroom(optionalWork = false)
-        return llmHasRequiredWorkReserve(headroom)
-    }
+    private fun hasRequiredWorkReserve(): Boolean =
+        llmHasRequiredWorkReserve(
+            deviceCapabilityProvider.modelMemoryHeadroom(optionalWork = false)
+        )
 
     private fun releaseProjector() {
         loadedContext?.releaseMultimodal()
@@ -309,13 +309,7 @@ class LlmProvider(
     ): GenerationSummary {
         deviceCapabilityProvider.chatCapability().requireChatSupported()
         currentJobId = null
-        unloadTranscriptionModelIfLoaded()
-        val mmprojPath =
-            if (imageFiles.isEmpty()) {
-                null
-            } else {
-                assetStore.llmMmprojPath(chatAsset(selection))?.absolutePath
-            }
+        val mmprojPath = assetStore.llmMmprojPath(chatAsset(selection))?.absolutePath
         if (mmprojPath != null && !hasRequiredWorkReserve()) {
             throw ModelMemoryUnavailable()
         }
@@ -362,12 +356,9 @@ class LlmProvider(
             coroutine.ensureActive()
             val model = checkNotNull(loadedModel) { "Model not loaded" }
             model
-                .newContext(
-                    LlmContextParams(
-                        contextSize = minOf(1024, checkNotNull(currentContextLength)),
-                        nThreads = max(1, Runtime.getRuntime().availableProcessors() - 1),
-                        nBatch = 128,
-                    )
+                .newTitleContext(
+                    chatContextSize = checkNotNull(currentContextLength).toUInt(),
+                    nThreads = max(1, Runtime.getRuntime().availableProcessors() - 1),
                 )
                 .use { context ->
                     coroutine.ensureActive()
@@ -403,11 +394,7 @@ class LlmProvider(
             ensureModelReadyLocked(selection, onProgress)
             currentCoroutineContext().ensureActive()
             unloadTranscriptionModelIfLoaded()
-            try {
-                block(requireNotNull(loadedContext))
-            } finally {
-                releaseProjector()
-            }
+            block(requireNotNull(loadedContext))
         }
     }
 

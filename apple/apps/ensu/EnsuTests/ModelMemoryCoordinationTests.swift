@@ -18,11 +18,9 @@ private actor ModelOperationBarrier {
     }
 }
 
-private final class RetainedPreparation: @unchecked Sendable {}
-
 @MainActor
 final class ModelMemoryCoordinationTests: XCTestCase {
-    func testCooldownDoesNotAcknowledgePendingCleanup() {
+    func testOptionalWorkWaitsForBothCleanupAndCooldown() {
         var pressure = ModelMemoryPressureState()
         pressure.recordPressure(now: 10)
         XCTAssertTrue(pressure.suppressesOptionalWork(now: 100))
@@ -30,15 +28,12 @@ final class ModelMemoryCoordinationTests: XCTestCase {
         pressure.didCleanUp()
         XCTAssertFalse(pressure.suppressesOptionalWork(now: 100))
         XCTAssertFalse(pressure.requiresCleanup(appForeground: true, now: 100))
-    }
 
-    func testCooldownExpiresAfterCleanup() {
-        var pressure = ModelMemoryPressureState()
-        pressure.recordPressure(now: 10)
+        pressure.recordPressure(now: 100)
         pressure.didCleanUp()
-        XCTAssertTrue(pressure.suppressesOptionalWork(now: 39.9))
-        XCTAssertFalse(pressure.suppressesOptionalWork(now: 40))
-        XCTAssertTrue(pressure.requiresCleanup(appForeground: false, now: 40))
+        XCTAssertTrue(pressure.suppressesOptionalWork(now: 129.9))
+        XCTAssertFalse(pressure.suppressesOptionalWork(now: 130))
+        XCTAssertTrue(pressure.requiresCleanup(appForeground: false, now: 130))
     }
 
     func testNewPressureRestartsCooldownAndRequiresAnotherCleanup() {
@@ -60,7 +55,7 @@ final class ModelMemoryCoordinationTests: XCTestCase {
         let completed = expectation(description: "operations completed")
         completed.expectedFulfillmentCount = 2
         var events: [String] = []
-        let first = Task {
+        Task {
             defer { completed.fulfill() }
             do {
                 try await gate.withLock(
@@ -74,7 +69,7 @@ final class ModelMemoryCoordinationTests: XCTestCase {
             } catch { XCTFail("Unexpected failure: \(error)") }
         }
         await fulfillment(of: [cleaning], timeout: 2)
-        let second = Task {
+        Task {
             defer { completed.fulfill() }
             queued.fulfill()
             do {
@@ -85,8 +80,6 @@ final class ModelMemoryCoordinationTests: XCTestCase {
         XCTAssertEqual(events, ["enter", "work"])
         await barrier.release()
         await fulfillment(of: [completed], timeout: 2)
-        first.cancel()
-        second.cancel()
         XCTAssertEqual(events, ["enter", "work", "cleanup", "next"])
     }
 
@@ -116,21 +109,7 @@ final class ModelMemoryCoordinationTests: XCTestCase {
             if cancel { task.cancel() }
             await barrier.release()
             await fulfillment(of: [completed], timeout: 2)
-            task.cancel()
             XCTAssertEqual(events, ["work", "cleanup"])
         }
-    }
-
-    func testPreparationCancellationReferenceCanBeReleasedBeforeCleanup() {
-        let control = ChatGenerationControl()
-        weak var retained: RetainedPreparation?
-        do {
-            let preparation = RetainedPreparation()
-            retained = preparation
-            control.setPreparationCancellation { withExtendedLifetime(preparation) {} }
-        }
-        XCTAssertNotNil(retained)
-        control.clearPreparationCancellation()
-        XCTAssertNil(retained)
     }
 }

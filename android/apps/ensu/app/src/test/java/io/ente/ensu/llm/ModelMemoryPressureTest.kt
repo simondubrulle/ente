@@ -19,7 +19,7 @@ import org.junit.Test
 
 class ModelMemoryPressureTest {
     @Test
-    fun evictionSurvivesTheAdmissionCooldownUntilResourcesAreReleased() {
+    fun optionalWorkWaitsForBothReleaseAndCooldown() {
         var now = 0L
         val pressure = ModelMemoryPressure { now }
         pressure.requestEviction()
@@ -32,18 +32,12 @@ class ModelMemoryPressureTest {
         pressure.didRelease(eviction)
         assertNull(pressure.pendingEviction())
         assertFalse(pressure.suppressesOptionalWork())
-    }
-
-    @Test
-    fun releaseDoesNotBypassCooldown() {
-        var now = 0L
-        val pressure = ModelMemoryPressure { now }
         pressure.requestEviction()
         pressure.didRelease(pressure.pendingEviction()!!)
 
-        now = 29_999
+        now = 89_999
         assertTrue(pressure.suppressesOptionalWork())
-        now = 30_000
+        now = 90_000
         assertFalse(pressure.suppressesOptionalWork())
     }
 
@@ -87,10 +81,11 @@ class ModelMemoryPressureTest {
                 }
             }
         releaseRequested = true
-        val cleanup = launch(start = CoroutineStart.UNDISPATCHED) { mutex.withLock { release() } }
+        val follower =
+            launch(start = CoroutineStart.UNDISPATCHED) { mutex.withLock { assertFalse(resident) } }
         mutex.unlock()
         operation.join()
-        cleanup.join()
+        follower.join()
 
         assertEquals(listOf("release", "allocate", "release"), events)
         assertFalse(resident)
@@ -117,14 +112,16 @@ class ModelMemoryPressureTest {
             entered.await()
             releaseRequested.set(true)
             operation.cancel()
-            val cleanup =
-                launch(start = CoroutineStart.UNDISPATCHED) { mutex.withLock { release() } }
+            val follower =
+                launch(start = CoroutineStart.UNDISPATCHED) {
+                    mutex.withLock { assertFalse(resident.get()) }
+                }
             assertFalse(operation.isCompleted)
-            assertFalse(cleanup.isCompleted)
+            assertFalse(follower.isCompleted)
             assertTrue(resident.get())
             nativeReturn.countDown()
             operation.join()
-            cleanup.join()
+            follower.join()
             assertFalse(resident.get())
         } finally {
             nativeReturn.countDown()
@@ -136,16 +133,13 @@ class ModelMemoryPressureTest {
     fun failedWorkReleasesResourcesBeforeUnlocking() = runBlocking {
         val mutex = Mutex()
         var resident = false
-        var failed = false
-        try {
+        val result = runCatching {
             withModelResources(mutex, { resident = false }) {
                 resident = true
                 error("Native operation failed")
             }
-        } catch (_: IllegalStateException) {
-            failed = true
         }
-        assertTrue(failed)
+        assertTrue(result.exceptionOrNull() is IllegalStateException)
         assertFalse(resident)
         assertFalse(mutex.isLocked)
     }

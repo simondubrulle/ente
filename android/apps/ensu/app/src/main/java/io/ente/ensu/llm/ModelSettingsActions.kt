@@ -22,7 +22,6 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
-import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
@@ -53,7 +52,7 @@ internal class ModelSettingsActions(
             llmProvider.setAppForeground(appForeground)
             awaitKnowledgeReady()
             notesStore.awaitReady()
-            combine(state, notesStore.state) { _, _ -> Unit }.collect { refreshChatWarmup() }
+            state.collect { refreshChatWarmup() }
         }
     }
 

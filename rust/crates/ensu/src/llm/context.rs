@@ -45,6 +45,17 @@ impl Context {
         Self::spawn(move || LocalContext::new(&model, params))
     }
 
+    pub fn new_title(
+        model: &ModelRef,
+        chat_context_size: u32,
+        n_threads: Option<i32>,
+    ) -> Result<ContextRef, Error> {
+        Self::new(
+            model,
+            super::memory::title_context_params(chat_context_size, n_threads),
+        )
+    }
+
     pub fn new_embedding(
         model: &ModelRef,
         params: EmbeddingContextParams,

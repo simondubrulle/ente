@@ -195,7 +195,6 @@ actor LlmProvider {
         }
     }
 
-    private nonisolated let currentJobId = OSAllocatedUnfairLock<Int64?>(initialState: nil)
     private nonisolated let generationControl = OSAllocatedUnfairLock<ChatGenerationControl?>(
         initialState: nil)
     private let modelLoadGate = AsyncSerialGate()
@@ -434,12 +433,10 @@ actor LlmProvider {
                 try control.checkCancellation()
                 generationControl.withLock { $0 = control }
                 defer { generationControl.withLock { $0 = nil } }
-                let context = try model.newContext(
-                    params: LlmContextParams(
-                        contextSize: Int32(min(1024, loadedContext.contextSize())),
-                        nThreads: Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 1)),
-                        nBatch: 128
-                    ))
+                let context = try model.newTitleContext(
+                    chatContextSize: loadedContext.contextSize(),
+                    nThreads: Int32(max(1, ProcessInfo.processInfo.activeProcessorCount - 1))
+                )
                 let outputTokens = 48
                 let inputTokens = max(0, min(2000, Int(context.contextSize()) - outputTokens))
                 let titleMessages = try context.truncateTextChatMessages(
@@ -516,7 +513,7 @@ actor LlmProvider {
         temperature: Float,
         maxTokens: Int?,
         contextOverride: LlmContext? = nil,
-        control: ChatGenerationControl? = nil,
+        control: ChatGenerationControl,
         onToken: @escaping @Sendable (String) -> Void
     ) async throws -> GenerationSummary {
         let capability = currentChatDeviceCapability()
@@ -528,10 +525,8 @@ actor LlmProvider {
                 domain: "LlmProvider", code: -1,
                 userInfo: [NSLocalizedDescriptionKey: "Model not loaded"])
         }
-        currentJobId.withLock { $0 = nil }
         defer { context.releaseMultimodal() }
 
-        unloadTranscriptionModelIfLoaded()
         let asset = chatAsset(selection)
         let mmprojPath =
             imageFiles.isEmpty
@@ -561,20 +556,15 @@ actor LlmProvider {
             grammar: nil
         )
 
-        let sink = CallbackSink { [currentJobId] event in
-            switch event {
-            case let .text(jobId, text, _):
-                currentJobId.withLock { $0 = jobId }
-                control?.setJob(jobId)
+        let sink = CallbackSink { event in
+            if case let .text(jobId, text, _) = event {
+                control.setJob(jobId)
                 onToken(text)
-            case .done:
-                currentJobId.withLock { $0 = nil }
             }
         }
 
-        defer { currentJobId.withLock { $0 = nil } }
         let summary = try await Task.detached {
-            try control?.checkCancellation()
+            try control.checkCancellation()
             return try context.generateChatStream(request: request, callback: sink)
         }.value
 
@@ -664,10 +654,6 @@ actor LlmProvider {
     nonisolated func stopGeneration(invalidatePreparation: Bool = false) {
         if let control = generationControl.withLock({ $0 }) {
             control.cancel(invalidatePreparation: invalidatePreparation)
-            return
-        }
-        if let jobId = currentJobId.withLock({ $0 }) {
-            llmCancel(jobId: jobId)
         } else {
             llmCancel(jobId: 0)
         }

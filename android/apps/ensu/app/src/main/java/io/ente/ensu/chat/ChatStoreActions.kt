@@ -616,6 +616,7 @@ internal class ChatStoreActions(
                     } catch (error: kotlinx.coroutines.CancellationException) {
                         throw error
                     } catch (error: ModelMemoryUnavailable) {
+                        if (!isActive() || stopRequested) return@launch
                         state.update {
                             it.copy(
                                 chat =
@@ -761,20 +762,18 @@ internal class ChatStoreActions(
                     onModelProgress,
                     { isActive() && state.value.modelSettings == settings },
                 )
-                if (embeddingAssetInvalid) modelSettingsActions.refreshModelDownloadInfo()
-                return@launch
+            } else {
+                generateImageConversation(
+                    sessionId,
+                    userMessage,
+                    prompt,
+                    selection,
+                    modelSettingsActions.resolveTemperature(settings),
+                    knowledgeHits,
+                    onModelProgress,
+                    { isActive() && state.value.modelSettings == settings },
+                )
             }
-
-            generateImageConversation(
-                sessionId,
-                userMessage,
-                prompt,
-                selection,
-                modelSettingsActions.resolveTemperature(settings),
-                knowledgeHits,
-                onModelProgress,
-                { isActive() && state.value.modelSettings == settings },
-            )
             if (embeddingAssetInvalid) modelSettingsActions.refreshModelDownloadInfo()
         }
         generationJob = activeJob

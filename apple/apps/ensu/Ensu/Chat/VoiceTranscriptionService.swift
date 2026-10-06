@@ -82,7 +82,6 @@ final class VoiceTranscriptionService {
     typealias StateHandler = @MainActor @Sendable (VoiceInputState) -> Void
     typealias TranscriptHandler = @MainActor @Sendable (String) -> Void
 
-    weak var modelMaintenance: (any ModelMaintenance)?
     var onTaskActivityChanged: (@MainActor @Sendable (Bool) -> Void)?
     private let provider: LlmProvider
     private let assetStore: AssetStore
@@ -172,14 +171,8 @@ final class VoiceTranscriptionService {
         let pcm = recording.pcm
         let owner = voiceOwner
 
-        let maintenance = modelMaintenance
-        let maintenanceScope = maintenance?.suspendMaintenance()
         transcriptionTask = launchVoiceTask(priority: .userInitiated) { [weak self] in
-            defer {
-                maintenanceScope?.close()
-                Task.detached { await provider.releaseVoice(owner: owner) }
-            }
-            await maintenance?.awaitMaintenance()
+            defer { Task.detached { await provider.releaseVoice(owner: owner) } }
             do {
                 try await self?.downloadModelsIfNeeded(
                     taskId: taskId,
@@ -250,11 +243,7 @@ final class VoiceTranscriptionService {
         let taskId = beginVoiceTask()
         let downloadId = beginDownload(taskId: taskId)
 
-        let maintenance = modelMaintenance
-        let maintenanceScope = maintenance?.suspendMaintenance()
         transcriptionTask = launchVoiceTask(priority: .userInitiated) { [weak self] in
-            defer { maintenanceScope?.close() }
-            await maintenance?.awaitMaintenance()
             do {
                 try await self?.downloadModelsIfNeeded(
                     taskId: taskId,

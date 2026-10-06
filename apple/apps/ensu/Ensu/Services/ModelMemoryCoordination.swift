@@ -2,17 +2,16 @@ import Foundation
 
 struct ModelMemoryPressureState {
     static let cooldown: TimeInterval = 30
-    private var generation: UInt64 = 0
-    private var evictedGeneration: UInt64 = 0
+    private var cleanupPending = false
     private var retryAfter: TimeInterval = 0
 
     mutating func recordPressure(now: TimeInterval) {
-        generation &+= 1
+        cleanupPending = true
         retryAfter = now + Self.cooldown
     }
 
     func suppressesOptionalWork(now: TimeInterval) -> Bool {
-        generation != evictedGeneration || now < retryAfter
+        cleanupPending || now < retryAfter
     }
 
     func requiresCleanup(appForeground: Bool, now: TimeInterval) -> Bool {
@@ -20,7 +19,7 @@ struct ModelMemoryPressureState {
     }
 
     mutating func didCleanUp() {
-        evictedGeneration = generation
+        cleanupPending = false
     }
 }
 
