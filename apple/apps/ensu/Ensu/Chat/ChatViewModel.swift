@@ -287,22 +287,28 @@ final class ChatViewModel: ObservableObject {
         warmupAttempt = (owner, key)
         warmupTask = Task { [weak self] in
             guard let self else { return }
+            var ready = false
             defer {
-                if warmupAttempt?.owner == owner { warmupTask = nil }
+                if warmupAttempt?.owner == owner {
+                    warmupTask = nil
+                    if !ready { warmupAttempt = nil }
+                }
             }
             do {
                 try await Task.sleep(nanoseconds: 350_000_000)
                 await knowledgeStore.bootstrap()
                 await notesStore.bootstrap()
-                try Task.checkCancellation()
-                guard appForeground, chatActive, !isGenerating, !isDownloading,
-                    !voiceInputState.isWorking,
-                    !voiceTranscriber.hasActiveTasks
-                else {
-                    if warmupAttempt?.owner == owner { cancelChatWarmup() }
-                    return
-                }
-                try await provider.prewarmChatModelIfDownloaded(selection, owner: owner)
+                ready = try await retryChatWarmup(
+                    isEligible: {
+                        warmupAttempt?.owner == owner
+                            && modelReadyKey(for: modelSettings.currentSelection()) == key
+                            && appForeground && chatActive && !warmupSuppressed
+                            && !isChatUnsupported && !isGenerating && !isDownloading
+                            && !voiceInputState.isWorking && !voiceTranscriber.hasActiveTasks
+                    },
+                    operation: {
+                        try await provider.prewarmChatModelIfDownloaded(selection, owner: owner)
+                    })
             } catch {
                 guard !Task.isCancelled, !isCancellation(error), warmupAttempt?.owner == owner,
                     modelReadyKey(for: modelSettings.currentSelection()) == key,
@@ -1037,6 +1043,7 @@ final class ChatViewModel: ObservableObject {
                 try await self.ensureRequiredModelsReadyShared(
                     selection, recoverDownloadedModel: wasDownloaded)
                 self.handleProgress(DownloadProgress(percent: 100, status: "Ready", phase: .ready))
+                self.refreshChatWarmup()
             } catch {
                 if isCancellation(error) {
                     return
@@ -1167,6 +1174,7 @@ final class ChatViewModel: ObservableObject {
             showUnsupportedDeviceDialog = true
             return
         }
+        cancelChatWarmup(releaseLoadedModel: false)
         let selection = modelSettings.currentSelection()
         let prompt = buildPrompt(text: userNode.text, attachments: userNode.attachments)
         let priorGeneration = generationTask

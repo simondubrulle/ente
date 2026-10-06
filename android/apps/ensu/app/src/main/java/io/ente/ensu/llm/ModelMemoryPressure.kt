@@ -1,5 +1,8 @@
 package io.ente.ensu.llm
 
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 
@@ -19,6 +22,9 @@ internal class ModelMemoryPressure(private val elapsedRealtime: () -> Long) {
         requestedGeneration != releasedGeneration || elapsedRealtime() < retryAfter
 
     @Synchronized
+    fun remainingCooldownMillis(): Long = (retryAfter - elapsedRealtime()).coerceAtLeast(0)
+
+    @Synchronized
     fun pendingEviction(): Long? = requestedGeneration.takeIf { it != releasedGeneration }
 
     @Synchronized
@@ -28,6 +34,35 @@ internal class ModelMemoryPressure(private val elapsedRealtime: () -> Long) {
 
     private companion object {
         const val COOLDOWN_MILLIS = 30_000L
+    }
+}
+
+internal sealed interface ChatWarmupResult {
+    data object Ready : ChatWarmupResult
+
+    data object Skipped : ChatWarmupResult
+
+    data class RetryAfter(val millis: Long) : ChatWarmupResult
+}
+
+internal suspend fun retryChatWarmup(
+    isEligible: () -> Boolean,
+    wait: suspend (Long) -> Unit = { delay(it) },
+    operation: suspend () -> ChatWarmupResult,
+): Boolean {
+    while (true) {
+        currentCoroutineContext().ensureActive()
+        if (!isEligible()) return false
+        val result = operation()
+        currentCoroutineContext().ensureActive()
+        when (result) {
+            ChatWarmupResult.Ready -> return true
+            ChatWarmupResult.Skipped -> return false
+            is ChatWarmupResult.RetryAfter -> {
+                if (result.millis <= 0) return false
+                wait(result.millis)
+            }
+        }
     }
 }
 

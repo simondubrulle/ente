@@ -203,6 +203,7 @@ actor LlmProvider {
     private func withModelLock<T>(
         isolation: isolated (any Actor)? = #isolation,
         suspendMaintenance: Bool = true,
+        retainAfterCooldown: Bool = false,
         _ operation: () async throws -> T
     ) async throws -> T {
         var scope: ModelUseScope?
@@ -215,7 +216,9 @@ actor LlmProvider {
         return try await modelLoadGate.withLock(
             onEnter: {
                 await self.reconcileIdleResources()
-                releaseAfterUse = await self.memoryPressureSuppressed
+                if !retainAfterCooldown {
+                    releaseAfterUse = await self.memoryPressureSuppressed
+                }
             },
             onExit: { await self.reconcileIdleResources(force: releaseAfterUse) }, operation)
     }
@@ -325,14 +328,21 @@ actor LlmProvider {
 
     func prewarmChatModelIfDownloaded(
         _ selection: LlmModelSelection, owner: UUID
-    ) async throws {
-        try await withModelLock {
-            guard appForeground, chatForeground, !memoryPressureSuppressed, voiceOwner == nil,
+    ) async throws -> ChatWarmupResult {
+        let result: ChatWarmupResult = try await withModelLock(retainAfterCooldown: true) {
+            guard appForeground, chatForeground, voiceOwner == nil,
                 isChatModelReady(selection)
-            else { return }
+            else { return .skipped }
+            let cooldown = memoryPressure.remainingCooldown(
+                now: ProcessInfo.processInfo.systemUptime)
+            if cooldown > 0 { return .retryAfter(cooldown) }
+            guard !memoryPressureSuppressed else { return .skipped }
             unloadTranscriptionModelIfLoaded()
             try Task.checkCancellation()
-            guard loadedContextLength(selection) == nil else { return }
+            guard loadedContextLength(selection) == nil else {
+                if chatWarmupOwner != nil { chatWarmupOwner = owner }
+                return .ready
+            }
             do {
                 try await ensureModelReadyLocked(
                     selection, onProgress: { _ in }, allowRecovery: false, shouldDownload: false)
@@ -342,7 +352,14 @@ actor LlmProvider {
                 unloadModel()
                 throw error
             }
+            return .ready
         }
+        guard case .ready = result else { return result }
+        guard appForeground else { return .skipped }
+        let cooldown = memoryPressure.remainingCooldown(now: ProcessInfo.processInfo.systemUptime)
+        if cooldown > 0 { return .retryAfter(cooldown) }
+        return !memoryPressureSuppressed && loadedContextLength(selection) != nil
+            ? .ready : .skipped
     }
 
     func releaseChatWarmup(owner: UUID) async {

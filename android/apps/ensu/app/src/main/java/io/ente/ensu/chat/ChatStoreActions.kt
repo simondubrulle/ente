@@ -488,6 +488,7 @@ internal class ChatStoreActions(
     private fun startGeneration(sessionId: String, userMessage: ChatMessage) {
         val scope = scope ?: return
         if (!state.value.chat.deviceCapability.isChatSupported()) return
+        modelSettingsActions.cancelChatWarmup(releaseLoadedModel = false)
         val prompt = buildPrompt(userMessage.text, userMessage.attachments)
         val priorGeneration = generationJob
         val priorSummary = sessionSummaryJob

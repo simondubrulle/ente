@@ -138,10 +138,13 @@ class LlmProvider(
         }
     }
 
-    private suspend fun <T> withResources(block: suspend () -> T): T {
+    private suspend fun <T> withResources(
+        retainAfterCooldown: Boolean = false,
+        block: suspend () -> T,
+    ): T {
         var releaseAfterUse = false
         return withModelResources(modelLoadMutex, { releaseIdleResourcesLocked(releaseAfterUse) }) {
-            releaseAfterUse = memoryPressure.suppressesOptionalWork()
+            releaseAfterUse = !retainAfterCooldown && memoryPressure.suppressesOptionalWork()
             block()
         }
     }
@@ -151,13 +154,14 @@ class LlmProvider(
             currentCoroutineContext().ensureActive()
             if (!chatForeground || memoryPressure.suppressesOptionalWork()) return@withResources
             prepareVoiceResources()
+            var completed = false
             try {
                 transcriber.loadModel()
                 currentCoroutineContext().ensureActive()
                 voiceOwner = owner
-            } catch (error: Throwable) {
-                unloadTranscriptionModelIfLoaded()
-                throw error
+                completed = true
+            } finally {
+                if (!completed) unloadTranscriptionModelIfLoaded()
             }
         }
     }
@@ -225,29 +229,54 @@ class LlmProvider(
     internal suspend fun prewarmChatModelIfDownloaded(
         selection: LlmModelSelection,
         owner: String,
-    ): Unit = withModelContext {
-        withResources {
-            currentCoroutineContext().ensureActive()
-            if (
-                !chatForeground ||
-                    !appForeground ||
-                    memoryPressure.suppressesOptionalWork() ||
-                    deviceCapabilityProvider.isLowMemory() ||
-                    voiceOwner != null ||
-                    !isChatModelReady(selection)
-            )
-                return@withResources
-            unloadTranscriptionModelIfLoaded()
-            currentCoroutineContext().ensureActive()
-            if (loadedContextLength(selection) != null) return@withResources
-            try {
-                ensureModelReadyLocked(selection, {}, allowRecovery = false, shouldDownload = false)
+    ): ChatWarmupResult = withModelContext {
+        val result =
+            withResources(retainAfterCooldown = true) {
                 currentCoroutineContext().ensureActive()
-                chatWarmupOwner = owner
-            } catch (error: Throwable) {
-                unloadModel()
-                throw error
+                if (
+                    !chatForeground ||
+                        !appForeground ||
+                        voiceOwner != null ||
+                        !isChatModelReady(selection)
+                )
+                    return@withResources ChatWarmupResult.Skipped
+                val cooldown = memoryPressure.remainingCooldownMillis()
+                if (cooldown > 0) return@withResources ChatWarmupResult.RetryAfter(cooldown)
+                if (
+                    memoryPressure.suppressesOptionalWork() ||
+                        deviceCapabilityProvider.isLowMemory()
+                )
+                    return@withResources ChatWarmupResult.Skipped
+                unloadTranscriptionModelIfLoaded()
+                currentCoroutineContext().ensureActive()
+                if (loadedContextLength(selection) != null) {
+                    if (chatWarmupOwner != null) chatWarmupOwner = owner
+                    return@withResources ChatWarmupResult.Ready
+                }
+                var completed = false
+                try {
+                    ensureModelReadyLocked(
+                        selection,
+                        {},
+                        allowRecovery = false,
+                        shouldDownload = false,
+                    )
+                    currentCoroutineContext().ensureActive()
+                    chatWarmupOwner = owner
+                    completed = true
+                } finally {
+                    if (!completed) unloadModel()
+                }
+                ChatWarmupResult.Ready
             }
+        if (result != ChatWarmupResult.Ready) return@withModelContext result
+        val cooldown = memoryPressure.remainingCooldownMillis()
+        when {
+            !appForeground -> ChatWarmupResult.Skipped
+            cooldown > 0 -> ChatWarmupResult.RetryAfter(cooldown)
+            !memoryPressure.suppressesOptionalWork() && loadedContextLength(selection) != null ->
+                ChatWarmupResult.Ready
+            else -> ChatWarmupResult.Skipped
         }
     }
 

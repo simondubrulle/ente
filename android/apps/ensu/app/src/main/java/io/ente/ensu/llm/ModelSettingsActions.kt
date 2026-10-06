@@ -360,7 +360,6 @@ internal class ModelSettingsActions(
 
     fun setPickerPending(pending: Boolean) {
         pickerPending = pending
-        if (!pending && !appForeground) setAppForeground(false)
     }
 
     private fun releaseBackgroundResources() {
@@ -382,7 +381,7 @@ internal class ModelSettingsActions(
         }
     }
 
-    private fun cancelChatWarmup(releaseLoadedModel: Boolean = true) {
+    fun cancelChatWarmup(releaseLoadedModel: Boolean = true) {
         warmupJob?.cancel()
         warmupJob = null
         val owner = warmupOwner
@@ -417,23 +416,29 @@ internal class ModelSettingsActions(
         warmupOwner = owner
         warmupSelection = selection
         warmupJob = scope.launch {
+            var ready = false
             try {
                 delay(350)
                 awaitKnowledgeReady()
                 notesStore.awaitReady()
                 coroutineContext.ensureActive()
-                val latest = state.value
-                if (
-                    !appForeground ||
-                        !chatActive ||
-                        activeVoiceJobs.get() > 0 ||
-                        latest.chat.isGenerating ||
-                        latest.chat.isDownloading
-                ) {
-                    if (warmupOwner == owner) cancelChatWarmup()
-                    return@launch
-                }
-                llmProvider.prewarmChatModelIfDownloaded(selection, owner)
+                ready =
+                    retryChatWarmup(
+                        isEligible = {
+                            val latest = state.value
+                            warmupOwner == owner &&
+                                resolveSelection(latest.modelSettings) == selection &&
+                                appForeground &&
+                                chatActive &&
+                                !warmupSuppressed &&
+                                activeVoiceJobs.get() == 0 &&
+                                latest.chat.deviceCapability.isChatSupported() &&
+                                !latest.chat.isGenerating &&
+                                !latest.chat.isDownloading
+                        }
+                    ) {
+                        llmProvider.prewarmChatModelIfDownloaded(selection, owner)
+                    }
             } catch (error: CancellationException) {
                 throw error
             } catch (error: Exception) {
@@ -443,6 +448,14 @@ internal class ModelSettingsActions(
                     tag = "Model",
                     throwable = error,
                 )
+            } finally {
+                if (warmupOwner == owner) {
+                    warmupJob = null
+                    if (!ready) {
+                        warmupOwner = null
+                        warmupSelection = null
+                    }
+                }
             }
         }
     }

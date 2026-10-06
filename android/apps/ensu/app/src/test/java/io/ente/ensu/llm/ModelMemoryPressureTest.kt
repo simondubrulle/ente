@@ -1,5 +1,6 @@
 package io.ente.ensu.llm
 
+import io.ente.ensu.coroutines.runCatchingCancellable
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -23,7 +24,7 @@ class ModelMemoryPressureTest {
         var now = 0L
         val pressure = ModelMemoryPressure { now }
         pressure.requestEviction()
-        val eviction = pressure.pendingEviction()!!
+        val eviction = checkNotNull(pressure.pendingEviction())
 
         now = 60_000
         assertEquals(eviction, pressure.pendingEviction())
@@ -33,7 +34,7 @@ class ModelMemoryPressureTest {
         assertNull(pressure.pendingEviction())
         assertFalse(pressure.suppressesOptionalWork())
         pressure.requestEviction()
-        pressure.didRelease(pressure.pendingEviction()!!)
+        pressure.didRelease(checkNotNull(pressure.pendingEviction()))
 
         now = 89_999
         assertTrue(pressure.suppressesOptionalWork())
@@ -46,10 +47,10 @@ class ModelMemoryPressureTest {
         var now = 0L
         val pressure = ModelMemoryPressure { now }
         pressure.requestEviction()
-        val earlier = pressure.pendingEviction()!!
+        val earlier = checkNotNull(pressure.pendingEviction())
         now = 20_000
         pressure.requestEviction()
-        val later = pressure.pendingEviction()!!
+        val later = checkNotNull(pressure.pendingEviction())
 
         pressure.didRelease(earlier)
         assertEquals(later, pressure.pendingEviction())
@@ -133,7 +134,7 @@ class ModelMemoryPressureTest {
     fun failedWorkReleasesResourcesBeforeUnlocking() = runBlocking {
         val mutex = Mutex()
         var resident = false
-        val result = runCatching {
+        val result = runCatchingCancellable {
             withModelResources(mutex, { resident = false }) {
                 resident = true
                 error("Native operation failed")
