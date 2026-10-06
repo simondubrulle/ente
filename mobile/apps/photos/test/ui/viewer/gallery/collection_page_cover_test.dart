@@ -31,6 +31,8 @@ import "package:photos/services/collections_service.dart";
 import "package:photos/services/favorites_service.dart";
 import "package:photos/services/ignored_files_service.dart";
 import "package:photos/ui/collections/album/row_item.dart";
+import "package:photos/ui/components/bottom_action_bar/action_bar_widget.dart";
+import "package:photos/ui/viewer/actions/file_selection_overlay_bar.dart";
 import "package:photos/ui/viewer/gallery/collection_page.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/gallery_app_bar_widget.dart";
@@ -188,10 +190,14 @@ void main() {
           .selectedFiles;
       expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
       selectedFiles.toggleSelection(newest);
-      await tester.pump();
+      await tester.pumpAndSettle();
       expect(find.byType(AlbumCoverActionButton), findsNothing);
-      selectedFiles.toggleSelection(newest);
-      await tester.pump();
+      await tester.tap(find.byType(SelectAllButton));
+      await tester.pumpAndSettle();
+      expect(selectedFiles.files, containsAll([oldest, newest]));
+      await tester.tap(find.byType(ActionBarWidget));
+      await tester.pumpAndSettle();
+      expect(selectedFiles.files, isEmpty);
       expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
 
       collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);

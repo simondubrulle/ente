@@ -24,7 +24,6 @@ import "package:photos/models/gallery_type.dart";
 import 'package:photos/models/selected_files.dart';
 import "package:photos/service_locator.dart" show localSettings;
 import "package:photos/settings/local_settings.dart" show GalleryLayoutType;
-import "package:photos/ui/viewer/actions/file_selection_overlay_bar.dart";
 import "package:photos/ui/viewer/gallery/component/gallery_file_widget.dart";
 import "package:photos/ui/viewer/gallery/component/group/group_header_widget.dart";
 import "package:photos/ui/viewer/gallery/component/group/type.dart";
@@ -368,7 +367,16 @@ class GalleryState extends State<Gallery> {
   void didChangeDependencies() {
     super.didChangeDependencies();
     _inheritedSearchFilterData = InheritedSearchFilterData.maybeOf(context);
-    _boundariesProvider = GalleryBoundariesProvider.of(context);
+    final boundaries = GalleryBoundariesProvider.of(context);
+    if (_boundariesProvider != boundaries) {
+      _boundariesProvider?.bottomBoundaryNotifier.removeListener(
+        _selectedFilesListener,
+      );
+      _boundariesProvider = boundaries;
+      _boundariesProvider?.bottomBoundaryNotifier.addListener(
+        _selectedFilesListener,
+      );
+    }
   }
 
   void _updateGalleryGroups({bool callSetState = true}) {
@@ -487,10 +495,15 @@ class GalleryState extends State<Gallery> {
   void _selectedFilesListener() {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final extra = widget.galleryType == GalleryType.homepage ? 76.0 : 0.0;
-    widget.selectedFiles?.files.isEmpty ?? true
-        ? scrollbarBottomPaddingNotifier.value = bottomInset + extra
-        : scrollbarBottomPaddingNotifier.value =
-              FileSelectionOverlayBar.roughHeight + bottomInset;
+    final bottomBoundary = _boundariesProvider?.bottomBoundaryNotifier.value;
+    scrollbarBottomPaddingNotifier.value =
+        (widget.selectedFiles?.files.isNotEmpty ?? false) &&
+            bottomBoundary != null
+        ? (MediaQuery.sizeOf(context).height - bottomBoundary).clamp(
+            0.0,
+            double.infinity,
+          )
+        : bottomInset + extra;
   }
 
   void _setGroupType() {
@@ -728,6 +741,9 @@ class GalleryState extends State<Gallery> {
 
   @override
   void dispose() {
+    _boundariesProvider?.bottomBoundaryNotifier.removeListener(
+      _selectedFilesListener,
+    );
     _boundariesProvider?.setScrollController(null);
 
     _reloadEventSubscription?.cancel();
@@ -1000,7 +1016,27 @@ class GalleryState extends State<Gallery> {
                                 SectionedListSliver(
                                   sectionLayouts: groups.groupLayouts,
                                 ),
-                                SliverToBoxAdapter(child: widget.footer),
+                                SliverToBoxAdapter(
+                                  child: ValueListenableBuilder<double>(
+                                    valueListenable:
+                                        scrollbarBottomPaddingNotifier,
+                                    builder: (context, height, child) =>
+                                        ConstrainedBox(
+                                          constraints: BoxConstraints(
+                                            minHeight:
+                                                (widget
+                                                        .selectedFiles
+                                                        ?.files
+                                                        .isNotEmpty ??
+                                                    false)
+                                                ? height
+                                                : 0,
+                                          ),
+                                          child: child,
+                                        ),
+                                    child: widget.footer,
+                                  ),
+                                ),
                               ],
                             ),
                           );
