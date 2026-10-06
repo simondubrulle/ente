@@ -960,12 +960,23 @@ const Account: React.FC<AccountProps> = ({
     const [sessionCount, setSessionCount] = useState<number>();
 
     const accountLabel = (label: string, subtext?: string) => (
-        <Stack sx={{ gap: 0.5, alignItems: "flex-start", textAlign: "left" }}>
+        <Stack
+            sx={{
+                gap: 0.5,
+                minWidth: 0,
+                alignItems: "flex-start",
+                textAlign: "left",
+            }}
+        >
             <Typography sx={{ fontWeight: "medium" }}>{label}</Typography>
             {subtext && (
                 <Typography
                     variant="small"
-                    sx={{ color: "text.muted", fontWeight: 400 }}
+                    sx={{
+                        color: "text.muted",
+                        fontWeight: 400,
+                        overflowWrap: "anywhere",
+                    }}
                 >
                     {subtext}
                 </Typography>
