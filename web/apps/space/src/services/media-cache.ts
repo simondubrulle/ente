@@ -2,6 +2,7 @@ import { savedPartialLocalUser } from "ente-accounts/services/accounts-db";
 import { blobCache, clearBlobCache } from "ente-base/blob-cache";
 import log from "ente-base/log";
 import { apiOrigin } from "ente-base/origins";
+import { clearSpaceMediaLoadCooldown } from "services/media-load";
 
 const maxSpaceMediaCacheEntries = 128;
 const spaceMediaURLCache = new Map<string, Promise<string>>();
@@ -149,6 +150,7 @@ export const rememberCachedSpaceMediaBlobURL = async (
 };
 
 export const clearSpaceMediaURLCache = () => {
+    clearSpaceMediaLoadCooldown();
     for (const promise of spaceMediaURLCache.values()) {
         void promise.then(
             (url) => URL.revokeObjectURL(url),

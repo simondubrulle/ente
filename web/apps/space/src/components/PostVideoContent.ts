@@ -1,5 +1,6 @@
 import type { SpaceViewerPhoto } from "components/FileViewer";
 import { logToDisk } from "ente-base/log-web";
+import { SpaceMediaRateLimitError } from "services/media-load";
 import type { SpacePostAssetURLLoader } from "services/space";
 
 export const createSpaceVideoContent = (
@@ -71,23 +72,41 @@ export const createSpaceVideoContent = (
     loading.setAttribute("aria-label", "Loading video");
     loading.innerHTML = '<span class="space-video-spinner"></span>';
     Object.assign(loading.style, { ...controlStyle, pointerEvents: "none" });
-    const errorMessage = document.createElement("span");
-    errorMessage.textContent = "Couldn't play this video. Tap to retry.";
+    const errorMessage = document.createElement("div");
     errorMessage.hidden = true;
     errorMessage.setAttribute("role", "status");
     Object.assign(errorMessage.style, {
         position: "absolute",
-        bottom: "12px",
-        left: "12px",
-        right: "12px",
-        background: "rgba(0, 0, 0, 0.65)",
-        color: "white",
-        borderRadius: "6px",
-        padding: "8px",
+        top: "50%",
+        left: "50%",
+        transform: "translate(-50%, -50%)",
+        width: "max-content",
+        maxWidth: "calc(100% - 32px)",
+        color: "#D0D0D0",
         fontSize: "13px",
+        fontWeight: "500",
+        fontFamily: '"Inter Variable", Inter, sans-serif',
+        lineHeight: "18px",
         textAlign: "center",
+        textWrap: "balance",
         pointerEvents: "none",
     });
+    const errorTitle = document.createElement("div");
+    const supportMessage = document.createElement("div");
+    supportMessage.textContent = "Please contact support.";
+    for (const pill of [errorTitle, supportMessage]) {
+        Object.assign(pill.style, {
+            background: "rgba(28, 28, 30, 0.88)",
+            borderRadius: "999px",
+            boxSizing: "border-box",
+            marginInline: "auto",
+            maxWidth: "100%",
+            padding: "6px 16px",
+            width: "fit-content",
+        });
+    }
+    supportMessage.style.marginTop = "2px";
+    errorMessage.append(errorTitle, supportMessage);
     element.append(video, button, loading, errorMessage);
     let generation = 0;
     let sourceGeneration = 0;
@@ -95,6 +114,9 @@ export const createSpaceVideoContent = (
     let ownedURL: string | undefined;
     let disposed = false;
     let active = false;
+    let autoplayBlocked = false;
+    let failure: "error" | "rate-limit" | undefined;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let loadingTimer: ReturnType<typeof setTimeout> | undefined;
     let playbackTimeout: ReturnType<typeof setTimeout> | undefined;
     const hideLoading = () => {
@@ -127,13 +149,20 @@ export const createSpaceVideoContent = (
     };
     const showPlayButton = () => {
         hideLoading();
-        button.setAttribute("aria-hidden", String(!active));
-        button.disabled = false;
-        button.setAttribute("aria-label", "Play video");
-        video.setAttribute("aria-label", "Play video");
+        const blocked = Boolean(failure);
+        const label = blocked ? "Video unavailable" : "Play video";
+        button.setAttribute("aria-hidden", String(!active || blocked));
+        button.disabled = blocked;
+        button.setAttribute("aria-label", label);
+        video.setAttribute("aria-label", label);
+        video.setAttribute("aria-disabled", String(blocked));
+        video.style.cursor = blocked ? "default" : "pointer";
+        errorMessage.hidden = !active || !failure;
     };
     const showPlaying = () => {
         hideLoading();
+        failure = undefined;
+        errorMessage.hidden = true;
         button.disabled = false;
         button.setAttribute("aria-hidden", "true");
         video.setAttribute("aria-label", "Pause video");
@@ -151,12 +180,30 @@ export const createSpaceVideoContent = (
         video.removeAttribute("src");
         video.load();
     };
-    const failPlayback = (reason: "timeout" | "media" | "play") => {
+    const failPlayback = (
+        reason: "timeout" | "media" | "play",
+        error?: unknown,
+    ) => {
         logToDisk(
-            `[error] Space video playback failed reason=${reason} code=${video.error?.code ?? 0} readyState=${video.readyState} networkState=${video.networkState}`,
+            `[error] Space video playback failed reason=${reason} errorName=${error instanceof Error ? error.name : "none"} rateLimited=${error instanceof SpaceMediaRateLimitError} code=${video.error?.code ?? 0} readyState=${video.readyState} networkState=${video.networkState}`,
         );
+        failure =
+            error instanceof SpaceMediaRateLimitError ? "rate-limit" : "error";
+        errorTitle.textContent =
+            failure == "rate-limit"
+                ? "Couldn't load video. Please try again later."
+                : "Couldn't play video.";
+        supportMessage.hidden = failure == "rate-limit";
+        clearTimeout(retryTimer);
+        if (error instanceof SpaceMediaRateLimitError)
+            retryTimer = setTimeout(
+                () => {
+                    failure = undefined;
+                    showPlayButton();
+                },
+                Math.max(0, error.retryAt - Date.now()),
+            );
         reset();
-        errorMessage.hidden = false;
     };
     const clear = () => {
         active = false;
@@ -170,7 +217,8 @@ export const createSpaceVideoContent = (
     };
     document.addEventListener("visibilitychange", visibility);
     const preload = () => {
-        if (disposed || video.getAttribute("src")) return Promise.resolve();
+        if (disposed || failure || video.getAttribute("src"))
+            return Promise.resolve();
         if (pendingLoad) return pendingLoad;
         const current = sourceGeneration;
         pendingLoad = (async () => {
@@ -191,9 +239,15 @@ export const createSpaceVideoContent = (
         });
         return pendingLoad;
     };
-    const play = () => {
-        if (button.disabled || !video.paused) return;
+    const play = (userInitiated = false) => {
+        if (disposed || !video.paused) return;
         active = true;
+        if (failure || (!userInitiated && autoplayBlocked)) {
+            showPlayButton();
+            return;
+        }
+        if (button.disabled) return;
+        autoplayBlocked = false;
         errorMessage.hidden = true;
         const current = ++generation;
         showLoading(false);
@@ -202,10 +256,10 @@ export const createSpaceVideoContent = (
             await Promise.all([
                 preload(),
                 Promise.resolve(onPlay?.()).then(() => {
-                    if (!disposed && generation == current) showLoading();
+                    if (generation == current) showLoading();
                 }),
             ]);
-            if (disposed || generation != current) return;
+            if (generation != current) return;
             if (
                 video.ended ||
                 (media.end != undefined && video.currentTime >= media.end)
@@ -214,14 +268,23 @@ export const createSpaceVideoContent = (
             }
             await video.play();
             if (generation == current) showPlaying();
-        })().catch(() => {
-            if (!disposed && generation == current) failPlayback("play");
+        })().catch((error: unknown) => {
+            if (disposed || generation != current) return;
+            if (
+                error instanceof DOMException &&
+                error.name == "NotAllowedError"
+            ) {
+                autoplayBlocked = true;
+                showPlayButton();
+            } else {
+                failPlayback("play", error);
+            }
         });
     };
     const togglePlayback = () => {
         if (button.disabled) return;
         if (onTogglePlayback) onTogglePlayback(video.paused);
-        else if (video.paused) play();
+        else if (video.paused) play(true);
         else pause();
     };
     button.onclick = togglePlayback;
@@ -277,12 +340,13 @@ export const createSpaceVideoContent = (
         pause,
         deactivate: () => {
             if (inline) {
-                errorMessage.hidden = true;
+                active = false;
                 pause();
             } else clear();
         },
         destroy: () => {
             disposed = true;
+            clearTimeout(retryTimer);
             clear();
             document.removeEventListener("visibilitychange", visibility);
         },

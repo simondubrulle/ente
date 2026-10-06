@@ -20,11 +20,11 @@ let frame: number | undefined;
 let pending: FeedVideo | undefined;
 let selectionTimer: ReturnType<typeof setTimeout> | undefined;
 
-const select = (next: FeedVideo | undefined) => {
+const select = (next: FeedVideo | undefined, userInitiated = false) => {
     if (selected == next) return;
     selected?.player.deactivate();
     selected = next;
-    if (next && !next.manuallyPaused) next.player.play();
+    if (next && !next.manuallyPaused) next.player.play(userInitiated);
 };
 
 const isVisible = (element: HTMLElement) => {
@@ -170,8 +170,8 @@ export const registerFeedVideo = (
             manual = video;
             interactedPost = undefined;
             const wasSelected = selected == video;
-            select(video);
-            if (wasSelected) player.play();
+            select(video, true);
+            if (wasSelected) player.play(true);
         },
         pause: () => {
             video.manuallyPaused = true;

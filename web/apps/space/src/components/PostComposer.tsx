@@ -211,13 +211,11 @@ export const SpacePostComposer: React.FC<{
                                 item.id == draft.id
                                     ? {
                                           ...item,
-                                          error:
-                                              isSpaceVideoFile(draft.file) &&
-                                              error instanceof Error
-                                                  ? error.message
-                                                  : spacePostImageErrorMessage(
-                                                        error,
-                                                    ),
+                                          error: isSpaceVideoFile(draft.file)
+                                              ? "Couldn't process this video."
+                                              : spacePostImageErrorMessage(
+                                                    error,
+                                                ),
                                       }
                                     : item,
                             ),
@@ -319,6 +317,8 @@ export const SpacePostComposer: React.FC<{
     };
     const photos = drafts.map((draft, index) => ({
         ...(draft.photo ?? placeholder),
+        preparationError: draft.error,
+        isVideo: isSpaceVideoFile(draft.file),
         postPhotoIndex: index,
         postPhotoCount: drafts.length,
     }));
@@ -349,6 +349,8 @@ export const SpacePostComposer: React.FC<{
                 id: draft.id,
                 imageUrl: draft.photo?.imageUrl,
                 isLoading: !draft.photo && !draft.error,
+                hasError: Boolean(draft.error),
+                isVideo: isSpaceVideoFile(draft.file),
                 durationMs: draft.videoEdit
                     ? (draft.videoEdit.end - draft.videoEdit.start) * 1000
                     : undefined,
@@ -366,7 +368,6 @@ export const SpacePostComposer: React.FC<{
             <SpaceViewerPostBackdrop exiting={isExiting} />
             <SpaceFileViewer
                 draftPhotoControls={controls}
-                draftPostPreparationError={preparationError}
                 isDraftPostPreviewPending={isPreparing || !drafts.length}
                 onClose={() => {
                     if (!isPublishing || isExiting) onClose();
@@ -414,6 +415,7 @@ export const SpacePostComposer: React.FC<{
                         height: draft.originalPhoto?.height ?? 0,
                         isLoading: !draft.photo && !draft.error,
                         preparationError: draft.error,
+                        isVideo: isSpaceVideoFile(draft.file),
                         edit: draft.edit,
                         video: draft.videoEdit
                             ? {
