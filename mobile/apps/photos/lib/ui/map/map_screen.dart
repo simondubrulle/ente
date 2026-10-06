@@ -388,7 +388,21 @@ class _MapScreenState extends State<MapScreen> {
                         bottomSheetDraggableAreaHeight -
                         bottomUnsafeArea,
                     child: initialCenter == null
-                        ? const SizedBox.shrink()
+                        ? Align(
+                            alignment: Alignment.topLeft,
+                            child: Padding(
+                              padding: const EdgeInsets.only(top: 4, left: 10),
+                              child: SafeArea(
+                                child: MapButton(
+                                  icon: Icons.arrow_back,
+                                  onPressed: () {
+                                    Navigator.pop(context);
+                                  },
+                                  heroTag: 'back',
+                                ),
+                              ),
+                            ),
+                          )
                         : MapView(
                             controller: mapController,
                             imageMarkers: imageMarkers,
@@ -414,20 +428,6 @@ class _MapScreenState extends State<MapScreen> {
                       ),
                     )
                   : const SizedBox.shrink(),
-              if (initialCenter == null)
-                Positioned(
-                  top: 4,
-                  left: 10,
-                  child: SafeArea(
-                    child: MapButton(
-                      icon: Icons.arrow_back,
-                      onPressed: () {
-                        Navigator.pop(context);
-                      },
-                      heroTag: 'back',
-                    ),
-                  ),
-                ),
             ],
           ),
           bottomSheet: MapPullUpGallery(
