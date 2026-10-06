@@ -9,7 +9,6 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Skeleton } from "@mui/material";
 import { visuallyHidden } from "@mui/utils";
 import { SpaceActionToast } from "components/ActionToast";
-import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
 import {
     focusFeedPost,
@@ -29,17 +28,22 @@ import {
     spacePostLikePopDurationMs,
     spacePostLikePopTiming,
 } from "components/post-like-animation";
+import { SpacePostAvatar } from "components/PostAvatar";
+import { SpacePostGrid } from "components/PostGrid";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
 import { SpacePostPhotosCounter } from "components/PostPhotosCounter";
 import { SpacePostPhotosDots } from "components/PostPhotosDots";
+import { SpacePostTile } from "components/PostTile";
 import { SpacePWAInstallPrompt } from "components/PWAInstallPrompt";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceShareInviteButton } from "components/ShareInviteButton";
 import { SpaceSkipLink } from "components/SkipLink";
 import log from "ente-base/log";
 import { useBrowserBackClose } from "hooks/use-browser-back-close";
+import { useDecodedImage } from "hooks/use-decoded-image";
 import React, { useState } from "react";
 import type { SetupProfile } from "screens/SetupProfileScreen";
+import type { SpaceFeedSession } from "services/feed-cache";
 import {
     isSpaceContentError,
     type SpacePost,
@@ -61,6 +65,7 @@ import {
 } from "styles/colors";
 import { spaceTouchTargetSize } from "styles/touch-targets";
 import { firstNameFrom, formatSpaceDate } from "utils/display";
+import { homeFeedEntries, type HomeFeedEntry } from "utils/home-feed";
 import {
     spacePostFrameAspectRatio,
     spacePostPhotos,
@@ -73,9 +78,9 @@ const homeBackground = spaceAppBackgroundColor;
 const green = "#08C225";
 const feedAccentBackground = "#263D2C";
 const feedAccentBackgroundHover = "#2C4B32";
-const feedActionBackground = "#363639";
-const feedActionForeground = "#DEDEDE";
-const feedTimestampForeground = "#C8C8C8";
+const feedActionBackground = spaceControlBackground;
+const feedActionForeground = spaceText;
+const feedTimestampForeground = "#D9D9D9";
 const feedSkeletonElementBackground = spaceSurfaceHover;
 const textBase = spaceText;
 const textSecondary = spaceTextMuted;
@@ -85,15 +90,10 @@ const feedLikeActionSize = spaceTouchTargetSize;
 const feedActionIconSize = 20;
 const feedHorizontalPadding = "16px";
 const feedMediaLoadRootMargin = "640px 0px";
-const feedLoadMoreRootMargin = "0px 0px 160px 0px";
+const feedLoadMoreRootMargin = "0px 0px 800px 0px";
 const feedRowEnterDurationMs = 460;
 const feedRowEnterStaggerMs = 35;
 const feedRowEnterTiming = "cubic-bezier(0.2, 0.8, 0.2, 1)";
-const avatarFadeSx = {
-    "@keyframes spaceAvatarFade": { from: { opacity: 0 }, to: { opacity: 1 } },
-    animation: "spaceAvatarFade 320ms cubic-bezier(0.22, 1, 0.36, 1) both",
-    "@media (prefers-reduced-motion: reduce)": { animation: "none" },
-} as const;
 const feedPhotoCaptionTextSx = {
     color: "#E6E6E6",
     fontFamily: '"Inter Variable", Inter, sans-serif',
@@ -110,8 +110,10 @@ interface HomeScreenProps {
     hasMoreFeedItems?: boolean;
     hasUnreadMessages?: boolean;
     isFeedLoading?: boolean;
+    isFeedComplete?: boolean;
     isFeedLoadingMore?: boolean;
     localFeedPosts?: LocalSpaceFeedPost[];
+    feedSession?: SpaceFeedSession;
     showFirstPostPrompt?: boolean;
     showInstallPrompt?: boolean;
     showInviteFriendsToast?: boolean;
@@ -145,14 +147,6 @@ interface FeedPhotoDimensions {
     width: number;
 }
 
-interface DecodedImageState {
-    failed?: boolean;
-    height?: number;
-    ready: boolean;
-    src?: string | null;
-    width?: number;
-}
-
 interface SelectedHomeViewer {
     photoIndex: number;
     photos: SpaceViewerPhoto[];
@@ -161,15 +155,6 @@ interface SelectedHomeViewer {
     postActionMode?: SpaceViewerPostActionMode;
 }
 
-type HomeFeedEntry =
-    | {
-          identity: string;
-          item: LocalSpaceFeedPost;
-          kind: "local";
-          renderKey: string;
-      }
-    | { identity: string; item: SpacePost; kind: "remote"; renderKey: string };
-
 interface FeedLayoutSnapshot {
     enteringKeys: Set<string>;
     previousTops: Map<string, number>;
@@ -177,10 +162,18 @@ interface FeedLayoutSnapshot {
 
 interface FeedMotionListProps {
     entries: HomeFeedEntry[];
+    presentedPostIdentities?: Set<string>;
     renderEntry: (entry: HomeFeedEntry) => React.ReactNode;
 }
 
 class FeedMotionList extends React.Component<FeedMotionListProps> {
+    private localPresentedPostIdentities = new Set<string>();
+    private get presentedPostIdentities() {
+        return (
+            this.props.presentedPostIdentities ??
+            this.localPresentedPostIdentities
+        );
+    }
     private animations = new Map<string, Animation>();
     private identityKeys = new Map<string, string>();
     private rowElements = new Map<string, HTMLDivElement>();
@@ -240,20 +233,24 @@ class FeedMotionList extends React.Component<FeedMotionListProps> {
         const addedEntries = this.props.entries.filter(
             (entry) => !previousIdentities.has(entry.identity),
         );
-        if (
-            previousProps.entries.length == 0 ||
-            addedEntries.some((entry) => entry.kind == "local")
-        )
-            return null;
+        if (addedEntries.some((entry) => entry.kind == "local")) return null;
 
         const firstRetainedIndex = this.props.entries.findIndex((entry) =>
             previousIdentities.has(entry.identity),
         );
+        const enteringCount =
+            previousProps.entries.length == 0
+                ? this.props.entries.length
+                : firstRetainedIndex;
         const enteringKeys = new Set(
-            firstRetainedIndex > 0
+            enteringCount > 0
                 ? this.props.entries
-                      .slice(0, firstRetainedIndex)
+                      .slice(0, enteringCount)
                       .filter((entry) => entry.kind == "remote")
+                      .filter(
+                          (entry) =>
+                              !this.presentedPostIdentities.has(entry.identity),
+                      )
                       .map(this.stableKeyFor)
                 : [],
         );
@@ -264,11 +261,38 @@ class FeedMotionList extends React.Component<FeedMotionListProps> {
         return { enteringKeys, previousTops };
     }
 
+    componentDidMount() {
+        this.animateFrom({
+            enteringKeys: new Set(
+                this.props.entries
+                    .filter((entry) => entry.kind == "remote")
+                    .filter(
+                        (entry) =>
+                            !this.presentedPostIdentities.has(entry.identity),
+                    )
+                    .map(this.stableKeyFor),
+            ),
+            previousTops: new Map(),
+        });
+        this.rememberPresentedPosts();
+    }
+
     componentDidUpdate(
         _previousProps: FeedMotionListProps,
         _previousState: unknown,
         snapshot: FeedLayoutSnapshot | null,
     ) {
+        this.animateFrom(snapshot);
+        this.rememberPresentedPosts();
+    }
+
+    private rememberPresentedPosts() {
+        this.props.entries.forEach((entry) =>
+            this.presentedPostIdentities.add(entry.identity),
+        );
+    }
+
+    private animateFrom(snapshot: FeedLayoutSnapshot | null) {
         if (
             !snapshot ||
             window.matchMedia("(prefers-reduced-motion: reduce)").matches
@@ -449,69 +473,6 @@ const feedPostAvatarCacheKey = (item: SpacePost) =>
         item.avatarUpdatedAt ?? "",
         item.avatarSize ?? "",
     ].join(":");
-
-const useDecodedImage = (
-    src?: string | null,
-    keepPreviousUntilReady = false,
-): DecodedImageState => {
-    const [state, setState] = useState<DecodedImageState>({ ready: !src, src });
-
-    React.useEffect(() => {
-        if (!src) {
-            setState({ ready: true, src });
-            return;
-        }
-
-        let cancelled = false;
-        const image = new Image();
-
-        const finish = () => {
-            if (cancelled) return;
-
-            setState({
-                height: image.naturalHeight || undefined,
-                ready: true,
-                src,
-                width: image.naturalWidth || undefined,
-            });
-        };
-        const fail = () => {
-            if (cancelled) return;
-            setState({ failed: true, ready: true, src });
-        };
-        const decodeLoadedImage = () => {
-            if (typeof image.decode != "function") {
-                finish();
-                return;
-            }
-
-            void image.decode().then(finish, fail);
-        };
-
-        setState((currentState) =>
-            keepPreviousUntilReady && currentState.ready && currentState.src
-                ? currentState
-                : { ready: false, src },
-        );
-        image.addEventListener("load", decodeLoadedImage, { once: true });
-        image.addEventListener("error", fail, { once: true });
-        image.src = src;
-        if (image.complete) {
-            if (image.naturalWidth) decodeLoadedImage();
-            else fail();
-        }
-
-        return () => {
-            cancelled = true;
-            image.removeEventListener("load", decodeLoadedImage);
-            image.removeEventListener("error", fail);
-        };
-    }, [keepPreviousUntilReady, src]);
-
-    if (state.src == src) return state;
-    if (keepPreviousUntilReady && src && state.ready && state.src) return state;
-    return { ready: !src, src };
-};
 
 const scrollPageToTop = () => {
     const behavior = window.matchMedia("(prefers-reduced-motion: reduce)")
@@ -1519,48 +1480,10 @@ const FeedItem: React.FC<FeedItemProps> = ({
                             },
                         }}
                     >
-                        <Box
-                            aria-hidden
-                            sx={{
-                                bgcolor: "rgba(255, 255, 255, 0.2)",
-                                borderRadius: "50%",
-                                height: feedAvatarSize,
-                                width: feedAvatarSize,
-                                position: "absolute",
-                                zIndex: 0,
-                            }}
-                        />
-                        {isAvatarReady ? (
-                            <Box
-                                key={displayAvatarUrl ?? "default-avatar"}
-                                sx={{
-                                    ...avatarFadeSx,
-                                    borderRadius: "50%",
-                                    height: feedAvatarSize,
-                                    overflow: "hidden",
-                                    position: "relative",
-                                    width: feedAvatarSize,
-                                    zIndex: 1,
-                                }}
-                            >
-                                <SpaceAvatarImage
-                                    src={displayAvatarUrl}
-                                    borderRadius="50%"
-                                />
-                            </Box>
-                        ) : null}
-                        <Box
-                            aria-hidden
-                            sx={{
-                                border: "1px solid rgba(255, 255, 255, 0.16)",
-                                borderRadius: "50%",
-                                boxShadow: "0 1px 4px rgba(0, 0, 0, 0.24)",
-                                height: feedAvatarSize,
-                                width: feedAvatarSize,
-                                pointerEvents: "none",
-                                position: "absolute",
-                                zIndex: 2,
-                            }}
+                        <SpacePostAvatar
+                            ready={isAvatarReady}
+                            size={feedAvatarSize}
+                            src={displayAvatarUrl}
                         />
                     </Box>
                     <Box sx={{ minWidth: 0 }}>
@@ -1923,8 +1846,10 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     hasMoreFeedItems = false,
     hasUnreadMessages,
     isFeedLoading = false,
+    isFeedComplete = false,
     isFeedLoadingMore = false,
     localFeedPosts = [],
+    feedSession,
     showFirstPostPrompt = false,
     showInstallPrompt = false,
     showInviteFriendsToast = false,
@@ -1974,41 +1899,16 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
     const selectedPhotoFriendID = selectedViewer?.photo.friendID;
     const selectedPhotoIsOwn =
         Boolean(viewerSpaceId) && selectedPhotoFriendID == viewerSpaceId;
-    const desiredFeedEntries = React.useMemo<HomeFeedEntry[]>(() => {
-        const localResolvedPostIds = new Set(
-            localFeedPosts.map((item) =>
-                item.status == "posted" || item.status == "ready"
-                    ? item.post.postId
-                    : item.postId,
-            ),
+    const { latest: latestFeedEntries, history: gridFeedItems } =
+        homeFeedEntries(
+            feedItems,
+            localFeedPosts,
+            feedSession?.newPostsSinceMs,
+            new Set(feedSession?.latestPosts.map((post) => post.postId)),
+            viewerSpaceId,
         );
-        return [
-            ...localFeedPosts.map(
-                (item): HomeFeedEntry => ({
-                    identity:
-                        item.status == "posted" || item.status == "ready"
-                            ? `post:${item.post.postId}`
-                            : item.postId
-                              ? `post:${item.postId}`
-                              : `local:${item.id}`,
-                    item,
-                    kind: "local",
-                    renderKey: `local:${item.id}`,
-                }),
-            ),
-            ...feedItems
-                .filter((item) => !localResolvedPostIds.has(item.postId))
-                .map(
-                    (item): HomeFeedEntry => ({
-                        identity: `post:${item.postId}`,
-                        item,
-                        kind: "remote",
-                        renderKey: `post:${item.postId}`,
-                    }),
-                ),
-        ];
-    }, [feedItems, localFeedPosts]);
-    const hasFeedItems = desiredFeedEntries.length > 0;
+    const hasFeedItems =
+        latestFeedEntries.length > 0 || gridFeedItems.length > 0;
     const isEmptyFeedLoading = !hasFeedItems && isFeedLoading;
     const showFeedCards = hasFeedItems;
     const isInstallPromptEnabled =
@@ -2391,18 +2291,126 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         width: "100%",
                     }}
                 >
+                    <Box
+                        component="section"
+                        aria-label="Latest"
+                        hidden={latestFeedEntries.length == 0}
+                    >
+                        <FeedMotionList
+                            entries={latestFeedEntries}
+                            presentedPostIdentities={
+                                feedSession?.presentedPostIdentities
+                            }
+                            renderEntry={(entry) =>
+                                entry.kind == "local"
+                                    ? localFeedItemFor(entry.item)
+                                    : feedItemFor(entry.item, entry.item.postId)
+                            }
+                        />
+                    </Box>
                     {hasFeedItems ? (
                         <>
-                            <FeedMotionList
-                                entries={desiredFeedEntries}
-                                renderEntry={(entry) =>
-                                    entry.kind == "local"
-                                        ? localFeedItemFor(entry.item)
-                                        : feedItemFor(
-                                              entry.item,
-                                              entry.item.postId,
-                                          )
+                            <SpacePostGrid
+                                postCount={
+                                    isFeedComplete
+                                        ? latestFeedEntries.length +
+                                          gridFeedItems.length
+                                        : undefined
                                 }
+                                items={gridFeedItems.map((item) => {
+                                    const photo = spacePostPhotos(item)[0]!;
+                                    return {
+                                        ...item,
+                                        id: String(item.postId),
+                                        frameAspectRatio: photo.video
+                                            ? spacePostFrameAspectRatio([photo])
+                                            : undefined,
+                                    };
+                                })}
+                                renderTile={(item, index, flexGrow) => {
+                                    const photo = {
+                                        ...spacePostPhotos(item)[0]!,
+                                        postId: item.postId,
+                                        spaceId: item.spaceId,
+                                    };
+                                    const imageUrl =
+                                        loadedFeedImageURLFor(photo);
+                                    const avatarUrl =
+                                        loadedFeedAvatarURLFor(item);
+                                    const isUnavailable = Boolean(
+                                        item.isUnavailable ||
+                                        unavailableFeedPostsByKey[
+                                            feedPostImageCacheKey(photo)
+                                        ],
+                                    );
+                                    const isOwnPost =
+                                        Boolean(viewerSpaceId) &&
+                                        item.spaceId == viewerSpaceId;
+                                    return (
+                                        <SpacePostTile
+                                            key={item.id}
+                                            item={{ ...item, avatarUrl }}
+                                            displayName={item.name}
+                                            showAvatar
+                                            flexGrow={flexGrow}
+                                            index={index}
+                                            imageUrl={imageUrl}
+                                            isAvatarPending={
+                                                !item.isUnavailable &&
+                                                avatarUrl === undefined
+                                            }
+                                            isUnavailable={isUnavailable}
+                                            loadRootMargin={
+                                                feedMediaLoadRootMargin
+                                            }
+                                            onOpenProfile={
+                                                isOwnPost
+                                                    ? onOpenProfile
+                                                    : onOpenFriend
+                                                      ? () =>
+                                                            onOpenFriend(
+                                                                item.friendID,
+                                                                item.username,
+                                                            )
+                                                      : undefined
+                                            }
+                                            onLoadAvatar={
+                                                avatarUrl === undefined
+                                                    ? () =>
+                                                          loadFeedPostAvatar(
+                                                              item,
+                                                          )
+                                                    : undefined
+                                            }
+                                            onLoadImage={() =>
+                                                loadFeedPostImage(photo)
+                                            }
+                                            onImageDecodeError={() =>
+                                                setUnavailableFeedPostsByKey(
+                                                    (current) => ({
+                                                        ...current,
+                                                        [feedPostImageCacheKey(
+                                                            photo,
+                                                        )]: true,
+                                                    }),
+                                                )
+                                            }
+                                            onOpen={(imageUrl) => {
+                                                const post = {
+                                                    ...item,
+                                                    avatarUrl,
+                                                    imageUrl,
+                                                };
+                                                openFeedPhoto(
+                                                    post,
+                                                    viewerPhotosFromPost(
+                                                        post,
+                                                    )[0]!,
+                                                );
+                                            }}
+                                        />
+                                    );
+                                }}
                             />
                             {hasMoreFeedItems && onLoadMoreFeedItems && (
                                 <Box

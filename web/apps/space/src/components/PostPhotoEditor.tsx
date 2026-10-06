@@ -16,6 +16,13 @@ import log from "ente-base/log";
 import { useBrowserBackClose } from "hooks/use-browser-back-close";
 import React from "react";
 import {
+    spaceControlBackground,
+    spaceControlBackgroundHover,
+    spaceSurface,
+    spaceText,
+    spaceTextMuted,
+} from "styles/colors";
+import {
     spacePostPreviewImageFromEdit,
     type SpacePostPhotoEdit,
     type SpacePostPreviewImage,
@@ -219,7 +226,7 @@ export const SpacePostPhotoEditor: React.FC<{
                 paper: {
                     sx: {
                         bgcolor: "#000000",
-                        color: "#F2F2F2",
+                        color: spaceText,
                         backgroundImage: "none",
                         height: "100dvh",
                         fontFamily: '"Inter Variable", Inter, sans-serif',
@@ -261,7 +268,7 @@ export const SpacePostPhotoEditor: React.FC<{
                         component="span"
                         sx={{
                             alignItems: "center",
-                            bgcolor: "#242424",
+                            bgcolor: spaceControlBackground,
                             borderRadius: "50%",
                             color: "#E4E4E4",
                             display: "flex",
@@ -442,7 +449,7 @@ export const SpacePostPhotoEditor: React.FC<{
                                           : undefined,
                                 });
                             }}
-                            sx={{ ...buttonSx, bgcolor: "#1C1C1E", p: 0 }}
+                            sx={{ ...buttonSx, bgcolor: spaceSurface, p: 0 }}
                         >
                             <HugeiconsIcon
                                 icon={RotateTopRightIcon}
@@ -456,7 +463,7 @@ export const SpacePostPhotoEditor: React.FC<{
                             sx={{
                                 position: "relative",
                                 display: "flex",
-                                bgcolor: "#1C1C1E",
+                                bgcolor: spaceSurface,
                                 borderRadius: "999px",
                                 px: "4px",
                             }}
@@ -470,7 +477,7 @@ export const SpacePostPhotoEditor: React.FC<{
                                     bottom: 4,
                                     left: 4,
                                     width: `calc((100% - 8px) / ${aspects.length})`,
-                                    bgcolor: "#3A3A3C",
+                                    bgcolor: spaceControlBackgroundHover,
                                     borderRadius: "999px",
                                     pointerEvents: "none",
                                     transform: `translateX(${aspectIndex * 100}%)`,
@@ -510,7 +517,7 @@ export const SpacePostPhotoEditor: React.FC<{
                                         color:
                                             edit.aspect == value
                                                 ? "#FFFFFF"
-                                                : "#A6A6A6",
+                                                : spaceTextMuted,
                                     }}
                                 >
                                     {label}
@@ -525,7 +532,7 @@ export const SpacePostPhotoEditor: React.FC<{
                             onClick={() => updateEdit(originalEdit)}
                             sx={{
                                 ...buttonSx,
-                                bgcolor: "#1C1C1E",
+                                bgcolor: spaceSurface,
                                 fontSize: 13,
                                 px: "16px",
                                 py: 0,
