@@ -2,6 +2,10 @@ import { savedPartialLocalUser } from "ente-accounts/services/accounts-db";
 import { blobCache, clearBlobCache } from "ente-base/blob-cache";
 import log from "ente-base/log";
 import { apiOrigin } from "ente-base/origins";
+import {
+    clearSpaceMediaLoadCooldown,
+    loadSpaceMedia,
+} from "services/media-load";
 
 const maxSpaceMediaCacheEntries = 128;
 const spaceMediaURLCache = new Map<string, Promise<string>>();
@@ -81,7 +85,7 @@ const blobURLForSpaceMedia = async (
     const cachedBlob = await cachedSpaceMediaBlob(storageKey);
     if (cachedBlob) return URL.createObjectURL(cachedBlob);
 
-    const blob = blobForBytes(await load(), mediaType);
+    const blob = blobForBytes(await loadSpaceMedia(load), mediaType);
     await putSpaceMediaBlob(storageKey, blob);
     return URL.createObjectURL(blob);
 };
@@ -92,7 +96,9 @@ export const cachedSpaceMediaBlobURL = async (
     mediaType?: string,
 ) => {
     if (mediaType?.startsWith("video/"))
-        return URL.createObjectURL(blobForBytes(await load(), mediaType));
+        return URL.createObjectURL(
+            blobForBytes(await loadSpaceMedia(load), mediaType),
+        );
     const storageKey = await spaceMediaStorageKey(cacheKey);
     const cached = spaceMediaURLCache.get(storageKey);
     if (cached) {
@@ -149,6 +155,7 @@ export const rememberCachedSpaceMediaBlobURL = async (
 };
 
 export const clearSpaceMediaURLCache = () => {
+    clearSpaceMediaLoadCooldown();
     for (const promise of spaceMediaURLCache.values()) {
         void promise.then(
             (url) => URL.revokeObjectURL(url),

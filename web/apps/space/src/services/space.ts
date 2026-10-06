@@ -35,6 +35,7 @@ import {
     spacePostMediaCacheKey,
     spaceProfileMediaCacheKey,
 } from "services/media-cache";
+import { loadSpaceMedia } from "services/media-load";
 import {
     ensureCurrentSpaceContext,
     loadExistingSpaceProfile,
@@ -150,6 +151,7 @@ export interface SpaceMessageQuote {
     imageUrl?: string;
     isUnavailable?: boolean;
     hasLoadError?: boolean;
+    retryAt?: number;
     objectKey?: string;
     photoCount?: number;
     postId: number;
@@ -662,10 +664,12 @@ const messageQuoteFromReplyPost = async (
     if (!includeImage) return fallbackQuote;
 
     try {
-        const post = await ctx.getPost(
-            message.recipientSpaceId,
-            BigInt(message.replyPostId),
-            viewerSpaceId ?? null,
+        const post = await loadSpaceMedia(() =>
+            ctx.getPost(
+                fallbackQuote.spaceId,
+                BigInt(fallbackQuote.postId),
+                viewerSpaceId ?? null,
+            ),
         );
         return await messageQuoteFromPostResponse(
             ctx,
@@ -748,10 +752,12 @@ export const loadCurrentMessageActivityPostPreview = async (
 ): Promise<SpaceMessageActivityPost | undefined> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = await ctx.getPost(
-            post.spaceId,
-            BigInt(post.postId),
-            viewerSpaceId ?? null,
+        const response = await loadSpaceMedia(() =>
+            ctx.getPost(
+                post.spaceId,
+                BigInt(post.postId),
+                viewerSpaceId ?? null,
+            ),
         );
         return await messageQuoteFromPostResponse(
             ctx,

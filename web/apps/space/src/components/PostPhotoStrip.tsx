@@ -10,6 +10,8 @@ interface StripPhoto {
     id: number;
     imageUrl?: string;
     isLoading?: boolean;
+    hasError?: boolean;
+    isVideo?: boolean;
     durationMs?: number;
 }
 
@@ -240,6 +242,13 @@ export const SpacePostPhotoStrip: React.FC<{
                         pointerEvents: "none",
                     }}
                 />
+            ) : photo.hasError ? (
+                <Box
+                    component="span"
+                    sx={{ color: "#FF8A8A", fontSize: 20, fontWeight: 700 }}
+                >
+                    !
+                </Box>
             ) : (
                 <Skeleton
                     animation="wave"
@@ -311,7 +320,7 @@ export const SpacePostPhotoStrip: React.FC<{
                                         component="button"
                                         type="button"
                                         data-photo-index={index}
-                                        aria-label={`${photo.durationMs ? "Video" : "Photo"} ${index + 1}`}
+                                        aria-label={`${photo.isVideo || photo.durationMs ? "Video" : "Photo"} ${index + 1}${photo.hasError ? ", couldn't prepare" : ""}`}
                                         aria-pressed={
                                             photo.id == photos[activeIndex]?.id
                                         }
@@ -352,9 +361,8 @@ export const SpacePostPhotoStrip: React.FC<{
                                             ...iconButtonSx,
                                             bgcolor: "#242424",
                                             outline:
-                                                photo.imageUrl &&
                                                 photo.id ==
-                                                    photos[activeIndex]?.id
+                                                photos[activeIndex]?.id
                                                     ? "1.5px solid #FFFFFF"
                                                     : "none",
                                             outlineOffset: "-1.5px",

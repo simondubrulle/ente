@@ -25,10 +25,12 @@ import { SpacePostPhotosCounter } from "components/PostPhotosCounter";
 import { SpacePostPhotosDots } from "components/PostPhotosDots";
 import { SpacePostReplyControls } from "components/PostReplyControls";
 import { createSpaceVideoContent } from "components/PostVideoContent";
+import { SpaceVideoError } from "components/VideoError";
 import log from "ente-base/log";
 import type PhotoSwipe from "photoswipe";
 import React from "react";
 import type { SpaceInviteIntent } from "services/invite";
+import { SpaceMediaRateLimitError } from "services/media-load";
 import type {
     SpacePostAsset,
     SpacePostAssetURLLoader,
@@ -114,6 +116,8 @@ const spaceViewerPostActionConfigs: Record<
 };
 
 export interface SpaceViewerPhoto {
+    preparationError?: string;
+    isVideo?: boolean;
     video?: SpacePostVideo;
     alt?: string;
     avatarUrl?: string | null;
@@ -144,7 +148,6 @@ interface SpaceFileViewerProps {
     closeOnSwipePastEnd?: boolean;
     draftPhotoControls?: React.ReactNode;
     onLoadPhoto?: SpacePostAssetURLLoader;
-    draftPostPreparationError?: string;
     isDraftPostPreviewPending?: boolean;
     onClose: () => void;
     onAddDraftPhoto?: () => void;
@@ -189,7 +192,7 @@ const viewerTouchPoint = (event: Event) => {
 };
 
 const viewerPhotoContentKey = (photo: SpaceViewerPhoto) =>
-    `${photo.imageUrl}:${photo.width ?? ""}:${photo.height ?? ""}:${photo.postPhotoCount ?? ""}:${photo.video?.asset?.objectKey ?? photo.video?.url ?? ""}:${photo.video?.start ?? ""}:${photo.video?.end ?? ""}:${photo.video?.muted ?? ""}`;
+    `${photo.imageUrl}:${photo.width ?? ""}:${photo.height ?? ""}:${photo.postPhotoCount ?? ""}:${photo.video?.asset?.objectKey ?? photo.video?.url ?? ""}:${photo.video?.start ?? ""}:${photo.video?.end ?? ""}:${photo.video?.muted ?? ""}:${photo.preparationError ?? ""}`;
 
 const viewerSwipeStartsOnInteractiveTarget = (target: EventTarget | null) =>
     target instanceof Element &&
@@ -395,7 +398,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
     closeOnSwipePastEnd = false,
     draftPhotoControls,
     onLoadPhoto,
-    draftPostPreparationError,
     focusReplyOnOpen = false,
     isDraftPostPreviewPending = false,
     onClose,
@@ -424,8 +426,9 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         Record<string, string>
     >({});
     const [photoLoadErrors, setPhotoLoadErrors] = React.useState<
-        Record<string, true>
+        Record<string, { retryAt?: number }>
     >({});
+    const [now, setNow] = React.useState(Date.now);
     const photoLoadsRef = React.useRef(new Set<string>());
     const photoKey = (item: SpaceViewerPhoto) =>
         item.imageAsset
@@ -467,6 +470,9 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         viewerPhotos.length - 1,
     );
     const activePhoto = viewerPhotos[activePhotoIndex] ?? photo;
+    const draftPostPreparationError = isDraftPost
+        ? activePhoto.preparationError
+        : undefined;
     const postPhotoCount = activePhoto.postPhotoCount ?? 1;
     const postPhotoIndex = activePhoto.postPhotoIndex ?? 0;
     const activePhotoKey = photoKey(activePhoto);
@@ -475,6 +481,8 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
     activeReplyKeyRef.current = activeReplyKey;
     const activePostKey = `${activePhoto.spaceId ?? ""}:${activePhoto.postId ?? ""}`;
     const hasPhotoLoadError = Boolean(photoLoadErrors[activePhotoKey]);
+    const photoRetryAt = photoLoadErrors[activePhotoKey]?.retryAt;
+    const isPhotoRateLimited = photoRetryAt !== undefined && now < photoRetryAt;
     const canUpdatePostCaption =
         !isDraftPost &&
         Boolean(activePhoto.postId) &&
@@ -574,7 +582,8 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         !activePhoto.postId ||
         !onUpdatePostCaption;
     const isDraftPostActionRunning = draftPostActionPhase != null;
-    const hasDraftPostPreparationError = Boolean(draftPostPreparationError);
+    const hasDraftPostPreparationError =
+        isDraftPost && viewerPhotos.some((item) => item.preparationError);
     const isDraftPostPublishDisabled =
         isDraftPostActionRunning ||
         isDraftPostPreviewPending ||
@@ -1021,7 +1030,12 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     log.warn("Failed to load post photo", error);
                     setPhotoLoadErrors((current) => ({
                         ...current,
-                        [key]: true,
+                        [key]: {
+                            retryAt:
+                                error instanceof SpaceMediaRateLimitError
+                                    ? error.retryAt
+                                    : undefined,
+                        },
                     }));
                 })
                 .finally(() => {
@@ -1029,6 +1043,16 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                 });
         }
     }, [activePhotoIndex, onLoadPhoto, viewerPhotoKeys, photoLoadErrors]);
+
+    React.useEffect(() => {
+        if (photoRetryAt === undefined) return;
+        setNow(Date.now());
+        const timer = window.setTimeout(
+            () => setNow(Date.now()),
+            Math.max(0, photoRetryAt - Date.now()),
+        );
+        return () => window.clearTimeout(timer);
+    }, [photoRetryAt]);
 
     React.useEffect(() => {
         const pswp = pswpRef.current;
@@ -1237,7 +1261,9 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                         html:
                             item.postPhotoCount == 0
                                 ? '<div class="space-photo-placeholder" role="status">Add photos or videos to your post</div>'
-                                : '<div class="space-photo-placeholder" role="status" aria-label="Preparing preview" aria-busy="true"></div>',
+                                : item.preparationError
+                                  ? '<div class="space-photo-placeholder"></div>'
+                                  : '<div class="space-photo-placeholder" role="status" aria-label="Preparing preview" aria-busy="true"></div>',
                         width: item.width ?? defaultPhotoWidth,
                         height:
                             item.height ??
@@ -1639,6 +1665,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             title="Edit item"
                             disabled={
                                 isDraftPostActionRunning ||
+                                isDraftPostPreviewPending ||
                                 Boolean(draftPostPreparationError)
                             }
                             onClick={() => {
@@ -1900,6 +1927,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     <Box
                         component="button"
                         type="button"
+                        disabled={isPhotoRateLimited}
                         onClick={() =>
                             setPhotoLoadErrors((current) => {
                                 return Object.fromEntries(
@@ -1916,10 +1944,40 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             color: textBase,
                             cursor: "pointer",
                             p: 2,
+                            textWrap: "balance",
+                            "&:disabled": { cursor: "default" },
                         }}
                     >
-                        Couldn&apos;t load photo. Retry
+                        {isPhotoRateLimited
+                            ? "Couldn't load photo. Please try again later."
+                            : "Couldn't load photo. Retry"}
                     </Box>
+                </Box>
+            )}
+            {isDraftPost && draftPostPreparationError && (
+                <Box
+                    sx={{
+                        position: "absolute",
+                        top: "50%",
+                        left: "50%",
+                        transform: "translate(-50%, -50%)",
+                        width: "calc(100% - 48px)",
+                        maxWidth: 300,
+                        zIndex: 2,
+                        textAlign: "center",
+                        fontFamily: '"Inter Variable", Inter, sans-serif',
+                        fontSize: 14,
+                        lineHeight: "20px",
+                        color: textBase,
+                    }}
+                >
+                    {activePhoto.isVideo ? (
+                        <SpaceVideoError message={draftPostPreparationError} />
+                    ) : (
+                        <Box role="alert" sx={{ textWrap: "balance" }}>
+                            {draftPostPreparationError}
+                        </Box>
+                    )}
                 </Box>
             )}
             <Box
@@ -1971,25 +2029,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     }}
                 >
                     {draftPhotoControls}
-                    {draftPostPreparationError && (
-                        <Box
-                            role="alert"
-                            sx={{
-                                bgcolor: "rgba(246, 58, 58, 0.16)",
-                                borderRadius: "12px",
-                                color: "#FF8A8A",
-                                fontFamily:
-                                    '"Inter Variable", Inter, sans-serif',
-                                fontSize: 13,
-                                fontWeight: 650,
-                                lineHeight: "18px",
-                                px: "12px",
-                                py: "8px",
-                            }}
-                        >
-                            {draftPostPreparationError}
-                        </Box>
-                    )}
                     <Box
                         sx={{
                             alignItems: "flex-end",
@@ -2043,7 +2082,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             component="button"
                             type="button"
                             aria-label={
-                                draftPostPreparationError
+                                hasDraftPostPreparationError
                                     ? "Item could not be prepared"
                                     : "Post"
                             }
