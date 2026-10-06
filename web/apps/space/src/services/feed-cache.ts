@@ -155,7 +155,9 @@ const feedSessionForSnapshot = (
         session = {
             newPostsSinceMs,
             latestPosts: (cached?.items ?? []).filter(
-                (post) => post.timestampMs > newPostsSinceMs,
+                (post) =>
+                    post.spaceId != cached?.spaceId &&
+                    post.timestampMs > newPostsSinceMs,
             ),
             presentedPostIdentities: new Set(),
         };
@@ -189,6 +191,7 @@ export const spaceFeedSessionItems = (
 const rememberSessionPosts = (
     session: SpaceFeedSession,
     items: SpacePost[],
+    spaceId: string,
 ) => {
     const latestPostIDs = new Set(
         session.latestPosts.map((post) => post.postId),
@@ -196,7 +199,8 @@ const rememberSessionPosts = (
     session.latestPosts = spaceFeedSessionItems(session, items)
         .filter(
             (post) =>
-                post.timestampMs > session.newPostsSinceMs ||
+                (post.spaceId != spaceId &&
+                    post.timestampMs > session.newPostsSinceMs) ||
                 latestPostIDs.has(post.postId),
         )
         .map(cacheablePost);
@@ -236,7 +240,7 @@ const writeCachedSpaceFeed = async (
                     refreshedPostIDs.has(post.postId) ||
                     (oldestPost && descendingPostOrder(post, oldestPost) > 0),
             );
-            rememberSessionPosts(session, snapshot.items);
+            rememberSessionPosts(session, snapshot.items, snapshot.spaceId);
         }
         memoryCache.set(key, normalized);
         await setKV(key, normalized);
@@ -330,15 +334,7 @@ export const rememberSpaceFeedSessionPosts = async (
     posts: SpacePost[],
 ) => {
     const session = await loadSpaceFeedSession(spaceId);
-    if (session) rememberSessionPosts(session, posts);
-    await updateCachedSpaceFeed(spaceId, (snapshot) => ({
-        ...snapshot,
-        lastVisitedAtMs: Math.max(
-            snapshot.lastVisitedAtMs ?? 0,
-            Date.now(),
-            ...posts.map((post) => post.timestampMs),
-        ),
-    }));
+    if (session) rememberSessionPosts(session, posts, spaceId);
 };
 
 export const prependCachedSpaceFeedPost = (spaceId: string, post: SpacePost) =>
@@ -347,10 +343,6 @@ export const prependCachedSpaceFeedPost = (spaceId: string, post: SpacePost) =>
         (snapshot) => ({
             ...snapshot,
             dirty: true,
-            lastVisitedAtMs: Math.max(
-                snapshot.lastVisitedAtMs ?? 0,
-                post.timestampMs,
-            ),
             items: [
                 post,
                 ...snapshot.items.filter((item) => item.postId != post.postId),

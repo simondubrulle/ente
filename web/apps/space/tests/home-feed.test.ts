@@ -85,7 +85,7 @@ test("pending and failed uploads remain cards even without a previous visit", ()
 });
 
 test("a post published in this session stays latest after the server replaces the local upload", () => {
-    const uploaded = post(3, 200);
+    const uploaded = { ...post(3, 200), spaceId: "self", friendID: "self" };
     const local: LocalSpaceFeedPost = {
         id: "upload",
         post: uploaded,
@@ -97,8 +97,15 @@ test("a post published in this session stays latest after the server replaces th
         [local],
         300,
         latestPostIDs,
+        "self",
     );
-    const remoteEntries = homeFeedEntries([uploaded], [], 300, latestPostIDs);
+    const remoteEntries = homeFeedEntries(
+        [uploaded],
+        [],
+        300,
+        latestPostIDs,
+        "self",
+    );
     expect(localEntries.latest.map((entry) => entry.identity)).toEqual([
         "post:3",
     ]);
@@ -106,5 +113,8 @@ test("a post published in this session stays latest after the server replaces th
         "post:3",
     ]);
     expect(remoteEntries.history).toEqual([]);
-    expect(homeFeedEntries([uploaded], [], 300).history).toEqual([uploaded]);
+    expect(homeFeedEntries([uploaded], [], 100, new Set(), "self")).toEqual({
+        latest: [],
+        history: [uploaded],
+    });
 });

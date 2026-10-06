@@ -1905,6 +1905,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
             localFeedPosts,
             feedSession?.newPostsSinceMs,
             new Set(feedSession?.latestPosts.map((post) => post.postId)),
+            viewerSpaceId,
         );
     const hasFeedItems =
         latestFeedEntries.length > 0 || gridFeedItems.length > 0;

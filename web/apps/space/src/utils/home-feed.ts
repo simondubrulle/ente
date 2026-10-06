@@ -15,6 +15,7 @@ export const homeFeedEntries = (
     localFeedPosts: LocalSpaceFeedPost[],
     newPostsSinceMs: number | undefined,
     latestPostIDs?: ReadonlySet<number>,
+    viewerSpaceId?: string,
 ) => {
     const localResolvedPostIds = new Set(
         localFeedPosts.map((item) =>
@@ -63,7 +64,9 @@ export const homeFeedEntries = (
         }
         if (
             latestPostIDs?.has(post.postId) ||
-            (newPostsSinceMs != undefined && post.timestampMs > newPostsSinceMs)
+            (post.spaceId != viewerSpaceId &&
+                newPostsSinceMs != undefined &&
+                post.timestampMs > newPostsSinceMs)
         ) {
             latest.push(entry);
         } else {

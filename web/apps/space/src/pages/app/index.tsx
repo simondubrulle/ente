@@ -189,13 +189,14 @@ const Page: React.FC = () => {
             }
             if (savedSpaceId != nextSpaceId) await loadCache(nextSpaceId);
             while (!isCancelled()) {
+                const feedRequestedAtMs = Date.now();
                 const feed = await loadCurrentFeedPage(nextSpaceId);
                 if (isCancelled()) return undefined;
                 const applied = await cacheCurrentSpaceFeedPage(
                     nextSpaceId,
                     feed,
                     { syncedAtMs: cachedFeedSyncedAtMs },
-                    Date.now(),
+                    feedRequestedAtMs,
                 );
                 if (applied) return feed;
                 cachedFeedSyncedAtMs = (await loadCachedSpaceFeed(nextSpaceId))
@@ -471,6 +472,7 @@ const Page: React.FC = () => {
                         try {
                             if (status == "friend") {
                                 clearSpaceFriendsCache();
+                                const feedRequestedAtMs = Date.now();
                                 const [requests, friends, feed] =
                                     await Promise.all([
                                         loadCurrentFriendRequests(actorSpaceId),
@@ -483,7 +485,7 @@ const Page: React.FC = () => {
                                     actorSpaceId,
                                     feed,
                                     undefined,
-                                    Date.now(),
+                                    feedRequestedAtMs,
                                 );
                                 setFeedItems(
                                     spaceFeedSessionItems(

@@ -1,7 +1,7 @@
 import { savedPartialLocalUser } from "ente-accounts/services/accounts-db";
 import { getKV, removeKV, setKV } from "ente-base/kv";
 import { apiOrigin } from "ente-base/origins";
-import { beforeEach, expect, test, vi } from "vitest";
+import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
     cacheCurrentSpaceFeedPage,
     clearSpaceFeedMemoryCache,
@@ -15,6 +15,7 @@ import {
     spaceFeedSessionItems,
 } from "../src/services/feed-cache";
 import type { SpacePost } from "../src/services/space";
+import { homeFeedEntries } from "../src/utils/home-feed";
 
 vi.mock("ente-accounts/services/accounts-db", () => ({
     savedPartialLocalUser: vi.fn(),
@@ -47,6 +48,8 @@ const post = (postId: number, spaceId = "friend"): SpacePost => ({
     timestampMs: postId,
     viewerLiked: false,
 });
+
+afterEach(() => vi.useRealTimers());
 
 beforeEach(() => {
     vi.resetAllMocks();
@@ -308,6 +311,54 @@ test("the latest cutoff survives navigation and advances only on a new app sessi
     expect(reopened.latestPosts).toEqual([]);
     expect(reopened.presentedPostIdentities.size).toBe(0);
 });
+
+test.each(["pagination", "publication"])(
+    "%s leaves unfetched friend posts new on the next app opening",
+    async (action) => {
+        vi.useFakeTimers();
+        vi.setSystemTime(200);
+        await cacheCurrentSpaceFeedPage(
+            "self",
+            { items: [post(120)], nextCursor: "older" },
+            undefined,
+            200,
+        );
+        const session = (await loadSpaceFeedSession("self"))!;
+        const unseenPost = post(250);
+        const ownPost = post(300, "self");
+        vi.setSystemTime(300);
+        if (action == "pagination") {
+            await rememberSpaceFeedSessionPosts("self", [post(110)]);
+        } else {
+            await prependCachedSpaceFeedPost("self", ownPost);
+            expect(session.latestPosts.map((post) => post.postId)).toEqual([
+                300,
+            ]);
+        }
+        expect((await loadCachedSpaceFeed("self"))?.lastVisitedAtMs).toBe(200);
+
+        vi.setSystemTime(400);
+        clearSpaceFeedMemoryCache();
+        const reopened = (await loadSpaceFeedSession("self"))!;
+        const items =
+            action == "publication"
+                ? [ownPost, unseenPost, post(120)]
+                : [unseenPost, post(120)];
+        await cacheCurrentSpaceFeedPage("self", { items }, undefined, 400);
+        expect(reopened.newPostsSinceMs).toBe(200);
+        expect(reopened.latestPosts.map((post) => post.postId)).toEqual([250]);
+        expect(
+            homeFeedEntries(
+                spaceFeedSessionItems(reopened, items),
+                [],
+                reopened.newPostsSinceMs,
+                new Set(reopened.latestPosts.map((post) => post.postId)),
+                "self",
+            ).latest.map((entry) => entry.identity),
+        ).toEqual(["post:250"]);
+        expect((await loadCachedSpaceFeed("self"))?.lastVisitedAtMs).toBe(400);
+    },
+);
 
 test("returning to the feed retains more than twenty latest posts while disk caching stays bounded", async () => {
     await cacheCurrentSpaceFeedPage(
