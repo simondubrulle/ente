@@ -1,5 +1,6 @@
 import { Box } from "@mui/material";
 import React from "react";
+import { spacePostFrameAspectRatio } from "utils/post-photos";
 import { postPhotoLayout, profilePhotoGap } from "utils/profile-photo-layout";
 
 interface PostGridItem {
@@ -50,9 +51,7 @@ export const SpacePostGrid = <Item extends PostGridItem>({
                           id: item.id,
                           aspectRatio:
                               item.frameAspectRatio ??
-                              (item.width && item.height
-                                  ? item.width / item.height
-                                  : 1),
+                              spacePostFrameAspectRatio([item]),
                       })),
                       width,
                       previousLayout,
