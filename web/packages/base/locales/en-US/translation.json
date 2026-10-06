@@ -1,8 +1,8 @@
 {
     "account_two_factor_on": "On",
     "account_two_factor_off": "Off",
-    "account_sessions_one": "{{count}} device",
-    "account_sessions_other": "{{count}} devices",
+    "account_sessions_one": "{{count}} session",
+    "account_sessions_other": "{{count}} sessions",
     "account_family_members_one": "{{count}} member",
     "account_family_members_other": "{{count}} members",
     "intro_slide_1_title": "Private backups<br/>for your memories",
