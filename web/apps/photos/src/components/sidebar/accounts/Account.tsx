@@ -309,11 +309,7 @@ export const Account: React.FC<AccountProps> = ({
                             t("two_factor"),
                             twoFactorEnabled === undefined
                                 ? undefined
-                                : t(
-                                      twoFactorEnabled
-                                          ? "account_two_factor_on"
-                                          : "account_two_factor_off",
-                                  ),
+                                : t(twoFactorEnabled ? "on" : "off"),
                         )}
                         onClick={showTwoFactor}
                     />
