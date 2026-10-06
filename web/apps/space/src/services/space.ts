@@ -32,9 +32,11 @@ import {
     cachedSpaceMediaBlobURLIfPresent,
     clearSpaceMediaCache,
     rememberCachedSpaceMediaBlobURL,
+    rememberCachedSpaceVideoBlob,
     spacePostMediaCacheKey,
     spaceProfileMediaCacheKey,
 } from "services/media-cache";
+import { loadSpaceMedia } from "services/media-load";
 import {
     ensureCurrentSpaceContext,
     loadExistingSpaceProfile,
@@ -150,6 +152,7 @@ export interface SpaceMessageQuote {
     imageUrl?: string;
     isUnavailable?: boolean;
     hasLoadError?: boolean;
+    retryAt?: number;
     objectKey?: string;
     photoCount?: number;
     postId: number;
@@ -662,10 +665,12 @@ const messageQuoteFromReplyPost = async (
     if (!includeImage) return fallbackQuote;
 
     try {
-        const post = await ctx.getPost(
-            message.recipientSpaceId,
-            BigInt(message.replyPostId),
-            viewerSpaceId ?? null,
+        const post = await loadSpaceMedia(() =>
+            ctx.getPost(
+                fallbackQuote.spaceId,
+                BigInt(fallbackQuote.postId),
+                viewerSpaceId ?? null,
+            ),
         );
         return await messageQuoteFromPostResponse(
             ctx,
@@ -748,10 +753,12 @@ export const loadCurrentMessageActivityPostPreview = async (
 ): Promise<SpaceMessageActivityPost | undefined> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const response = await ctx.getPost(
-            post.spaceId,
-            BigInt(post.postId),
-            viewerSpaceId ?? null,
+        const response = await loadSpaceMedia(() =>
+            ctx.getPost(
+                post.spaceId,
+                BigInt(post.postId),
+                viewerSpaceId ?? null,
+            ),
         );
         return await messageQuoteFromPostResponse(
             ctx,
@@ -1060,6 +1067,7 @@ export const loadCurrentSpacePostAssetURL: SpacePostAssetURLLoader = async (
 ) => {
     const cachedURL = await cachedSpaceMediaBlobURLIfPresent(
         postAssetCacheKey(asset),
+        asset.mediaType,
     );
     if (cachedURL) return cachedURL;
 
@@ -1235,7 +1243,10 @@ export const createCurrentMediaPost = async ({
             | (Error & { status?: number; code?: string })
             | undefined;
         logToDisk(
-            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code })}`,
+            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code, name: uploadError?.name, message: uploadError?.message, stack: uploadError?.stack })}`.replaceAll(
+                spaceId,
+                "[space-id]",
+            ),
         );
         throw error;
     } finally {
@@ -1246,15 +1257,21 @@ export const createCurrentMediaPost = async ({
 export const loadCurrentCreatedPost = async (
     spaceId: string,
     postId: number,
-    previews: File[],
+    media: PreparedSpacePostMedia[],
 ) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
         const created = await ctx.getPost(spaceId, BigInt(postId), spaceId);
         const imageURLs = await Promise.all(
-            created.photos.map((photo, index) =>
-                cacheAccountPostAssetURL(photo, previews[index]!),
-            ),
+            created.photos.map(async (photo, index) => {
+                const prepared = media[index]!;
+                if (photo.video && prepared.video)
+                    await rememberCachedSpaceVideoBlob(
+                        postAssetCacheKey(photo.video.asset),
+                        prepared.video.file,
+                    );
+                return cacheAccountPostAssetURL(photo, prepared.file);
+            }),
         );
         const post = await postFromAccountPost(ctx, created, false, spaceId);
         post.imageUrl = imageURLs[0];

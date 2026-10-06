@@ -955,6 +955,8 @@
     "hide": "Dölj",
     "unhide": "",
     "sort_by": "Sortera efter",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "",
     "oldest_first": "",
     "most_relevant": "",

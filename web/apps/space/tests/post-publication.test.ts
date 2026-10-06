@@ -1,3 +1,4 @@
+import type { PostResponse } from "ente-space-wasm";
 import { beforeEach, expect, test, vi } from "vitest";
 import {
     createCurrentMediaPost,
@@ -16,6 +17,7 @@ const mocks = vi.hoisted(() => ({
     },
     release: vi.fn(),
     cacheMedia: vi.fn(),
+    cacheVideo: vi.fn(),
     cachePost: vi.fn(),
     logToDisk: vi.fn(),
 }));
@@ -29,6 +31,7 @@ vi.mock("services/feed-cache", () => ({
 }));
 vi.mock("services/media-cache", () => ({
     rememberCachedSpaceMediaBlobURL: mocks.cacheMedia,
+    rememberCachedSpaceVideoBlob: mocks.cacheVideo,
     spacePostMediaCacheKey: (spaceId: string, key: string) =>
         `${spaceId}:${key}`,
     clearSpaceMediaURLCache: vi.fn(),
@@ -94,10 +97,10 @@ test("retains a committed session through a failed readback without creating ano
     const postId = await createCurrentMediaPost(request);
     mocks.ctx.getPost.mockRejectedValueOnce(new Error("Offline"));
     await expect(
-        loadCurrentCreatedPost("self", postId, [file]),
+        loadCurrentCreatedPost("self", postId, images),
     ).rejects.toThrow("Offline");
     expect(await createCurrentMediaPost(request)).toBe(postId);
-    const post = await loadCurrentCreatedPost("self", postId, [file]);
+    const post = await loadCurrentCreatedPost("self", postId, images);
     expect(post.postId).toBe(postId);
     expect(mocks.ctx.createMediaPost).toHaveBeenCalledTimes(1);
     expect(mocks.ctx.uploadPostPhotoAsset).toHaveBeenCalledTimes(1);
@@ -106,7 +109,7 @@ test("retains a committed session through a failed readback without creating ano
 });
 
 test("hydrates a published post from its uploaded previews without another media download", async () => {
-    const post = await loadCurrentCreatedPost("self", 501, [file]);
+    const post = await loadCurrentCreatedPost("self", 501, images);
     expect(post.imageUrl).toBe("blob:preview");
     expect(post.photos?.[0]).toMatchObject({
         imageUrl: "blob:preview",
@@ -123,10 +126,29 @@ test("a cache failure after creation does not discard the saved post ID", async 
     const postId = await createCurrentMediaPost(request);
     mocks.cacheMedia.mockRejectedValueOnce(new Error("Cache unavailable"));
     await expect(
-        loadCurrentCreatedPost("self", postId, [file]),
+        loadCurrentCreatedPost("self", postId, images),
     ).rejects.toThrow("Cache unavailable");
     expect(await createCurrentMediaPost(request)).toBe(postId);
     expect(mocks.ctx.createMediaPost).toHaveBeenCalledTimes(1);
+});
+
+test("readback caches the exported MP4 under the published video asset", async () => {
+    const created = (await mocks.ctx.getPost()) as PostResponse;
+    const videoAsset = { ...asset, objectKey: "video-1" };
+    created.photos[0]!.video = { asset: videoAsset, durationMs: 1000 };
+    const video = {
+        file: new File(["video"], "video.mp4", { type: "video/mp4" }),
+        durationMs: 1000,
+    };
+    const post = await loadCurrentCreatedPost("self", 501, [
+        { ...images[0]!, video },
+    ]);
+    expect(mocks.cacheVideo).toHaveBeenCalledWith("self:video-1", video.file);
+    expect(post.video?.asset).toEqual({
+        ...videoAsset,
+        mediaType: "video/mp4",
+    });
+    expect(mocks.ctx.downloadPostAsset).not.toHaveBeenCalled();
 });
 
 test("a rejected creation is still reported as a failure", async () => {
@@ -163,6 +185,9 @@ test("retry keeps completed photos and the post request ID", async () => {
     expect(mocks.ctx.createMediaPost).not.toHaveBeenCalled();
     expect(mocks.logToDisk).toHaveBeenCalledWith(
         expect.stringContaining('"stage":"upload-preview","itemIndex":2'),
+    );
+    expect(mocks.logToDisk).toHaveBeenCalledWith(
+        expect.stringContaining('"message":"HTTP 503"'),
     );
     expect(await createCurrentMediaPost(request)).toBe(501);
     expect(mocks.ctx.uploadPostPhotoAsset).toHaveBeenCalledTimes(3);
@@ -210,34 +235,47 @@ test("retry after a lost creation response keeps the request ID and uploaded ass
     );
 });
 
-test("records upload facts without saving the error, file name, caption, or space ID", async () => {
-    const error = Object.assign(
-        new Error(
-            "HTTP 429 at https://api.test/spaces/private-space?token=secret alice@example.test",
-        ),
-        { status: 429, code: "SPACE_UPLOAD_LIMIT_REACHED" },
-    );
-    error.stack = `${error.message}\n at /Users/Alice/family.jpg:4:8`;
-    mocks.ctx.uploadPostPhotoAsset.mockRejectedValueOnce(error);
-    const session: SpacePostUploadSession = { uploads: [] };
-    await expect(
-        createCurrentMediaPost({
-            images: [
-                {
-                    ...images[0]!,
-                    file: new File(["photo"], "Alice-family.jpg", {
-                        type: "image/jpeg",
-                    }),
-                },
+test.each(["Safari", "Chrome"])(
+    "records the %s upload error and facts without exposing the space ID",
+    async (browser) => {
+        const message =
+            "HTTP 429 SPACE_UPLOAD_LIMIT_REACHED at /spaces/private-space/uploads/presign";
+        const error = Object.assign(new Error(message), {
+            status: 429,
+            code: "SPACE_UPLOAD_LIMIT_REACHED",
+        });
+        error.stack =
+            browser == "Safari"
+                ? "upload@https://space.test/app.js:10:5"
+                : `Error: ${message}\n    at upload (https://space.test/app.js:10:5)`;
+        mocks.ctx.uploadPostPhotoAsset.mockRejectedValueOnce(error);
+        const session: SpacePostUploadSession = { uploads: [] };
+        await expect(
+            createCurrentMediaPost({
+                images: [
+                    {
+                        ...images[0]!,
+                        file: new File(["photo"], "Alice-family.jpg", {
+                            type: "image/jpeg",
+                        }),
+                    },
+                ],
+                caption: "Family birthday",
+                spaceId: "private-space",
+                session,
+            }),
+        ).rejects.toBe(error);
+        expect(error.message).toBe(message);
+        const redactedMessage =
+            "HTTP 429 SPACE_UPLOAD_LIMIT_REACHED at /spaces/[space-id]/uploads/presign";
+        const redactedStack =
+            browser == "Safari"
+                ? "upload@https://space.test/app.js:10:5"
+                : `Error: ${redactedMessage}\n    at upload (https://space.test/app.js:10:5)`;
+        expect(mocks.logToDisk.mock.calls).toEqual([
+            [
+                `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage: "upload-preview", itemIndex: 1, itemCount: 1, bytes: 5, status: 429, code: "SPACE_UPLOAD_LIMIT_REACHED", name: "Error", message: redactedMessage, stack: redactedStack })}`,
             ],
-            caption: "Family birthday",
-            spaceId: "private-space",
-            session,
-        }),
-    ).rejects.toBe(error);
-    expect(mocks.logToDisk.mock.calls).toEqual([
-        [
-            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage: "upload-preview", itemIndex: 1, itemCount: 1, bytes: 5, status: 429, code: "SPACE_UPLOAD_LIMIT_REACHED" })}`,
-        ],
-    ]);
-});
+        ]);
+    },
+);

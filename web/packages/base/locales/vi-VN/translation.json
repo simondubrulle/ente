@@ -955,6 +955,8 @@
     "hide": "Ẩn",
     "unhide": "Hiện",
     "sort_by": "Sắp xếp theo",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Mới nhất trước",
     "oldest_first": "Cũ nhất trước",
     "most_relevant": "Liên quan nhất",

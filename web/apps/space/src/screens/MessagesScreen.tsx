@@ -1338,6 +1338,18 @@ const PostQuotePreview: React.FC<{
     const preview = activityPost ?? quote;
     const isUnavailable = !quote || Boolean(preview?.isUnavailable);
     const hasLoadError = Boolean(preview?.hasLoadError);
+    const retryAt = preview?.retryAt;
+    const [now, setNow] = React.useState(Date.now);
+    const isRateLimited = retryAt !== undefined && now < retryAt;
+    React.useEffect(() => {
+        if (retryAt === undefined) return;
+        setNow(Date.now());
+        const timer = window.setTimeout(
+            () => setNow(Date.now()),
+            Math.max(0, retryAt - Date.now()),
+        );
+        return () => window.clearTimeout(timer);
+    }, [retryAt]);
     const imageUrl =
         isUnavailable || hasLoadError ? undefined : preview?.imageUrl;
     const photoCount = preview?.photoCount ?? 1;
@@ -1347,7 +1359,8 @@ const PostQuotePreview: React.FC<{
         quote && !imageUrl && !isUnavailable && !hasLoadError,
     );
     const canOpen = Boolean(loadedQuote);
-    const canRetry = hasLoadError && Boolean(onLoadActivityPost);
+    const canRetry =
+        hasLoadError && !isRateLimited && Boolean(onLoadActivityPost);
     const unavailableLabel =
         quote?.objectKey !== undefined && preview?.photoCount !== undefined
             ? "Photo unavailable"
@@ -1375,7 +1388,7 @@ const PostQuotePreview: React.FC<{
                     canOpen
                         ? "Open quoted photo"
                         : canRetry
-                          ? "Retry loading photo"
+                          ? "Retry loading post"
                           : undefined
                 }
                 onClick={(event: React.MouseEvent) => {
@@ -1421,7 +1434,9 @@ const PostQuotePreview: React.FC<{
                             isLoading
                                 ? "Loading photo"
                                 : hasLoadError
-                                  ? "Couldn't load photo"
+                                  ? isRateLimited
+                                      ? "Couldn't load post. Please try again later."
+                                      : "Couldn't load post"
                                   : unavailableLabel
                         }
                         sx={{
@@ -1438,6 +1453,7 @@ const PostQuotePreview: React.FC<{
                             justifyContent: "center",
                             lineHeight: "16px",
                             textAlign: "center",
+                            textWrap: "balance",
                             width: postQuoteThumbnailSize,
                             px: "12px",
                         }}
@@ -1452,7 +1468,11 @@ const PostQuotePreview: React.FC<{
                         {isUnavailable ? (
                             unavailableLabel
                         ) : hasLoadError ? (
-                            "Couldn't load photo. Tap to retry."
+                            isRateLimited ? (
+                                "Couldn't load post. Please try again later."
+                            ) : (
+                                "Couldn't load post. Tap to retry."
+                            )
                         ) : (
                             <SpaceLoadingSpinner />
                         )}
@@ -2112,6 +2132,8 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
             const cached = activityPostsByKey[key];
             if (
                 (cached && !cached.hasLoadError) ||
+                (cached?.retryAt !== undefined &&
+                    Date.now() < cached.retryAt) ||
                 activityPostLoadsInFlightRef.current.has(key)
             )
                 return;

@@ -955,6 +955,8 @@
     "hide": "Skrýt",
     "unhide": "Zobrazit",
     "sort_by": "Seřadit podle",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Od nejnovějšího",
     "oldest_first": "Od nejstaršího",
     "most_relevant": "Nejvíce relevantní",

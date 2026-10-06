@@ -4,6 +4,7 @@ import { Box, Dialog } from "@mui/material";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
 import { SpacePostPhotoStrip } from "components/PostPhotoStrip";
 import { SpacePostVideoEditor } from "components/PostVideoEditor";
+import { SpaceVideoError } from "components/VideoError";
 import { SpacePhotoCrop } from "components/photo-crop/PhotoCrop";
 import {
     cropWithAspect,
@@ -30,6 +31,7 @@ export interface SpaceEditablePostPhoto {
     height: number;
     isLoading?: boolean;
     preparationError?: string;
+    isVideo?: boolean;
     edit?: SpacePostPhotoEdit;
     video?: {
         file: File;
@@ -329,8 +331,33 @@ export const SpacePostPhotoEditor: React.FC<{
                             photo.isLoading ? "Preparing preview" : undefined
                         }
                         aria-busy={photo.isLoading || undefined}
-                        sx={{ width: "100%", height: "100%" }}
-                    />
+                        sx={{
+                            width: "100%",
+                            height: "100%",
+                            display: "grid",
+                            placeItems: "center",
+                        }}
+                    >
+                        {photo.preparationError && (
+                            <Box sx={{ maxWidth: 300, p: "24px" }}>
+                                {photo.isVideo ? (
+                                    <SpaceVideoError
+                                        message={photo.preparationError}
+                                    />
+                                ) : (
+                                    <Box
+                                        role="alert"
+                                        sx={{
+                                            textAlign: "center",
+                                            textWrap: "balance",
+                                        }}
+                                    >
+                                        {photo.preparationError}
+                                    </Box>
+                                )}
+                            </Box>
+                        )}
+                    </Box>
                 ) : photo.video ? (
                     <SpacePostVideoEditor
                         key={photo.id}
@@ -367,18 +394,14 @@ export const SpacePostPhotoEditor: React.FC<{
                     alignItems: "center",
                     gap: "12px",
                     px: "12px",
-                    pt:
-                        photo.video &&
-                        (error || preparationError || showPhotoStrip)
-                            ? "12px"
-                            : 0,
+                    pt: photo.video && (error || showPhotoStrip) ? "12px" : 0,
                     pb: "max(16px, env(safe-area-inset-bottom))",
                     flexShrink: 0,
                 }}
             >
-                {(error || preparationError) && (
+                {error && (
                     <Box role="alert" sx={{ color: "#FF8A8A", fontSize: 13 }}>
-                        {error || preparationError}
+                        {error}
                     </Box>
                 )}
                 {!photo.video && photo.imageURL && (
@@ -532,6 +555,8 @@ export const SpacePostPhotoEditor: React.FC<{
                                 id: photo.id,
                                 imageUrl: photo.previewURL,
                                 isLoading: photo.isLoading,
+                                hasError: Boolean(photo.preparationError),
+                                isVideo: photo.isVideo,
                                 durationMs: photo.video
                                     ? photo.video.duration * 1000
                                     : undefined,

@@ -1,18 +1,24 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import {
+    prepareSpaceVideo,
     spaceVideoCover,
     spaceVideoFrames,
     spaceVideoInfo,
+    startSpaceVideoExport,
 } from "../src/utils/post-video";
 
 const mocks = vi.hoisted(() => ({
     frames: vi.fn(),
     info: vi.fn(),
     log: vi.fn(),
+    transcode: vi.fn(),
+    duration: vi.fn(),
 }));
 vi.mock("../src/utils/video-encoding/web", () => ({
     extractVideoFramesWeb: mocks.frames,
     determineVideoInfoWeb: mocks.info,
+    transcodeVideoWeb: mocks.transcode,
+    determineVideoDurationWeb: mocks.duration,
 }));
 vi.mock("ente-base/log-web", () => ({ logToDisk: mocks.log }));
 vi.mock("utils/thumbhash", () => ({ thumbHashBase64FromCanvas: () => "hash" }));
@@ -31,6 +37,8 @@ beforeEach(() => {
     });
     mocks.frames.mockResolvedValue([new Blob(["png"], { type: "image/png" })]);
     mocks.info.mockResolvedValue({ duration: 3.45, width: 1080, height: 1920 });
+    mocks.transcode.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mocks.duration.mockResolvedValue(3.45);
     vi.stubGlobal(
         "createImageBitmap",
         vi
@@ -251,4 +259,92 @@ test("canceling frame extraction does not leave decoded bitmaps or return a cove
         spaceVideoCover(new Blob(["video"]), 0, controller.signal),
     ).rejects.toMatchObject({ name: "AbortError" });
     expect(createImageBitmap).not.toHaveBeenCalled();
+});
+
+const videoEdit = { start: 0, end: 3.45, coverTime: 0, muted: false };
+
+test("posting joins the draft export and uses the latest cover without encoding twice", async () => {
+    let finish!: (bytes: Uint8Array) => void;
+    mocks.transcode.mockImplementationOnce(
+        () =>
+            new Promise<Uint8Array>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const file = new File(["source"], "source.mov");
+    const job = startSpaceVideoExport(file, videoEdit);
+    await vi.waitFor(() => expect(mocks.transcode).toHaveBeenCalledOnce());
+    const prepared = prepareSpaceVideo(
+        file,
+        { ...videoEdit, coverTime: 1.25 },
+        undefined,
+        job.promise,
+    );
+    finish(new Uint8Array([4, 5, 6]));
+    const result = await prepared;
+    expect(mocks.transcode).toHaveBeenCalledOnce();
+    expect(result.video.file).toBe((await job.promise).file);
+    expect(result.video.durationMs).toBe(3450);
+    expect(mocks.frames).toHaveBeenCalledWith(
+        result.video.file,
+        [1.25],
+        960,
+        undefined,
+    );
+});
+
+test("completed exports survive cover changes while trim and mute edits produce new exports", async () => {
+    const file = new File(["source"], "source.mov");
+    const job = startSpaceVideoExport(file, videoEdit);
+    await job.promise;
+    job.cancel();
+    await prepareSpaceVideo(file, { ...videoEdit, coverTime: 1 });
+    expect(mocks.transcode).toHaveBeenCalledOnce();
+    await startSpaceVideoExport(file, { ...videoEdit, start: 1 }).promise;
+    expect(mocks.transcode).toHaveBeenCalledTimes(2);
+    await startSpaceVideoExport(file, { ...videoEdit, start: 1, muted: true })
+        .promise;
+    expect(mocks.transcode).toHaveBeenCalledTimes(3);
+});
+
+test("discarding a draft cancels its export and allows a fresh attempt", async () => {
+    mocks.transcode.mockImplementationOnce(
+        (_file, _edit, _command, signal: AbortSignal) =>
+            new Promise((_, reject) => {
+                signal.addEventListener("abort", () =>
+                    reject(signal.reason as Error),
+                );
+            }),
+    );
+    const file = new File(["source"], "source.mov");
+    const job = startSpaceVideoExport(file, videoEdit);
+    const rejected = expect(job.promise).rejects.toMatchObject({
+        name: "AbortError",
+    });
+    await vi.waitFor(() => expect(mocks.transcode).toHaveBeenCalledOnce());
+    job.cancel();
+    await rejected;
+    await startSpaceVideoExport(file, videoEdit).promise;
+    expect(mocks.transcode).toHaveBeenCalledTimes(2);
+});
+
+test("canceling during output validation does not cache an abandoned export", async () => {
+    let finish!: (duration: number) => void;
+    mocks.duration.mockImplementationOnce(
+        () =>
+            new Promise<number>((resolve) => {
+                finish = resolve;
+            }),
+    );
+    const file = new File(["source"], "source.mov");
+    const job = startSpaceVideoExport(file, videoEdit);
+    const rejected = expect(job.promise).rejects.toMatchObject({
+        name: "AbortError",
+    });
+    await vi.waitFor(() => expect(mocks.duration).toHaveBeenCalledOnce());
+    job.cancel();
+    finish(3.45);
+    await rejected;
+    await startSpaceVideoExport(file, videoEdit).promise;
+    expect(mocks.transcode).toHaveBeenCalledTimes(2);
 });

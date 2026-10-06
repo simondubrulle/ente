@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 import { createSpaceVideoContent } from "../src/components/PostVideoContent";
+import { SpaceMediaRateLimitError } from "../src/services/media-load";
 import type {
     SpacePostAsset,
     SpacePostAssetURLLoader,
@@ -13,6 +14,7 @@ class Element extends EventTarget {
     children: Element[] = [];
     disabled = false;
     hidden = false;
+    textContent = "";
     setAttribute(name: string, value: string) {
         this.attributes.set(name, value);
     }
@@ -104,6 +106,8 @@ const create = (
         button: button!,
         loading: loading!,
         error: error!,
+        errorTitle: error!.children[0]!,
+        supportMessage: error!.children[1]!,
     };
 };
 
@@ -149,7 +153,7 @@ test("the play button appears on pause and hides immediately on resume", async (
     await vi.advanceTimersByTimeAsync(0);
     content.pause();
     expect(content.button.getAttribute("aria-hidden")).toBe("false");
-    content.play();
+    content.play(true);
     expect(content.button.getAttribute("aria-hidden")).toBe("true");
     await vi.advanceTimersByTimeAsync(0);
     expect(content.video.paused).toBe(false);
@@ -219,20 +223,20 @@ test("a failed background preload can be retried by playback", async () => {
     expect(content.video.paused).toBe(false);
 });
 
-test("a timed-out download cannot replace the source after retry", async () => {
+test("a timed-out download cannot replace the failure with a late source", async () => {
     const download = Promise.withResolvers<string>();
     load.mockReturnValueOnce(download.promise);
     const content = create();
     content.play();
     await vi.advanceTimersByTimeAsync(30_000);
     expect(content.error.hidden).toBe(false);
-    expect(content.button.getAttribute("aria-hidden")).toBe("false");
-    content.play();
+    expect(content.button.getAttribute("aria-hidden")).toBe("true");
+    content.play(true);
     await vi.advanceTimersByTimeAsync(0);
     download.resolve("blob:late");
     await vi.advanceTimersByTimeAsync(0);
-    expect(content.video.getAttribute("src")).toBe("blob:video");
-    expect(content.video.play).toHaveBeenCalledTimes(1);
+    expect(content.video.getAttribute("src")).toBeNull();
+    expect(content.video.play).not.toHaveBeenCalled();
     expect(revokeURL).toHaveBeenCalledWith("blob:late");
 });
 
@@ -303,4 +307,105 @@ test("fullscreen video still releases its source on deactivation", async () => {
     expect(content.video.getAttribute("src")).toBeNull();
     expect(revokeURL).toHaveBeenCalledExactlyOnceWith("blob:video");
     expect(content.button.getAttribute("aria-hidden")).toBe("true");
+});
+
+test("blocked autoplay preserves the source and offers manual playback", async () => {
+    const content = create();
+    content.video.play.mockRejectedValueOnce(
+        new DOMException("Blocked", "NotAllowedError"),
+    );
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.error.hidden).toBe(true);
+    expect(content.button.getAttribute("aria-label")).toBe("Play video");
+    expect(content.button.getAttribute("aria-hidden")).toBe("false");
+    expect(content.video.getAttribute("src")).toBe("blob:video");
+    content.deactivate();
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.play).toHaveBeenCalledTimes(1);
+    content.play(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.paused).toBe(false);
+    expect(load).toHaveBeenCalledTimes(1);
+});
+
+test("a failed video shows its error, keeps its poster, and does not retry", async () => {
+    load.mockRejectedValueOnce(new Error("Offline"));
+    const content = create();
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.errorTitle.textContent).toBe("Couldn't play video.");
+    expect(content.supportMessage.textContent).toBe("Please contact support.");
+    expect(content.supportMessage.hidden).toBe(false);
+    expect(content.button.getAttribute("aria-hidden")).toBe("true");
+    expect(content.button.disabled).toBe(true);
+    expect((content.video as unknown as HTMLVideoElement).poster).toBe(
+        "blob:poster",
+    );
+    content.deactivate();
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(1);
+    content.play(true);
+    await content.preload();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(load).toHaveBeenCalledTimes(1);
+    expect(content.error.hidden).toBe(false);
+});
+
+test.each([true, false])(
+    "rate-limited video waits before enabling play, inline=%s",
+    async (inline) => {
+        load.mockRejectedValueOnce(
+            new SpaceMediaRateLimitError(new Error("429")),
+        );
+        const content = create(inline);
+        content.play();
+        await vi.advanceTimersByTimeAsync(0);
+        expect(content.errorTitle.textContent).toBe(
+            "Couldn't load video. Please try again later.",
+        );
+        expect(content.error.hidden).toBe(false);
+        expect(content.supportMessage.hidden).toBe(true);
+        expect(content.button.disabled).toBe(true);
+        content.deactivate();
+        content.play(true);
+        await vi.advanceTimersByTimeAsync(59_999);
+        expect(load).toHaveBeenCalledTimes(1);
+        expect(content.button.disabled).toBe(true);
+        await vi.advanceTimersByTimeAsync(1);
+        expect(content.button.disabled).toBe(false);
+        expect(content.button.getAttribute("aria-hidden")).toBe("false");
+        expect(content.button.getAttribute("aria-label")).toBe("Play video");
+        expect(content.error.hidden).toBe(true);
+        content.play(true);
+        await vi.advanceTimersByTimeAsync(0);
+        expect(load).toHaveBeenCalledTimes(2);
+        expect(content.error.hidden).toBe(true);
+    },
+);
+
+test("unsupported playback shows the error without retrying", async () => {
+    const content = create();
+    content.video.play.mockRejectedValueOnce(
+        new DOMException("Unsupported", "NotSupportedError"),
+    );
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.errorTitle.textContent).toBe("Couldn't play video.");
+    expect(content.supportMessage.hidden).toBe(false);
+    expect(content.button.disabled).toBe(true);
+    content.play(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.play).toHaveBeenCalledTimes(1);
+});
+
+test("destroying a rate-limited player cancels its cooldown timer", async () => {
+    load.mockRejectedValueOnce(new SpaceMediaRateLimitError(new Error("429")));
+    const content = create();
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    content.destroy();
+    expect(vi.getTimerCount()).toBe(0);
 });

@@ -40,6 +40,35 @@ test("three portraits share a compact row", () => {
     ).toEqual([3, 3]);
 });
 
+test.each([
+    { ratios: [3 / 4, 0.45], count: 2 },
+    { ratios: [0.3, 0.4, 0.5], count: 3 },
+])(
+    "a row of $count tall portraits fills the grid without cropping",
+    ({ ratios }) => {
+        const width = 328;
+        const rows = profilePhotoRows(photos(ratios), width);
+        expect(rows).toHaveLength(1);
+        const row = rows[0]!;
+        expect(row.width).toBe(width);
+        expect(row.height).toBeGreaterThan(width * 0.75);
+        expect(
+            row.tiles.reduce(
+                (sum, tile) => sum + tile.aspectRatio * row.height,
+                0,
+            ) +
+                (row.tiles.length - 1) * profilePhotoGap,
+        ).toBeCloseTo(width);
+    },
+);
+
+test("a lone portrait within a larger section keeps its height limit", () => {
+    const rows = profilePhotoRows(photos([8, 0.25]), 328);
+    expect(rows.map(({ tiles }) => tiles.length)).toEqual([1, 1]);
+    expect(rows[1]!.height).toBe(246);
+    expect(rows[1]!.width).toBe(61.5);
+});
+
 test("a landscape can share a row with two portraits to avoid a lone portrait", () => {
     const tiles = photos([3 / 4, 3 / 4, 16 / 9, 3 / 4, 9 / 16]);
     expect(
@@ -113,7 +142,8 @@ test.each([288, 328, 358, 568])(
                 ),
             ).toBeCloseTo(row.width);
             expect(row.width).toBeLessThanOrEqual(width + 0.001);
-            expect(row.height).toBeLessThanOrEqual(width * 0.75);
+            if (row.tiles.length > 1) expect(row.width).toBe(width);
+            else expect(row.height).toBeLessThanOrEqual(width * 0.75);
             expect(row.height).toBeGreaterThanOrEqual(
                 Math.min(100, width / row.tiles[0]!.aspectRatio),
             );

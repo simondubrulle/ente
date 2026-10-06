@@ -955,6 +955,8 @@
     "hide": "非表示",
     "unhide": "再表示",
     "sort_by": "Sort by",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "新しい順",
     "oldest_first": "古い順",
     "most_relevant": "",

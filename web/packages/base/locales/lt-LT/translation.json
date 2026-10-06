@@ -955,6 +955,8 @@
     "hide": "Slėpti",
     "unhide": "Rodyti",
     "sort_by": "Rikiuoti pagal",
+    "album_sort_name_asc": "",
+    "album_sort_name_desc": "",
     "newest_first": "Naujausią pirmiausiai",
     "oldest_first": "Seniausią pirmiausiai",
     "most_relevant": "Aktualiausią",
