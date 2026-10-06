@@ -12,6 +12,7 @@ import "package:photos/models/file/dummy_file.dart";
 import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
 import "package:photos/models/file_load_result.dart";
+import "package:photos/models/gallery/gallery_layout_config.dart";
 import "package:photos/models/gallery/justified_layout_strategy.dart";
 import "package:photos/models/gallery/justified_layout_tuning.dart";
 import "package:photos/models/metadata/file_magic.dart";
@@ -69,6 +70,38 @@ void main() {
 
   tearDown(() async {
     await localSettings.setInternalUserDisabled(false);
+  });
+
+  testWidgets("Flex remains unavailable when internal features are disabled", (
+    tester,
+  ) async {
+    await localSettings.setGalleryLayoutType(GalleryLayoutType.justified);
+    await localSettings.setJustifiedLayoutStrategy(
+      JustifiedLayoutStrategy.flex,
+    );
+    await localSettings.setInternalUserDisabled(true);
+
+    expect(isJustifiedLayoutAvailable, isFalse);
+    expect(
+      resolveGalleryLayoutType(localSettings.getGalleryLayoutType()),
+      GalleryLayoutType.grid,
+    );
+    for (final settings in [
+      const Scaffold(body: GalleryLayoutSettings()),
+      const GallerySettingsScreen(fromGalleryLayoutSettingsCTA: true),
+    ]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: lightThemeData,
+          localizationsDelegates: StringsLocalizations.localizationsDelegates,
+          supportedLocales: StringsLocalizations.supportedLocales,
+          home: settings,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text("Justified · Flex (i)"), findsNothing);
+      expect(find.text("Layout (i)"), findsNothing);
+    }
   });
 
   testWidgets(
