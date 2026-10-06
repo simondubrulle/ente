@@ -6,7 +6,7 @@ const mocks = vi.hoisted(() => ({
     logToDisk: vi.fn(),
     workers: [] as {
         loaded: boolean;
-        terminate: ReturnType<typeof vi.fn>;
+        terminate: ReturnType<typeof vi.fn<() => void>>;
         exec: ReturnType<typeof vi.fn>;
         unmount: ReturnType<typeof vi.fn>;
         readFile: ReturnType<typeof vi.fn>;
@@ -177,6 +177,67 @@ test("a queued export can be cancelled without waiting for or stopping another e
     finish(new Uint8Array([1]));
     await first;
     expect(mocks.encode).toHaveBeenCalledTimes(1);
+});
+
+test("canceling active and queued draft exports frees the software encoder for editor frames and restart", async () => {
+    vi.stubGlobal("VideoEncoder", undefined);
+    mocks.load.mockImplementation(() => {
+        const worker = mocks.workers.at(-1)!;
+        worker.readFile.mockImplementation((path: string) => {
+            if (path == "output.json")
+                return JSON.stringify({
+                    format: { duration: "2" },
+                    streams: [{}],
+                });
+            if (path == "frame.json")
+                return JSON.stringify({
+                    format: {},
+                    packets: [{ pts_time: "0" }, { pts_time: "1" }],
+                });
+            return new Uint8Array([7]);
+        });
+        if (mocks.workers.length == 1) {
+            const terminate = worker.terminate.getMockImplementation()!;
+            worker.exec.mockImplementationOnce(
+                () =>
+                    new Promise<number>((_, reject) => {
+                        worker.terminate.mockImplementation(() => {
+                            terminate();
+                            reject(new Error("Terminated"));
+                        });
+                    }),
+            );
+        }
+        return Promise.resolve(true);
+    });
+    const { startSpaceVideoExport } = await import("../src/utils/post-video");
+    const { extractVideoFramesWeb } =
+        await import("../src/utils/video-encoding/web");
+    const files = [
+        new File(["first"], "first.mp4"),
+        new File(["second"], "second.mp4"),
+    ];
+    const edit = { start: 0, end: 2, coverTime: 0, muted: false };
+    const jobs = files.map((file) => startSpaceVideoExport(file, edit));
+    const canceled = Promise.all(
+        jobs.map((job) =>
+            expect(job.promise).rejects.toMatchObject({ name: "AbortError" }),
+        ),
+    );
+    await vi.waitFor(() =>
+        expect(mocks.workers[0]?.exec).toHaveBeenCalledOnce(),
+    );
+    jobs.forEach((job) => job.cancel());
+    const frames = extractVideoFramesWeb(files[0]!, [0, 1], 128);
+    await canceled;
+    expect(await frames).toHaveLength(2);
+    expect(mocks.workers).toHaveLength(2);
+    expect(mocks.workers[0]!.terminate).toHaveBeenCalledOnce();
+    expect(mocks.workers[1]!.exec).toHaveBeenCalledTimes(2);
+    const restarted = await Promise.all(
+        files.map((file) => startSpaceVideoExport(file, edit).promise),
+    );
+    expect(restarted.map((video) => video.durationMs)).toEqual([2000, 2000]);
 });
 
 test("cancelling engine loading terminates it and allows the next export to load again", async () => {

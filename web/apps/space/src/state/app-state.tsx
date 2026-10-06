@@ -30,6 +30,7 @@ export interface RefreshSpaceProfileOptions {
 interface PendingSpaceFeedPost {
     avatarUrl?: string | null;
     caption?: string;
+    frameAspectRatio: number;
     friendID: string;
     height?: number;
     id: string;

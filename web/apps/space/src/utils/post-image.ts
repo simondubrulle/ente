@@ -1,7 +1,7 @@
 import { lowercaseExtension, nameAndExtension } from "ente-base/file-name";
 import { isHEICExtension } from "ente-media/formats";
 import { heicToJPEG } from "ente-media/heic-convert";
-import type { SpacePostVideoEdit } from "utils/post-video";
+import type { SpacePostVideoEdit, SpaceVideoExport } from "utils/post-video";
 import { thumbHashBase64FromCanvas } from "utils/thumbhash";
 
 interface PreparedSpaceImage {
@@ -41,6 +41,7 @@ export interface SpacePostPhotoEdit {
 
 export interface SpaceDraftPostImage {
     video?: SpacePostVideoEdit;
+    videoExport?: SpaceVideoExport;
     cropArea?: SpaceImageCropArea;
     file: File;
     height?: number;

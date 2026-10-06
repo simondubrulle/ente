@@ -28,7 +28,9 @@ import {
     isSpaceVideoFile,
     spaceVideoCover,
     spaceVideoInfo,
+    startSpaceVideoExport,
     type SpacePostVideoEdit,
+    type SpaceVideoExport,
 } from "utils/post-video";
 import { useSpaceRouter } from "utils/route-transitions";
 import { spaceRoutes } from "utils/routes";
@@ -71,6 +73,8 @@ export const SpacePostComposer: React.FC<{
     const previewURLsRef = React.useRef(new Set<string>());
     const publishedPreviewURLRef = React.useRef<string>(undefined);
     const preparingRef = React.useRef(new Map<number, AbortController>());
+    const exportsRef = React.useRef(new Map<number, SpaceVideoExport>());
+    const publishingRef = React.useRef(false);
     const draftsRef = React.useRef(drafts);
     draftsRef.current = drafts;
     const mountedRef = React.useRef(false);
@@ -97,10 +101,13 @@ export const SpacePostComposer: React.FC<{
         mountedRef.current = true;
         const urls = previewURLsRef.current;
         const preparing = preparingRef.current;
+        const exports = exportsRef.current;
         return () => {
             mountedRef.current = false;
             preparing.forEach((controller) => controller.abort());
             preparing.clear();
+            if (!publishingRef.current) exports.forEach((job) => job.cancel());
+            exports.clear();
             urls.forEach((url) => {
                 if (url != publishedPreviewURLRef.current)
                     URL.revokeObjectURL(url);
@@ -228,12 +235,51 @@ export const SpacePostComposer: React.FC<{
         })();
     }, [displayName, drafts, placeholder, profile.avatarUrl]);
 
+    React.useEffect(() => {
+        if (
+            publishingRef.current ||
+            editorSnapshot ||
+            drafts.some((draft) => !draft.photo && !draft.error)
+        )
+            return;
+        for (const draft of drafts) {
+            const edit = draft.videoEdit;
+            if (!edit) continue;
+            const previous = exportsRef.current.get(draft.id);
+            if (
+                previous?.edit.start == edit.start &&
+                previous.edit.end == edit.end &&
+                previous.edit.muted == edit.muted
+            )
+                continue;
+            previous?.cancel();
+            const job = startSpaceVideoExport(draft.file, edit);
+            exportsRef.current.set(draft.id, job);
+            void job.promise.catch((error: unknown) => {
+                if (
+                    !publishingRef.current &&
+                    exportsRef.current.get(draft.id) == job
+                )
+                    exportsRef.current.delete(draft.id);
+                if (
+                    !(
+                        error instanceof DOMException &&
+                        error.name == "AbortError"
+                    )
+                )
+                    log.warn("Failed to prepare draft video", error);
+            });
+        }
+    }, [drafts, editorSnapshot]);
+
     const addPhotos = (files: File[]) => {
         setActiveIndex(drafts.length);
         setDrafts((current) => [...current, ...draftPhotos(files)]);
     };
     const releasePreview = (draft: DraftPhoto) => {
         preparingRef.current.get(draft.id)?.abort();
+        exportsRef.current.get(draft.id)?.cancel();
+        exportsRef.current.delete(draft.id);
         for (const url of new Set([
             draft.photo?.imageUrl,
             draft.originalPhoto?.imageUrl,
@@ -378,8 +424,10 @@ export const SpacePostComposer: React.FC<{
                         : undefined
                 }
                 onEditDraftPhoto={() => {
-                    if (!isPublishing)
-                        setEditorSnapshot({ drafts, activeIndex });
+                    if (isPublishing) return;
+                    exportsRef.current.forEach((job) => job.cancel());
+                    exportsRef.current.clear();
+                    setEditorSnapshot({ drafts, activeIndex });
                 }}
                 onDraftPostExitStart={() => setIsPublishing(true)}
                 onDraftPostExitAnimationStart={() => setIsExiting(true)}
@@ -390,9 +438,18 @@ export const SpacePostComposer: React.FC<{
                     preparationError || isPreparing || !drafts.length
                         ? undefined
                         : (caption) => {
+                              publishingRef.current = true;
                               publishedPreviewURLRef.current =
                                   drafts[0]!.photo!.imageUrl;
-                              return onPublish(images, caption);
+                              return onPublish(
+                                  images.map((image, index) => ({
+                                      ...image,
+                                      videoExport: exportsRef.current.get(
+                                          drafts[index]!.id,
+                                      ),
+                                  })),
+                                  caption,
+                              );
                           }
                 }
                 photo={photos[0] ?? placeholder}
