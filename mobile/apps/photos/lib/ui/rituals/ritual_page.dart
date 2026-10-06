@@ -1247,7 +1247,7 @@ Future<void> _openRitualAlbum(BuildContext context, Ritual ritual) async {
       CollectionWithThumbnail(collection, thumbnail),
       hasVerifiedLock: collection.isHidden(),
     ),
-    forceCustomPageRoute: true,
+    useFadeTransition: true,
   );
 }
 
@@ -1279,7 +1279,7 @@ Future<void> _openRitualAlbumAndFile(
       CollectionWithThumbnail(collection, thumbnail),
       hasVerifiedLock: collection.isHidden(),
     ),
-    forceCustomPageRoute: true,
+    useFadeTransition: true,
   ).ignore();
 
   final files = await FilesDB.instance.getAllFilesCollection(collection.id);

@@ -111,7 +111,7 @@ class _AlbumsItemWidgetState extends State<AlbumsItemWidget> {
                   CollectionWithThumbnail(c, null),
                   fileToJumpTo: widget.file,
                 ),
-                forceCustomPageRoute: true,
+                useFadeTransition: true,
               );
             },
             onRemove: _canRemoveFrom(c)

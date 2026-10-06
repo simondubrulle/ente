@@ -476,7 +476,7 @@ class _AlbumVerticalListWidgetState extends State<AlbumVerticalListWidget> {
         CollectionWithThumbnail(collection, null),
         hasVerifiedLock: hasVerifiedLock,
       ),
-      forceCustomPageRoute: true,
+      useFadeTransition: true,
     );
   }
 

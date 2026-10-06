@@ -343,7 +343,7 @@ class AlbumRowItemWidget extends StatelessWidget {
             coverHeroTag: tagPrefix,
             hasVerifiedLock: hasVerifiedLock,
           ),
-          forceCustomPageRoute: true,
+          useFadeTransition: true,
         );
       },
       onLongPress: () {

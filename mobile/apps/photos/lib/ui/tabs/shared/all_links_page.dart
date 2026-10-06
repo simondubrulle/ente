@@ -59,7 +59,7 @@ class _AllLinksPageState extends State<AllLinksPage> {
           CollectionWithThumbnail(c, thumbnail),
           tagPrefix: _quickLinkHeroTagPrefix,
         ),
-        forceCustomPageRoute: true,
+        useFadeTransition: true,
       ),
     );
   }

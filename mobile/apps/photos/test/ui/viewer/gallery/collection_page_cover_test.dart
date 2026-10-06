@@ -2,6 +2,7 @@ import "dart:convert";
 import "dart:io";
 
 import "package:dio/dio.dart";
+import "package:ente_pure_utils/ente_pure_utils.dart";
 import "package:ente_strings/ente_strings.dart";
 import "package:figma_squircle/figma_squircle.dart";
 import "package:flutter/material.dart";
@@ -85,6 +86,43 @@ void main() {
   tearDownAll(() async {
     PathProviderPlatform.instance = previousPathProvider;
     await tempDir.delete(recursive: true);
+  });
+
+  testWidgets("keeps interactive back when the album route fades", (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightThemeData.copyWith(platform: TargetPlatform.iOS),
+        home: Builder(
+          builder: (context) => TextButton(
+            onPressed: () => routeToPage(
+              context,
+              const Scaffold(body: Center(child: Text("Album route"))),
+              useFadeTransition: true,
+            ),
+            child: const Text("Open album"),
+          ),
+        ),
+      ),
+    );
+    await tester.tap(find.text("Open album"));
+    await tester.pumpAndSettle();
+    await tester.timedDragFrom(
+      const Offset(1, 300),
+      const Offset(80, 0),
+      const Duration(seconds: 1),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text("Album route"), findsOneWidget);
+    await tester.timedDragFrom(
+      const Offset(1, 300),
+      const Offset(700, 0),
+      const Duration(seconds: 1),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text("Album route"), findsNothing);
+    expect(find.text("Open album"), findsOneWidget);
   });
 
   testWidgets("uses a pending local photo and excludes ignored photos", (

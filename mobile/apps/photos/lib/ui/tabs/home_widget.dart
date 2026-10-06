@@ -403,7 +403,7 @@ class _HomeWidgetState extends State<HomeWidget> {
         await routeToPage(
           context,
           CollectionPage(CollectionWithThumbnail(collection, null)),
-          forceCustomPageRoute: true,
+          useFadeTransition: true,
         );
         return;
       }
@@ -1316,7 +1316,7 @@ class _HomeWidgetState extends State<HomeWidget> {
           // ignore: unawaited_futures
           AppNavigationService.instance.pushPage(
             CollectionPage(CollectionWithThumbnail(collection, thumbnail)),
-            forceCustomPageRoute: true,
+            useFadeTransition: true,
           );
         }
       }
