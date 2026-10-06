@@ -169,9 +169,11 @@ void main() {
           .widget<GalleryAppBarWidget>(find.byType(GalleryAppBarWidget))
           .selectedFiles;
       expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
+      expect(find.byTooltip("Sort"), findsOneWidget);
       selectedFiles.toggleSelection(newest);
       await tester.pumpAndSettle();
       expect(find.byType(AlbumCoverActionButton), findsNothing);
+      expect(find.byTooltip("Sort"), findsNothing);
       await tester.tap(find.byType(SelectAllButton));
       await tester.pumpAndSettle();
       expect(selectedFiles.files, containsAll([oldest, newest]));
@@ -179,6 +181,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(selectedFiles.files, isEmpty);
       expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
+      expect(find.byTooltip("Sort"), findsOneWidget);
 
       collection.pubMagicMetadata = CollectionPubMagicMetadata(asc: true);
       Bus.instance.fire(

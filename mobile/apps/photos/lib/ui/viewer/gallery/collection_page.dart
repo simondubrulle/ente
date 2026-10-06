@@ -194,7 +194,13 @@ class _CollectionPageState extends State<CollectionPage> {
       addHeaderOrFooterEmptyState: false,
       showSelectAll: true,
       groupHeaderAction: galleryType.canSort()
-          ? _SortButton(c.collection)
+          ? ListenableBuilder(
+              listenable: _selectedFiles,
+              builder: (context, child) => _selectedFiles.files.isEmpty
+                  ? child!
+                  : const SizedBox.shrink(),
+              child: _SortButton(c.collection),
+            )
           : null,
       emptyState: galleryType == GalleryType.ownedCollection
           ? EmptyAlbumState(
