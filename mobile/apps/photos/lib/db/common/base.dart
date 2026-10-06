@@ -15,28 +15,8 @@ class DatabaseDowngradeError extends Error {
 
 mixin SqlDbBase {
   static final Map<int, String> _params = <int, String>{};
-  static final _openDatabases = <SqlDbBase>{};
 
   Future<SqliteDatabase>? _dbFuture;
-
-  static Future<void> closeAll() async {
-    await Future.wait(
-      _openDatabases.toList().map((database) => database._close()),
-    );
-  }
-
-  Future<void> _close() async {
-    final future = _dbFuture;
-    if (future == null) return;
-    try {
-      await (await future).close();
-    } finally {
-      if (identical(_dbFuture, future)) {
-        _dbFuture = null;
-        _openDatabases.remove(this);
-      }
-    }
-  }
 
   static String getParams(int count) {
     if (count <= 0) {
@@ -50,9 +30,7 @@ mixin SqlDbBase {
   ) async {
     final future = _dbFuture ??= openDatabase();
     try {
-      final database = await future;
-      _openDatabases.add(this);
-      return database;
+      return await future;
     } catch (e) {
       if (e is! DatabaseDowngradeError && identical(_dbFuture, future)) {
         _dbFuture = null;
