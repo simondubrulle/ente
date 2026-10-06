@@ -46,6 +46,7 @@ import {
     failLocalFeedPost,
 } from "utils/local-feed-post";
 import { prepareSpacePostImageFromEdit } from "utils/post-image";
+import { spacePostFrameAspectRatio } from "utils/post-photos";
 import { prepareSpaceVideo } from "utils/post-video";
 
 const postStatusDurationMs = 2000;
@@ -152,6 +153,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 {
                     avatarUrl: profile.avatarUrl,
                     caption: caption.trim() || undefined,
+                    frameAspectRatio: spacePostFrameAspectRatio(images),
                     friendID: spaceId,
                     height: cover.height,
                     id: localPostId,
@@ -200,6 +202,9 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 attempt += 1;
                 const controller = new AbortController();
                 const { signal } = controller;
+                const cancelExports = () =>
+                    images.forEach((image) => image.videoExport?.cancel());
+                signal.addEventListener("abort", cancelExports, { once: true });
                 postPreparationsRef.current.set(localPostId, controller);
                 setPostPublication(publication);
                 setLocalFeedPosts((current) =>
@@ -242,6 +247,9 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                           image.file,
                                           image.video,
                                           signal,
+                                          attempt == 1
+                                              ? image.videoExport?.promise
+                                              : undefined,
                                       )
                                     : await prepareSpacePostImageFromEdit(
                                           image.file,
@@ -308,7 +316,6 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                     Date.now() + postStatusDurationMs,
                             });
                         }
-                        const previews = prepared.map((image) => image.file);
                         let reading = false;
                         const readback = async () => {
                             if (reading) return;
@@ -328,7 +335,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                         return loadCurrentCreatedPost(
                                             spaceId,
                                             session.postId!,
-                                            previews,
+                                            prepared,
                                         );
                                     },
                                     {
@@ -396,6 +403,8 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                         throw error;
                     }
                 })().finally(() => {
+                    signal.removeEventListener("abort", cancelExports);
+                    cancelExports();
                     postPreparationsRef.current.delete(localPostId);
                     pending = undefined;
                 });

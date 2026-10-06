@@ -297,7 +297,7 @@ const exports = new WeakMap<
     { key: string; file: File; durationMs: number }
 >();
 
-export const prepareSpaceVideo = async (
+const exportSpaceVideo = async (
     file: File,
     edit: SpacePostVideoEdit,
     signal?: AbortSignal,
@@ -326,6 +326,7 @@ export const prepareSpaceVideo = async (
         if (output.size > 15 * 1024 * 1024 - 42)
             throw new Error("This video is too large. Try a shorter trim.");
         const outputDuration = await determineVideoDurationWeb(output, signal);
+        signal?.throwIfAborted();
         if (
             !Number.isFinite(outputDuration) ||
             outputDuration <= 0 ||
@@ -339,6 +340,29 @@ export const prepareSpaceVideo = async (
         };
         exports.set(file, exported);
     }
+    return { file: exported.file, durationMs: exported.durationMs };
+};
+
+export const startSpaceVideoExport = (file: File, edit: SpacePostVideoEdit) => {
+    const controller = new AbortController();
+    return {
+        edit: { ...edit },
+        promise: exportSpaceVideo(file, edit, controller.signal),
+        cancel: () => controller.abort(),
+    };
+};
+
+export type SpaceVideoExport = ReturnType<typeof startSpaceVideoExport>;
+
+export const prepareSpaceVideo = async (
+    file: File,
+    edit: SpacePostVideoEdit,
+    signal?: AbortSignal,
+    pendingExport?: SpaceVideoExport["promise"],
+) => {
+    signal?.throwIfAborted();
+    const exported = await (pendingExport ??
+        exportSpaceVideo(file, edit, signal));
     signal?.throwIfAborted();
     const cover = await spaceVideoCover(
         exported.file,

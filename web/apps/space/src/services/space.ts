@@ -32,6 +32,7 @@ import {
     cachedSpaceMediaBlobURLIfPresent,
     clearSpaceMediaCache,
     rememberCachedSpaceMediaBlobURL,
+    rememberCachedSpaceVideoBlob,
     spacePostMediaCacheKey,
     spaceProfileMediaCacheKey,
 } from "services/media-cache";
@@ -1066,6 +1067,7 @@ export const loadCurrentSpacePostAssetURL: SpacePostAssetURLLoader = async (
 ) => {
     const cachedURL = await cachedSpaceMediaBlobURLIfPresent(
         postAssetCacheKey(asset),
+        asset.mediaType,
     );
     if (cachedURL) return cachedURL;
 
@@ -1255,15 +1257,21 @@ export const createCurrentMediaPost = async ({
 export const loadCurrentCreatedPost = async (
     spaceId: string,
     postId: number,
-    previews: File[],
+    media: PreparedSpacePostMedia[],
 ) => {
     const ctx = await ensureCurrentSpaceContext();
     try {
         const created = await ctx.getPost(spaceId, BigInt(postId), spaceId);
         const imageURLs = await Promise.all(
-            created.photos.map((photo, index) =>
-                cacheAccountPostAssetURL(photo, previews[index]!),
-            ),
+            created.photos.map(async (photo, index) => {
+                const prepared = media[index]!;
+                if (photo.video && prepared.video)
+                    await rememberCachedSpaceVideoBlob(
+                        postAssetCacheKey(photo.video.asset),
+                        prepared.video.file,
+                    );
+                return cacheAccountPostAssetURL(photo, prepared.file);
+            }),
         );
         const post = await postFromAccountPost(ctx, created, false, spaceId);
         post.imageUrl = imageURLs[0];

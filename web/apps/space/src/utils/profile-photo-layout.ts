@@ -49,16 +49,19 @@ export const profilePhotoRows = <Tile extends { aspectRatio: number }>(
             0,
         );
         const gaps = (rowSize - 1) * profilePhotoGap;
-        const height = Math.min(
-            (width - gaps) / aspectRatio,
-            tiles.length == 1
-                ? width / minimumPostPhotoFrameAspectRatio
-                : width * 0.75,
-        );
+        let height = (width - gaps) / aspectRatio;
+        if (rowSize == 1)
+            height = Math.min(
+                height,
+                tiles.length == 1
+                    ? width / minimumPostPhotoFrameAspectRatio
+                    : width * 0.75,
+            );
         rows.push({
             aspectRatio,
             height,
-            width: tiles.length == 1 ? width : height * aspectRatio + gaps,
+            width:
+                rowSize > 1 || tiles.length == 1 ? width : height * aspectRatio,
             tiles: rowTiles,
         });
         index += rowSize;

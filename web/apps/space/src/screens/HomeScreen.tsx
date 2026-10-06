@@ -59,10 +59,13 @@ import {
     spaceText,
     spaceTextMuted,
 } from "styles/colors";
-import { minimumPostPhotoFrameAspectRatio } from "styles/tiles";
 import { spaceTouchTargetSize } from "styles/touch-targets";
 import { firstNameFrom, formatSpaceDate } from "utils/display";
-import { spacePostPhotos, viewerPhotosFromPost } from "utils/post-photos";
+import {
+    spacePostFrameAspectRatio,
+    spacePostPhotos,
+    viewerPhotosFromPost,
+} from "utils/post-photos";
 import { thumbHashDataURLFromBase64 } from "utils/thumbhash";
 
 const homeBackground = spaceAppBackgroundColor;
@@ -383,6 +386,7 @@ interface FeedItemProps {
     photos?: FeedPostPhoto[];
     onPhotoIndexChange?: (index: number) => void;
     aspectRatio: number;
+    frameAspectRatio?: number;
     avatarUrl: string | null;
     caption?: string;
     friendID: string;
@@ -860,6 +864,7 @@ const FeedItem: React.FC<FeedItemProps> = ({
     photos,
     onPhotoIndexChange,
     aspectRatio,
+    frameAspectRatio: pendingFrameAspectRatio,
     avatarUrl,
     caption,
     friendID,
@@ -1064,27 +1069,11 @@ const FeedItem: React.FC<FeedItemProps> = ({
             activePhoto.width ??
             dimensionsFromAspectRatio(aspectRatio).width,
     };
-    const firstPhoto = feedPhotos[0]!;
-    const firstPhotoAspectRatio =
-        firstPhoto.width && firstPhoto.height
-            ? firstPhoto.width / firstPhoto.height
-            : aspectRatio;
-    const hasMatchingAspectRatios = feedPhotos.every(
-        (photo) =>
-            photo.width &&
-            photo.height &&
-            Math.abs(photo.width / photo.height / firstPhotoAspectRatio - 1) <
-                0.01,
-    );
     const frameAspectRatio =
-        feedPhotos.length > 1
-            ? hasMatchingAspectRatios
-                ? firstPhotoAspectRatio
-                : 1
-            : Math.max(
-                  minimumPostPhotoFrameAspectRatio,
-                  photoDimensions.width / photoDimensions.height,
-              );
+        pendingFrameAspectRatio ??
+        spacePostFrameAspectRatio(
+            feedPhotos.length > 1 ? feedPhotos : [photoDimensions],
+        );
     const isPhotoReady = Boolean(displayImageUrl) && decodedPhoto.ready;
     const showSoundControl =
         !isPostUnavailable && shouldPreloadVideo && Boolean(activePhoto.video);
@@ -2260,6 +2249,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                 }
                 avatarUrl={item.avatarUrl ?? null}
                 caption={item.caption}
+                frameAspectRatio={item.frameAspectRatio}
                 friendID={item.friendID}
                 imageUrl={item.imageUrl}
                 isAvatarPending={false}

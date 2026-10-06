@@ -6,6 +6,13 @@ import {
     clearSpaceMediaLoadCooldown,
     loadSpaceMedia,
 } from "services/media-load";
+import {
+    cachedSpaceVideoBlob,
+    cachedSpaceVideoBlobIfPresent,
+    clearSpaceVideoCache,
+    clearSpaceVideoLoads,
+    rememberSpaceVideoBlob,
+} from "services/video-cache";
 
 const maxSpaceMediaCacheEntries = 128;
 const spaceMediaURLCache = new Map<string, Promise<string>>();
@@ -95,11 +102,13 @@ export const cachedSpaceMediaBlobURL = async (
     load: () => Promise<Uint8Array>,
     mediaType?: string,
 ) => {
+    const storageKey = await spaceMediaStorageKey(cacheKey);
     if (mediaType?.startsWith("video/"))
         return URL.createObjectURL(
-            blobForBytes(await loadSpaceMedia(load), mediaType),
+            await cachedSpaceVideoBlob(storageKey, async () =>
+                blobForBytes(await loadSpaceMedia(load), mediaType),
+            ),
         );
-    const storageKey = await spaceMediaStorageKey(cacheKey);
     const cached = spaceMediaURLCache.get(storageKey);
     if (cached) {
         spaceMediaURLCache.delete(storageKey);
@@ -119,8 +128,15 @@ export const cachedSpaceMediaBlobURL = async (
     return promise;
 };
 
-export const cachedSpaceMediaBlobURLIfPresent = async (cacheKey: string) => {
+export const cachedSpaceMediaBlobURLIfPresent = async (
+    cacheKey: string,
+    mediaType?: string,
+) => {
     const storageKey = await spaceMediaStorageKey(cacheKey);
+    if (mediaType?.startsWith("video/")) {
+        const blob = await cachedSpaceVideoBlobIfPresent(storageKey);
+        return blob ? URL.createObjectURL(blob) : undefined;
+    }
     const cached = spaceMediaURLCache.get(storageKey);
     if (cached) {
         spaceMediaURLCache.delete(storageKey);
@@ -156,6 +172,7 @@ export const rememberCachedSpaceMediaBlobURL = async (
 
 export const clearSpaceMediaURLCache = () => {
     clearSpaceMediaLoadCooldown();
+    clearSpaceVideoLoads();
     for (const promise of spaceMediaURLCache.values()) {
         void promise.then(
             (url) => URL.revokeObjectURL(url),
@@ -167,9 +184,15 @@ export const clearSpaceMediaURLCache = () => {
 
 export const clearSpaceMediaCache = async () => {
     clearSpaceMediaURLCache();
+    await clearSpaceVideoCache();
     try {
         await clearBlobCache("space-media");
     } catch (error) {
         log.warn("Failed to clear Space media cache", error);
     }
 };
+
+export const rememberCachedSpaceVideoBlob = async (
+    cacheKey: string,
+    blob: Blob,
+) => rememberSpaceVideoBlob(await spaceMediaStorageKey(cacheKey), blob);
