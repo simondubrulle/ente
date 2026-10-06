@@ -972,32 +972,28 @@ const Account: React.FC<AccountProps> = ({
             )}
         </Stack>
     );
-    const planSubtext = userDetails
-        ? [
-              formattedStorageByteSize(
-                  isPartOfFamilyWithOtherMembers(userDetails)
-                      ? familyMemberStorageLimit(userDetails) ||
-                            (userDetails.familyData?.storage ?? 0) +
-                                userDetails.storageBonus
-                      : userDetails.subscription.storage +
-                            userDetails.storageBonus,
-              ),
-              userDetails.subscription.period
-                  ? t(
-                        userDetails.subscription.period == "year"
-                            ? "yearly"
-                            : "monthly",
-                    )
-                  : undefined,
-              userDetails.familyData
-                  ? t("account_family_members", {
-                        count: userDetails.familyData.members.length,
-                    })
-                  : undefined,
-          ]
-              .filter(Boolean)
-              .join(" · ")
-        : undefined;
+    let planSubtext: string | undefined;
+    if (userDetails) {
+        let storage =
+            userDetails.subscription.storage + userDetails.storageBonus;
+
+        if (isPartOfFamilyWithOtherMembers(userDetails)) {
+            const memberLimit = familyMemberStorageLimit(userDetails);
+            const familyStorage =
+                (userDetails.familyData?.storage ?? 0) +
+                userDetails.storageBonus;
+            storage = memberLimit || familyStorage;
+        }
+
+        const period = userDetails.subscription.period;
+        const billingLabel = period
+            ? t(period == "year" ? "yearly" : "monthly")
+            : undefined;
+
+        planSubtext = [formattedStorageByteSize(storage), billingLabel]
+            .filter(Boolean)
+            .join(" · ");
+    }
 
     const router = useRouter();
 
