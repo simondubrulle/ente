@@ -978,7 +978,11 @@ export const loadCurrentFeedPage = async (
 ): Promise<SpacePostPage> => {
     const ctx = await ensureCurrentSpaceContext();
     try {
-        const page = await ctx.listFeed(spaceId, cursor ?? null, 10);
+        const page = await ctx.listFeed(
+            spaceId,
+            cursor ?? null,
+            cursor ? 10 : 20,
+        );
         await persistCurrentOwnedSpaces(ctx);
         return {
             items: await Promise.all(

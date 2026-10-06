@@ -8,6 +8,12 @@ import {
 import { createVideoTrimPlayback } from "components/video-trim/playback";
 import React from "react";
 import {
+    spaceControlBackgroundHover,
+    spaceSurface,
+    spaceText,
+    spaceTextMuted,
+} from "styles/colors";
+import {
     clampVideoCover,
     initialSpaceVideoEdit,
     maxSpaceVideoDuration,
@@ -17,10 +23,10 @@ import {
 
 const control = {
     alignItems: "center",
-    bgcolor: "#1C1C1E",
+    bgcolor: spaceSurface,
     border: 0,
     borderRadius: "999px",
-    color: "#F2F2F2",
+    color: spaceText,
     cursor: "pointer",
     display: "inline-flex",
     font: "inherit",
@@ -393,7 +399,7 @@ export const SpacePostVideoEditor: React.FC<{
                         sx={{
                             height: 64,
                             position: "relative",
-                            bgcolor: "#1C1C1E",
+                            bgcolor: spaceSurface,
                             borderRadius: "8px",
                             touchAction: "none",
                             userSelect: "none",
@@ -572,7 +578,7 @@ export const SpacePostVideoEditor: React.FC<{
                         sx={{
                             position: "relative",
                             display: "flex",
-                            bgcolor: "#1C1C1E",
+                            bgcolor: spaceSurface,
                             borderRadius: "999px",
                             px: "4px",
                         }}
@@ -585,7 +591,7 @@ export const SpacePostVideoEditor: React.FC<{
                                 bottom: 4,
                                 left: 4,
                                 width: "calc((100% - 8px) / 2)",
-                                bgcolor: "#3A3A3C",
+                                bgcolor: spaceControlBackgroundHover,
                                 borderRadius: "999px",
                                 pointerEvents: "none",
                                 transform: `translateX(${mode == "trim" ? 0 : 100}%)`,
@@ -610,7 +616,9 @@ export const SpacePostVideoEditor: React.FC<{
                                     p: 0,
                                     bgcolor: "transparent",
                                     color:
-                                        mode == value ? "#FFFFFF" : "#A6A6A6",
+                                        mode == value
+                                            ? "#FFFFFF"
+                                            : spaceTextMuted,
                                 }}
                             >
                                 {value == "trim" ? "Trim" : "Cover"}

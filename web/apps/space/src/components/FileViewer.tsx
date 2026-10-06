@@ -36,19 +36,26 @@ import type {
     SpacePostAssetURLLoader,
     SpacePostVideo,
 } from "services/space";
-import { spaceDialogBackground, spaceTextMuted } from "styles/colors";
+import {
+    spaceControlBackground,
+    spaceControlBackgroundHover,
+    spaceDialogBackground,
+    spaceMenuBackground,
+    spaceText,
+    spaceTextMuted,
+} from "styles/colors";
 import { spaceTouchTargetSize } from "styles/touch-targets";
 import { firstNameFrom, formatSpaceDate } from "utils/display";
 import { clampSpaceMessageText } from "utils/message-limits";
 
 const green = "#08C225";
-const textBase = "#F4F4F4";
-const textSecondary = "#A6A6A6";
+const textBase = spaceText;
+const textSecondary = spaceTextMuted;
 const textTertiary = "rgba(244, 244, 244, 0.52)";
 const viewerBackground = "#000000";
-const inputBackground = "rgba(58, 58, 58, 0.86)";
-const inputBackgroundActive = "rgba(72, 72, 72, 0.9)";
-const controlIcon = "#D8D8D8";
+const inputBackground = spaceControlBackground;
+const inputBackgroundActive = spaceControlBackgroundHover;
+const controlIcon = spaceText;
 const dangerColor = "#F63A3A";
 const viewerHeaderHeight = 56;
 const viewerBottomPadding = 88;
@@ -256,7 +263,7 @@ const draftHeaderButtonSx = {
 
 const draftHeaderButtonContentSx = {
     alignItems: "center",
-    bgcolor: "#242424",
+    bgcolor: spaceControlBackground,
     borderRadius: "999px",
     display: "flex",
     gap: "6px",
@@ -1428,7 +1435,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                 zIndex: 1300,
                 "& .space-photo-placeholder": {
                     alignItems: "center",
-                    color: "#A6A6A6",
+                    color: spaceTextMuted,
                     display: "flex",
                     height: "100%",
                     width: isDraftPost ? "100vw" : "100%",
@@ -1753,7 +1760,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                         slotProps={{
                             paper: {
                                 sx: {
-                                    bgcolor: "#1E1E1E",
+                                    bgcolor: spaceMenuBackground,
                                     borderRadius: "14px",
                                     boxShadow:
                                         "0 14px 40px rgba(0, 0, 0, 0.16)",
