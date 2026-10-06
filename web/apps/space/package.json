@@ -3,7 +3,7 @@
     "version": "0.0.0",
     "private": true,
     "scripts": {
-        "build:post": "rm -f out/404.html",
+        "build:post": "mv out/404.html out/_next/404.html",
         "test": "vitest --run"
     },
     "dependencies": {
