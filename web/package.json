@@ -30,7 +30,7 @@
         "build:photos-wasm": "npm run build --workspace ente-photos-wasm",
         "build:prelogin-wasm": "npm run build --workspace ente-prelogin-wasm",
         "build:share": "npm run build:prelogin-wasm && npm exec --workspace share -- next build --webpack && npm run build:post --workspace share",
-        "build:space": "npm run build:prelogin-wasm && npm run build:space-wasm && npm exec --workspace space -- next build --webpack",
+        "build:space": "npm run build:prelogin-wasm && npm run build:space-wasm && npm exec --workspace space -- next build --webpack && npm run build:post --workspace space",
         "build:space-wasm": "npm run build --workspace ente-space-wasm",
         "build:twoof3": "npm exec --workspace twoof3 -- next build --webpack",
         "build:wasm": "npm run build:prelogin-wasm && npm run build:auth-wasm && npm run build:cast-wasm && npm run build:ensu-wasm && npm run build:legacy-wasm && npm run build:locker-wasm && npm run build:paste-wasm && npm run build:photos-wasm && npm run build:space-wasm",
@@ -57,7 +57,16 @@
     "overrides": {
         "@types/react": "19.2.17",
         "@types/react-dom": "19.2.3",
-        "base-x": "5.0.1"
+        "base-x": "5.0.1",
+        "concurrently": {
+            "shell-quote": "1.11.0"
+        },
+        "micromark-extension-math": {
+            "katex": "0.18.2"
+        },
+        "rehype-katex": {
+            "katex": "0.18.2"
+        }
     },
     "devDependencies": {
         "concurrently": "10.0.4",

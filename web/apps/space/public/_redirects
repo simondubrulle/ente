@@ -1,3 +1,4 @@
+/_next/*    /_next/:splat    200
 /app    /app    200
 /app/friends    /app/friends    200
 /app/messages    /app/messages    200
@@ -23,3 +24,4 @@
 /two-factor/verify    /two-factor/verify    200
 /verify    /verify    200
 /:spaceUsername    /profile-link    200
+/*    /index.html    200
