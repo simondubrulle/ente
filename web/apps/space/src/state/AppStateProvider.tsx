@@ -249,8 +249,19 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                           image.rotationDegrees,
                                       );
                             } catch (error) {
+                                const details =
+                                    error instanceof Error
+                                        ? {
+                                              name: error.name,
+                                              message: error.message,
+                                              stack: error.stack,
+                                          }
+                                        : error;
                                 logToDisk(
-                                    `[error] Space post preparation failed request=${session.requestId} item=${index + 1}/${images.length} media=${image.video ? "video" : "photo"} bytes=${image.file.size}`,
+                                    `[error] Space post preparation failed request=${session.requestId} item=${index + 1}/${images.length} media=${image.video ? "video" : "photo"} bytes=${image.file.size} error=${JSON.stringify(details)}`.replaceAll(
+                                        spaceId,
+                                        "[space-id]",
+                                    ),
                                 );
                                 throw error;
                             }
@@ -361,8 +372,19 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                         void readback();
                         return posted;
                     } catch (error) {
+                        const details =
+                            error instanceof Error
+                                ? {
+                                      name: error.name,
+                                      message: error.message,
+                                      stack: error.stack,
+                                  }
+                                : error;
                         logToDisk(
-                            `[error] Space post failed request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt}`,
+                            `[error] Space post failed request=${session.requestId} attempt=${attempt} elapsedMs=${Date.now() - startedAt} error=${JSON.stringify(details)}`.replaceAll(
+                                spaceId,
+                                "[space-id]",
+                            ),
                         );
                         failLocalFeedPost(setLocalFeedPosts, localPostId);
                         if (postPublishGenerationRef.current == generation) {
