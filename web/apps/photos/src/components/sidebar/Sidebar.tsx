@@ -104,9 +104,11 @@ import {
 import { get2FAStatus } from "ente-new/photos/services/user";
 import {
     familyAdminEmail,
+    familyMemberStorageLimit,
     hasExceededStorageQuota,
     isFamilyAdmin,
     isPartOfFamily,
+    isPartOfFamilyWithOtherMembers,
     isSubscriptionActive,
     isSubscriptionActivePaid,
     isSubscriptionCancelled,
@@ -972,7 +974,14 @@ const Account: React.FC<AccountProps> = ({
     );
     const planSubtext = userDetails
         ? [
-              formattedStorageByteSize(userDetails.subscription.storage),
+              formattedStorageByteSize(
+                  isPartOfFamilyWithOtherMembers(userDetails)
+                      ? familyMemberStorageLimit(userDetails) ||
+                            (userDetails.familyData?.storage ?? 0) +
+                                userDetails.storageBonus
+                      : userDetails.subscription.storage +
+                            userDetails.storageBonus,
+              ),
               userDetails.subscription.period
                   ? t(
                         userDetails.subscription.period == "year"
