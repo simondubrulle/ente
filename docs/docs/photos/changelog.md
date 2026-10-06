@@ -7,6 +7,22 @@ description: Release notes of recent updates to Ente Photos mobile and desktop a
 
 A short summary list of changes to the Ente Photos mobile and desktop apps. For a more descriptive list with screenshots and blog post links, see the [news](https://ente.com/news).
 
+## v1.7.30 (desktop) - Oct 2026
+
+- Added slideshows for albums.
+- Updated All People to match the All Albums design - @vijayadithyanpj
+- Added a confirmation before closing file info with an unsaved description.
+- Fixed the photo viewer showing the wrong image after changing a photo's date.
+- Removed the redundant three-dot menu from Hidden items and moved the download button to the right - @vijayadithyanpj
+- Updated image processing on Windows and Linux with security and reliability fixes.
+- Fixed OpenStreetMap tiles not loading for some self-hosted users - @Himanshucodess
+- Improved desktop previews for RAF, ORF, PEF, NRW, and SRW camera RAW photos in Linux and Windows
+- Fixed TB storage usage rounding.
+- Preserve HDR gain maps in Ultra HDR JPEG thumbnails generated on Windows and Linux.
+- Fixed the "View logs" button hanging on Linux instead of dismissing once the file manager opened - @aswinpradeepc
+- Added download progress and a retry option when loading photos and videos in the viewer.
+- Fixed low-resolution videos appearing too small in the viewer.
+
 ## v1.3.65 (mobile) - Oct 2026
 
 - Redesigned album sharing and made sharing with multiple people faster.
