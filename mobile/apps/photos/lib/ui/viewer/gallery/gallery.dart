@@ -744,7 +744,10 @@ class GalleryState extends State<Gallery> {
     _boundariesProvider?.bottomBoundaryNotifier.removeListener(
       _selectedFilesListener,
     );
-    _boundariesProvider?.setScrollController(null);
+    if (_boundariesProvider?.scrollControllerNotifier.value ==
+        _scrollController) {
+      _boundariesProvider?.setScrollController(null);
+    }
 
     _reloadEventSubscription?.cancel();
     _layoutChangeSubscription?.cancel();

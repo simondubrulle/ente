@@ -71,6 +71,53 @@ void main() {
     await localSettings.setInternalUserDisabled(false);
   });
 
+  testWidgets("keeps the current gallery controller after an animated swap", (
+    tester,
+  ) async {
+    final boundariesKey = GlobalKey<GalleryBoundariesProviderState>();
+    late StateSetter replaceGallery;
+    var generation = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: lightThemeData,
+        localizationsDelegates: StringsLocalizations.localizationsDelegates,
+        supportedLocales: StringsLocalizations.supportedLocales,
+        home: GalleryBoundariesProvider(
+          key: boundariesKey,
+          child: GalleryFilesState(
+            child: StatefulBuilder(
+              builder: (context, setState) {
+                replaceGallery = setState;
+                return AnimatedSwitcher(
+                  duration: const Duration(milliseconds: 200),
+                  child: Gallery(
+                    key: ValueKey(generation),
+                    asyncLoader: (start, end, {limit, asc}) async =>
+                        FileLoadResult([_dummyFile("handoff")], false),
+                    tagPrefix: "handoff",
+                    enableFileGrouping: false,
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final controllers = boundariesKey.currentState!.scrollControllerNotifier;
+    final previous = controllers.value;
+    replaceGallery(() => generation++);
+    await tester.pump();
+    final current = controllers.value;
+    expect(current, isNotNull);
+    expect(current, isNot(same(previous)));
+    await tester.pumpAndSettle();
+    expect(controllers.value, same(current));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpAndSettle();
+  });
+
   testWidgets(
     "both layout menus notify galleries when only the strategy changes",
     (tester) async {
