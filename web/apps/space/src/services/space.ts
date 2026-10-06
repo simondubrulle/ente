@@ -1235,7 +1235,7 @@ export const createCurrentMediaPost = async ({
             | (Error & { status?: number; code?: string })
             | undefined;
         logToDisk(
-            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code })}`,
+            `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage, itemIndex, itemCount: images.length, bytes, status: uploadError?.status, code: uploadError?.code, name: uploadError?.name, message: uploadError?.message, stack: uploadError?.stack })}`,
         );
         throw error;
     } finally {

@@ -60,7 +60,7 @@ export const spaceProfileCoverAspectRatio = 39 / 17;
 const spaceAvatarImageMaxEdge = 512;
 const spaceCoverImageMaxWidth = 1170;
 const spacePostImageMaxLongEdge = 1920;
-const spacePostImageWebPQuality = 0.82;
+const spacePostImageQuality = 0.82;
 const spacePostImageMimeType = "image/webp";
 const spaceAssetEncryptionOverheadBytes = 42;
 const spaceAvatarUploadMaxBytes = 2 * 1024 * 1024;
@@ -100,7 +100,7 @@ const prepareSpacePostImage = async (
     file: File,
 ): Promise<PreparedSpacePostImage> => {
     const renderableBlob = await renderableBlobForSpaceImage(file);
-    const { blob, height, thumbHash, width } = await webPBlobFromImage(
+    const { blob, height, thumbHash, width } = await encodedBlobFromImage(
         renderableBlob,
         postCanvasPlan,
         true,
@@ -112,9 +112,9 @@ const prepareSpacePostImage = async (
     );
 
     return {
-        file: new File([blob], webPFileName(file.name), {
+        file: new File([blob], encodedImageFileName(file.name, blob.type), {
             lastModified: file.lastModified || Date.now(),
-            type: spacePostImageMimeType,
+            type: blob.type,
         }),
         height,
         thumbHash,
@@ -134,7 +134,7 @@ export const prepareSpacePostImageFromEdit = async (
     }
 
     const renderableBlob = await renderableBlobForSpaceImage(file);
-    const { blob, height, thumbHash, width } = await webPBlobFromEditedImage(
+    const { blob, height, thumbHash, width } = await encodedBlobFromEditedImage(
         renderableBlob,
         cropArea,
         normalizedRotationDegrees,
@@ -146,9 +146,9 @@ export const prepareSpacePostImageFromEdit = async (
     );
 
     return {
-        file: new File([blob], webPFileName(file.name), {
+        file: new File([blob], encodedImageFileName(file.name, blob.type), {
             lastModified: file.lastModified || Date.now(),
-            type: spacePostImageMimeType,
+            type: blob.type,
         }),
         height,
         thumbHash,
@@ -189,7 +189,7 @@ export const spacePostPreviewImageFromEdit = async (
     imageURL: string,
     edit: SpacePostPhotoEdit,
 ): Promise<SpacePostPreviewImage> => {
-    const { blob, height, width } = await webPBlobFromEditedImage(
+    const { blob, height, width } = await encodedBlobFromEditedImage(
         imageURL,
         edit.cropArea,
         edit.rotationDegrees,
@@ -219,7 +219,7 @@ export const prepareSpaceAvatarImageFromCrop = async (
     imageURL: string,
     cropArea: SpaceImageCropArea,
 ): Promise<PreparedSpaceAvatarImage> => {
-    const { blob, height, width } = await webPBlobFromImage(
+    const { blob, height, width } = await encodedBlobFromImage(
         imageURL,
         (width, height) => avatarCanvasPlanForCrop(width, height, cropArea),
         false,
@@ -232,9 +232,9 @@ export const prepareSpaceAvatarImageFromCrop = async (
     );
 
     return {
-        file: new File([blob], webPFileName(file.name), {
+        file: new File([blob], encodedImageFileName(file.name, blob.type), {
             lastModified: file.lastModified || Date.now(),
-            type: spacePostImageMimeType,
+            type: blob.type,
         }),
         height,
         width,
@@ -246,7 +246,7 @@ export const prepareSpaceCoverImageFromCrop = async (
     imageURL: string,
     cropArea: SpaceImageCropArea,
 ): Promise<PreparedSpaceCoverImage> => {
-    const { blob, height, width } = await webPBlobFromImage(
+    const { blob, height, width } = await encodedBlobFromImage(
         imageURL,
         (width, height) => coverCanvasPlanForCrop(width, height, cropArea),
         false,
@@ -259,9 +259,9 @@ export const prepareSpaceCoverImageFromCrop = async (
     );
 
     return {
-        file: new File([blob], webPFileName(file.name), {
+        file: new File([blob], encodedImageFileName(file.name, blob.type), {
             lastModified: file.lastModified || Date.now(),
-            type: spacePostImageMimeType,
+            type: blob.type,
         }),
         height,
         width,
@@ -354,7 +354,7 @@ const imageCanvasContext = (canvas: HTMLCanvasElement) => {
     return context;
 };
 
-const webPBlobFromImage = async (
+const encodedBlobFromImage = async (
     imageSource: Blob | string,
     planForSource: (width: number, height: number) => CanvasPlan,
     includeThumbHash = false,
@@ -412,7 +412,7 @@ const webPBlobFromImage = async (
     }
 };
 
-const webPBlobFromEditedImage = async (
+const encodedBlobFromEditedImage = async (
     imageSource: Blob | string,
     cropArea: SpaceImageCropArea | undefined,
     rotationDegrees: number,
@@ -670,13 +670,18 @@ const canvasToBlob = async (
     mediaType: string,
 ): Promise<Blob> => {
     const blob = await new Promise<Blob | null>((resolve) =>
-        canvas.toBlob(resolve, mediaType, spacePostImageWebPQuality),
+        canvas.toBlob(resolve, mediaType, spacePostImageQuality),
     );
     if (!blob) throw new Error("Could not encode image");
+    if (mediaType == "image/webp" && blob.type != mediaType) {
+        return canvasToBlob(canvas, "image/jpeg");
+    }
     return blob;
 };
 
-const webPFileName = (fileName: string) => {
+const encodedImageFileName = (fileName: string, mediaType: string) => {
     const [name] = nameAndExtension(fileName.trim());
-    return `${name || "post"}.webp`;
+    const extension =
+        mediaType == "image/jpeg" ? "jpg" : mediaType.slice("image/".length);
+    return `${name || "post"}.${extension}`;
 };
