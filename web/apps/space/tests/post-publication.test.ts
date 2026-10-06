@@ -214,16 +214,18 @@ test("retry after a lost creation response keeps the request ID and uploaded ass
 });
 
 test.each(["Safari", "Chrome"])(
-    "records the %s upload error alongside upload facts",
+    "records the %s upload error and facts without exposing the space ID",
     async (browser) => {
-        const error = Object.assign(new Error("Post upload limit reached"), {
+        const message =
+            "HTTP 429 SPACE_UPLOAD_LIMIT_REACHED at /spaces/private-space/uploads/presign";
+        const error = Object.assign(new Error(message), {
             status: 429,
             code: "SPACE_UPLOAD_LIMIT_REACHED",
         });
         error.stack =
             browser == "Safari"
                 ? "upload@https://space.test/app.js:10:5"
-                : "Error: Post upload limit reached\n    at upload (https://space.test/app.js:10:5)";
+                : `Error: ${message}\n    at upload (https://space.test/app.js:10:5)`;
         mocks.ctx.uploadPostPhotoAsset.mockRejectedValueOnce(error);
         const session: SpacePostUploadSession = { uploads: [] };
         await expect(
@@ -241,9 +243,16 @@ test.each(["Safari", "Chrome"])(
                 session,
             }),
         ).rejects.toBe(error);
+        expect(error.message).toBe(message);
+        const redactedMessage =
+            "HTTP 429 SPACE_UPLOAD_LIMIT_REACHED at /spaces/[space-id]/uploads/presign";
+        const redactedStack =
+            browser == "Safari"
+                ? "upload@https://space.test/app.js:10:5"
+                : `Error: ${redactedMessage}\n    at upload (https://space.test/app.js:10:5)`;
         expect(mocks.logToDisk.mock.calls).toEqual([
             [
-                `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage: "upload-preview", itemIndex: 1, itemCount: 1, bytes: 5, status: 429, code: "SPACE_UPLOAD_LIMIT_REACHED", name: "Error", message: "Post upload limit reached", stack: error.stack })}`,
+                `[error] Space post upload failed ${JSON.stringify({ requestId: session.requestId, stage: "upload-preview", itemIndex: 1, itemCount: 1, bytes: 5, status: 429, code: "SPACE_UPLOAD_LIMIT_REACHED", name: "Error", message: redactedMessage, stack: redactedStack })}`,
             ],
         ]);
     },
