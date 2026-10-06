@@ -8,11 +8,8 @@ import {
     ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import NorthEastIcon from "@mui/icons-material/NorthEast";
 import {
     Box,
     Divider,
@@ -20,7 +17,6 @@ import {
     Skeleton,
     Stack,
     styled,
-    Tooltip,
 } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { isDesktop } from "ente-base/app";
@@ -28,25 +24,17 @@ import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
 import { LinkButton } from "ente-base/components/LinkButton";
 import {
     RowButton,
-    RowButtonDivider,
     RowButtonEndActivityIndicator,
-    RowButtonGroup,
 } from "ente-base/components/RowButton";
 import { SpacedRow } from "ente-base/components/containers";
-import {
-    SidebarDrawer,
-    TitledNestedSidebarDrawer,
-    type NestedSidebarDrawerVisibilityProps,
-} from "ente-base/components/mui/SidebarDrawer";
+import { SidebarDrawer } from "ente-base/components/mui/SidebarDrawer";
 import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
-import { savedLogs } from "ente-base/log-web";
 import { customAPIHost } from "ente-base/origins";
-import { saveStringAsFile } from "ente-base/utils/web";
 import { useUserDetailsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
 import {
     PseudoCollectionID,
@@ -69,10 +57,8 @@ import {
     type UserDetails,
 } from "ente-new/photos/services/user-details";
 import { usePhotosAppContext } from "ente-new/photos/types/context";
-import { initiateEmail, openURL } from "ente-new/photos/utils/web";
 import { wait } from "ente-utils/promise";
 import { t } from "i18next";
-import { useRouter } from "next/router";
 import React, {
     useCallback,
     useEffect,
@@ -82,6 +68,8 @@ import React, {
     type MouseEventHandler,
 } from "react";
 import { Trans } from "react-i18next";
+import { FreeUpSpace, type FreeUpSpaceAction } from "./FreeUpSpace";
+import { Help, type HelpAction } from "./Help";
 import { ReferralSettings } from "./ReferralSettings";
 import { WatchFolder } from "./WatchFolder";
 import { SubscriptionCard } from "./account/SubscriptionCard";
@@ -103,20 +91,6 @@ type SidebarProps = ModalVisibilityProps & {
     onShowExport: () => void;
     onAuthenticateUser: () => Promise<boolean>;
 };
-
-type HelpAction = Extract<
-    SidebarActionID,
-    | "help.helpCenter"
-    | "help.blog"
-    | "help.requestFeature"
-    | "help.support"
-    | "help.viewLogs"
->;
-
-type FreeUpSpaceAction = Extract<
-    SidebarActionID,
-    "freeUpSpace.deduplicate" | "freeUpSpace.largeFiles"
->;
 
 export const Sidebar: React.FC<SidebarProps> = ({
     open,
@@ -761,215 +735,5 @@ const InfoSection: React.FC = () => {
                 {host && <Typography variant="mini">{host}</Typography>}
             </Stack>
         </>
-    );
-};
-
-type HelpProps = NestedSidebarDrawerVisibilityProps & {
-    pendingAction?: HelpAction;
-    onActionHandled?: (Action?: HelpAction) => void;
-};
-
-const Help: React.FC<HelpProps> = ({
-    open,
-    onClose,
-    onRootClose,
-    pendingAction,
-    onActionHandled,
-}) => {
-    const { showMiniDialog } = useBaseContext();
-
-    const handleRootClose = () => {
-        onClose();
-        onRootClose();
-    };
-
-    const handleHelp = useCallback(
-        () => openURL("https://ente.com/help/photos/"),
-        [],
-    );
-
-    const handleBlog = useCallback(() => openURL("https://ente.com/blog/"), []);
-
-    const handleRequestFeature = useCallback(
-        () => openURL("https://github.com/ente/ente/discussions"),
-        [],
-    );
-
-    const handleSupport = useCallback(
-        () => initiateEmail("support@ente.com"),
-        [],
-    );
-
-    const viewLogs = useCallback(async () => {
-        log.info("Viewing logs");
-        const electron = globalThis.electron;
-        if (electron) {
-            await electron.openLogDirectory();
-        } else {
-            saveStringAsFile(savedLogs(), `ente-web-logs-${Date.now()}.txt`);
-        }
-    }, []);
-
-    const confirmViewLogs = useCallback(
-        () =>
-            showMiniDialog({
-                title: t("view_logs"),
-                message: <Trans i18nKey={"view_logs_message"} />,
-                continue: { text: t("view_logs"), action: viewLogs },
-            }),
-        [showMiniDialog, viewLogs],
-    );
-
-    useEffect(() => {
-        if (!open || !pendingAction) return;
-        switch (pendingAction) {
-            case "help.helpCenter":
-                handleHelp();
-                break;
-            case "help.blog":
-                handleBlog();
-                break;
-            case "help.requestFeature":
-                handleRequestFeature();
-                break;
-            case "help.support":
-                handleSupport();
-                break;
-            case "help.viewLogs":
-                confirmViewLogs();
-                break;
-        }
-        onActionHandled?.();
-    }, [
-        confirmViewLogs,
-        handleBlog,
-        handleHelp,
-        handleRequestFeature,
-        handleSupport,
-        open,
-        onActionHandled,
-        pendingAction,
-    ]);
-
-    return (
-        <TitledNestedSidebarDrawer
-            {...{ open, onClose }}
-            onRootClose={handleRootClose}
-            title={t("help")}
-        >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<InfoOutlinedIcon />}
-                        label={t("ente_help")}
-                        onClick={handleHelp}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<NorthEastIcon />}
-                        label={t("blog")}
-                        onClick={handleBlog}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        endIcon={<NorthEastIcon />}
-                        label={t("request_feature")}
-                        onClick={handleRequestFeature}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<ChevronRightIcon />}
-                        label={
-                            <Tooltip title="support@ente.com">
-                                <Typography sx={{ fontWeight: "medium" }}>
-                                    {t("support")}
-                                </Typography>
-                            </Tooltip>
-                        }
-                        onClick={handleSupport}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<ChevronRightIcon />}
-                        label={t("view_logs")}
-                        onClick={confirmViewLogs}
-                    />
-                </RowButtonGroup>
-            </Stack>
-        </TitledNestedSidebarDrawer>
-    );
-};
-
-type FreeUpSpaceProps = NestedSidebarDrawerVisibilityProps & {
-    pendingAction?: FreeUpSpaceAction;
-    onActionHandled?: (action?: FreeUpSpaceAction) => void;
-};
-
-const FreeUpSpace: React.FC<FreeUpSpaceProps> = ({
-    open,
-    onClose,
-    onRootClose,
-    pendingAction,
-    onActionHandled,
-}) => {
-    const router = useRouter();
-
-    const handleRootClose = useCallback(() => {
-        onClose();
-        onRootClose();
-    }, [onClose, onRootClose]);
-
-    const handleDeduplicate = useCallback(() => {
-        onRootClose();
-        void router.push("/duplicates");
-    }, [onRootClose, router]);
-
-    const handleLargeFiles = useCallback(() => {
-        onRootClose();
-        void router.push("/large-files");
-    }, [onRootClose, router]);
-
-    useEffect(() => {
-        if (!open || !pendingAction) return;
-        switch (pendingAction) {
-            case "freeUpSpace.deduplicate":
-                handleDeduplicate();
-                break;
-            case "freeUpSpace.largeFiles":
-                handleLargeFiles();
-                break;
-        }
-        onActionHandled?.();
-    }, [
-        handleDeduplicate,
-        handleLargeFiles,
-        open,
-        onActionHandled,
-        pendingAction,
-    ]);
-
-    return (
-        <TitledNestedSidebarDrawer
-            {...{ open, onClose }}
-            onRootClose={handleRootClose}
-            title={t("free_up_space")}
-        >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("deduplicate_files")}
-                        onClick={handleDeduplicate}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={t("large_files_title")}
-                        onClick={handleLargeFiles}
-                    />
-                </RowButtonGroup>
-            </Stack>
-        </TitledNestedSidebarDrawer>
     );
 };

@@ -1,0 +1,171 @@
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
+import NorthEastIcon from "@mui/icons-material/NorthEast";
+import { Stack, Tooltip } from "@mui/material";
+import Typography from "@mui/material/Typography";
+import {
+    RowButton,
+    RowButtonDivider,
+    RowButtonGroup,
+} from "ente-base/components/RowButton";
+import {
+    TitledNestedSidebarDrawer,
+    type NestedSidebarDrawerVisibilityProps,
+} from "ente-base/components/mui/SidebarDrawer";
+import { useBaseContext } from "ente-base/context";
+import log from "ente-base/log";
+import { savedLogs } from "ente-base/log-web";
+import { saveStringAsFile } from "ente-base/utils/web";
+import type { SidebarActionID } from "ente-new/photos/services/search/types";
+import { initiateEmail, openURL } from "ente-new/photos/utils/web";
+import { t } from "i18next";
+import React, { useCallback, useEffect } from "react";
+import { Trans } from "react-i18next";
+
+export type HelpAction = Extract<
+    SidebarActionID,
+    | "help.helpCenter"
+    | "help.blog"
+    | "help.requestFeature"
+    | "help.support"
+    | "help.viewLogs"
+>;
+
+type HelpProps = NestedSidebarDrawerVisibilityProps & {
+    pendingAction?: HelpAction;
+    onActionHandled?: (Action?: HelpAction) => void;
+};
+
+export const Help: React.FC<HelpProps> = ({
+    open,
+    onClose,
+    onRootClose,
+    pendingAction,
+    onActionHandled,
+}) => {
+    const { showMiniDialog } = useBaseContext();
+
+    const handleRootClose = () => {
+        onClose();
+        onRootClose();
+    };
+
+    const handleHelp = useCallback(
+        () => openURL("https://ente.com/help/photos/"),
+        [],
+    );
+
+    const handleBlog = useCallback(() => openURL("https://ente.com/blog/"), []);
+
+    const handleRequestFeature = useCallback(
+        () => openURL("https://github.com/ente/ente/discussions"),
+        [],
+    );
+
+    const handleSupport = useCallback(
+        () => initiateEmail("support@ente.com"),
+        [],
+    );
+
+    const viewLogs = useCallback(async () => {
+        log.info("Viewing logs");
+        const electron = globalThis.electron;
+        if (electron) {
+            await electron.openLogDirectory();
+        } else {
+            saveStringAsFile(savedLogs(), `ente-web-logs-${Date.now()}.txt`);
+        }
+    }, []);
+
+    const confirmViewLogs = useCallback(
+        () =>
+            showMiniDialog({
+                title: t("view_logs"),
+                message: <Trans i18nKey={"view_logs_message"} />,
+                continue: { text: t("view_logs"), action: viewLogs },
+            }),
+        [showMiniDialog, viewLogs],
+    );
+
+    useEffect(() => {
+        if (!open || !pendingAction) return;
+        switch (pendingAction) {
+            case "help.helpCenter":
+                handleHelp();
+                break;
+            case "help.blog":
+                handleBlog();
+                break;
+            case "help.requestFeature":
+                handleRequestFeature();
+                break;
+            case "help.support":
+                handleSupport();
+                break;
+            case "help.viewLogs":
+                confirmViewLogs();
+                break;
+        }
+        onActionHandled?.();
+    }, [
+        confirmViewLogs,
+        handleBlog,
+        handleHelp,
+        handleRequestFeature,
+        handleSupport,
+        open,
+        onActionHandled,
+        pendingAction,
+    ]);
+
+    return (
+        <TitledNestedSidebarDrawer
+            {...{ open, onClose }}
+            onRootClose={handleRootClose}
+            title={t("help")}
+        >
+            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
+                <RowButtonGroup>
+                    <RowButton
+                        endIcon={<InfoOutlinedIcon />}
+                        label={t("ente_help")}
+                        onClick={handleHelp}
+                    />
+                </RowButtonGroup>
+                <RowButtonGroup>
+                    <RowButton
+                        endIcon={<NorthEastIcon />}
+                        label={t("blog")}
+                        onClick={handleBlog}
+                    />
+                    <RowButtonDivider />
+                    <RowButton
+                        endIcon={<NorthEastIcon />}
+                        label={t("request_feature")}
+                        onClick={handleRequestFeature}
+                    />
+                </RowButtonGroup>
+                <RowButtonGroup>
+                    <RowButton
+                        endIcon={<ChevronRightIcon />}
+                        label={
+                            <Tooltip title="support@ente.com">
+                                <Typography sx={{ fontWeight: "medium" }}>
+                                    {t("support")}
+                                </Typography>
+                            </Tooltip>
+                        }
+                        onClick={handleSupport}
+                    />
+                </RowButtonGroup>
+                <RowButtonGroup>
+                    <RowButton
+                        endIcon={<ChevronRightIcon />}
+                        label={t("view_logs")}
+                        onClick={confirmViewLogs}
+                    />
+                </RowButtonGroup>
+            </Stack>
+        </TitledNestedSidebarDrawer>
+    );
+};
