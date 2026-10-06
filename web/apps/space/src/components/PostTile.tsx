@@ -289,7 +289,7 @@ export const SpacePostTile: React.FC<SpacePostTileProps> = ({
                 >
                     <SpacePostAvatar
                         ready={!isAvatarPending && decodedAvatar.ready}
-                        size={22}
+                        size={26}
                         src={
                             decodedAvatar.failed ? undefined : decodedAvatar.src
                         }

@@ -2322,9 +2322,8 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                     return {
                                         ...item,
                                         id: String(item.postId),
-                                        frameAspectRatio: photo.video
-                                            ? spacePostFrameAspectRatio([photo])
-                                            : undefined,
+                                        frameAspectRatio:
+                                            spacePostFrameAspectRatio([photo]),
                                     };
                                 })}
                                 renderTile={(item, index, flexGrow) => {
