@@ -23,6 +23,7 @@ import "package:photos/models/search/hierarchical/magic_filter.dart";
 import "package:photos/models/search/search_types.dart";
 import "package:photos/module/upload/service/file_uploader.dart";
 import "package:photos/service_locator.dart";
+import "package:photos/services/machine_learning/ml_run_policy.dart";
 import "package:photos/services/machine_learning/semantic_search/semantic_search_service.dart";
 import "package:photos/services/search_service.dart";
 import "package:photos/ui/viewer/search/result/magic_result_screen.dart";
@@ -332,6 +333,7 @@ class MagicCacheService {
     bool forced = false,
     bool interactive = false,
   }) async {
+    if (MlRunPolicy.remoteSyncOnly) return;
     if (!enableDiscover) {
       return;
     }

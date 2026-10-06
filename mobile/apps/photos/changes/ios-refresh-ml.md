@@ -1,0 +1,1 @@
+- Limited ML work during iOS background refresh to syncing existing remote results. Image indexing, clustering, and cache generation run in the foreground or background processing tasks.

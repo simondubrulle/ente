@@ -31,6 +31,7 @@ import "package:photos/services/language_service.dart";
 import "package:photos/services/machine_learning/face_ml/person/person_service.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
 import "package:photos/services/machine_learning/ml_run_control.dart";
+import "package:photos/services/machine_learning/ml_run_policy.dart";
 import "package:photos/services/memories/photo_selector.dart";
 import "package:photos/services/notification_service.dart";
 import "package:photos/services/search_service.dart";
@@ -694,6 +695,7 @@ class MemoriesCacheService {
   }
 
   Future<void> _calculateRegularFillers() async {
+    if (MlRunPolicy.remoteSyncOnly) return;
     if (_cachedMemories == null) {
       _cachedMemories = await smartMemoriesService.calcSimpleMemories();
       Bus.instance.fire(MemoriesChangedEvent());
@@ -904,6 +906,7 @@ class MemoriesCacheService {
   }
 
   Future<void> updateCache({bool forced = false, MlRunControl? control}) async {
+    if (MlRunPolicy.remoteSyncOnly) return;
     if (!showAnyMemories) {
       return;
     }
