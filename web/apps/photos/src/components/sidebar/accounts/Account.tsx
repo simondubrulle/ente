@@ -117,6 +117,7 @@ export const Account: React.FC<AccountProps> = ({
         useModalVisibility();
 
     useEffect(() => {
+        setTwoFactorEnabled(undefined);
         if (!open || sessionsVisibilityProps.open) return;
         let cancelled = false;
         void Promise.all([
@@ -244,6 +245,11 @@ export const Account: React.FC<AccountProps> = ({
     ]);
 
     const handleReconfigureTwoFactor = useCallback(() => {
+        if (twoFactorEnabled === undefined) return;
+        if (!twoFactorEnabled) {
+            configureTwoFactor();
+            return;
+        }
         showMiniDialog({
             title: t("update_two_factor"),
             message: t("update_two_factor_message"),
@@ -253,12 +259,13 @@ export const Account: React.FC<AccountProps> = ({
                 action: configureTwoFactor,
             },
         });
-    }, [configureTwoFactor, showMiniDialog]);
+    }, [twoFactorEnabled, configureTwoFactor, showMiniDialog]);
 
     useEffect(() => {
         if (!open || !pendingAction) return;
         if (
-            pendingAction == "account.twoFactor" &&
+            (pendingAction == "account.twoFactor" ||
+                pendingAction == "account.twoFactor.reconfigure") &&
             twoFactorEnabled === undefined
         )
             return;
@@ -342,10 +349,12 @@ export const Account: React.FC<AccountProps> = ({
                     }
                 />
                 {twoFactorEnabled && (
-                    <RowCard
-                        title={t("update_two_factor")}
-                        onClick={handleReconfigureTwoFactor}
-                    />
+                    <Stack sx={{ pl: 2 }}>
+                        <RowCard
+                            title={t("update_two_factor")}
+                            onClick={handleReconfigureTwoFactor}
+                        />
+                    </Stack>
                 )}
                 <RowCard title={t("passkeys")} onClick={handlePasskeys} />
                 <RowCard
