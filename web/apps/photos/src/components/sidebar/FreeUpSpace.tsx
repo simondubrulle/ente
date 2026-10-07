@@ -3,7 +3,7 @@ import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
-import { RowCard } from "ente-base/components/v2/RowButton";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import type { SidebarActionID } from "ente-new/photos/services/search/types";
 import { t } from "i18next";
 import { useRouter } from "next/router";
