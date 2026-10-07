@@ -11,14 +11,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import CloseIcon from "@mui/icons-material/Close";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import {
-    Box,
-    Divider,
-    IconButton,
-    Skeleton,
-    Stack,
-    styled,
-} from "@mui/material";
+import { Box, Divider, IconButton, Stack, styled } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { isDesktop } from "ente-base/app";
 import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
@@ -277,7 +270,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [pendingAction]);
 
     return (
-        <SidebarDrawerShell open={open} onClose={onClose}>
+        <SidebarDrawerShell
+            open={open}
+            onClose={onClose}
+            onEnter={pendingAction ? undefined : showAccount}
+        >
             <RootSidebarDrawer
                 open={open}
                 onClose={onClose}
@@ -405,14 +402,6 @@ const UserDetailsSection: React.FC<UserDetailsSectionProps> = ({
     return (
         <>
             <Box sx={{ px: 0.5, mt: 1.5, pb: 1.5, mb: 1 }}>
-                <Typography sx={{ px: 1, pb: 1, color: "text.muted" }}>
-                    {userDetails ? (
-                        userDetails.email
-                    ) : (
-                        <Skeleton animation="wave" />
-                    )}
-                </Typography>
-
                 <SubscriptionCard
                     userDetails={userDetails}
                     onClick={handleSubscriptionCardClick}
