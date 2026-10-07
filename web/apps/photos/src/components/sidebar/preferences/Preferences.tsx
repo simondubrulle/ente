@@ -7,9 +7,7 @@ import { isDesktop } from "ente-base/app";
 import { EnteSwitch } from "ente-base/components/EnteSwitch";
 import {
     RowButtonEndActivityIndicator,
-    RowButtonGroup,
     RowButtonGroupHint,
-    RowSwitch,
 } from "ente-base/components/RowButton";
 import { LoadingButton } from "ente-base/components/mui/LoadingButton";
 import {
@@ -645,27 +643,42 @@ const AdvancedSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
             onRootClose={handleRootClose}
             title={t("advanced")}
         >
-            <Stack sx={{ px: 2, py: "20px", gap: 3 }}>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                 <Stack>
-                    <RowButtonGroup>
-                        <RowSwitch
-                            label={t("faster_upload")}
-                            checked={!cfUploadProxyDisabled}
-                            onClick={toggleProxy}
-                        />
-                    </RowButtonGroup>
-                    <RowButtonGroupHint>
+                    <RowCard
+                        title={t("faster_upload")}
+                        endIcon={
+                            <EnteSwitch
+                                checked={!cfUploadProxyDisabled}
+                                onChange={toggleProxy}
+                                slotProps={{
+                                    input: { "aria-label": t("faster_upload") },
+                                }}
+                            />
+                        }
+                    />
+                    <Typography
+                        variant="small"
+                        sx={{ color: "text.faint", pl: 2, pr: 1, py: "6px" }}
+                    >
                         {t("faster_upload_description")}
-                    </RowButtonGroupHint>
+                    </Typography>
                 </Stack>
                 {electron && (
-                    <RowButtonGroup>
-                        <RowSwitch
-                            label={t("open_ente_on_startup")}
-                            checked={isAutoLaunchEnabled}
-                            onClick={toggleAutoLaunch}
-                        />
-                    </RowButtonGroup>
+                    <RowCard
+                        title={t("open_ente_on_startup")}
+                        endIcon={
+                            <EnteSwitch
+                                checked={isAutoLaunchEnabled}
+                                onChange={toggleAutoLaunch}
+                                slotProps={{
+                                    input: {
+                                        "aria-label": t("open_ente_on_startup"),
+                                    },
+                                }}
+                            />
+                        }
+                    />
                 )}
             </Stack>
         </TitledNestedSidebarDrawer>
