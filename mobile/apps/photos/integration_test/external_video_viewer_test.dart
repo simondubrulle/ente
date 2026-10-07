@@ -3,6 +3,7 @@ import "dart:convert";
 import "dart:io";
 import "dart:typed_data";
 
+import "package:ente_strings/ente_strings.dart";
 import "package:flutter/material.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:integration_test/integration_test.dart";
@@ -11,6 +12,9 @@ import "package:path_provider/path_provider.dart";
 import "package:photo_manager/photo_manager.dart";
 import "package:photos/ui/viewer/file/external_video_viewer.dart";
 import "package:photos/ui/viewer/file/native_video_player_controls/play_pause_button.dart";
+import "package:photos/ui/viewer/file/video_control/gallery_video_controls.dart";
+import "package:photos/ui/viewer/file/video_control/mute_button.dart";
+import "package:photos/ui/viewer/file/viewer_app_bar.dart";
 
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
@@ -42,9 +46,14 @@ void main() {
       tester,
       () => controller.playbackStatus == PlaybackStatus.paused,
     );
-    await tester.tap(find.byIcon(Icons.volume_up));
+    await tester.tap(find.byType(VideoMuteIconButton));
     await _pumpUntil(tester, () => controller.volume == 0);
-    expect(find.byIcon(Icons.volume_off), findsOneWidget);
+    expect(
+      tester
+          .widget<VideoMuteIconButton>(find.byType(VideoMuteIconButton))
+          .isMuted,
+      isTrue,
+    );
 
     tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
     await tester.runAsync(
@@ -100,21 +109,24 @@ void main() {
       tester,
       () =>
           state.isFullscreen &&
-          find.byType(AppBar).evaluate().isEmpty &&
+          find.byIcon(Icons.fullscreen_exit).evaluate().isNotEmpty &&
           (Platform.isIOS ||
               MediaQuery.orientationOf(
                     tester.element(find.byType(ExternalVideoViewer)),
                   ) ==
                   Orientation.landscape),
     );
-    expect(find.byType(AppBar), findsNothing);
+    expect(
+      tester.widget<AppBar>(find.byType(AppBar)).backgroundColor,
+      Colors.transparent,
+    );
     expect(state.controller, same(controller));
     await tester.binding.handlePopRoute();
     await _pumpUntil(
       tester,
       () =>
           !state.isFullscreen &&
-          find.byType(AppBar).evaluate().isNotEmpty &&
+          find.byIcon(Icons.fullscreen).evaluate().isNotEmpty &&
           (Platform.isIOS ||
               MediaQuery.orientationOf(
                     tester.element(find.byType(ExternalVideoViewer)),
@@ -130,9 +142,102 @@ void main() {
       (_) {},
       onDone: closed.complete,
     );
-    await tester.pumpWidget(const SizedBox.shrink());
+    await _showControls(tester);
+    await tester.tap(find.byIcon(Icons.arrow_back));
     await _pumpUntil(tester, () => closed.isCompleted);
+    expect(find.text("Viewer closed"), findsOneWidget);
     await subscription.cancel();
+    expect(tester.takeException(), isNull);
+  });
+
+  testWidgets("gallery gestures, speed selection, and coordinated controls", (
+    tester,
+  ) async {
+    final state = await _openVideo(tester, videoFile.path);
+    final controller = state.controller!;
+    await _showControls(tester);
+    await tester.tap(find.byType(PlayPauseButton));
+    await _pumpUntil(
+      tester,
+      () => controller.playbackStatus == PlaybackStatus.paused,
+    );
+
+    await _doubleTapVideo(tester, forward: true);
+    await _pumpUntil(
+      tester,
+      () => controller.playbackPosition >= const Duration(milliseconds: 3500),
+    );
+    await _doubleTapVideo(tester, forward: false);
+    await _pumpUntil(
+      tester,
+      () => controller.playbackPosition <= const Duration(milliseconds: 200),
+    );
+    expect(controller.playbackStatus, PlaybackStatus.paused);
+    expect(find.text("5s"), findsOneWidget);
+
+    final moreTooltip = MaterialLocalizations.of(
+      tester.element(find.byType(ExternalVideoViewer)),
+    ).moreButtonTooltip;
+    await tester.tap(find.byTooltip(moreTooltip));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Playback speed"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("1.5x"));
+    await tester.pumpAndSettle();
+    await _pumpUntil(tester, () => controller.playbackSpeed == 1.5);
+    expect(controller.playbackStatus, PlaybackStatus.paused);
+    await tester.tap(find.byType(PlayPauseButton));
+    await _pumpUntil(
+      tester,
+      () => controller.playbackStatus == PlaybackStatus.playing,
+    );
+
+    final gesturePoint = _videoGesturePoint(tester, forward: false);
+    var hold = await tester.startGesture(gesturePoint);
+    await tester.pump(const Duration(milliseconds: 600));
+    await _pumpUntil(tester, () => controller.playbackSpeed == 2);
+    expect(find.byType(VideoLongPressSpeedIndicator), findsOneWidget);
+    await hold.up();
+    await _pumpUntil(tester, () => controller.playbackSpeed == 1.5);
+    expect(find.byType(VideoLongPressSpeedIndicator), findsNothing);
+
+    hold = await tester.startGesture(gesturePoint);
+    await tester.pump(const Duration(milliseconds: 600));
+    await _pumpUntil(tester, () => controller.playbackSpeed == 2);
+    await hold.cancel();
+    await _pumpUntil(tester, () => controller.playbackSpeed == 1.5);
+    expect(find.byType(VideoLongPressSpeedIndicator), findsNothing);
+
+    hold = await tester.startGesture(gesturePoint);
+    await tester.pump(const Duration(milliseconds: 600));
+    await _pumpUntil(tester, () => controller.playbackSpeed == 2);
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+    await _pumpUntil(
+      tester,
+      () =>
+          controller.playbackStatus == PlaybackStatus.paused &&
+          controller.playbackSpeed == 1.5,
+    );
+    tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.resumed);
+    await hold.cancel();
+    await _pumpUntil(
+      tester,
+      () => controller.playbackStatus == PlaybackStatus.playing,
+    );
+    expect(find.byType(VideoLongPressSpeedIndicator), findsNothing);
+    expect(controller.playbackSpeed, 1.5);
+
+    await _pumpUntil(tester, () => !_appBar(tester).visible);
+    final controlsOpacity = tester.widget<AnimatedOpacity>(
+      find.ancestor(
+        of: find.byType(PlayPauseButton),
+        matching: find.byType(AnimatedOpacity),
+      ),
+    );
+    expect(controlsOpacity.opacity, 0);
+    await _showControls(tester);
+    expect(_appBar(tester).visible, isTrue);
+    await tester.pumpWidget(const SizedBox.shrink());
     expect(tester.takeException(), isNull);
   });
 
@@ -197,7 +302,7 @@ void main() {
     tester,
   ) async {
     await tester.pumpWidget(
-      MaterialApp(home: _TestViewer(uri: "${videoFile.path}.missing")),
+      _testApp(_TestViewer(uri: "${videoFile.path}.missing")),
     );
     await _pumpUntil(
       tester,
@@ -221,6 +326,7 @@ class _TestViewer extends StatefulWidget {
 class _TestViewerState extends State<_TestViewer> {
   final _videoKey = GlobalKey<ExternalVideoViewerState>();
   bool _fullscreen = false;
+  bool _closed = false;
 
   @override
   Widget build(BuildContext context) {
@@ -232,13 +338,15 @@ class _TestViewerState extends State<_TestViewer> {
         }
       },
       child: Scaffold(
-        appBar: _fullscreen ? null : AppBar(),
-        body: ExternalVideoViewer(
-          key: _videoKey,
-          uri: widget.uri,
-          onFullscreenChanged: (fullscreen) =>
-              setState(() => _fullscreen = fullscreen),
-        ),
+        body: _closed
+            ? const Center(child: Text("Viewer closed"))
+            : ExternalVideoViewer(
+                key: _videoKey,
+                uri: widget.uri,
+                onBackPressed: () => setState(() => _closed = true),
+                onFullscreenChanged: (fullscreen) =>
+                    setState(() => _fullscreen = fullscreen),
+              ),
       ),
     );
   }
@@ -248,12 +356,7 @@ Future<ExternalVideoViewerState> _openVideo(
   WidgetTester tester,
   String uri,
 ) async {
-  await tester.pumpWidget(
-    MaterialApp(
-      key: ValueKey(uri),
-      home: _TestViewer(uri: uri),
-    ),
-  );
+  await tester.pumpWidget(_testApp(_TestViewer(uri: uri), key: ValueKey(uri)));
   final state = tester.state<ExternalVideoViewerState>(
     find.byType(ExternalVideoViewer),
   );
@@ -267,18 +370,41 @@ Future<ExternalVideoViewerState> _openVideo(
   return state;
 }
 
-Future<void> _showControls(WidgetTester tester) async {
-  final opacity = tester.widget<AnimatedOpacity>(
-    find.descendant(
-      of: find.byType(ExternalVideoViewer),
-      matching: find.byType(AnimatedOpacity),
-    ),
+Widget _testApp(Widget home, {Key? key}) => MaterialApp(
+  key: key,
+  localizationsDelegates: StringsLocalizations.localizationsDelegates,
+  supportedLocales: StringsLocalizations.supportedLocales,
+  locale: const Locale("en"),
+  home: home,
+);
+
+ViewerAppBar _appBar(WidgetTester tester) =>
+    tester.widget<ViewerAppBar>(find.byType(ViewerAppBar));
+
+Offset _videoGesturePoint(WidgetTester tester, {required bool forward}) {
+  final bounds = tester.getRect(find.byType(ExternalVideoViewer));
+  return Offset(
+    bounds.left + bounds.width * (forward ? 0.8 : 0.2),
+    bounds.center.dy,
   );
-  if (opacity.opacity == 0) {
-    final bounds = tester.getRect(find.byType(ExternalVideoViewer));
-    await tester.tapAt(bounds.topLeft + const Offset(20, 20));
+}
+
+Future<void> _doubleTapVideo(
+  WidgetTester tester, {
+  required bool forward,
+}) async {
+  final point = _videoGesturePoint(tester, forward: forward);
+  await tester.tapAt(point);
+  await tester.pump(const Duration(milliseconds: 100));
+  await tester.tapAt(point);
+  await tester.pump(const Duration(milliseconds: 100));
+}
+
+Future<void> _showControls(WidgetTester tester) async {
+  if (!_appBar(tester).visible) {
+    await tester.tapAt(_videoGesturePoint(tester, forward: false));
   }
-  await tester.pump(const Duration(milliseconds: 250));
+  await tester.pump(const Duration(milliseconds: 350));
 }
 
 Future<void> _pumpUntil(WidgetTester tester, bool Function() condition) async {
