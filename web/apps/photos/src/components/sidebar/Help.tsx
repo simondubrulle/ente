@@ -11,7 +11,7 @@ import { saveStringAsFile } from "ente-base/utils/web";
 import type { SidebarActionID } from "ente-new/photos/services/search/types";
 import { initiateEmail, openURL } from "ente-new/photos/utils/web";
 import { t } from "i18next";
-import React, { useCallback, useEffect } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { Trans } from "react-i18next";
 
 export type HelpAction = Extract<
@@ -36,6 +36,11 @@ export const Help: React.FC<HelpProps> = ({
     onActionHandled,
 }) => {
     const { showMiniDialog } = useBaseContext();
+    const [appVersion, setAppVersion] = useState("");
+
+    useEffect(() => {
+        void globalThis.electron?.appVersion().then(setAppVersion);
+    }, []);
 
     const handleRootClose = () => {
         onClose();
@@ -143,6 +148,13 @@ export const Help: React.FC<HelpProps> = ({
                     subtitle="Share with support when something goes wrong"
                     onClick={confirmViewLogs}
                 />
+                {appVersion && (
+                    <RowCard
+                        title="About"
+                        subtitle={`Photos ${appVersion}`}
+                        endIcon={null}
+                    />
+                )}
             </Stack>
         </TitledNestedSidebarDrawer>
     );

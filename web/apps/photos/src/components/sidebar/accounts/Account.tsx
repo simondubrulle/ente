@@ -380,6 +380,7 @@ export const Account: React.FC<AccountProps> = ({
                             {t("delete_account")}
                         </Box>
                     }
+                    subtitle="Permanently remove your account and data"
                     onClick={handleDeleteAccount}
                 />
             </Stack>

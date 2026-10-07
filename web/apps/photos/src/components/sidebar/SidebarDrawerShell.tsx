@@ -7,7 +7,6 @@ import {
 } from "@mui/material";
 import { SidebarPanelContext } from "ente-base/components/mui/SidebarDrawerContext";
 import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
-import { useSettingsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
 import { t } from "i18next";
 import React, { useRef } from "react";
 
@@ -15,15 +14,15 @@ import React, { useRef } from "react";
 export function SidebarDrawerShell({
     open,
     onClose,
+    onEnter,
     children,
-}: React.PropsWithChildren<ModalVisibilityProps>) {
+}: React.PropsWithChildren<ModalVisibilityProps & { onEnter?: () => void }>) {
     const theme = useTheme();
     const wide = useMediaQuery(theme.breakpoints.up("md"));
-    const { isInternalUser } = useSettingsSnapshot();
     const panel = useRef<HTMLDivElement>(null);
     const container = () => panel.current;
 
-    if (!isInternalUser || !wide) return children;
+    if (!wide) return children;
 
     return (
         <Dialog
@@ -32,14 +31,23 @@ export function SidebarDrawerShell({
             maxWidth={false}
             aria-label={t("settings")}
             slotProps={{
+                transition: { onEnter },
                 paper: {
                     sx: {
                         width: "min(1200px, calc(100vw - 48px))",
-                        height: "calc(100dvh - 48px)",
-                        maxHeight: "none",
+                        maxHeight: "calc(100dvh - 48px)",
                         m: 3,
                         borderRadius: 3,
                         overflow: "hidden",
+                        "& > .MuiDrawer-docked": {
+                            position: "relative",
+                            width: "360px",
+                            "& > .MuiDrawer-paper": {
+                                position: "relative",
+                                height: "auto",
+                                maxHeight: "calc(100dvh - 48px)",
+                            },
+                        },
                     },
                 },
             }}
