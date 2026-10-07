@@ -75,7 +75,7 @@ const profileAvatarSize = 132;
 const profileCoverHeight =
     profileHeaderHeight + profileAvatarTopOffset + profileAvatarSize / 2;
 const photoPlaceholderBackground = spaceSurface;
-const profileCoverRadius = "12px";
+const profileCoverRadius = "24px";
 const profilePostLoadRootMargin = "800px 0px";
 const publicProfilePostLoadRootMargin = "400px 0px";
 interface ProfilePhotoDimensions {

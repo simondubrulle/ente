@@ -66,7 +66,7 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
             zIndex: 4,
             "&::after": {
                 bgcolor: spaceHomeSurface,
-                borderRadius: "16px",
+                borderRadius: "24px",
                 content: '""',
                 height: spaceHomeHeaderBarHeight,
                 left: "8px",

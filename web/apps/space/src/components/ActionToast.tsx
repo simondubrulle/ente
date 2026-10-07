@@ -79,7 +79,7 @@ export const SpaceActionToast: React.FC<SpaceActionToastProps> = ({
                 sx={{
                     alignItems: "center",
                     bgcolor: spaceHomeSurface,
-                    borderRadius: "22px",
+                    borderRadius: "24px",
                     boxShadow: "0 12px 32px rgba(0, 0, 0, 0.18)",
                     boxSizing: "border-box",
                     color: textBase,

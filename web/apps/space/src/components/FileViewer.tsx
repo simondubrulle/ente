@@ -2048,7 +2048,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             sx={{
                                 bgcolor: inputBackground,
                                 border: 0,
-                                borderRadius: "24px",
+                                borderRadius: "16px",
                                 boxSizing: "border-box",
                                 color: textBase,
                                 flex: "1 1 auto",
@@ -2186,7 +2186,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             sx={{
                                 bgcolor: inputBackground,
                                 border: 0,
-                                borderRadius: "24px",
+                                borderRadius: "16px",
                                 boxSizing: "border-box",
                                 color: textBase,
                                 flex: "1 1 auto",
