@@ -17,7 +17,7 @@ Once your photos are safely backed up to Ente, you can free up storage space on 
 
 Open `Settings > Free up space > Free up device space`, review how much space will be freed, and confirm to delete backed-up photos from your device.
 
-![Free up space menu on Ente Photos mobile with Trash Free up device space and Review options](https://docs-assets.ente.com/screenshots/qa/phone-free-up-space.png){width=320px}
+![Free up space menu on Ente Photos mobile with Trash Free up device space and Review options](https://docs-assets.ente.com/screenshots/phone-free-up-space.png){width=320px}
 
 The app will delete all photos and videos that have been successfully backed up to Ente, leaving only photos that haven't been backed up yet.
 
@@ -58,7 +58,7 @@ Ente saves thumbnails and previews on your device so photos and videos open fast
 
 Tap **Clear caches** to remove files that Ente can recreate. This does not remove files shown under **Pending sync** because Ente still needs them to finish your backup.
 
-![Manage device cache screen with Clear caches on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-manage-device-cache.png){width=320px}
+![Manage device cache screen with Clear caches on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-manage-device-cache.png){width=320px}
 
 Storage may grow during a large or interrupted backup. Learn [why backups need temporary space and how to reduce it](/photos/faq/backup-and-sync#backup-device-storage).
 
@@ -88,7 +88,7 @@ Open `Settings > Free up space > Deduplicate files`, review the duplicates found
 
 <div align="center">
 
-![Deduplicate files review on Ente Photos desktop](https://docs-assets.ente.com/screenshots/qa/desktop-deduplicate-files.png){width=720px}
+![Deduplicate files review on Ente Photos desktop](https://docs-assets.ente.com/screenshots/desktop-deduplicate-files.png){width=720px}
 
 </div>
 
@@ -124,7 +124,7 @@ The similar images feature:
 
 Open `Settings > Free up space > Similar images`, review each group of similar photos, choose which to keep and which to delete, and confirm your selections.
 
-![Similar images results with grouped near-duplicates ready to delete on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-similar-images.png){width=320px}
+![Similar images results with grouped near-duplicates ready to delete on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-similar-images.png){width=320px}
 
 **On desktop:**
 
@@ -172,9 +172,9 @@ Open `Settings > Free up space > Large files` to see your largest files sorted b
 
 Open `Settings > Free up space > Large files` to see your largest files sorted by size.
 
-![Large files option highlighted under Free up space on Ente Photos web](https://docs-assets.ente.com/screenshots/qa/web-free-up-large-files-callout.png){width=720px}
+![Large files option highlighted under Free up space on Ente Photos web](https://docs-assets.ente.com/screenshots/web-free-up-large-files-callout.png){width=720px}
 
-![Large files browser with All Photos and Videos filters on Ente Photos web](https://docs-assets.ente.com/screenshots/qa/web-large-files.png){width=720px}
+![Large files browser with All Photos and Videos filters on Ente Photos web](https://docs-assets.ente.com/screenshots/web-large-files.png){width=720px}
 
 From here you can:
 
@@ -209,7 +209,7 @@ When a suggestion is made:
 
 ### Reviewing delete suggestions
 
-![Delete suggestions with a selected photo and Delete and Reject suggestions actions on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-delete-suggestions-populated.png){width=320px}
+![Delete suggestions with a selected photo and Delete and Reject suggestions actions on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-delete-suggestions-populated.png){width=320px}
 
 **On mobile:**
 

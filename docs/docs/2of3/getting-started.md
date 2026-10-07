@@ -16,7 +16,7 @@ Open 2of3 at [2of3.ente.com](https://2of3.ente.com). No account, nothing to inst
 3. Optionally edit the **Card label**. By default it shows today's date (for example, `26 May 2026`). The label is printed on each card so you can tell different sets apart later.
 4. Three cards appear on the right as soon as the secret is valid. Each card shows a QR code, a card number (1, 2, or 3), and an `ID` like `A1B2C3D4`. All three cards from one secret share the same ID.
 
-![Secret split into three Family vault recovery cards with QR codes on 2of3 web](https://docs-assets.ente.com/screenshots/qa/web-2of3-split-cards.png){width=720px}
+![Secret split into three Family vault recovery cards with QR codes on 2of3 web](https://docs-assets.ente.com/screenshots/web-2of3-split-cards.png){width=720px}
 
 > [!IMPORTANT]
 >
@@ -85,7 +85,7 @@ Before you store the cards, scroll down to the **Recover** section on the same p
 
 If all three possible pairs (1+2, 1+3, 2+3) recover the secret, the set is good and you can put the cards away.
 
-![Recover section on 2of3 web with two card codes filled and Recover secret highlighted](https://docs-assets.ente.com/screenshots/qa/web-2of3-test-recovery-callout.png){width=720px}
+![Recover section on 2of3 web with two card codes filled and Recover secret highlighted](https://docs-assets.ente.com/screenshots/web-2of3-test-recovery-callout.png){width=720px}
 
 ## Recover the secret
 
@@ -105,7 +105,7 @@ Both paths work the same way and run entirely in your browser.
 4. As soon as a slot has a valid card, the slot shows which card it is. For example: `Card 2 from ID A1B2C3D4`. Make sure both slots show the same ID.
 5. Click **Recover secret**. The original secret appears in a **Recovered secret** box. Click **Copy** to copy it to your clipboard.
 
-![Recovered secret end-state on 2of3 web after combining two cards from the same set](https://docs-assets.ente.com/screenshots/qa/web-2of3-recover.png){width=720px}
+![Recovered secret end-state on 2of3 web after combining two cards from the same set](https://docs-assets.ente.com/screenshots/web-2of3-recover.png){width=720px}
 
 ### Recovering from a phone photo
 
@@ -142,7 +142,7 @@ If you need to change the underlying secret (for example, you rotated a password
 
 Do not keep one old card "just in case". An old card combined with an old card from somewhere else still recovers the old secret, which is exactly what you stopped wanting recoverable.
 
-![Fresh rotated 2of3 set on web with a new secret and Family vault (rotated) card label](https://docs-assets.ente.com/screenshots/qa/web-2of3-rotate-set.png){width=720px}
+![Fresh rotated 2of3 set on web with a new secret and Family vault (rotated) card label](https://docs-assets.ente.com/screenshots/web-2of3-rotate-set.png){width=720px}
 
 ## Related topics
 

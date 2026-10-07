@@ -20,9 +20,9 @@ Notes let you store any text securely with end-to-end encryption. Use them for s
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Note row in Save to Locker menu](https://docs-assets.ente.com/screenshots/qa/locker-note-row-callout.png){width=320px}
+![Note row in Save to Locker menu](https://docs-assets.ente.com/screenshots/locker-note-row-callout.png){width=320px}
 
-![Add Note form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-note-form.png){width=320px}
+![Add Note form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-note-form.png){width=320px}
 
 </div>
 

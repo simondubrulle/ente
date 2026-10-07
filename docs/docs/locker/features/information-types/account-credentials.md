@@ -18,9 +18,9 @@ Secrets let you securely store login information for websites and services. Keep
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Secret row in Save to Locker menu](https://docs-assets.ente.com/screenshots/qa/locker-secret-row-callout.png){width=320px}
+![Secret row in Save to Locker menu](https://docs-assets.ente.com/screenshots/locker-secret-row-callout.png){width=320px}
 
-![Create Secret form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-secret-form.png){width=320px}
+![Create Secret form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-secret-form.png){width=320px}
 
 </div>
 

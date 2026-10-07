@@ -175,7 +175,7 @@ Learn more in the [Storage and Plans FAQ](/photos/faq/storage-and-plans#supporte
 
 ## Managing Your Account
 
-![Settings drawer with account email frosted](https://docs-assets.ente.com/screenshots/qa/settings-drawer-frosted.png){width=320px}
+![Settings drawer with account email frosted](https://docs-assets.ente.com/screenshots/settings-drawer-frosted.png){width=320px}
 
 ### Multi-device access
 

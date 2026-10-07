@@ -13,9 +13,9 @@ While guest view is active, the app also hides all viewer controls, so it looks 
 
 Guest view can be started from three places:
 
-![Guest view highlighted in the photo overflow menu on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-guest-view-menu-callout.png){width=320px}
+![Guest view highlighted in the photo overflow menu on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-guest-view-menu-callout.png){width=320px}
 
-![Distraction-free Guest view photo viewer on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-guest-view-active.png){width=320px}
+![Distraction-free Guest view photo viewer on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-guest-view-active.png){width=320px}
 
 **From a single photo or video:**
 

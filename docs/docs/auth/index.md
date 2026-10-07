@@ -5,7 +5,7 @@ description: User guide for Ente Auth
 
 # Ente Auth
 
-![Screenshots of Ente Auth](https://docs-assets.ente.com/screenshots/qa/readme-auth.png)
+![Screenshots of Ente Auth](https://docs-assets.ente.com/screenshots/readme-auth.png)
 
 Ente Auth is a free, cross-platform, end-to-end encrypted authenticator app. You can use it to safely store your 2FA codes (second-factor authentication codes).
 

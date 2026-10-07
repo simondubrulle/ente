@@ -33,7 +33,7 @@ The generated stream is a single encrypted blob (AES encryption) while the playl
 
 ### On mobile
 
-![Streamable videos Enabled toggle highlighted in Ente Photos mobile Settings](https://docs-assets.ente.com/screenshots/qa/phone-streamable-videos-callout.png){width=320px}
+![Streamable videos Enabled toggle highlighted in Ente Photos mobile Settings](https://docs-assets.ente.com/screenshots/phone-streamable-videos-callout.png){width=320px}
 
 1. Open `Settings > Streamable videos`
 2. Enable the toggle
@@ -59,7 +59,7 @@ These controls are available whether Ente plays the original video or a streamab
 
 ### On desktop
 
-![Streamable videos toggle highlighted in Preferences on Ente Photos desktop](https://docs-assets.ente.com/screenshots/qa/desktop-streamable-videos-callout.png){width=560px}
+![Streamable videos toggle highlighted in Preferences on Ente Photos desktop](https://docs-assets.ente.com/screenshots/desktop-streamable-videos-callout.png){width=560px}
 
 1. Open `Settings > Preferences > Streamable videos`
 2. Enable the toggle

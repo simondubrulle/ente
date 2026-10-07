@@ -32,7 +32,7 @@ Because the timeline depends on face recognition, hidden or ignored faces may af
 3. Select a person.
 4. Tap the **Memory lane** banner when it appears.
 
-![Memory lane banner highlighted on a person's page in Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-memory-lane-banner-callout.png){width=320px}
+![Memory lane banner highlighted on a person's page in Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-memory-lane-banner-callout.png){width=320px}
 
 After viewing the entire Memory Lane the banner will disappear from the People page, but the Memory Lane will still be accessible through the dropdown menu in the top-right corner.
 
@@ -49,9 +49,9 @@ You can share a Memory Lane as a public link so others can view that person's ti
 3. Create or copy the link.
 4. Share the link with anyone you want.
 
-![Memory lane timeline with share link control highlighted on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-memory-lane-share-callout.png){width=320px}
+![Memory lane timeline with share link control highlighted on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-memory-lane-share-callout.png){width=320px}
 
-![Memory lane timeline view for a person on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-memory-lane-timeline.png){width=320px}
+![Memory lane timeline view for a person on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-memory-lane-timeline.png){width=320px}
 
 Recipients can open the link without an Ente account.
 

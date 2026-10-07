@@ -14,7 +14,7 @@ Paired with the option to run Ente automatically when your computer starts, this
 
 1. Press the **Watch folders** button in the sidebar. This will open up a dialog where you can add and remove watched folders.
 
-![Watched folders dialog on desktop](https://docs-assets.ente.com/screenshots/qa/desktop-watch-folders.png){width=720px}
+![Watched folders dialog on desktop](https://docs-assets.ente.com/screenshots/desktop-watch-folders.png){width=720px}
 
 2. To start watching a folder, press the **Add folder** button and select the folder on your system that you want to watch for new files and deletions. You can also drag and drop the folder here.
 

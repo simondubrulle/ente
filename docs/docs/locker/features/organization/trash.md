@@ -9,7 +9,7 @@ When you delete an item in Ente Locker, it moves to Trash instead of being immed
 
 ## How Trash works
 
-![Trash entry in Locker settings drawer](https://docs-assets.ente.com/screenshots/qa/locker-trash-nav-callout.png){width=320px}
+![Trash entry in Locker settings drawer](https://docs-assets.ente.com/screenshots/locker-trash-nav-callout.png){width=320px}
 
 - Deleted items stay in Trash for **30 days**
 - After 30 days, items are **permanently deleted**
@@ -18,7 +18,7 @@ When you delete an item in Ente Locker, it moves to Trash instead of being immed
 
 ## Deleting an item
 
-![Delete action highlighted on the selection toolbar on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-delete-item-callout.png){width=320px}
+![Delete action highlighted on the selection toolbar on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-delete-item-callout.png){width=320px}
 
 1. Long press on the item you want to delete
 2. Tap the menu icon
@@ -29,7 +29,7 @@ The item is moved to Trash.
 
 ## Viewing Trash
 
-![Trash with Disposable note on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-trash.png){width=320px}
+![Trash with Disposable note on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-trash.png){width=320px}
 
 1. Open the menu on the home screen
 2. Tap **Trash**
@@ -37,7 +37,7 @@ The item is moved to Trash.
 
 ## Restoring an item
 
-![Restore action highlighted on Trash selection toolbar on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-trash-restore-callout.png){width=320px}
+![Restore action highlighted on Trash selection toolbar on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-trash-restore-callout.png){width=320px}
 
 1. Open Trash
 2. Tap on the item you want to restore
@@ -50,9 +50,9 @@ The item is moved to Trash.
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Empty trash icon highlighted in the Trash top bar on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-empty-trash-icon-callout.png){width=320px}
+![Empty trash icon highlighted in the Trash top bar on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-empty-trash-icon-callout.png){width=320px}
 
-![Empty trash confirmation button highlighted on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-empty-trash-confirm-callout.png){width=320px}
+![Empty trash confirmation button highlighted on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-empty-trash-confirm-callout.png){width=320px}
 
 </div>
 

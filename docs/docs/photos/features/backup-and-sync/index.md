@@ -11,7 +11,7 @@ Ente provides automatic, continuous backup of your photos and videos with end-to
 
 ### Mobile backup (iOS and Android)
 
-![Backup settings hub with Backed up folders Backup status and Backup settings on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-backup-hub.png){width=320px}
+![Backup settings hub with Backed up folders Backup status and Backup settings on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-backup-hub.png){width=320px}
 
 Ente will automatically backup any albums in your native photos app that you select for backup. The app runs in the background, and any new photos added to these albums (or any photos in these albums that were modified) will be automatically synced to Ente.
 
@@ -34,9 +34,9 @@ You can choose which albums should be backed up when you first sign up for Ente.
 
 Open `Settings > Backup > Backed up folders` and select or deselect albums as needed.
 
-![Ente Photos Android Backup menu highlighting the Backed up folders row](https://docs-assets.ente.com/screenshots/qa/phone-backup-backed-up-folders-callout.png){width=320px}
+![Ente Photos Android Backup menu highlighting the Backed up folders row](https://docs-assets.ente.com/screenshots/phone-backup-backed-up-folders-callout.png){width=320px}
 
-![Ente Photos Android Backed up folders screen with selectable device albums and checkmarks](https://docs-assets.ente.com/screenshots/qa/phone-backup-backed-up-folders.png){width=320px}
+![Ente Photos Android Backed up folders screen with selectable device albums and checkmarks](https://docs-assets.ente.com/screenshots/phone-backup-backed-up-folders.png){width=320px}
 
 **On desktop:** Use the [watch folders](/photos/features/backup-and-sync/watch-folders) feature to select directories to sync.
 
@@ -117,7 +117,7 @@ This option is available in two places:
 - **During signup/login**: On the permissions screen, you can choose to back up only new photos instead of your full library.
 - **In settings**: Open `Settings > Backup > Backup settings` and toggle on **Backup only new photos**.
 
-![Ente Photos Android Backup settings showing Backup only new photos and related toggles](https://docs-assets.ente.com/screenshots/qa/phone-backup-settings.png){width=320px}
+![Ente Photos Android Backup settings showing Backup only new photos and related toggles](https://docs-assets.ente.com/screenshots/phone-backup-settings.png){width=320px}
 
 ### What "new photos" means
 
@@ -129,7 +129,7 @@ In both cases, photos older than the cutoff date on your device will not be uplo
 
 ### Folder selection prompt
 
-![Backup to Ente folder selection with Movies and Pictures albums on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-backup-folder-prompt.png){width=320px}
+![Backup to Ente folder selection with Movies and Pictures albums on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-backup-folder-prompt.png){width=320px}
 
 When you first enable this setting, Ente may prompt you to select which folders to back up:
 

@@ -23,13 +23,13 @@ In brief,
 2. Open **Manage family**.
 3. Invite members and manage the shared plan from the family dashboard.
 
-![Manage subscription highlighted in Account settings on Ente Photos web](https://docs-assets.ente.com/screenshots/qa/web-family-manage-subscription-callout.png){width=720px}
+![Manage subscription highlighted in Account settings on Ente Photos web](https://docs-assets.ente.com/screenshots/web-family-manage-subscription-callout.png){width=720px}
 
-![Manage family highlighted in Subscription on Ente Photos web for a paid Family plan](https://docs-assets.ente.com/screenshots/qa/web-family-manage-family-entry-callout.png){width=720px}
+![Manage family highlighted in Subscription on Ente Photos web for a paid Family plan](https://docs-assets.ente.com/screenshots/web-family-manage-family-entry-callout.png){width=720px}
 
-![Family admin dashboard on Ente Photos web listing frosted member emails for the admin plus Dad Maya and Mom (10 GB limit) with shared storage](https://docs-assets.ente.com/screenshots/qa/web-family-manage-admin.png){width=720px}
+![Family admin dashboard on Ente Photos web listing frosted member emails for the admin plus Dad Maya and Mom (10 GB limit) with shared storage](https://docs-assets.ente.com/screenshots/web-family-manage-admin.png){width=720px}
 
-![Invite family member dialog with Invite highlighted on Ente Photos web; Family list behind shows frosted Mom member email](https://docs-assets.ente.com/screenshots/qa/web-family-invite-dialog-callout.png){width=720px}
+![Invite family member dialog with Invite highlighted on Ente Photos web; Family list behind shows frosted Mom member email](https://docs-assets.ente.com/screenshots/web-family-invite-dialog-callout.png){width=720px}
 
 ## Library sharing
 
@@ -37,9 +37,9 @@ Family members keep separate libraries by default. To share the albums you own w
 
 You can share existing albums in one action and enable [library sharing](/photos/features/sharing-and-collaboration/library-sharing) to automatically share new albums as you create them.
 
-![Family members list with face avatars and readable names for James (admin), Dad, Maya, and Mom on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-family-members.png){width=320px}
+![Family members list with face avatars and readable names for James (admin), Dad, Maya, and Mom on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-family-members.png){width=320px}
 
-![Library sharing toggle ON on Sharing with Maya with loaded album thumbs on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-library-share-albums.png){width=320px}
+![Library sharing toggle ON on Sharing with Maya with loaded album thumbs on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-library-share-albums.png){width=320px}
 
 ## Storage Limits
 
@@ -55,9 +55,9 @@ In brief,
 
 - If you want to remove any storage limit from a members account, you can click on the "Remove Limit" and they can upload photos without any limit.
 
-![Set storage limit highlighted on Mom member sheet with frosted email on Ente Photos web Family admin](https://docs-assets.ente.com/screenshots/qa/web-family-member-mom-storage-callout.png){width=720px}
+![Set storage limit highlighted on Mom member sheet with frosted email on Ente Photos web Family admin](https://docs-assets.ente.com/screenshots/web-family-member-mom-storage-callout.png){width=720px}
 
-![Set storage limit dialog set to 10 GB with Save highlighted on Ente Photos web; frosted Mom member email visible behind](https://docs-assets.ente.com/screenshots/qa/web-family-storage-limit-edit-callout.png){width=720px}
+![Set storage limit dialog set to 10 GB with Save highlighted on Ente Photos web; frosted Mom member email visible behind](https://docs-assets.ente.com/screenshots/web-family-storage-limit-edit-callout.png){width=720px}
 
 ## Related FAQs
 

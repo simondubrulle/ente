@@ -9,7 +9,7 @@ Ente Locker supports multiple item types, each designed for specific use cases. 
 
 ## Available types
 
-![Save to Locker item type picker on mobile](https://docs-assets.ente.com/screenshots/qa/locker-save-menu.png){width=320px}
+![Save to Locker item type picker on mobile](https://docs-assets.ente.com/screenshots/locker-save-menu.png){width=320px}
 
 ### Document
 

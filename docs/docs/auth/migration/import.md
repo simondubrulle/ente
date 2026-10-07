@@ -7,7 +7,7 @@ description: Guide for importing your existing 2FA tokens into Ente Auth from ot
 
 ---
 
-![Import codes provider list on Ente Auth mobile](https://docs-assets.ente.com/screenshots/qa/auth-import-hub.png){width=320px}
+![Import codes provider list on Ente Auth mobile](https://docs-assets.ente.com/screenshots/auth-import-hub.png){width=320px}
 
 Ente Auth natively supports imports from many 2FA providers. In addition to the providers specifically listed in the documentation, the supported providers are:
 

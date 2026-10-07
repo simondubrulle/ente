@@ -11,7 +11,7 @@ Rituals help you build a photo habit by prompting you to take photos on specific
 
 ## How rituals work
 
-![Rituals list and ritual detail side by side on Ente Photos mobile showing streaks recent days and month calendar](https://docs-assets.ente.com/screenshots/qa/phone-rituals-blog-duo.png){width=680px}
+![Rituals list and ritual detail side by side on Ente Photos mobile showing streaks recent days and month calendar](https://docs-assets.ente.com/screenshots/phone-rituals-blog-duo.png){width=680px}
 
 - Set a title and emoji icon
 - Pick the days of the week and a reminder time
@@ -21,7 +21,7 @@ Rituals help you build a photo habit by prompting you to take photos on specific
 
 ## Create a ritual
 
-![Create new ritual sheet on Ente Photos mobile with days album and reminder](https://docs-assets.ente.com/screenshots/qa/phone-rituals-create.png){width=320px}
+![Create new ritual sheet on Ente Photos mobile with days album and reminder](https://docs-assets.ente.com/screenshots/phone-rituals-create.png){width=320px}
 
 1. Open the Search tab and find the Rituals section
 2. Tap Create new ritual or the plus button
@@ -38,7 +38,7 @@ Rituals help you build a photo habit by prompting you to take photos on specific
 
 ## Reminders
 
-![Send reminder toggle and time on Create new ritual sheet on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-ritual-reminders-callout.png){width=320px}
+![Send reminder toggle and time on Create new ritual sheet on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-ritual-reminders-callout.png){width=320px}
 
 - Reminders run on the selected days at the time you choose
 - If you add a photo to the ritual album today, the app skips today's reminder
@@ -52,7 +52,7 @@ Rituals help you build a photo habit by prompting you to take photos on specific
 
 ## Manage rituals
 
-![Create new ritual sheet with days album and reminder controls on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-ritual-create-form.png){width=320px}
+![Create new ritual sheet with days album and reminder controls on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-ritual-create-form.png){width=320px}
 
 - Edit a ritual to update its title, icon, days, time, or album
 - Delete a ritual to remove it and stop reminders

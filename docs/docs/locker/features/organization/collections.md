@@ -11,9 +11,9 @@ Collections help you organize your items into groups. Create collections for dif
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Populated Locker home including Mom's insurance](https://docs-assets.ente.com/screenshots/qa/locker-home-populated.png){width=320px}
+![Populated Locker home including Mom's insurance](https://docs-assets.ente.com/screenshots/locker-home-populated.png){width=320px}
 
-![Mom's insurance row highlighted on Locker home](https://docs-assets.ente.com/screenshots/qa/locker-home-moms-insurance-callout.png){width=320px}
+![Mom's insurance row highlighted on Locker home](https://docs-assets.ente.com/screenshots/locker-home-moms-insurance-callout.png){width=320px}
 
 </div>
 
@@ -29,9 +29,9 @@ Unlike folders, items in Locker can belong to multiple collections at once. This
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Create collection button highlighted on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-collection-create-callout.png){width=320px}
+![Create collection button highlighted on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-collection-create-callout.png){width=320px}
 
-![New collection form with Family docs name on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-collection-create.png){width=320px}
+![New collection form with Family docs name on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-collection-create.png){width=320px}
 
 </div>
 
@@ -44,9 +44,9 @@ Unlike folders, items in Locker can belong to multiple collections at once. This
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Collections entry in Locker drawer](https://docs-assets.ente.com/screenshots/qa/locker-collections-nav-callout.png){width=320px}
+![Collections entry in Locker drawer](https://docs-assets.ente.com/screenshots/locker-collections-nav-callout.png){width=320px}
 
-![Locker home with filter chips and Home Wi-Fi note](https://docs-assets.ente.com/screenshots/qa/locker-home-with-note.png){width=320px}
+![Locker home with filter chips and Home Wi-Fi note](https://docs-assets.ente.com/screenshots/locker-home-with-note.png){width=320px}
 
 </div>
 
@@ -65,7 +65,7 @@ Unlike folders, items in Locker can belong to multiple collections at once. This
 
 ### Adding existing items to a collection
 
-![Family docs collection chip highlighted on Edit item sheet on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-add-existing-callout.png){width=320px}
+![Family docs collection chip highlighted on Edit item sheet on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-add-existing-callout.png){width=320px}
 
 1. Long press on the item
 2. Tap the edit button
@@ -92,9 +92,9 @@ An item can be in Uncategorized and another collection at the same time. Adding 
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Edit menu row highlighted for renaming a collection on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-rename-collection-entry-callout.png){width=320px}
+![Edit menu row highlighted for renaming a collection on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-rename-collection-entry-callout.png){width=320px}
 
-![Save button highlighted on Rename collection sheet on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-rename-collection-save-callout.png){width=320px}
+![Save button highlighted on Rename collection sheet on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-rename-collection-save-callout.png){width=320px}
 
 </div>
 
@@ -106,7 +106,7 @@ An item can be in Uncategorized and another collection at the same time. Adding 
 
 ### Deleting a collection
 
-![Delete menu row highlighted on a collection overflow menu on Ente Locker Android](https://docs-assets.ente.com/screenshots/qa/locker-delete-collection-callout.png){width=320px}
+![Delete menu row highlighted on a collection overflow menu on Ente Locker Android](https://docs-assets.ente.com/screenshots/locker-delete-collection-callout.png){width=320px}
 
 1. Open the collection
 2. Tap the menu icon

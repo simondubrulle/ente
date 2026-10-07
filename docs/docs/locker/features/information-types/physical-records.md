@@ -22,9 +22,9 @@ Things help you remember where important physical documents are stored. Track th
 
 <div style="display:flex;gap:16px;flex-wrap:wrap;align-items:flex-start">
 
-![Thing row in Save to Locker menu](https://docs-assets.ente.com/screenshots/qa/locker-thing-row-callout.png){width=320px}
+![Thing row in Save to Locker menu](https://docs-assets.ente.com/screenshots/locker-thing-row-callout.png){width=320px}
 
-![Create Thing form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-thing-form.png){width=320px}
+![Create Thing form on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-thing-form.png){width=320px}
 
 </div>
 

@@ -44,7 +44,7 @@ Receive reminders about memories from this day in previous years.
 
 ### Birthday notifications
 
-![Birthdays notification category highlighted on Ente Photos mobile Notifications settings](https://docs-assets.ente.com/screenshots/qa/phone-notifications-birthday-callout.png){width=320px}
+![Birthdays notification category highlighted on Ente Photos mobile Notifications settings](https://docs-assets.ente.com/screenshots/phone-notifications-birthday-callout.png){width=320px}
 
 Receive reminders when it's someone's birthday.
 
@@ -74,7 +74,7 @@ Receive reminders when it's someone's birthday.
 
 ### Customizing notification categories
 
-![Notification categories with toggles for shared photos likes memories and birthdays on Ente Photos mobile](https://docs-assets.ente.com/screenshots/qa/phone-notifications-settings.png){width=320px}
+![Notification categories with toggles for shared photos likes memories and birthdays on Ente Photos mobile](https://docs-assets.ente.com/screenshots/phone-notifications-settings.png){width=320px}
 
 Open `Settings > Notifications` in the Ente app to:
 

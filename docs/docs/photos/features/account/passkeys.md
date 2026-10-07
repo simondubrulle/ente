@@ -27,9 +27,9 @@ To add and remove passkeys, use the _Passkey_ option in the settings menu. This 
 
 <div align="center">
 
-![Passkeys management page with the Add passkey button on Ente Accounts web](https://docs-assets.ente.com/screenshots/qa/web-passkeys-manage.png){width=720px}
+![Passkeys management page with the Add passkey button on Ente Accounts web](https://docs-assets.ente.com/screenshots/web-passkeys-manage.png){width=720px}
 
-![Add passkey button highlighted on the Passkeys management page in Ente Accounts web](https://docs-assets.ente.com/screenshots/qa/web-passkeys-add-callout.png){width=720px}
+![Add passkey button highlighted on the Passkeys management page in Ente Accounts web](https://docs-assets.ente.com/screenshots/web-passkeys-add-callout.png){width=720px}
 
 </div>
 

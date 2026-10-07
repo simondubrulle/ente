@@ -77,7 +77,7 @@ Native downloads use ranged HTTP requests and retry automatically. The web versi
 
 ### Chat sessions and sidebar
 
-![Ensu web sidebar expanded with Today grouping and two chat sessions, plus New chat and collapse controls](https://docs-assets.ente.com/screenshots/qa/ensu-web-sidebar-sessions.png){width=720px}
+![Ensu web sidebar expanded with Today grouping and two chat sessions, plus New chat and collapse controls](https://docs-assets.ente.com/screenshots/ensu-web-sidebar-sessions.png){width=720px}
 
 Every conversation is a separate session, listed in the sidebar.
 

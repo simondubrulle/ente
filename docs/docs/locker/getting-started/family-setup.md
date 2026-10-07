@@ -132,7 +132,7 @@ Share collections so family members can access important documents. In Locker, y
 4. Enter your family member's Ente email address
 5. Tap **Share**
 
-![Share collection sheet with an Ente user (email frosted)](https://docs-assets.ente.com/screenshots/qa/locker-share-users.png){width=320px}
+![Share collection sheet with an Ente user (email frosted)](https://docs-assets.ente.com/screenshots/locker-share-users.png){width=320px}
 
 All items in the collection will be shared with that person.
 
@@ -168,7 +168,7 @@ Trusted contacts must already have Ente accounts.
 3. Tap **Legacy**
 4. Tap **Add Trusted Contact**
 
-![Legacy home with Add trusted contact](https://docs-assets.ente.com/screenshots/qa/locker-legacy-home-callout.png){width=320px}
+![Legacy home with Add trusted contact](https://docs-assets.ente.com/screenshots/locker-legacy-home-callout.png){width=320px}
 
 5. Enter your family member's Ente email address
 6. They must accept the invite in their Ente app

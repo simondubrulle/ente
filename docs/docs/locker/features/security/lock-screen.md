@@ -24,11 +24,11 @@ Set a numeric PIN code as an alternative or backup to biometric authentication.
 
 ## Enabling lock screen
 
-![Security entry in Locker drawer](https://docs-assets.ente.com/screenshots/qa/locker-security-nav-callout.png){width=320px}
+![Security entry in Locker drawer](https://docs-assets.ente.com/screenshots/locker-security-nav-callout.png){width=320px}
 
-![App lock row on Security settings highlighted](https://docs-assets.ente.com/screenshots/qa/locker-applock-callout.png){width=320px}
+![App lock row on Security settings highlighted](https://docs-assets.ente.com/screenshots/locker-applock-callout.png){width=320px}
 
-![Security settings with App lock on Ente Locker mobile](https://docs-assets.ente.com/screenshots/qa/locker-lock-screen.png){width=320px}
+![Security settings with App lock on Ente Locker mobile](https://docs-assets.ente.com/screenshots/locker-lock-screen.png){width=320px}
 
 1. Open Ente Locker
 2. Open `Settings > Security`
