@@ -35,6 +35,7 @@ import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
+import { photosTheme } from "ente-base/components/utils/theme";
 import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
@@ -81,6 +82,7 @@ import { Account, type AccountAction } from "./accounts/Account";
 import { ManageMemberSubscription } from "./accounts/ManageMemberSubscription";
 import { openManageSubscription } from "./accounts/subscription";
 import { Preferences, type PreferencesAction } from "./preferences/Preferences";
+import { sidebarTheme } from "./theme";
 
 type SidebarProps = ModalVisibilityProps & {
     normalCollectionSummaries: CollectionSummaries;
@@ -298,7 +300,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         sidebarOpen={open}
                         {...{ onShowPlanSelector }}
                     />
-                    <Stack sx={{ gap: 0.5 }}>
+                    <Stack
+                        sx={{
+                            gap: 0.75,
+                            "&&& > .MuiButton-root": {
+                                my: 0,
+                                "&:first-of-type": { mt: 1 },
+                                "&:hover": {
+                                    bgcolor:
+                                        "color-mix(in srgb, var(--mui-palette-text-base) 8%, var(--mui-palette-background-paper))",
+                                },
+                            },
+                        }}
+                    >
                         <ShortcutSection
                             onCloseSidebar={onClose}
                             {...{
@@ -320,7 +334,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                                 ),
                             }}
                         />
-                        <Divider sx={{ my: "2px" }} />
+                        <Divider sx={{ mx: 2.5, my: "2px" }} />
                         <ExitSection onLogout={handleLogout} />
                         <InfoSection />
                     </Stack>
@@ -390,7 +404,13 @@ type RootSidebarDrawerProps = React.PropsWithChildren<
     ModalVisibilityProps & { menu: React.ReactNode; onEnter?: () => void }
 >;
 
-function RootSidebarDrawer({
+const RootSidebarDrawer: React.FC<RootSidebarDrawerProps> = (props) => (
+    <ThemeProvider theme={sidebarTheme}>
+        <RootSidebarContents {...props} />
+    </ThemeProvider>
+);
+
+function RootSidebarContents({
     open,
     onClose,
     onEnter,
@@ -488,7 +508,43 @@ function RootSidebarDrawer({
                             minHeight: 0,
                         }}
                     >
-                        <Box sx={{ overflowY: "auto", scrollbarWidth: "thin" }}>
+                        <Box
+                            sx={{
+                                overflowY: "auto",
+                                scrollbarWidth: "thin",
+                                scrollbarColor: "transparent transparent",
+                                "&:hover, &:focus-within": {
+                                    scrollbarColor:
+                                        "color-mix(in srgb, var(--mui-palette-text-base) 20%, transparent) transparent",
+                                },
+                                "@supports selector(::-webkit-scrollbar)": {
+                                    scrollbarWidth: "auto",
+                                    scrollbarColor: "auto",
+                                    "&:hover, &:focus-within": {
+                                        scrollbarColor: "auto",
+                                    },
+                                    "&::-webkit-scrollbar": { width: "4px" },
+                                    "&::-webkit-scrollbar-track": {
+                                        bgcolor: "transparent",
+                                    },
+                                    "&::-webkit-scrollbar-thumb": {
+                                        bgcolor: "transparent",
+                                        borderRadius: "4px",
+                                    },
+                                    "&:hover::-webkit-scrollbar-thumb, &:focus-within::-webkit-scrollbar-thumb":
+                                        {
+                                            bgcolor:
+                                                "color-mix(in srgb, var(--mui-palette-text-base) 20%, transparent)",
+                                        },
+                                    "&::-webkit-scrollbar-button": {
+                                        display: "none",
+                                    },
+                                },
+                                "& .MuiDivider-root": {
+                                    borderColor: "stroke.muted",
+                                },
+                            }}
+                        >
                             {menu}
                         </Box>
                         <Box
@@ -517,8 +573,8 @@ interface SectionProps {
 }
 
 const HeaderSection: React.FC<SectionProps> = ({ onCloseSidebar }) => (
-    <SpacedRow sx={{ mt: { xs: "6px", md: 0 }, pl: "12px", flexShrink: 0 }}>
-        <Typography variant="h3" sx={{ fontSize: "22px" }}>
+    <SpacedRow sx={{ mt: { xs: "6px", md: 1 }, pl: "12px", flexShrink: 0 }}>
+        <Typography variant="h2" component="h3">
             {t("settings")}
         </Typography>
         <IconButton
@@ -528,7 +584,7 @@ const HeaderSection: React.FC<SectionProps> = ({ onCloseSidebar }) => (
             sx={{
                 width: { md: 40 },
                 height: { md: 40 },
-                bgcolor: { md: "fill.faint" },
+                bgcolor: { md: "fill.muted" },
             }}
         >
             <CloseIcon fontSize="small" />
@@ -572,10 +628,30 @@ const UserDetailsSection: React.FC<UserDetailsSectionProps> = ({
     return (
         <>
             <Box sx={{ px: 0.5, mt: 1.5, pb: 1.5, mb: 1 }}>
-                <SubscriptionCard
-                    userDetails={userDetails}
-                    onClick={handleSubscriptionCardClick}
-                />
+                <ThemeProvider theme={photosTheme}>
+                    <Box
+                        data-sidebar-subscription
+                        sx={(theme) => ({
+                            "--mui-palette-stroke-base":
+                                theme.colorSchemes.light?.palette.stroke.base,
+                            "--mui-palette-stroke-faint":
+                                theme.colorSchemes.light?.palette.stroke.faint,
+                            ...theme.applyStyles("dark", {
+                                "--mui-palette-stroke-base":
+                                    theme.colorSchemes.dark?.palette.stroke
+                                        .base,
+                                "--mui-palette-stroke-faint":
+                                    theme.colorSchemes.dark?.palette.stroke
+                                        .faint,
+                            }),
+                        })}
+                    >
+                        <SubscriptionCard
+                            userDetails={userDetails}
+                            onClick={handleSubscriptionCardClick}
+                        />
+                    </Box>
+                </ThemeProvider>
                 {userDetails && (
                     <SubscriptionStatus
                         {...{ userDetails, onShowPlanSelector }}
@@ -727,7 +803,25 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
         normalCollectionSummaries.get(summaryID)?.fileCount.toString();
 
     return (
-        <>
+        <Stack
+            sx={(theme) => ({
+                mx: 0.5,
+                gap: 0.5,
+                "&&& > .MuiButton-root": {
+                    bgcolor: theme.colorSchemes.light?.palette.fill.faint,
+                    "&:hover": {
+                        bgcolor: theme.colorSchemes.light?.palette.fill.muted,
+                    },
+                    ...theme.applyStyles("dark", {
+                        bgcolor: theme.colorSchemes.dark?.palette.fill.faint,
+                        "&:hover": {
+                            bgcolor:
+                                theme.colorSchemes.dark?.palette.fill.muted,
+                        },
+                    }),
+                },
+            })}
+        >
             <RowButton
                 startIcon={
                     <HugeiconsIcon
@@ -780,7 +874,7 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
                 caption={summaryCaption(PseudoCollectionID.trash)}
                 onClick={handleOpenTrashSection}
             />
-        </>
+        </Stack>
     );
 };
 
