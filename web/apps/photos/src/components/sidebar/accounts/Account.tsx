@@ -266,8 +266,7 @@ export const Account: React.FC<AccountProps> = ({
     useEffect(() => {
         if (!open || !pendingAction) return;
         if (
-            (pendingAction == "account.twoFactor" ||
-                pendingAction == "account.twoFactor.reconfigure") &&
+            pendingAction == "account.twoFactor.reconfigure" &&
             twoFactorEnabled === undefined
         )
             return;
@@ -282,7 +281,6 @@ export const Account: React.FC<AccountProps> = ({
                 handleReconfigureTwoFactor();
                 break;
             case "account.twoFactor":
-                handleTwoFactorToggle();
                 break;
             case "account.passkeys":
                 void handlePasskeys();
@@ -313,7 +311,6 @@ export const Account: React.FC<AccountProps> = ({
         onActionHandled,
         pendingAction,
         handleReconfigureTwoFactor,
-        handleTwoFactorToggle,
         twoFactorEnabled,
     ]);
 
