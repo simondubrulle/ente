@@ -35,6 +35,7 @@ import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
+import { photosTheme } from "ente-base/components/utils/theme";
 import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
@@ -81,6 +82,7 @@ import { Account, type AccountAction } from "./accounts/Account";
 import { ManageMemberSubscription } from "./accounts/ManageMemberSubscription";
 import { openManageSubscription } from "./accounts/subscription";
 import { Preferences, type PreferencesAction } from "./preferences/Preferences";
+import { sidebarTheme } from "./theme";
 
 type SidebarProps = ModalVisibilityProps & {
     normalCollectionSummaries: CollectionSummaries;
@@ -390,7 +392,13 @@ type RootSidebarDrawerProps = React.PropsWithChildren<
     ModalVisibilityProps & { menu: React.ReactNode; onEnter?: () => void }
 >;
 
-function RootSidebarDrawer({
+const RootSidebarDrawer: React.FC<RootSidebarDrawerProps> = (props) => (
+    <ThemeProvider theme={sidebarTheme}>
+        <RootSidebarContents {...props} />
+    </ThemeProvider>
+);
+
+function RootSidebarContents({
     open,
     onClose,
     onEnter,
@@ -488,7 +496,19 @@ function RootSidebarDrawer({
                             minHeight: 0,
                         }}
                     >
-                        <Box sx={{ overflowY: "auto", scrollbarWidth: "thin" }}>
+                        <Box
+                            sx={{
+                                overflowY: "auto",
+                                scrollbarWidth: "thin",
+                                "& .MuiDivider-root": {
+                                    borderColor: "stroke.muted",
+                                },
+                                "&& .MuiButton-root:hover": {
+                                    bgcolor:
+                                        "color-mix(in srgb, var(--mui-palette-text-base) 8%, var(--mui-palette-background-paper))",
+                                },
+                            }}
+                        >
                             {menu}
                         </Box>
                         <Box
@@ -518,7 +538,7 @@ interface SectionProps {
 
 const HeaderSection: React.FC<SectionProps> = ({ onCloseSidebar }) => (
     <SpacedRow sx={{ mt: { xs: "6px", md: 0 }, pl: "12px", flexShrink: 0 }}>
-        <Typography variant="h3" sx={{ fontSize: "22px" }}>
+        <Typography variant="h2" component="h3">
             {t("settings")}
         </Typography>
         <IconButton
@@ -572,10 +592,30 @@ const UserDetailsSection: React.FC<UserDetailsSectionProps> = ({
     return (
         <>
             <Box sx={{ px: 0.5, mt: 1.5, pb: 1.5, mb: 1 }}>
-                <SubscriptionCard
-                    userDetails={userDetails}
-                    onClick={handleSubscriptionCardClick}
-                />
+                <ThemeProvider theme={photosTheme}>
+                    <Box
+                        data-sidebar-subscription
+                        sx={(theme) => ({
+                            "--mui-palette-stroke-base":
+                                theme.colorSchemes.light?.palette.stroke.base,
+                            "--mui-palette-stroke-faint":
+                                theme.colorSchemes.light?.palette.stroke.faint,
+                            ...theme.applyStyles("dark", {
+                                "--mui-palette-stroke-base":
+                                    theme.colorSchemes.dark?.palette.stroke
+                                        .base,
+                                "--mui-palette-stroke-faint":
+                                    theme.colorSchemes.dark?.palette.stroke
+                                        .faint,
+                            }),
+                        })}
+                    >
+                        <SubscriptionCard
+                            userDetails={userDetails}
+                            onClick={handleSubscriptionCardClick}
+                        />
+                    </Box>
+                </ThemeProvider>
                 {userDetails && (
                     <SubscriptionStatus
                         {...{ userDetails, onShowPlanSelector }}

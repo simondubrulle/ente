@@ -440,7 +440,7 @@ const ReferralCodeCard: React.FC<ReferralCodeCardProps> = ({
         sx={{
             position: "relative",
             border: "1px dashed",
-            borderColor: "stroke.muted",
+            borderColor: "fill.muted",
             borderRadius: 2,
             px: 2,
             py: 3,
@@ -448,8 +448,10 @@ const ReferralCodeCard: React.FC<ReferralCodeCardProps> = ({
         }}
     >
         <Typography
-            variant="h3"
+            variant="h2"
+            component="h3"
             sx={{
+                fontSize: "28px",
                 letterSpacing: "0.08em",
                 overflowWrap: "anywhere",
                 ...(onEdit && { px: 6 }),
@@ -497,7 +499,11 @@ const SuccessContents: React.FC<SuccessContentsProps> = ({
                 <CheckCircleOutlinedIcon
                     sx={{ color: "accent.main", fontSize: 72 }}
                 />
-                <Typography variant="h3" sx={{ textAlign: "center" }}>
+                <Typography
+                    variant="h2"
+                    component="h3"
+                    sx={{ textAlign: "center" }}
+                >
                     {t("referral_storage_claimed", {
                         storageAmountInGB: planInfo.storageInGB,
                     })}
@@ -511,7 +517,12 @@ const SuccessContents: React.FC<SuccessContentsProps> = ({
                 />
             </RowButtonGroup>
             <Stack sx={{ gap: 2 }}>
-                <Typography variant="h5">{t("earn_more_space")}</Typography>
+                <Typography
+                    variant="h5"
+                    sx={{ fontSize: "16px", lineHeight: "22px" }}
+                >
+                    {t("earn_more_space")}
+                </Typography>
                 <ReferralCodeCard code={code} />
                 <Typography sx={{ color: "text.muted" }}>
                     {t("referral_storage_for_both", {
@@ -840,7 +851,7 @@ const DetailsContents: React.FC<DetailsContentsProps> = ({
                         }}
                     >
                         <Typography>{label}</Typography>
-                        <Typography sx={{ fontWeight: "medium" }}>
+                        <Typography sx={{ fontWeight: 600 }}>
                             {value}
                         </Typography>
                     </Stack>
