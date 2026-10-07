@@ -24,7 +24,7 @@ export const SidebarDrawer: React.FC<DrawerProps> = ({
             ...(slotProps ?? {}),
             paper: {
                 sx: {
-                    maxWidth: "375px",
+                    maxWidth: "440px",
                     width: "100%",
                     scrollbarWidth: "thin",
                     // Extra specificity overrides inherited padding.
@@ -88,9 +88,6 @@ type SidebarDrawerTitlebarProps = Pick<
 > & {
     title: string;
     caption?: string;
-    // TODO: Default to the new UI's inset and title size once it is adopted.
-    contentInset?: string;
-    titleFontSize?: string;
     actionButton?: React.ReactNode;
     showRootCloseButton?: boolean;
 };
@@ -98,8 +95,6 @@ type SidebarDrawerTitlebarProps = Pick<
 export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
     title,
     caption,
-    contentInset,
-    titleFontSize,
     onClose,
     onRootClose,
     actionButton,
@@ -107,11 +102,7 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
 }) => (
     <Stack sx={{ gap: "4px" }}>
         <Stack direction="row" sx={{ justifyContent: "space-between" }}>
-            <IconButton
-                onClick={onClose}
-                color="primary"
-                sx={{ ml: contentInset }}
-            >
+            <IconButton onClick={onClose} color="primary" sx={{ ml: "0.5rem" }}>
                 <ArrowBackIcon />
             </IconButton>
             <Stack direction="row" sx={{ gap: "4px" }}>
@@ -123,14 +114,8 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
                 )}
             </Stack>
         </Stack>
-        <Stack
-            sx={{
-                pl: contentInset ? `calc(16px + ${contentInset})` : "16px",
-                pr: "16px",
-                gap: "4px",
-            }}
-        >
-            <Typography variant="h3" sx={{ fontSize: titleFontSize }}>
+        <Stack sx={{ pl: "calc(16px + 0.5rem)", pr: "16px", gap: "4px" }}>
+            <Typography variant="h3" sx={{ fontSize: "22px" }}>
                 {title}
             </Typography>
             <Typography
@@ -138,7 +123,6 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
                 sx={{
                     color: "text.muted",
                     wordBreak: "break-all",
-                    px: contentInset ? 0 : "1px",
                     minHeight: "17px",
                 }}
             >

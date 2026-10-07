@@ -68,8 +68,6 @@ export const FreeUpSpace: React.FC<FreeUpSpaceProps> = ({
             onRootClose={handleRootClose}
             title={t("free_up_space")}
             caption="Review large files and duplicates to reclaim storage."
-            contentInset="0.5rem"
-            titleFontSize="22px"
         >
             <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                 <RowCard

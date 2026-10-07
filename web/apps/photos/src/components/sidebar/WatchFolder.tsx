@@ -1,33 +1,25 @@
 import { CollectionMappingChoice } from "@/components/CollectionMappingChoice";
 import watcher from "@/services/watch";
-import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
-import DoNotDisturbOutlinedIcon from "@mui/icons-material/DoNotDisturbOutlined";
-import FolderCopyOutlinedIcon from "@mui/icons-material/FolderCopyOutlined";
-import FolderOpenIcon from "@mui/icons-material/FolderOpen";
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import RefreshIcon from "@mui/icons-material/Refresh";
-import WarningAmberIcon from "@mui/icons-material/WarningAmber";
+import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
 import {
     CircularProgress,
-    Dialog,
-    DialogContent,
-    DialogTitle,
+    Divider,
+    IconButton,
     Stack,
     Tooltip,
     Typography,
+    useTheme,
 } from "@mui/material";
-import { CenteredFill, SpacedRow } from "ente-base/components/containers";
-import { DialogCloseIconButton } from "ente-base/components/mui/DialogCloseIconButton";
-import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
+import { CenteredFill } from "ente-base/components/containers";
 import {
-    OverflowMenu,
-    OverflowMenuOption,
-} from "ente-base/components/OverflowMenu";
-import { EllipsizedTypography } from "ente-base/components/Typography";
-import {
-    useModalVisibility,
-    type ModalVisibilityProps,
-} from "ente-base/components/utils/modal";
+    TitledNestedSidebarDrawer,
+    type NestedSidebarDrawerVisibilityProps,
+} from "ente-base/components/mui/SidebarDrawer";
+import { useModalVisibility } from "ente-base/components/utils/modal";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import {
     ensureElectron,
@@ -38,16 +30,23 @@ import type { CollectionMapping, FolderWatch } from "ente-base/types/ipc";
 import { t } from "i18next";
 import React, { useEffect, useRef, useState } from "react";
 
-export const WatchFolder: React.FC<ModalVisibilityProps> = ({
+export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
     open,
     onClose,
+    onRootClose,
 }) => {
+    const theme = useTheme();
     const [watches, setWatches] = useState<FolderWatch[] | undefined>();
     const [savedFolderPath, setSavedFolderPath] = useState<
         string | undefined
     >();
     const { show: showMappingChoice, props: mappingChoiceVisibilityProps } =
         useModalVisibility();
+
+    const handleRootClose = () => {
+        onClose();
+        onRootClose();
+    };
 
     const refreshWatches = async () => {
         const ws = await watcher.getWatches();
@@ -127,36 +126,62 @@ export const WatchFolder: React.FC<ModalVisibilityProps> = ({
 
     return (
         <>
-            <Dialog
-                open={open}
-                onClose={onClose}
-                fullWidth
-                slotProps={{
-                    paper: { sx: { height: "448px", maxWidth: "444px" } },
-                }}
+            <TitledNestedSidebarDrawer
+                {...{ open, onClose }}
+                onRootClose={handleRootClose}
+                title={t("watch_folders")}
+                caption="Folders on this computer that are backed up automatically whenever files change."
             >
-                <SpacedRow sx={{ p: "16px 8px 0px 8px" }}>
-                    <DialogTitle variant="h3">
-                        {t("watched_folders")}
-                    </DialogTitle>
-                    <DialogCloseIconButton {...{ onClose }} />
-                </SpacedRow>
-                <DialogContent sx={{ flex: 1 }}>
-                    <Stack sx={{ gap: 1, p: 1.5, height: "100%" }}>
-                        <WatchList
-                            {...{ watches, removeWatch, refreshWatches }}
-                        />
-                        <FocusVisibleButton
-                            fullWidth
-                            color="accent"
-                            onClick={addNewWatch}
-                            startIcon={<AddIcon />}
+                <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                    <WatchList {...{ watches, removeWatch, refreshWatches }} />
+                    <Divider sx={{ opacity: 0.4 }} />
+                    <button
+                        type="button"
+                        onClick={addNewWatch}
+                        style={{
+                            display: "flex",
+                            width: "100%",
+                            padding: "8px 8px 8px 0.5rem",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            border: 0,
+                            background: "transparent",
+                            color: "inherit",
+                            font: "inherit",
+                            textAlign: "left",
+                            cursor: "pointer",
+                        }}
+                    >
+                        <span
+                            style={{ display: "flex", flexDirection: "column" }}
                         >
-                            {t("add_folder")}
-                        </FocusVisibleButton>
-                    </Stack>
-                </DialogContent>
-            </Dialog>
+                            <span
+                                style={{
+                                    color: theme.vars.palette.accent.main,
+                                }}
+                            >
+                                {t("add_folder")}
+                            </span>
+                            <span
+                                style={{
+                                    fontSize: "14px",
+                                    lineHeight: "20px",
+                                    fontWeight: 400,
+                                    color: theme.vars.palette.text.muted,
+                                }}
+                            >
+                                Choose a folder to watch
+                            </span>
+                        </span>
+                        <span style={{ display: "flex", padding: "8px" }}>
+                            <ChevronRightIcon
+                                sx={{ fontSize: "20px", color: "text.muted" }}
+                            />
+                        </span>
+                    </button>
+                    <Divider sx={{ opacity: 0.4 }} />
+                </Stack>
+            </TitledNestedSidebarDrawer>
             <CollectionMappingChoice
                 {...mappingChoiceVisibilityProps}
                 onSelect={handleCollectionMappingSelect}
@@ -177,7 +202,7 @@ const WatchList: React.FC<WatchListProps> = ({
     refreshWatches,
 }) =>
     watches?.length ? (
-        <Stack sx={{ gap: 2, flex: 1, overflowY: "auto", pb: 2, pr: 1 }}>
+        <Stack sx={{ gap: 1 }}>
             {watches.map((watch) => (
                 <WatchEntry
                     key={watch.folderPath}
@@ -261,103 +286,56 @@ const WatchEntry: React.FC<WatchEntryProps> = ({
         retryTimerRef.current = setTimeout(() => setIsRetrying(false), 1000);
     };
 
+    const count = watch.syncedFiles.length;
+    const mapping =
+        watch.collectionMapping == "root"
+            ? `synced to "${basename(watch.folderPath)}"`
+            : "synced to separate albums";
+    const subtitle = !isAccessible
+        ? t("folder_not_accessible")
+        : `${count.toLocaleString()} ${count == 1 ? "file" : "files"} · ${watcher.isSyncingFolder(watch.folderPath) ? "Syncing" : mapping}`;
+
     return (
-        <SpacedRow
-            sx={{
-                overflow: "hidden",
-                flexShrink: 0,
-                opacity: isAccessible ? 1 : 0.7,
-            }}
-        >
-            <Stack direction="row" sx={{ overflow: "hidden", gap: 1.5 }}>
-                {isRetrying ? (
-                    <CircularProgress
-                        size={24}
-                        sx={{ color: "stroke.muted" }}
-                    />
-                ) : !isAccessible ? (
-                    <Tooltip title={t("folder_not_accessible")}>
-                        <WarningAmberIcon color="warning" />
+        <RowCard
+            title={`/${watch.folderPath
+                .split(/[\\/]/)
+                .filter(Boolean)
+                .slice(-2)
+                .join("/")}`}
+            subtitle={subtitle}
+            endIcon={
+                <Stack
+                    direction="row"
+                    sx={{ alignItems: "center", flexShrink: 0 }}
+                >
+                    {!isAccessible && (
+                        <Tooltip title={t("retry_watching")}>
+                            <IconButton
+                                aria-label={`${t("retry_watching")}: ${watch.folderPath}`}
+                                onClick={handleRetry}
+                                disabled={isRetrying}
+                            >
+                                {isRetrying ? (
+                                    <CircularProgress size={20} />
+                                ) : (
+                                    <RefreshIcon />
+                                )}
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                    <Tooltip title={t("stop_watching")}>
+                        <IconButton
+                            aria-label={`${t("stop_watching")}: ${watch.folderPath}`}
+                            onClick={confirmStopWatching}
+                        >
+                            <StopCircleOutlinedIcon />
+                        </IconButton>
                     </Tooltip>
-                ) : watch.collectionMapping == "root" ? (
-                    <Tooltip title={t("uploaded_to_single_collection")}>
-                        <FolderOpenIcon color="secondary" />
-                    </Tooltip>
-                ) : (
-                    <Tooltip title={t("uploaded_to_separate_collections")}>
-                        <FolderCopyOutlinedIcon color="secondary" />
-                    </Tooltip>
-                )}
-                <Stack sx={{ overflow: "hidden" }}>
-                    <EntryHeading watch={watch} />
-                    <FolderPath>{watch.folderPath}</FolderPath>
                 </Stack>
-            </Stack>
-            <EntryOptions
-                confirmStopWatching={confirmStopWatching}
-                isAccessible={isAccessible}
-                onRetry={handleRetry}
-            />
-        </SpacedRow>
+            }
+        />
     );
 };
-
-interface EntryHeadingProps {
-    watch: FolderWatch;
-}
-
-const EntryHeading: React.FC<EntryHeadingProps> = ({
-    watch: { folderPath },
-}) => (
-    <Stack
-        direction="row"
-        sx={{ gap: 1.5, alignItems: "center", justifyContent: "flex-start" }}
-    >
-        <Typography>{basename(folderPath)}</Typography>
-        {watcher.isSyncingFolder(folderPath) && (
-            <CircularProgress
-                size={15}
-                sx={{ flexShrink: 0, color: "stroke.muted" }}
-            />
-        )}
-    </Stack>
-);
-
-const FolderPath: React.FC<React.PropsWithChildren> = ({ children }) => (
-    <EllipsizedTypography variant="small" color="text.muted">
-        {children}
-    </EllipsizedTypography>
-);
-
-interface EntryOptionsProps {
-    confirmStopWatching: () => void;
-    isAccessible: boolean;
-    onRetry: () => void;
-}
-
-const EntryOptions: React.FC<EntryOptionsProps> = ({
-    confirmStopWatching,
-    isAccessible,
-    onRetry,
-}) => (
-    <OverflowMenu
-        ariaID={"watch-mapping-option"}
-        menuPaperSxProps={{ backgroundColor: "background.paper2" }}
-    >
-        {!isAccessible && (
-            <OverflowMenuOption onClick={onRetry} startIcon={<RefreshIcon />}>
-                {t("retry_watching")}
-            </OverflowMenuOption>
-        )}
-        <OverflowMenuOption
-            color="critical"
-            onClick={confirmStopWatching}
-            startIcon={<DoNotDisturbOutlinedIcon />}
-        >
-            {t("stop_watching")}
-        </OverflowMenuOption>
-    </OverflowMenu>
-);
 
 const areAllInSameDirectory = (paths: string[]) =>
     new Set(paths.map(dirname)).size == 1;

@@ -670,6 +670,7 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 <WatchFolder
                     open={watchFolderView}
                     onClose={onCloseWatchFolder}
+                    onRootClose={onCloseSidebar}
                 />
             )}
             <Account
