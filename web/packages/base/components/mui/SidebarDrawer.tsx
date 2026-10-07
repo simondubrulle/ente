@@ -88,6 +88,9 @@ type SidebarDrawerTitlebarProps = Pick<
 > & {
     title: string;
     caption?: string;
+    // TODO: Default to the new UI's inset and title size once it is adopted.
+    contentInset?: string;
+    titleFontSize?: string;
     actionButton?: React.ReactNode;
     showRootCloseButton?: boolean;
 };
@@ -95,6 +98,8 @@ type SidebarDrawerTitlebarProps = Pick<
 export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
     title,
     caption,
+    contentInset,
+    titleFontSize,
     onClose,
     onRootClose,
     actionButton,
@@ -102,7 +107,11 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
 }) => (
     <Stack sx={{ gap: "4px" }}>
         <Stack direction="row" sx={{ justifyContent: "space-between" }}>
-            <IconButton onClick={onClose} color="primary">
+            <IconButton
+                onClick={onClose}
+                color="primary"
+                sx={{ ml: contentInset }}
+            >
                 <ArrowBackIcon />
             </IconButton>
             <Stack direction="row" sx={{ gap: "4px" }}>
@@ -114,14 +123,22 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
                 )}
             </Stack>
         </Stack>
-        <Stack sx={{ px: "16px", gap: "4px" }}>
-            <Typography variant="h3">{title}</Typography>
+        <Stack
+            sx={{
+                pl: contentInset ? `calc(16px + ${contentInset})` : "16px",
+                pr: "16px",
+                gap: "4px",
+            }}
+        >
+            <Typography variant="h3" sx={{ fontSize: titleFontSize }}>
+                {title}
+            </Typography>
             <Typography
                 variant="small"
                 sx={{
                     color: "text.muted",
                     wordBreak: "break-all",
-                    px: "1px",
+                    px: contentInset ? 0 : "1px",
                     minHeight: "17px",
                 }}
             >
