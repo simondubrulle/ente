@@ -7,6 +7,7 @@ import {
 } from "@mui/material";
 import { SidebarPanelContext } from "ente-base/components/mui/SidebarDrawerContext";
 import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
+import { useSettingsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
 import { t } from "i18next";
 import React, { useRef } from "react";
 
@@ -18,11 +19,12 @@ export function SidebarDrawerShell({
 }: React.PropsWithChildren<ModalVisibilityProps>) {
     const theme = useTheme();
     const wide = useMediaQuery(theme.breakpoints.up("md"));
+    const { isInternalUser } = useSettingsSnapshot();
     const panel = useRef<HTMLDivElement>(null);
     const container = () => panel.current;
 
-    // ponytail: retain the existing stacked layout on narrow screens.
-    if (!wide) return children;
+    // ponytail: retain stacked drawers outside the internal wide-screen preview.
+    if (!isInternalUser || !wide) return children;
 
     return (
         <Dialog
