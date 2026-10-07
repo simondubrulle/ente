@@ -4,6 +4,7 @@ import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton"
 import React from "react";
 
 interface RowCardProps {
+    variant?: "default" | "parent";
     title: React.ReactNode;
     subtitle?: string;
     onClick?: () => void;
@@ -11,10 +12,11 @@ interface RowCardProps {
 }
 
 export const RowCard: React.FC<RowCardProps> = ({
+    variant = "default",
     title,
     subtitle,
     onClick,
-    endIcon = <ChevronRightIcon />,
+    endIcon = <ChevronRightIcon className="ente-chevron-right" />,
 }) => (
     <Box
         component={onClick ? FocusVisibleButton : "div"}
@@ -31,12 +33,24 @@ export const RowCard: React.FC<RowCardProps> = ({
                 borderRadius: "10px",
                 color: "text.base",
                 bgcolor: "transparent",
-                "&:hover": { bgcolor: "fill.faintHover" },
+                "&:hover": { bgcolor: onClick ? "fill.faintHover" : undefined },
                 "& .MuiSvgIcon-root": { fontSize: "20px", color: "text.muted" },
+            },
+            variant == "parent" && {
+                px: 2,
+                m: 0.5,
+                width: "calc(100% - 8px)",
+                borderRadius: 2,
             },
             (theme) =>
                 theme.applyStyles("dark", {
-                    "&:hover": { bgcolor: "backdrop.muted" },
+                    "&:hover": {
+                        bgcolor: onClick
+                            ? variant == "parent"
+                                ? "fill.faintHover"
+                                : "backdrop.muted"
+                            : undefined,
+                    },
                 }),
         ]}
     >

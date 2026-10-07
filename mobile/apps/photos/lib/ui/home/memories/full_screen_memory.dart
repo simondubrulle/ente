@@ -353,11 +353,18 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
   // Tokenises a pending zoom-start so a newer onFinalFileLoad cleanly
   // invalidates the prior delayed forward.
   Object? _kenBurnsStartToken;
+  bool _isRouteCurrent = true;
   bool _isViewerPaused = false;
-  bool _isMusicViewerActionPaused = false;
+  bool _isViewerActionPaused = false;
   bool _isPlaybackPaused = false;
   bool get _isAnimationPaused =>
-      !widget.isActive || _isViewerPaused || _isPlaybackPaused;
+      !widget.isActive ||
+      !_isRouteCurrent ||
+      _isViewerPaused ||
+      _isViewerActionPaused ||
+      _isPlaybackPaused;
+  bool get _isMediaPlaybackActive =>
+      widget.isActive && _isRouteCurrent && !_isViewerActionPaused;
   bool _isMediaInteractionLocked = false;
   final _socialControlsVisible = ValueNotifier<bool>(false);
   FullScreenMemoryData? _memoryData;
@@ -419,6 +426,11 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    final isRouteCurrent = ModalRoute.isCurrentOf(context) ?? true;
+    if (_isRouteCurrent != isRouteCurrent) {
+      _isRouteCurrent = isRouteCurrent;
+      _syncAnimationState();
+    }
     final memoryData = FullScreenMemoryData.of(context);
     _memoryData = memoryData;
     final nextNotifier = memoryData?.indexNotifier;
@@ -463,7 +475,7 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
     MemoryAudioScope.maybeOf(context, listen: false)?.activateMusic(
       widget.memoryID,
       currentItemIsVideo: file.fileType == FileType.video,
-      viewerActionPaused: _isMusicViewerActionPaused,
+      viewerActionPaused: _isViewerActionPaused || !_isRouteCurrent,
     );
   }
 
@@ -668,7 +680,7 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
 
   void _pauseViewer() {
     if (!mounted) return;
-    _isMusicViewerActionPaused = true;
+    setState(() => _isViewerActionPaused = true);
     MemoryAudioScope.maybeOf(
       context,
       listen: false,
@@ -679,13 +691,15 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
 
   void _resumeViewer() {
     if (!mounted) return;
-    _isMusicViewerActionPaused = false;
-    Bus.instance.fire(ResumeVideoEvent());
+    setState(() => _isViewerActionPaused = false);
+    if (_isMediaPlaybackActive) {
+      Bus.instance.fire(ResumeVideoEvent());
+    }
     _toggleAnimation(pause: false);
     MemoryAudioScope.maybeOf(
       context,
       listen: false,
-    )?.setMusicViewerActionPaused(false);
+    )?.setMusicViewerActionPaused(!_isRouteCurrent);
   }
 
   @override
@@ -781,7 +795,7 @@ class _FullScreenMemoryState extends State<FullScreenMemory> {
                         isVideo: isVideo,
                         child: FileWidget(
                           currentFile,
-                          isActive: widget.isActive,
+                          isActive: _isMediaPlaybackActive,
                           itemIndex: safeIndex,
                           activeItemIndexListenable:
                               inheritedData.indexNotifier,

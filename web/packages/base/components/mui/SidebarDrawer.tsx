@@ -11,7 +11,11 @@ import {
 } from "@mui/material";
 import { isDesktop } from "ente-base/app";
 import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
-import React from "react";
+import React, { useContext } from "react";
+import {
+    SidebarDrawerDepthContext,
+    SidebarPanelContext,
+} from "./SidebarDrawerContext";
 
 type SidebarDrawerProps = DrawerProps & { maxWidth?: string };
 
@@ -20,26 +24,52 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     children,
     maxWidth = "375px",
     ...rest
-}) => (
-    <Drawer
-        {...rest}
-        slotProps={{
-            ...(slotProps ?? {}),
-            paper: {
-                sx: {
-                    maxWidth,
-                    width: "100%",
-                    scrollbarWidth: "thin",
-                    // Extra specificity overrides inherited padding.
-                    "&&": { padding: 0 },
+}) => {
+    const container = useContext(SidebarPanelContext);
+    const inShell = !!container;
+    return (
+        <Drawer
+            {...rest}
+            {...(inShell && {
+                variant: "temporary",
+                container,
+                disableEnforceFocus: true,
+                disableScrollLock: true,
+                sx: { position: "absolute", inset: 0 },
+            })}
+            slotProps={{
+                ...(slotProps ?? {}),
+                ...(inShell && {
+                    backdrop: {
+                        sx: {
+                            position: "absolute",
+                            backgroundColor: "transparent",
+                        },
+                    },
+                }),
+                paper: {
+                    sx: {
+                        maxWidth: inShell ? "none" : maxWidth,
+                        width: "100%",
+                        ...(inShell && {
+                            position: "absolute",
+                            boxSizing: "border-box",
+                            bgcolor: "background.paper2",
+                            boxShadow: "none",
+                            border: 0,
+                        }),
+                        scrollbarWidth: "thin",
+                        // Extra specificity overrides inherited padding.
+                        "&&": { padding: 0 },
+                    },
                 },
-            },
-        }}
-    >
-        {isDesktop && <AppTitlebarBackdrop />}
-        <Box sx={{ p: 1 }}>{children}</Box>
-    </Drawer>
-);
+            }}
+        >
+            {isDesktop && !inShell && <AppTitlebarBackdrop />}
+            <Box sx={{ p: 1 }}>{children}</Box>
+        </Drawer>
+    );
+};
 
 // Keep scrolling content behind the desktop titlebar and traffic lights.
 const AppTitlebarBackdrop = styled("div")(({ theme }) => ({
@@ -93,6 +123,7 @@ type SidebarDrawerTitlebarProps = Pick<
     caption?: string;
     actionButton?: React.ReactNode;
     showRootCloseButton?: boolean;
+    showBackButton?: boolean;
 };
 
 export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
@@ -102,17 +133,25 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
     onRootClose,
     actionButton,
     showRootCloseButton = true,
+    showBackButton = true,
 }) => (
     <Stack sx={{ gap: "4px" }}>
-        <Stack direction="row" sx={{ justifyContent: "space-between" }}>
-            <IconButton
-                aria-label="Back"
-                onClick={onClose}
-                color="primary"
-                sx={{ ml: "0.5rem" }}
-            >
-                <ArrowBackIcon />
-            </IconButton>
+        <Stack
+            direction="row"
+            sx={{
+                justifyContent: showBackButton ? "space-between" : "flex-end",
+            }}
+        >
+            {showBackButton && (
+                <IconButton
+                    aria-label="Back"
+                    onClick={onClose}
+                    color="primary"
+                    sx={{ ml: "0.5rem" }}
+                >
+                    <ArrowBackIcon />
+                </IconButton>
+            )}
             <Stack direction="row" sx={{ gap: "4px" }}>
                 {actionButton && actionButton}
                 {showRootCloseButton && (
@@ -150,11 +189,28 @@ export const TitledNestedSidebarDrawer: React.FC<
             Pick<SidebarDrawerProps, "anchor" | "maxWidth"> &
             SidebarDrawerTitlebarProps
     >
-> = ({ open, onClose, onRootClose, anchor, maxWidth, children, ...rest }) => (
-    <NestedSidebarDrawer {...{ open, onClose, onRootClose, anchor, maxWidth }}>
-        <Stack sx={{ gap: "4px", py: "12px" }}>
-            <SidebarDrawerTitlebar {...{ onClose, onRootClose }} {...rest} />
-            {children}
-        </Stack>
-    </NestedSidebarDrawer>
-);
+> = ({ open, onClose, onRootClose, anchor, maxWidth, children, ...rest }) => {
+    const container = useContext(SidebarPanelContext);
+    const depth = useContext(SidebarDrawerDepthContext);
+    return (
+        <NestedSidebarDrawer
+            {...{ open, onClose, onRootClose, anchor, maxWidth }}
+        >
+            <Stack sx={{ gap: "4px", py: "12px" }}>
+                <SidebarDrawerTitlebar
+                    {...{ onClose, onRootClose }}
+                    {...rest}
+                    showRootCloseButton={
+                        !container && (rest.showRootCloseButton ?? true)
+                    }
+                    showBackButton={
+                        rest.showBackButton ?? (!container || depth > 0)
+                    }
+                />
+                <SidebarDrawerDepthContext.Provider value={depth + 1}>
+                    {children}
+                </SidebarDrawerDepthContext.Provider>
+            </Stack>
+        </NestedSidebarDrawer>
+    );
+};
