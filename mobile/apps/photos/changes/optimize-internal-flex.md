@@ -1,2 +1,1 @@
 - Improved gallery layout calculation speed for the internal Justified · Flex option, especially on wider screens.
-- Selecting the internal Flex layout now sets the row count to 2.
