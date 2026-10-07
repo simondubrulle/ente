@@ -2163,7 +2163,11 @@ const Page: React.FC = () => {
                     onSubmit={handleEditAlbumDetails}
                 />
             )}
-            <Export {...exportVisibilityProps} {...{ collectionNameByID }} />
+            <Export
+                {...exportVisibilityProps}
+                {...{ collectionNameByID }}
+                onRootClose={handleSidebarClose}
+            />
             <AuthenticateUser
                 open={authenticateUserVisibilityProps.open}
                 onClose={handleCloseAuthenticateUser}
