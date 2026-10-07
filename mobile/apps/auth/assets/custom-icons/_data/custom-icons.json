@@ -745,6 +745,11 @@
       "title": "DMarket"
     },
     {
+      "title": "Doccle",
+      "slug": "doccle",
+      "hex": "91cd44"
+    },
+    {
       "title": "Docker",
       "slug": "docker",
       "altNames": [
@@ -1573,6 +1578,11 @@
       ]
     },
     {
+      "title": "Mercury",
+      "slug": "mercury",
+      "hex": "000000"
+    },
+    {
       "title": "MEXC"
     },
     {
@@ -1901,6 +1911,11 @@
     },
     {
       "title": "Parsec"
+    },
+    {
+      "title": "Passbolt",
+      "slug": "passbolt",
+      "hex": "D40101"
     },
     {
       "title": "Patchmon",

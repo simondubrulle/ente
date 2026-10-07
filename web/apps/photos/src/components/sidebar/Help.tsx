@@ -1,17 +1,9 @@
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import InfoOutlinedIcon from "@mui/icons-material/InfoOutlined";
-import NorthEastIcon from "@mui/icons-material/NorthEast";
-import { Stack, Tooltip } from "@mui/material";
-import Typography from "@mui/material/Typography";
-import {
-    RowButton,
-    RowButtonDivider,
-    RowButtonGroup,
-} from "ente-base/components/RowButton";
+import { Stack } from "@mui/material";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
 import { savedLogs } from "ente-base/log-web";
@@ -120,51 +112,37 @@ export const Help: React.FC<HelpProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("help")}
         >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<InfoOutlinedIcon />}
-                        label={t("ente_help")}
-                        onClick={handleHelp}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<NorthEastIcon />}
-                        label={t("blog")}
-                        onClick={handleBlog}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        endIcon={<NorthEastIcon />}
-                        label={t("request_feature")}
-                        onClick={handleRequestFeature}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<ChevronRightIcon />}
-                        label={
-                            <Tooltip title="support@ente.com">
-                                <Typography sx={{ fontWeight: "medium" }}>
-                                    {t("support")}
-                                </Typography>
-                            </Tooltip>
-                        }
-                        onClick={handleSupport}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        endIcon={<ChevronRightIcon />}
-                        label={t("view_logs")}
-                        onClick={confirmViewLogs}
-                    />
-                </RowButtonGroup>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                <RowCard
+                    title="Help centre"
+                    subtitle="ente.com/help/photos"
+                    onClick={handleHelp}
+                />
+                <RowCard
+                    title={t("blog")}
+                    subtitle="ente.com/blog"
+                    onClick={handleBlog}
+                />
+                <RowCard
+                    title="Request a feature"
+                    subtitle="github.com/ente/ente"
+                    onClick={handleRequestFeature}
+                />
+                <RowCard
+                    title={t("support")}
+                    subtitle="support@ente.com"
+                    onClick={handleSupport}
+                />
+                <RowCard
+                    title={t("view_logs")}
+                    subtitle="Share with support when something goes wrong"
+                    onClick={confirmViewLogs}
+                />
             </Stack>
         </TitledNestedSidebarDrawer>
     );

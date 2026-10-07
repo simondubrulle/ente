@@ -1,21 +1,23 @@
-import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import DarkModeIcon from "@mui/icons-material/DarkMode";
+import LightModeIcon from "@mui/icons-material/LightMode";
+import SmartphoneIcon from "@mui/icons-material/Smartphone";
 import { Divider, Link, Stack, TextField, useColorScheme } from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { isDesktop } from "ente-base/app";
+import { EnteSwitch } from "ente-base/components/EnteSwitch";
 import {
-    RowButton,
     RowButtonEndActivityIndicator,
-    RowButtonGroup,
     RowButtonGroupHint,
-    RowSwitch,
 } from "ente-base/components/RowButton";
-import { SpacedRow } from "ente-base/components/containers";
 import { LoadingButton } from "ente-base/components/mui/LoadingButton";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
 import { useModalVisibility } from "ente-base/components/utils/modal";
+import { MenuComponent } from "ente-base/components/v2/MenuComponent";
+import { MenuGroupComponent } from "ente-base/components/v2/MenuGroupComponent";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { isHTTPErrorWithStatus } from "ente-base/http";
 import {
     getLocaleInUse,
@@ -30,8 +32,8 @@ import {
     toggleHLSGeneration,
 } from "ente-gallery/services/video";
 import {
-    useAppLockSnapshot,
     useHLSGenerationStatusSnapshot,
+    useMLStatusSnapshot,
     useSettingsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
 import { suppressAppLockRefreshFromSessionForTrustedReload } from "ente-new/photos/services/app-lock";
@@ -47,7 +49,6 @@ import { useFormik } from "formik";
 import { t } from "i18next";
 import React, { useCallback, useEffect, useState } from "react";
 import { Trans } from "react-i18next";
-import { DropdownInput } from "../DropdownInput";
 import { AppLockSettings } from "./AppLockSettings";
 import { MLSettings } from "./MLSettings";
 
@@ -64,43 +65,6 @@ export type PreferencesAction = Extract<
     | "preferences.streamableVideos"
 >;
 
-const DesktopAppLockSettings: React.FC<
-    { onAuthenticateUser: () => Promise<boolean> } & Pick<
-        NestedSidebarDrawerVisibilityProps,
-        "onRootClose"
-    >
-> = ({ onAuthenticateUser, onRootClose }) => {
-    const appLock = useAppLockSnapshot();
-    const { show, props } = useModalVisibility();
-
-    const handleOpen = useCallback(async () => {
-        try {
-            if (!(await onAuthenticateUser())) return;
-            show();
-        } catch (error) {
-            log.error("Failed to open app lock settings", error);
-        }
-    }, [onAuthenticateUser, show]);
-
-    return (
-        <>
-            <RowButtonGroup>
-                <RowButton
-                    label={t("app_lock")}
-                    caption={
-                        !appLock.supported
-                            ? t("app_lock_not_supported")
-                            : undefined
-                    }
-                    disabled={!appLock.supported}
-                    onClick={handleOpen}
-                />
-            </RowButtonGroup>
-            <AppLockSettings {...props} onRootClose={onRootClose} />
-        </>
-    );
-};
-
 type PreferencesProps = NestedSidebarDrawerVisibilityProps & {
     onAuthenticateUser: () => Promise<boolean>;
 } & {
@@ -116,9 +80,15 @@ export const Preferences: React.FC<PreferencesProps> = ({
     pendingAction,
     onActionHandled,
 }) => {
-    const { show: showDomainSettings, props: domainSettingsVisibilityProps } =
+    const { mode } = useColorScheme();
+    const mlStatus = useMLStatusSnapshot();
+    const {
+        show: showLanguageSettings,
+        props: languageSettingsVisibilityProps,
+    } = useModalVisibility();
+    const { show: showThemeSettings, props: themeSettingsVisibilityProps } =
         useModalVisibility();
-    const { show: showMapSettings, props: mapSettingsVisibilityProps } =
+    const { show: showDomainSettings, props: domainSettingsVisibilityProps } =
         useModalVisibility();
     const {
         show: showAdvancedSettings,
@@ -126,6 +96,15 @@ export const Preferences: React.FC<PreferencesProps> = ({
     } = useModalVisibility();
     const { show: showMLSettings, props: mlSettingsVisibilityProps } =
         useModalVisibility();
+
+    const { mapEnabled, customDomain } = useSettingsSnapshot();
+    const [mapErrorMessage, setMapErrorMessage] = useState<string>();
+    const handleToggleMap = useCallback(() => {
+        setMapErrorMessage(undefined);
+        void updateMapEnabled(!mapEnabled).catch(() => {
+            setMapErrorMessage(t("generic_error"));
+        });
+    }, [mapEnabled]);
 
     const hlsGenStatusSnapshot = useHLSGenerationStatusSnapshot();
     const isHLSGenerationEnabled = !!hlsGenStatusSnapshot?.enabled;
@@ -143,9 +122,6 @@ export const Preferences: React.FC<PreferencesProps> = ({
             case "preferences.customDomains":
                 showDomainSettings();
                 break;
-            case "preferences.map":
-                showMapSettings();
-                break;
             case "preferences.advanced":
             case "preferences.fasterUpload":
             case "preferences.openOnStartup":
@@ -155,7 +131,12 @@ export const Preferences: React.FC<PreferencesProps> = ({
                 showMLSettings();
                 break;
             case "preferences.language":
+                showLanguageSettings();
+                break;
             case "preferences.theme":
+                showThemeSettings();
+                break;
+            case "preferences.map":
             case "preferences.streamableVideos":
                 break;
         }
@@ -166,8 +147,9 @@ export const Preferences: React.FC<PreferencesProps> = ({
         pendingAction,
         showAdvancedSettings,
         showDomainSettings,
+        showLanguageSettings,
+        showThemeSettings,
         showMLSettings,
-        showMapSettings,
     ]);
 
     const handleRootClose = () => {
@@ -177,89 +159,139 @@ export const Preferences: React.FC<PreferencesProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("preferences")}
         >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <LanguageSelector />
-                <ThemeSelector />
-                <Divider sx={{ my: "2px", opacity: 0.1 }} />
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                <RowCard
+                    title={t("language")}
+                    subtitle={localeName(getLocaleInUse())}
+                    onClick={showLanguageSettings}
+                />
+                <RowCard
+                    title={t("theme")}
+                    subtitle={mode ? t(mode) : undefined}
+                    onClick={showThemeSettings}
+                />
                 {isMLSupported && (
-                    <RowButtonGroup>
-                        <RowButton
-                            endIcon={<ChevronRightIcon />}
-                            label={t("ml_search")}
-                            onClick={showMLSettings}
-                        />
-                    </RowButtonGroup>
+                    <RowCard
+                        title={t("ml_search")}
+                        subtitle={
+                            mlStatus
+                                ? t(
+                                      mlStatus.phase === "disabled"
+                                          ? "off"
+                                          : "on",
+                                  )
+                                : undefined
+                        }
+                        onClick={showMLSettings}
+                    />
                 )}
-                <RowButton
-                    label={t("custom_domains")}
-                    endIcon={<ChevronRightIcon />}
+                <RowCard
+                    title={t("custom_domains")}
+                    subtitle={customDomain || t("none")}
                     onClick={showDomainSettings}
                 />
-                <RowButton
-                    endIcon={<ChevronRightIcon />}
-                    label={t("map")}
-                    onClick={showMapSettings}
-                />
-                <RowButton
-                    endIcon={<ChevronRightIcon />}
-                    label={t("advanced")}
-                    onClick={showAdvancedSettings}
-                />
+                <Stack>
+                    <RowCard
+                        title={t("map")}
+                        endIcon={
+                            <EnteSwitch
+                                checked={mapEnabled}
+                                onChange={handleToggleMap}
+                                slotProps={{
+                                    input: { "aria-label": t("map") },
+                                }}
+                            />
+                        }
+                    />
+                    <RowButtonGroupHint>
+                        {t("maps_privacy_notice")}
+                    </RowButtonGroupHint>
+                    {mapErrorMessage && (
+                        <Typography
+                            variant="small"
+                            sx={{ color: "critical.main", mt: 0.5 }}
+                        >
+                            {mapErrorMessage}
+                        </Typography>
+                    )}
+                </Stack>
+                <RowCard title={t("advanced")} onClick={showAdvancedSettings} />
                 {isDesktop && (
-                    <DesktopAppLockSettings
+                    <AppLockSettings
                         onAuthenticateUser={onAuthenticateUser}
                         onRootClose={onRootClose}
                     />
                 )}
                 {isHLSGenerationSupported && (
                     <Stack>
-                        <RowButtonGroup>
-                            <RowSwitch
-                                label={t("streamable_videos")}
-                                checked={isHLSGenerationEnabled}
-                                onClick={() => void toggleHLSGeneration()}
-                            />
-                        </RowButtonGroup>
+                        <RowCard
+                            title={t("streamable_videos")}
+                            endIcon={
+                                <EnteSwitch
+                                    checked={isHLSGenerationEnabled}
+                                    onChange={() => void toggleHLSGeneration()}
+                                    slotProps={{
+                                        input: {
+                                            "aria-label":
+                                                t("streamable_videos"),
+                                        },
+                                    }}
+                                />
+                            }
+                        />
                         {isHLSGenerationEnabled && (
-                            <SpacedRow sx={{ gap: 2, px: 2, pt: 2, pb: 1 }}>
-                                <Typography sx={{ color: "text.faint" }}>
-                                    {t("processed")}
-                                </Typography>
-                                {hlsProcessedFraction == undefined ? (
-                                    <RowButtonEndActivityIndicator />
-                                ) : (
-                                    <Typography sx={{ textAlign: "right" }}>
-                                        {t("percent_complete", {
-                                            percent: hlsProcessedFraction * 100,
-                                            formatParams: {
-                                                percent: {
-                                                    minimumFractionDigits:
-                                                        hlsProcessedFraction ==
-                                                        0
-                                                            ? 0
-                                                            : 2,
-                                                    maximumFractionDigits: 2,
-                                                    roundingMode: "trunc",
-                                                },
-                                            },
-                                        })}
+                            <RowCard
+                                title={
+                                    <Typography
+                                        component="span"
+                                        sx={{ color: "text.faint", pl: 1 }}
+                                    >
+                                        {t("processed")}
                                     </Typography>
-                                )}
-                            </SpacedRow>
+                                }
+                                endIcon={
+                                    hlsProcessedFraction == undefined ? (
+                                        <RowButtonEndActivityIndicator />
+                                    ) : (
+                                        <Typography sx={{ textAlign: "right" }}>
+                                            {t("percent_complete", {
+                                                percent:
+                                                    hlsProcessedFraction * 100,
+                                                formatParams: {
+                                                    percent: {
+                                                        minimumFractionDigits:
+                                                            hlsProcessedFraction ==
+                                                            0
+                                                                ? 0
+                                                                : 2,
+                                                        maximumFractionDigits: 2,
+                                                        roundingMode: "trunc",
+                                                    },
+                                                },
+                                            })}
+                                        </Typography>
+                                    )
+                                }
+                            />
                         )}
                     </Stack>
                 )}
             </Stack>
+            <LanguageSelector
+                {...languageSettingsVisibilityProps}
+                onRootClose={handleRootClose}
+            />
+            <ThemeSelector
+                {...themeSettingsVisibilityProps}
+                onRootClose={handleRootClose}
+            />
             <DomainSettings
                 {...domainSettingsVisibilityProps}
-                onRootClose={onRootClose}
-            />
-            <MapSettings
-                {...mapSettingsVisibilityProps}
                 onRootClose={onRootClose}
             />
             <AdvancedSettings
@@ -274,11 +306,18 @@ export const Preferences: React.FC<PreferencesProps> = ({
     );
 };
 
-const LanguageSelector = () => {
+const LanguageSelector: React.FC<NestedSidebarDrawerVisibilityProps> = ({
+    open,
+    onClose,
+    onRootClose,
+}) => {
     const locale = getLocaleInUse();
 
     const updateCurrentLocale = (newLocale: SupportedLocale) => {
-        if (newLocale === locale) return;
+        if (newLocale === locale) {
+            onClose();
+            return;
+        }
 
         void setLocaleInUse(newLocale).then(() => {
             // Global translations and cached formatters need a full reload.
@@ -290,22 +329,31 @@ const LanguageSelector = () => {
         });
     };
 
-    const options = supportedLocales.map((locale) => ({
-        label: localeName(locale),
-        value: locale,
-    }));
+    const handleRootClose = () => {
+        onClose();
+        onRootClose();
+    };
 
     return (
-        <Stack sx={{ gap: 1 }}>
-            <Typography variant="small" sx={{ px: 1, color: "text.muted" }}>
-                {t("language")}
-            </Typography>
-            <DropdownInput
-                options={options}
-                selected={locale}
-                onSelect={updateCurrentLocale}
-            />
-        </Stack>
+        <TitledNestedSidebarDrawer
+            maxWidth="440px"
+            {...{ open, onClose }}
+            onRootClose={handleRootClose}
+            title={t("select_language")}
+        >
+            <Stack sx={{ px: 2, py: 1 }}>
+                <MenuGroupComponent>
+                    {supportedLocales.map((option) => (
+                        <MenuComponent
+                            key={option}
+                            title={localeName(option)}
+                            selected={option === locale}
+                            onClick={() => updateCurrentLocale(option)}
+                        />
+                    ))}
+                </MenuGroupComponent>
+            </Stack>
+        </TitledNestedSidebarDrawer>
     );
 };
 
@@ -328,9 +376,9 @@ const localeName = (locale: SupportedLocale) => {
         case "es-ES":
             return "Español";
         case "pt-PT":
-            return "Português";
+            return "Português (Portugal)";
         case "pt-BR":
-            return "Português Brasileiro";
+            return "Português (Brasil)";
         case "ru-RU":
             return "Русский";
         case "pl-PL":
@@ -352,33 +400,57 @@ const localeName = (locale: SupportedLocale) => {
         case "tr-TR":
             return "Türkçe";
         case "cs-CZ":
-            return "čeština";
+            return "Čeština";
         case "el-GR":
             return "Ελληνικά";
     }
 };
 
-const ThemeSelector = () => {
+const ThemeSelector: React.FC<NestedSidebarDrawerVisibilityProps> = ({
+    open,
+    onClose,
+    onRootClose,
+}) => {
     const { mode, setMode } = useColorScheme();
+
+    const handleRootClose = () => {
+        onClose();
+        onRootClose();
+    };
 
     // MUI color mode is undefined during SSR.
     if (!mode) return null;
 
+    const options = [
+        { label: t("system"), value: "system", icon: <SmartphoneIcon /> },
+        { label: t("light"), value: "light", icon: <LightModeIcon /> },
+        { label: t("dark"), value: "dark", icon: <DarkModeIcon /> },
+    ] as const;
+
     return (
-        <Stack sx={{ gap: 1 }}>
-            <Typography variant="small" sx={{ px: 1, color: "text.muted" }}>
-                {t("theme")}
-            </Typography>
-            <DropdownInput
-                options={[
-                    { label: t("system"), value: "system" },
-                    { label: t("light"), value: "light" },
-                    { label: t("dark"), value: "dark" },
-                ]}
-                selected={mode}
-                onSelect={setMode}
-            />
-        </Stack>
+        <TitledNestedSidebarDrawer
+            maxWidth="440px"
+            {...{ open, onClose }}
+            onRootClose={handleRootClose}
+            title={t("theme")}
+        >
+            <Stack sx={{ px: 2, py: 1 }}>
+                <MenuGroupComponent dividerInset={68}>
+                    {options.map(({ label, value, icon }) => (
+                        <MenuComponent
+                            key={value}
+                            title={label}
+                            startIcon={icon}
+                            selected={value === mode}
+                            onClick={() => {
+                                setMode(value);
+                                onClose();
+                            }}
+                        />
+                    ))}
+                </MenuGroupComponent>
+            </Stack>
+        </TitledNestedSidebarDrawer>
     );
 };
 
@@ -394,6 +466,7 @@ const DomainSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("custom_domains")}
@@ -531,60 +604,6 @@ const DomainItem: React.FC<React.PropsWithChildren<DomainSectionProps>> = ({
     </Stack>
 );
 
-const MapSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
-    open,
-    onClose,
-    onRootClose,
-}) => {
-    const { mapEnabled } = useSettingsSnapshot();
-    const [errorMessage, setErrorMessage] = useState<string | undefined>();
-
-    const handleToggle = useCallback(() => {
-        setErrorMessage(undefined);
-        void updateMapEnabled(!mapEnabled).catch(() => {
-            setErrorMessage(t("generic_error"));
-        });
-    }, [mapEnabled]);
-
-    const handleRootClose = () => {
-        onClose();
-        onRootClose();
-    };
-
-    return (
-        <TitledNestedSidebarDrawer
-            {...{ open, onClose }}
-            onRootClose={handleRootClose}
-            title={t("map")}
-        >
-            <Stack sx={{ px: 2, py: "20px" }}>
-                <RowButtonGroup>
-                    <RowSwitch
-                        label={t("enabled")}
-                        checked={mapEnabled}
-                        onClick={handleToggle}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroupHint>
-                    {t("maps_privacy_notice")}
-                </RowButtonGroupHint>
-                {errorMessage && (
-                    <Typography
-                        variant="small"
-                        sx={{
-                            color: "critical.main",
-                            mt: 0.5,
-                            textAlign: "center",
-                        }}
-                    >
-                        {errorMessage}
-                    </Typography>
-                )}
-            </Stack>
-        </TitledNestedSidebarDrawer>
-    );
-};
-
 const AdvancedSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
     open,
     onClose,
@@ -619,31 +638,47 @@ const AdvancedSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("advanced")}
         >
-            <Stack sx={{ px: 2, py: "20px", gap: 3 }}>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                 <Stack>
-                    <RowButtonGroup>
-                        <RowSwitch
-                            label={t("faster_upload")}
-                            checked={!cfUploadProxyDisabled}
-                            onClick={toggleProxy}
-                        />
-                    </RowButtonGroup>
-                    <RowButtonGroupHint>
+                    <RowCard
+                        title={t("faster_upload")}
+                        endIcon={
+                            <EnteSwitch
+                                checked={!cfUploadProxyDisabled}
+                                onChange={toggleProxy}
+                                slotProps={{
+                                    input: { "aria-label": t("faster_upload") },
+                                }}
+                            />
+                        }
+                    />
+                    <Typography
+                        variant="small"
+                        sx={{ color: "text.faint", pl: 2, pr: 1, py: "6px" }}
+                    >
                         {t("faster_upload_description")}
-                    </RowButtonGroupHint>
+                    </Typography>
                 </Stack>
                 {electron && (
-                    <RowButtonGroup>
-                        <RowSwitch
-                            label={t("open_ente_on_startup")}
-                            checked={isAutoLaunchEnabled}
-                            onClick={toggleAutoLaunch}
-                        />
-                    </RowButtonGroup>
+                    <RowCard
+                        title={t("open_ente_on_startup")}
+                        endIcon={
+                            <EnteSwitch
+                                checked={isAutoLaunchEnabled}
+                                onChange={toggleAutoLaunch}
+                                slotProps={{
+                                    input: {
+                                        "aria-label": t("open_ente_on_startup"),
+                                    },
+                                }}
+                            />
+                        }
+                    />
                 )}
             </Stack>
         </TitledNestedSidebarDrawer>

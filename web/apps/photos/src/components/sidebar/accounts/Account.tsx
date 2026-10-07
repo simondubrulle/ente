@@ -2,22 +2,19 @@ import {
     generatePasskeyRecovery,
     recoveryKeyMnemonic,
 } from "@/services/recovery-key";
-import { Stack } from "@mui/material";
-import Typography from "@mui/material/Typography";
+import { Box, Stack } from "@mui/material";
 import { RecoveryKey } from "ente-accounts/components/RecoveryKey";
+import { updateSavedLocalUser } from "ente-accounts/services/accounts-db";
 import { openAccountsManagePasskeysPage } from "ente-accounts/services/passkey";
 import { getActiveSessions } from "ente-accounts/services/sessions";
 import { isDesktop } from "ente-base/app";
-import {
-    RowButton,
-    RowButtonDivider,
-    RowButtonGroup,
-} from "ente-base/components/RowButton";
+import { EnteSwitch } from "ente-base/components/EnteSwitch";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
 import { useModalVisibility } from "ente-base/components/utils/modal";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import { formattedStorageByteSize } from "ente-gallery/utils/units";
 import { useUserDetailsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
@@ -26,7 +23,7 @@ import {
     suppressAutoLockOnBlurForTrustedPrompt,
 } from "ente-new/photos/services/app-lock";
 import type { SidebarActionID } from "ente-new/photos/services/search/types";
-import { get2FAStatus } from "ente-new/photos/services/user";
+import { disable2FA, get2FAStatus } from "ente-new/photos/services/user";
 import {
     familyMemberStorageLimit,
     isFamilyAdmin,
@@ -41,7 +38,6 @@ import { useRouter } from "next/router";
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { DeleteAccount } from "../account/DeleteAccount";
 import { SessionsSettings } from "../account/SessionsSettings";
-import { TwoFactorSettings } from "../account/TwoFactorSettings";
 import { ManageMemberSubscription } from "./ManageMemberSubscription";
 import { openManageSubscription } from "./subscription";
 
@@ -77,32 +73,9 @@ export const Account: React.FC<AccountProps> = ({
     const { showMiniDialog } = useBaseContext();
     const userDetails = useUserDetailsSnapshot();
     const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>();
+    const [disablingTwoFactor, setDisablingTwoFactor] = useState(false);
     const [sessionCount, setSessionCount] = useState<number>();
 
-    const accountLabel = (label: string, subtext?: string) => (
-        <Stack
-            sx={{
-                gap: 0.5,
-                minWidth: 0,
-                alignItems: "flex-start",
-                textAlign: "left",
-            }}
-        >
-            <Typography sx={{ fontWeight: "medium" }}>{label}</Typography>
-            {subtext && (
-                <Typography
-                    variant="small"
-                    sx={{
-                        color: "text.muted",
-                        fontWeight: 400,
-                        overflowWrap: "anywhere",
-                    }}
-                >
-                    {subtext}
-                </Typography>
-            )}
-        </Stack>
-    );
     let planSubtext: string | undefined;
     if (userDetails) {
         let storage =
@@ -138,33 +111,29 @@ export const Account: React.FC<AccountProps> = ({
     } = useModalVisibility();
     const { show: showRecoveryKey, props: recoveryKeyVisibilityProps } =
         useModalVisibility();
-    const { show: showTwoFactor, props: twoFactorVisibilityProps } =
-        useModalVisibility();
     const { show: showSessions, props: sessionsVisibilityProps } =
         useModalVisibility();
     const { show: showDeleteAccount, props: deleteAccountVisibilityProps } =
         useModalVisibility();
 
     useEffect(() => {
-        if (
-            !open ||
-            twoFactorVisibilityProps.open ||
-            sessionsVisibilityProps.open
-        )
-            return;
+        setTwoFactorEnabled(undefined);
+        if (!open || sessionsVisibilityProps.open) return;
         let cancelled = false;
-        void Promise.all([
-            get2FAStatus().catch(() => undefined),
-            getActiveSessions().catch(() => undefined),
-        ]).then(([twoFactor, sessions]) => {
-            if (cancelled) return;
-            setTwoFactorEnabled(twoFactor);
-            setSessionCount(sessions?.length);
-        });
+        void get2FAStatus()
+            .catch(() => undefined)
+            .then((twoFactor) => {
+                if (!cancelled) setTwoFactorEnabled(twoFactor);
+            });
+        void getActiveSessions()
+            .catch(() => undefined)
+            .then((sessions) => {
+                if (!cancelled) setSessionCount(sessions?.length);
+            });
         return () => {
             cancelled = true;
         };
-    }, [open, twoFactorVisibilityProps.open, sessionsVisibilityProps.open]);
+    }, [open, sessionsVisibilityProps.open]);
 
     const isNonAdminFamilyMember = useMemo(
         () =>
@@ -240,8 +209,67 @@ export const Account: React.FC<AccountProps> = ({
         showDeleteAccount();
     }, [showDeleteAccount]);
 
+    const configureTwoFactor = useCallback(() => {
+        onClose();
+        onRootClose();
+        void router.push("/two-factor/setup");
+    }, [onClose, onRootClose, router]);
+
+    const handleTwoFactorToggle = useCallback(() => {
+        if (twoFactorEnabled === undefined || disablingTwoFactor) return;
+        if (!twoFactorEnabled) {
+            configureTwoFactor();
+            return;
+        }
+        showMiniDialog({
+            title: t("disable_two_factor"),
+            message: t("disable_two_factor_message"),
+            continue: {
+                text: t("disable"),
+                color: "critical",
+                action: async () => {
+                    setDisablingTwoFactor(true);
+                    try {
+                        await disable2FA();
+                        updateSavedLocalUser({ isTwoFactorEnabled: undefined });
+                        setTwoFactorEnabled(false);
+                    } finally {
+                        setDisablingTwoFactor(false);
+                    }
+                },
+            },
+        });
+    }, [
+        twoFactorEnabled,
+        disablingTwoFactor,
+        configureTwoFactor,
+        showMiniDialog,
+    ]);
+
+    const handleReconfigureTwoFactor = useCallback(() => {
+        if (twoFactorEnabled === undefined) return;
+        if (!twoFactorEnabled) {
+            configureTwoFactor();
+            return;
+        }
+        showMiniDialog({
+            title: t("update_two_factor"),
+            message: t("update_two_factor_message"),
+            continue: {
+                text: t("update"),
+                color: "primary",
+                action: configureTwoFactor,
+            },
+        });
+    }, [twoFactorEnabled, configureTwoFactor, showMiniDialog]);
+
     useEffect(() => {
         if (!open || !pendingAction) return;
+        if (
+            pendingAction == "account.twoFactor.reconfigure" &&
+            twoFactorEnabled === undefined
+        )
+            return;
         switch (pendingAction) {
             case "account.subscription":
                 handleManageSubscription();
@@ -250,8 +278,9 @@ export const Account: React.FC<AccountProps> = ({
                 void handleRecoveryKey();
                 break;
             case "account.twoFactor.reconfigure":
+                handleReconfigureTwoFactor();
+                break;
             case "account.twoFactor":
-                showTwoFactor();
                 break;
             case "account.passkeys":
                 void handlePasskeys();
@@ -281,77 +310,78 @@ export const Account: React.FC<AccountProps> = ({
         open,
         onActionHandled,
         pendingAction,
-        showTwoFactor,
+        handleReconfigureTwoFactor,
+        twoFactorEnabled,
     ]);
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("account")}
         >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        label={accountLabel(t("manage_plan"), planSubtext)}
-                        onClick={handleManageSubscription}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("recovery_key")}
-                        onClick={() => void handleRecoveryKey()}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={accountLabel(
-                            t("two_factor"),
-                            twoFactorEnabled === undefined
-                                ? undefined
-                                : t(twoFactorEnabled ? "on" : "off"),
-                        )}
-                        onClick={showTwoFactor}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(t("passkeys"))}
-                        onClick={handlePasskeys}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(
-                            t("active_sessions"),
-                            sessionCount === undefined
-                                ? undefined
-                                : t("account_sessions", {
-                                      count: sessionCount,
-                                  }),
-                        )}
-                        onClick={handleActiveSessions}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("change_password")}
-                        onClick={handleChangePassword}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(
-                            t("change_email"),
-                            userDetails?.email,
-                        )}
-                        onClick={handleChangeEmail}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        color="critical"
-                        label={t("delete_account")}
-                        onClick={handleDeleteAccount}
-                    />
-                </RowButtonGroup>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                <RowCard
+                    title={t("manage_plan")}
+                    subtitle={planSubtext}
+                    onClick={handleManageSubscription}
+                />
+                <RowCard
+                    title={t("recovery_key")}
+                    onClick={() => void handleRecoveryKey()}
+                />
+                <RowCard
+                    title={t("two_factor")}
+                    endIcon={
+                        <EnteSwitch
+                            checked={twoFactorEnabled === true}
+                            disabled={
+                                twoFactorEnabled === undefined ||
+                                disablingTwoFactor
+                            }
+                            onChange={handleTwoFactorToggle}
+                            slotProps={{
+                                input: { "aria-label": t("two_factor") },
+                            }}
+                        />
+                    }
+                />
+                {twoFactorEnabled && (
+                    <Stack sx={{ pl: 2 }}>
+                        <RowCard
+                            title={t("update_two_factor")}
+                            onClick={handleReconfigureTwoFactor}
+                        />
+                    </Stack>
+                )}
+                <RowCard title={t("passkeys")} onClick={handlePasskeys} />
+                <RowCard
+                    title={t("active_sessions")}
+                    subtitle={
+                        sessionCount === undefined
+                            ? undefined
+                            : t("account_sessions", { count: sessionCount })
+                    }
+                    onClick={handleActiveSessions}
+                />
+                <RowCard
+                    title={t("change_password")}
+                    onClick={handleChangePassword}
+                />
+                <RowCard
+                    title={t("change_email")}
+                    subtitle={userDetails?.email}
+                    onClick={handleChangeEmail}
+                />
+                <RowCard
+                    title={
+                        <Box component="span" sx={{ color: "critical.main" }}>
+                            {t("delete_account")}
+                        </Box>
+                    }
+                    onClick={handleDeleteAccount}
+                />
             </Stack>
             <RecoveryKey
                 {...recoveryKeyVisibilityProps}
@@ -364,10 +394,6 @@ export const Account: React.FC<AccountProps> = ({
                     {...{ userDetails }}
                 />
             )}
-            <TwoFactorSettings
-                {...twoFactorVisibilityProps}
-                onRootClose={onRootClose}
-            />
             <SessionsSettings
                 {...sessionsVisibilityProps}
                 onRootClose={onRootClose}
