@@ -71,6 +71,7 @@ import { Trans } from "react-i18next";
 import { FreeUpSpace, type FreeUpSpaceAction } from "./FreeUpSpace";
 import { Help, type HelpAction } from "./Help";
 import { ReferralSettings } from "./ReferralSettings";
+import { SidebarDrawerShell } from "./SidebarDrawerShell";
 import { WatchFolder } from "./WatchFolder";
 import { SubscriptionCard } from "./account/SubscriptionCard";
 import { Account, type AccountAction } from "./accounts/Account";
@@ -89,12 +90,16 @@ type SidebarProps = ModalVisibilityProps & {
         isHiddenCollectionSummary?: boolean,
     ) => Promise<void>;
     onShowExport: () => void;
+    onCloseOverlays: () => void;
+    children?: React.ReactNode;
     onAuthenticateUser: () => Promise<boolean>;
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
     open,
-    onClose,
+    onClose: closeRoot,
+    onCloseOverlays,
+    children,
     normalCollectionSummaries,
     uncategorizedCollectionSummaryID,
     pendingAction,
@@ -123,6 +128,39 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [pendingHelpAction, setPendingHelpAction] = useState<HelpAction>();
     const [pendingFreeUpSpaceAction, setPendingFreeUpSpaceAction] =
         useState<FreeUpSpaceAction>();
+
+    const closeAccount = accountVisibilityProps.onClose;
+    const closeReferrals = referralsVisibilityProps.onClose;
+    const closePreferences = preferencesVisibilityProps.onClose;
+    const closeHelp = helpVisibilityProps.onClose;
+    const closeFreeUpSpace = freeUpSpaceVisibilityProps.onClose;
+    const closeSections = useCallback(() => {
+        closeAccount();
+        closeReferrals();
+        closePreferences();
+        closeHelp();
+        closeFreeUpSpace();
+        setWatchFolderView(false);
+        onCloseOverlays();
+    }, [
+        closeAccount,
+        closeReferrals,
+        closePreferences,
+        closeHelp,
+        closeFreeUpSpace,
+        setWatchFolderView,
+        onCloseOverlays,
+    ]);
+
+    const onClose = useCallback(() => {
+        closeSections();
+        closeRoot();
+    }, [closeSections, closeRoot]);
+
+    const selectSection = (show: () => void) => () => {
+        closeSections();
+        show();
+    };
 
     const handleLogout = useCallback(
         () =>
@@ -165,8 +203,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [onAuthenticateUser, onShowExport, showMiniDialog]);
 
     const performSidebarAction = useCallback(
-        async (actionID: SidebarActionID) =>
-            performSidebarRegistryAction(actionID, {
+        async (actionID: SidebarActionID) => {
+            closeSections();
+            return performSidebarRegistryAction(actionID, {
                 onClose,
                 onShowCollectionSummary,
                 onShowPlanSelector,
@@ -196,8 +235,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setPendingFreeUpSpaceAction(
                         a as FreeUpSpaceAction | undefined,
                     ),
-            }),
+            });
+        },
         [
+            closeSections,
             handleLogout,
             handleOpenWatchFolder,
             onClose,
@@ -230,55 +271,67 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [pendingAction]);
 
     return (
-        <RootSidebarDrawer open={open} onClose={onClose} maxWidth="440px">
-            <HeaderSection onCloseSidebar={onClose} />
-            <UserDetailsSection
-                sidebarOpen={open}
-                {...{ onShowPlanSelector }}
-            />
-            <Stack sx={{ gap: 0.5, mb: 3 }}>
-                <ShortcutSection
-                    onCloseSidebar={onClose}
-                    {...{
-                        normalCollectionSummaries,
-                        uncategorizedCollectionSummaryID,
-                        onShowCollectionSummary,
-                    }}
+        <SidebarDrawerShell open={open} onClose={onClose}>
+            <RootSidebarDrawer
+                open={open}
+                onClose={onClose}
+                maxWidth="440px"
+                shellRoot
+            >
+                <HeaderSection onCloseSidebar={onClose} />
+                <UserDetailsSection
+                    sidebarOpen={open}
+                    {...{ onShowPlanSelector }}
                 />
-                <UtilitySection
-                    onCloseSidebar={onClose}
-                    {...{
-                        onShowExport: handleShowExport,
-                        onAuthenticateUser,
-                        onShowPlanSelector,
-                        showAccount,
-                        accountVisibilityProps,
-                        showReferrals,
-                        referralsVisibilityProps,
-                        showPreferences,
-                        preferencesVisibilityProps,
-                        showHelp,
-                        helpVisibilityProps,
-                        showFreeUpSpace,
-                        freeUpSpaceVisibilityProps,
-                        watchFolderView,
-                        onShowWatchFolder: handleOpenWatchFolder,
-                        onCloseWatchFolder: handleCloseWatchFolder,
-                        pendingAccountAction,
-                        onAccountActionHandled: setPendingAccountAction,
-                        pendingPreferencesAction,
-                        onPreferencesActionHandled: setPendingPreferencesAction,
-                        pendingHelpAction,
-                        onHelpActionHandled: setPendingHelpAction,
-                        pendingFreeUpSpaceAction,
-                        onFreeUpSpaceActionHandled: setPendingFreeUpSpaceAction,
-                    }}
-                />
-                <Divider sx={{ my: "2px" }} />
-                <ExitSection onLogout={handleLogout} />
-                <InfoSection />
-            </Stack>
-        </RootSidebarDrawer>
+                <Stack sx={{ gap: 0.5, mb: 3 }}>
+                    <ShortcutSection
+                        onCloseSidebar={onClose}
+                        {...{
+                            normalCollectionSummaries,
+                            uncategorizedCollectionSummaryID,
+                            onShowCollectionSummary,
+                        }}
+                    />
+                    <UtilitySection
+                        onCloseSidebar={onClose}
+                        {...{
+                            onShowExport: selectSection(handleShowExport),
+                            onAuthenticateUser,
+                            onShowPlanSelector,
+                            showAccount: selectSection(showAccount),
+                            accountVisibilityProps,
+                            showReferrals: selectSection(showReferrals),
+                            referralsVisibilityProps,
+                            showPreferences: selectSection(showPreferences),
+                            preferencesVisibilityProps,
+                            showHelp: selectSection(showHelp),
+                            helpVisibilityProps,
+                            showFreeUpSpace: selectSection(showFreeUpSpace),
+                            freeUpSpaceVisibilityProps,
+                            watchFolderView,
+                            onShowWatchFolder: selectSection(
+                                handleOpenWatchFolder,
+                            ),
+                            onCloseWatchFolder: handleCloseWatchFolder,
+                            pendingAccountAction,
+                            onAccountActionHandled: setPendingAccountAction,
+                            pendingPreferencesAction,
+                            onPreferencesActionHandled:
+                                setPendingPreferencesAction,
+                            pendingHelpAction,
+                            onHelpActionHandled: setPendingHelpAction,
+                            pendingFreeUpSpaceAction,
+                            onFreeUpSpaceActionHandled:
+                                setPendingFreeUpSpaceAction,
+                        }}
+                    />
+                    <Divider sx={{ my: "2px" }} />
+                    <ExitSection onLogout={handleLogout} />
+                    <InfoSection />
+                </Stack>
+            </RootSidebarDrawer>
+            {children}
+        </SidebarDrawerShell>
     );
 };
 

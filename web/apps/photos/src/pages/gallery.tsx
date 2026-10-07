@@ -368,9 +368,20 @@ const Page: React.FC = () => {
         }
     }, []);
 
+    const closeSidebarOverlays = useCallback(() => {
+        exportVisibilityProps.onClose();
+        planSelectorVisibilityProps.onClose();
+        familyManagementVisibilityProps.onClose();
+    }, [
+        exportVisibilityProps.onClose,
+        planSelectorVisibilityProps.onClose,
+        familyManagementVisibilityProps.onClose,
+    ]);
+
     const handleSidebarClose = useCallback(() => {
+        closeSidebarOverlays();
         sidebarVisibilityProps.onClose();
-    }, [sidebarVisibilityProps.onClose]);
+    }, [closeSidebarOverlays, sidebarVisibilityProps.onClose]);
 
     const handleSidebarActionHandled = useCallback(
         () => setPendingSidebarAction(undefined),
@@ -1846,15 +1857,8 @@ const Page: React.FC = () => {
         return <div></div>;
     }
 
-    return (
-        <FullScreenDropZone
-            message={
-                watchFolderView ? t("watch_folder_dropzone_hint") : undefined
-            }
-            disabled={shouldDisableDropzone || !!slideshow}
-            onDrop={setDragAndDropFiles}
-        >
-            {blockingLoad && <TranslucentLoadingOverlay />}
+    const subscriptionDialogs = (
+        <>
             <PlanSelector
                 {...planSelectorVisibilityProps}
                 setLoading={(v) => setBlockingLoad(v)}
@@ -1864,6 +1868,19 @@ const Page: React.FC = () => {
                 {...familyManagementVisibilityProps}
                 onShowPlanSelector={showPlanSelector}
             />
+        </>
+    );
+
+    return (
+        <FullScreenDropZone
+            message={
+                watchFolderView ? t("watch_folder_dropzone_hint") : undefined
+            }
+            disabled={shouldDisableDropzone || !!slideshow}
+            onDrop={setDragAndDropFiles}
+        >
+            {blockingLoad && <TranslucentLoadingOverlay />}
+            {!sidebarVisibilityProps.open && subscriptionDialogs}
             <CollectionSelector
                 open={openCollectionSelector}
                 onClose={handleCloseCollectionSelector}
@@ -2035,8 +2052,16 @@ const Page: React.FC = () => {
                 onShowPlanSelector={showPlanSelector}
                 onShowCollectionSummary={handleSidebarShowCollectionSummary}
                 onShowExport={showExport}
+                onCloseOverlays={closeSidebarOverlays}
                 onAuthenticateUser={authenticateUser}
-            />
+            >
+                {sidebarVisibilityProps.open && subscriptionDialogs}
+                <Export
+                    {...exportVisibilityProps}
+                    {...{ collectionNameByID }}
+                    onRootClose={handleSidebarClose}
+                />
+            </Sidebar>
             <WhatsNew {...whatsNewVisibilityProps} />
             <AssignPersonDialog
                 {...contextMenuAssignPersonProps}
@@ -2163,11 +2188,6 @@ const Page: React.FC = () => {
                     onSubmit={handleEditAlbumDetails}
                 />
             )}
-            <Export
-                {...exportVisibilityProps}
-                {...{ collectionNameByID }}
-                onRootClose={handleSidebarClose}
-            />
             <AuthenticateUser
                 open={authenticateUserVisibilityProps.open}
                 onClose={handleCloseAuthenticateUser}
