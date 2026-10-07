@@ -99,7 +99,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
     const { show: showMLSettings, props: mlSettingsVisibilityProps } =
         useModalVisibility();
 
-    const { mapEnabled } = useSettingsSnapshot();
+    const { mapEnabled, customDomain } = useSettingsSnapshot();
     const [mapErrorMessage, setMapErrorMessage] = useState<string>();
     const handleToggleMap = useCallback(() => {
         setMapErrorMessage(undefined);
@@ -195,6 +195,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
                 )}
                 <RowCard
                     title={t("custom_domains")}
+                    subtitle={customDomain || t("none")}
                     onClick={showDomainSettings}
                 />
                 <Stack>
