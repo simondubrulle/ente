@@ -4,6 +4,7 @@ use std::time::Duration;
 use encoding_rs::Encoding;
 use ente_core::http::{self, Http, SuccessResponse};
 use futures_util::StreamExt;
+use scraper::{ElementRef, Html};
 use url::Url;
 
 use crate::{discovery, format};
@@ -74,18 +75,13 @@ impl Fetcher {
                     .headers()
                     .get("content-type")
                     .and_then(|header| header.to_str().ok())
-                    .and_then(|header| {
-                        header.split(';').find_map(|parameter| {
-                            let (name, value) = parameter.trim().split_once('=')?;
-                            name.eq_ignore_ascii_case("charset")
-                                .then(|| {
-                                    Encoding::for_label(value.trim_matches(['\'', '"']).as_bytes())
-                                })
-                                .flatten()
-                        })
-                    });
+                    .and_then(content_type_encoding);
                 match body(response, HTML_LIMIT, true).await {
                     Ok(bytes) => {
+                        let encoding = Encoding::for_bom(&bytes)
+                            .map(|(encoding, _)| encoding)
+                            .or(encoding)
+                            .or_else(|| html_encoding(&bytes));
                         let text = encoding.unwrap_or(encoding_rs::UTF_8).decode(&bytes).0;
                         candidates = discovery::icon_urls(&text, &fallback_page);
                     }
@@ -153,6 +149,44 @@ async fn body(response: SuccessResponse, limit: usize, prefix: bool) -> Result<V
         }
     }
     Ok(bytes)
+}
+
+fn content_type_encoding(content_type: &str) -> Option<&'static Encoding> {
+    content_type.split(';').find_map(|parameter| {
+        let (name, value) = parameter.trim().split_once('=')?;
+        name.trim()
+            .eq_ignore_ascii_case("charset")
+            .then(|| Encoding::for_label(value.trim().trim_matches(['\'', '"']).as_bytes()))?
+    })
+}
+
+fn html_encoding(bytes: &[u8]) -> Option<&'static Encoding> {
+    let prefix = String::from_utf8_lossy(&bytes[..bytes.len().min(1024)]);
+    let document = Html::parse_document(&prefix);
+    let encoding = document
+        .root_element()
+        .descendants()
+        .filter_map(ElementRef::wrap)
+        .filter(|element| element.value().name() == "meta")
+        .find_map(|element| {
+            if let Some(charset) = element.attr("charset") {
+                Encoding::for_label(charset.as_bytes())
+            } else {
+                element
+                    .attr("http-equiv")
+                    .filter(|value| value.eq_ignore_ascii_case("content-type"))?;
+                content_type_encoding(element.attr("content")?)
+            }
+        })?;
+    Some(
+        if encoding == encoding_rs::UTF_16LE || encoding == encoding_rs::UTF_16BE {
+            encoding_rs::UTF_8
+        } else if encoding == encoding_rs::X_USER_DEFINED {
+            encoding_rs::WINDOWS_1252
+        } else {
+            encoding
+        },
+    )
 }
 
 fn parent_url(page: &Url) -> Option<Url> {
