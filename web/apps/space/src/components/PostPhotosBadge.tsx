@@ -20,7 +20,6 @@ export const SpacePostPhotosBadge = ({
                 filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))",
                 height: 24,
                 justifyContent: "center",
-                opacity: subtle ? 0.7 : 1,
                 pointerEvents: "none",
                 position: "absolute",
                 right: inset,
