@@ -13,6 +13,7 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Menu, MenuItem } from "@mui/material";
 import { keyframes } from "@mui/material/styles";
+import { visuallyHidden } from "@mui/utils";
 import {
     spaceActionDoneDurationMs,
     type SpaceActionPhase,
@@ -1448,6 +1449,19 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                 },
             }}
         >
+            {!isDraftPost && (
+                <Box
+                    component="span"
+                    role="status"
+                    aria-live="polite"
+                    aria-atomic="true"
+                    sx={visuallyHidden}
+                >
+                    {postPhotoCount > 1
+                        ? `Item ${postPhotoIndex + 1} of ${postPhotoCount}`
+                        : null}
+                </Box>
+            )}
             <Box
                 component="header"
                 data-space-viewer-chrome="true"
