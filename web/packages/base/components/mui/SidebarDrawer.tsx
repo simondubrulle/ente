@@ -88,6 +88,7 @@ type SidebarDrawerTitlebarProps = Pick<
 > & {
     title: string;
     caption?: string;
+    // TODO: Default to the new UI's inset and title size once it is adopted.
     contentInset?: string;
     titleFontSize?: string;
     actionButton?: React.ReactNode;
