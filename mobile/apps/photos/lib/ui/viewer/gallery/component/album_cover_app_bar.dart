@@ -129,59 +129,56 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
           heroTag: widget.heroTag,
           contentOpacity: animation,
         ),
-        content: SizedBox(
-          width: MediaQuery.sizeOf(context).width - Spacing.lg * 2,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _CoverCaption(
-                GalleryFilesState.maybeOf(context)?.galleryFilesOrNull,
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _CoverCaption(
+              GalleryFilesState.maybeOf(context)?.galleryFilesOrNull,
+            ),
+            GestureDetector(
+              behavior: HitTestBehavior.opaque,
+              onTap: widget.onDetailsTap,
+              child: Semantics(
+                header: true,
+                child: Text(
+                  widget.title,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: TextStyles.display1.copyWith(
+                    color: colors.specialWhite,
+                  ),
+                ),
               ),
+            ),
+            if (description != null) ...[
+              const SizedBox(height: Spacing.sm),
               GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: widget.onDetailsTap,
-                child: Semantics(
-                  header: true,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 18),
                   child: Text(
-                    widget.title,
-                    maxLines: 2,
+                    description,
+                    maxLines: _descriptionMaxLines,
                     overflow: TextOverflow.ellipsis,
                     textAlign: TextAlign.center,
-                    style: TextStyles.display1.copyWith(
-                      color: colors.specialWhite,
+                    style: TextStyles.mini.copyWith(
+                      color: colors.specialWhite.withValues(alpha: 0.92),
                     ),
                   ),
                 ),
               ),
-              if (description != null) ...[
-                const SizedBox(height: Spacing.sm),
-                GestureDetector(
-                  behavior: HitTestBehavior.opaque,
-                  onTap: widget.onDetailsTap,
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 18),
-                    child: Text(
-                      description,
-                      maxLines: _descriptionMaxLines,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: TextStyles.mini.copyWith(
-                        color: colors.specialWhite.withValues(alpha: 0.92),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-              if (widget.coverActions.isNotEmpty) ...[
-                const SizedBox(height: _contentSpacing),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: Spacing.md,
-                  children: widget.coverActions,
-                ),
-              ],
             ],
-          ),
+            if (widget.coverActions.isNotEmpty) ...[
+              const SizedBox(height: _contentSpacing),
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                spacing: Spacing.md,
+                children: widget.coverActions,
+              ),
+            ],
+          ],
         ),
       ),
     );
@@ -221,7 +218,7 @@ class AlbumCoverActionButton extends StatelessWidget {
             ),
             child: HugeIcon(
               icon: icon,
-              size: _coverActionIconSize,
+              size: IconSizes.small,
               color: context.componentColors.specialWhite,
             ),
           ),
@@ -708,6 +705,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
           .clamp(0.0, 1.0),
     )!;
     final coverBottomInset = _coverBottomInset(bottomHeight);
+    final respectRightInset = Theme.of(context).platform != TargetPlatform.iOS;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(
       value: pinnedProgress < 0.5 && !isCovered
@@ -745,13 +743,22 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
               top: topPadding + collapsedHeight,
               left: Spacing.lg,
               right: Spacing.lg,
-              bottom: coverBottomInset + _contentBottomGap,
-              child: Opacity(
-                opacity: contentOpacity,
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.bottomCenter,
-                  child: content,
+              bottom: coverBottomInset + collapsedHeight,
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                child: LayoutBuilder(
+                  builder: (context, constraints) => Opacity(
+                    opacity: contentOpacity,
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      alignment: Alignment.center,
+                      child: SizedBox(
+                        width: constraints.maxWidth,
+                        child: content,
+                      ),
+                    ),
+                  ),
                 ),
               ),
             ),
@@ -764,53 +771,59 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
           Positioned(
             top:
                 topPadding +
-                (Spacing.lg - (collapsedHeight - _headerIconSize) / 2) *
+                (Spacing.lg -
+                        (collapsedHeight - _compactHeaderControlSize) / 2) *
                     (1 - pinnedProgress),
             left: Spacing.lg,
             right: Spacing.lg,
             height: collapsedHeight,
-            child: Row(
-              spacing: Spacing.md,
-              children: [
-                IconButtonComponent(
-                  tooltip: MaterialLocalizations.of(context).backButtonTooltip,
-                  icon: HugeIcon(
-                    icon: HugeIcons.strokeRoundedArrowLeft02,
+            child: SafeArea(
+              top: false,
+              bottom: false,
+              left: false,
+              right: respectRightInset,
+              child: Row(
+                spacing: Spacing.md,
+                children: [
+                  IconButton(
+                    tooltip: MaterialLocalizations.of(
+                      context,
+                    ).backButtonTooltip,
+                    icon: const Icon(Icons.arrow_back),
                     color: foregroundColor,
+                    iconSize: IconSizes.medium,
+                    onPressed: () => Navigator.maybePop(context),
                   ),
-                  variant: IconButtonComponentVariant.unfilled,
-                  shouldSurfaceExecutionStates: false,
-                  onTap: () => Navigator.maybePop(context),
-                ),
-                Expanded(
-                  child: ExcludeSemantics(
-                    excluding: contentOpacity > 0,
-                    child: IgnorePointer(
-                      ignoring: titleOpacity == 0,
-                      child: Opacity(
-                        opacity: titleOpacity,
-                        child: GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTap: onDetailsTap,
-                          child: Text(
-                            title,
-                            maxLines: 1,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyles.display3.copyWith(
-                              color: foregroundColor,
+                  Expanded(
+                    child: ExcludeSemantics(
+                      excluding: contentOpacity > 0,
+                      child: IgnorePointer(
+                        ignoring: titleOpacity == 0,
+                        child: Opacity(
+                          opacity: titleOpacity,
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: onDetailsTap,
+                            child: Text(
+                              title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyles.display3.copyWith(
+                                color: foregroundColor,
+                              ),
                             ),
                           ),
                         ),
                       ),
                     ),
                   ),
-                ),
-                Row(
-                  mainAxisSize: MainAxisSize.min,
-                  spacing: _headerActionSpacing,
-                  children: actionsBuilder(foregroundColor),
-                ),
-              ],
+                  Row(
+                    mainAxisSize: MainAxisSize.min,
+                    spacing: _headerActionSpacing,
+                    children: actionsBuilder(foregroundColor),
+                  ),
+                ],
+              ),
             ),
           ),
           if (bottom != null)
@@ -819,7 +832,13 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
               right: 0,
               bottom: 0,
               height: bottomHeight,
-              child: bottom!,
+              child: SafeArea(
+                top: false,
+                bottom: false,
+                left: false,
+                right: respectRightInset,
+                child: bottom!,
+              ),
             ),
         ],
       ),
@@ -838,13 +857,12 @@ const _coverHeight = 441.0;
 const _coverDissolveHeight = 100.0;
 const _topScrimHeight = 31.0;
 const _bottomOverlap = 25.0;
-const _contentBottomGap = 107.0;
 const _contentSpacing = 22.0;
 const _contentScrimTop = 146.0;
 const _contentScrimWidth = 308.0;
 const _contentScrimHeight = 157.0;
 const _contentScrimBlur = 54.25;
-const _headerIconSize = 38.0;
+const _compactHeaderControlSize = 38.0;
 const _headerActionSpacing = 6.0;
 const _contentFadeExtent = 120.0;
 const _pinnedFadeStart = 0.6;
@@ -852,7 +870,6 @@ const _foregroundSwitchStart = 0.4;
 const _foregroundSwitchEnd = 0.6;
 const _descriptionMaxLines = 3;
 const _coverActionSize = 42.0;
-const _coverActionIconSize = 17.0;
 
 const _photoScrimColor = Color.from(alpha: 0.24, red: 0, green: 0, blue: 0);
 const _scrimColor = Color(0x33000000);

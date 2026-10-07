@@ -12,11 +12,151 @@ import "package:photos/ente_theme_data.dart";
 import "package:photos/models/api/collection/user.dart";
 import "package:photos/models/collection/collection.dart";
 import "package:photos/models/file/file.dart";
+import "package:photos/models/metadata/collection_magic.dart";
 import "package:photos/services/app_navigation_service.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 
 void main() {
+  testWidgets("centers responsive cover content and preserves toolbar spacing", (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    final cover = EnteFile()
+      ..uploadedFileID = 3
+      ..generatedID = 3;
+    ThumbnailInMemoryLruCache.put(cover, base64Decode(_onePixelPng));
+    const title = "An album title that is long enough to need multiple lines";
+    const description =
+        "A description that takes several lines on a phone and "
+        "still needs to remain centered together with the other header contents.";
+    for (final (size, padding, caption, scale, platform) in [
+      (
+        const Size(390, 844),
+        const EdgeInsets.only(top: 47),
+        null,
+        1.0,
+        TargetPlatform.iOS,
+      ),
+      (
+        const Size(844, 390),
+        const EdgeInsets.only(left: 54, right: 48),
+        description,
+        1.5,
+        TargetPlatform.android,
+      ),
+      (
+        const Size(844, 390),
+        const EdgeInsets.symmetric(horizontal: 62),
+        description,
+        1.0,
+        TargetPlatform.iOS,
+      ),
+      (
+        const Size(1024, 1366),
+        const EdgeInsets.only(top: 24, left: 48),
+        description,
+        1.0,
+        TargetPlatform.iOS,
+      ),
+    ]) {
+      tester.view.physicalSize = size;
+      var taps = 0;
+      final header = _coverHeader(cover);
+      header.collection.pubMagicMetadata = CollectionPubMagicMetadata(
+        description: caption,
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: (scale == 1.5 ? darkThemeData : lightThemeData).copyWith(
+            platform: platform,
+          ),
+          builder: (context, child) => MediaQuery(
+            data: MediaQuery.of(
+              context,
+            ).copyWith(padding: padding, textScaler: TextScaler.linear(scale)),
+            child: child!,
+          ),
+          home: Scaffold(
+            body: SafeArea(
+              top: false,
+              bottom: false,
+              left: size.width >= 1024,
+              right: size.width >= 1024,
+              child: CustomScrollView(
+                slivers: [
+                  AlbumCoverAppBar(
+                    collection: header.collection,
+                    cover: cover,
+                    title: title,
+                    onDetailsTap: () => taps++,
+                    backgroundColor: header.backgroundColor,
+                    collapsedHeight: kToolbarHeight,
+                    actionsBuilder: (_) => List.generate(
+                      3,
+                      (_) => IconButton(
+                        icon: const Icon(Icons.more_vert),
+                        onPressed: () {},
+                      ),
+                    ),
+                    coverActions: const [SizedBox(width: 100, height: 42)],
+                  ),
+                  const SliverToBoxAdapter(child: SizedBox(height: 2000)),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final expandedTitle = find.byWidgetPredicate(
+        (widget) =>
+            widget is Text && widget.data == title && widget.maxLines == 2,
+      );
+      final content = find
+          .ancestor(of: expandedTitle, matching: find.byType(Column))
+          .first;
+      expect(tester.getCenter(content).dy, closeTo(padding.top + 441 / 2, 0.1));
+      expect(
+        tester.getCenter(content).dx,
+        closeTo((padding.left + size.width - padding.right) / 2, 0.1),
+      );
+      if (size.width >= 1024) {
+        expect(
+          tester.getRect(expandedTitle).width,
+          closeTo(tester.getSize(expandedTitle).width, 0.1),
+        );
+      }
+      await tester.tap(expandedTitle);
+      if (caption != null) {
+        await tester.tap(find.text(caption));
+      }
+      expect(taps, caption == null ? 1 : 2);
+      final backIcon = tester.getRect(find.byIcon(Icons.arrow_back));
+      expect(backIcon.left, size.width >= 1024 ? padding.left + 28 : 28);
+      final lastAction = tester.getRect(find.byType(IconButton).last);
+      expect(
+        lastAction.right,
+        lessThanOrEqualTo(
+          size.width - (platform == TargetPlatform.android ? padding.right : 0),
+        ),
+      );
+      await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Text && widget.data == title && widget.maxLines == 1,
+        ),
+      );
+      expect(taps, caption == null ? 2 : 3);
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(seconds: 1));
+    }
+  });
   testWidgets("keeps one accessible title and restores status bar styles", (
     tester,
   ) async {

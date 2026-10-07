@@ -675,6 +675,8 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             color: foregroundColor,
           ),
           variant: iconButtonVariant,
+          size: onCover ? kMinInteractiveDimension : 36,
+          iconSize: onCover ? IconSizes.medium : IconSizes.small,
           shouldSurfaceExecutionStates: false,
           onTap: () async {
             await _showAddPhotoDialog(context);
@@ -694,6 +696,8 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             color: foregroundColor,
           ),
           variant: iconButtonVariant,
+          size: onCover ? kMinInteractiveDimension : 36,
+          iconSize: onCover ? IconSizes.medium : IconSizes.small,
           shouldSurfaceExecutionStates: false,
           onTap: () async {
             await _showShareCollectionDialog();

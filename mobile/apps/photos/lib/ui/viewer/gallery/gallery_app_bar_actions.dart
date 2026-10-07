@@ -60,6 +60,8 @@ Widget galleryAppBarActionsSheetAction<T>({
       tooltip: tooltip,
       icon: icon,
       variant: IconButtonComponentVariant.unfilled,
+      size: kMinInteractiveDimension,
+      iconSize: IconSizes.medium,
       shouldSurfaceExecutionStates: false,
       onTap: () async {
         final options = await optionsBuilder();
