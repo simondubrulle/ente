@@ -1,3 +1,1 @@
 - Refreshed the album page with a full cover, smooth thumbnail transitions, quick slideshow and map buttons, and a simpler options sheet.
-- Open full album titles and descriptions from the header, with editing for album owners.
-- Improved album header alignment and controls across phones and tablets.

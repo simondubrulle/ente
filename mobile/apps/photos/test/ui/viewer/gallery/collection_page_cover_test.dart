@@ -125,71 +125,6 @@ void main() {
     expect(find.text("Open album"), findsOneWidget);
   });
 
-  testWidgets("opens full album details and preserves editing permissions", (
-    tester,
-  ) async {
-    tester.view.devicePixelRatio = 1;
-    tester.view.physicalSize = const Size(844, 390);
-    addTearDown(tester.view.resetDevicePixelRatio);
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetViewInsets);
-    const title = "An album title that is long enough to overflow the header";
-    const description = "The complete album description";
-    final cover = _file(1);
-    await tester.runAsync(() => FilesDB.instance.insertMultiple([cover]));
-    for (final ownerID in [1, 2]) {
-      final collection = _collection(ownerID: ownerID)
-        ..decryptedName = title
-        ..pubMagicMetadata = CollectionPubMagicMetadata(
-          description: description,
-        );
-      await _pumpAlbum(tester, collection);
-      await _expectCover(tester, cover);
-      final selectedFiles = tester
-          .widget<GalleryAppBarWidget>(find.byType(GalleryAppBarWidget))
-          .selectedFiles;
-      selectedFiles.toggleSelection(cover);
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(title).first);
-      await tester.pumpAndSettle();
-      expect(find.byType(BottomSheet), findsNothing);
-      selectedFiles.clearAll();
-      await tester.pumpAndSettle();
-      await tester.tap(find.text(ownerID == 1 ? title : description).first);
-      await tester.pumpAndSettle();
-      if (ownerID == 1) {
-        expect(
-          tester
-              .widgetList<EditableText>(find.byType(EditableText))
-              .map((field) => field.controller.text),
-          containsAll([title, description]),
-        );
-        tester.view.viewInsets = const FakeViewPadding(bottom: 200);
-        await tester.showKeyboard(find.byType(EditableText).last);
-        await tester.pumpAndSettle();
-        final save = find.byKey(const ValueKey("save_album_details"));
-        await tester.ensureVisible(save);
-        await tester.pumpAndSettle();
-        expect(save.hitTestable(), findsOneWidget);
-        tester.view.resetViewInsets();
-        tester.testTextInput.hide();
-        await tester.pumpAndSettle();
-      } else {
-        expect(find.byType(EditableText), findsNothing);
-        final sheet = find.byType(BottomSheet);
-        for (final text in [title, description]) {
-          expect(
-            find.descendant(of: sheet, matching: find.text(text)),
-            findsOneWidget,
-          );
-        }
-      }
-      await tester.tap(find.byTooltip("Close").last);
-      await tester.pumpAndSettle();
-      await _disposeAlbum(tester);
-    }
-  });
-
   testWidgets("uses a pending local photo and excludes ignored photos", (
     tester,
   ) async {
@@ -419,9 +354,9 @@ void main() {
   );
 }
 
-Collection _collection({int ownerID = 1}) => Collection(
+Collection _collection() => Collection(
   1,
-  User(id: ownerID, email: "a@b.c"),
+  User(id: 1, email: "a@b.c"),
   "",
   null,
   "Album",

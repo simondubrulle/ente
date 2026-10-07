@@ -63,7 +63,6 @@ void main() {
       ),
     ]) {
       tester.view.physicalSize = size;
-      var taps = 0;
       final header = _coverHeader(cover);
       header.collection.pubMagicMetadata = CollectionPubMagicMetadata(
         description: caption,
@@ -91,7 +90,6 @@ void main() {
                     collection: header.collection,
                     cover: cover,
                     title: title,
-                    onDetailsTap: () => taps++,
                     backgroundColor: header.backgroundColor,
                     collapsedHeight: kToolbarHeight,
                     actionsBuilder: (_) => List.generate(
@@ -129,11 +127,6 @@ void main() {
           closeTo(tester.getSize(expandedTitle).width, 0.1),
         );
       }
-      await tester.tap(expandedTitle);
-      if (caption != null) {
-        await tester.tap(find.text(caption));
-      }
-      expect(taps, caption == null ? 1 : 2);
       final backIcon = tester.getRect(find.byIcon(Icons.arrow_back));
       expect(backIcon.left, size.width >= 1024 ? padding.left + 28 : 28);
       final lastAction = tester.getRect(find.byType(IconButton).last);
@@ -145,13 +138,6 @@ void main() {
       );
       await tester.drag(find.byType(CustomScrollView), const Offset(0, -500));
       await tester.pumpAndSettle();
-      await tester.tap(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget is Text && widget.data == title && widget.maxLines == 1,
-        ),
-      );
-      expect(taps, caption == null ? 2 : 3);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox.shrink());
       await tester.pump(const Duration(seconds: 1));
