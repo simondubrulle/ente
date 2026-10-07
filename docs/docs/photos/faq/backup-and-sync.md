@@ -319,8 +319,6 @@ When the export finishes, each Live Photo appears as two files in the export fol
 
 If you have iCloud Photos enabled, the restored Live Photos will sync to your iPhone automatically. You can also connect your iPhone via USB and use Finder to transfer them directly.
 
-If you want to restore a large library to iCloud, try a few Live Photos first. Check their dates, locations, and Live Photo playback in Apple Photos and iCloud. Then restore the rest in manageable batches, allowing for available device storage. Keep your Ente library and any existing export until you have checked the restored files.
-
 ### Does Ente backup Burst photos? {#burst-photos-backup}
 
 Ente backs up a single primary full-resolution image from the Burst. Additional frames from the Burst sequence are not backed up unless each frame is selected and uploaded.
