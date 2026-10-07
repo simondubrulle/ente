@@ -1,4 +1,4 @@
-import { Divider, Stack } from "@mui/material";
+import { Stack } from "@mui/material";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
@@ -139,7 +139,6 @@ export const Help: React.FC<HelpProps> = ({
                     subtitle="support@ente.com"
                     onClick={handleSupport}
                 />
-                <Divider sx={{ my: 1, opacity: 0.4 }} />
                 <RowCard
                     title={t("view_logs")}
                     subtitle="Share with support when something goes wrong"
