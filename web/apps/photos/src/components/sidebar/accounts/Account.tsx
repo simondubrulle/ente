@@ -120,14 +120,16 @@ export const Account: React.FC<AccountProps> = ({
         setTwoFactorEnabled(undefined);
         if (!open || sessionsVisibilityProps.open) return;
         let cancelled = false;
-        void Promise.all([
-            get2FAStatus().catch(() => undefined),
-            getActiveSessions().catch(() => undefined),
-        ]).then(([twoFactor, sessions]) => {
-            if (cancelled) return;
-            setTwoFactorEnabled(twoFactor);
-            setSessionCount(sessions?.length);
-        });
+        void get2FAStatus()
+            .catch(() => undefined)
+            .then((twoFactor) => {
+                if (!cancelled) setTwoFactorEnabled(twoFactor);
+            });
+        void getActiveSessions()
+            .catch(() => undefined)
+            .then((sessions) => {
+                if (!cancelled) setSessionCount(sessions?.length);
+            });
         return () => {
             cancelled = true;
         };
