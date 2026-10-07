@@ -10,7 +10,7 @@ import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
 import { t } from "i18next";
 import React, { useRef } from "react";
 
-/** Keeps the root Photos menu beside its nested settings. */
+// Keeps the root Photos menu beside its nested settings.
 export function SidebarDrawerShell({
     open,
     onClose,
