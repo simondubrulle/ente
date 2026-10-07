@@ -293,7 +293,14 @@ export const ReferralSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                     : undefined
             }
         >
-            <Stack sx={{ px: 2, py: 1, gap: screen == "details" ? 2 : 3 }}>
+            <Stack
+                sx={{
+                    pl: "calc(16px + 0.5rem)",
+                    pr: 2,
+                    py: 1,
+                    gap: screen == "details" ? 2 : 3,
+                }}
+            >
                 {contents}
             </Stack>
             {isEditCodeDialogOpen && referralView.status == "loaded" && (
