@@ -30,7 +30,6 @@ import {
     toggleHLSGeneration,
 } from "ente-gallery/services/video";
 import {
-    useAppLockSnapshot,
     useHLSGenerationStatusSnapshot,
     useSettingsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
@@ -63,43 +62,6 @@ export type PreferencesAction = Extract<
     | "preferences.mlSearch"
     | "preferences.streamableVideos"
 >;
-
-const DesktopAppLockSettings: React.FC<
-    { onAuthenticateUser: () => Promise<boolean> } & Pick<
-        NestedSidebarDrawerVisibilityProps,
-        "onRootClose"
-    >
-> = ({ onAuthenticateUser, onRootClose }) => {
-    const appLock = useAppLockSnapshot();
-    const { show, props } = useModalVisibility();
-
-    const handleOpen = useCallback(async () => {
-        try {
-            if (!(await onAuthenticateUser())) return;
-            show();
-        } catch (error) {
-            log.error("Failed to open app lock settings", error);
-        }
-    }, [onAuthenticateUser, show]);
-
-    return (
-        <>
-            <RowButtonGroup>
-                <RowButton
-                    label={t("app_lock")}
-                    caption={
-                        !appLock.supported
-                            ? t("app_lock_not_supported")
-                            : undefined
-                    }
-                    disabled={!appLock.supported}
-                    onClick={handleOpen}
-                />
-            </RowButtonGroup>
-            <AppLockSettings {...props} onRootClose={onRootClose} />
-        </>
-    );
-};
 
 type PreferencesProps = NestedSidebarDrawerVisibilityProps & {
     onAuthenticateUser: () => Promise<boolean>;
@@ -230,7 +192,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
                     onClick={showAdvancedSettings}
                 />
                 {isDesktop && (
-                    <DesktopAppLockSettings
+                    <AppLockSettings
                         onAuthenticateUser={onAuthenticateUser}
                         onRootClose={onRootClose}
                     />

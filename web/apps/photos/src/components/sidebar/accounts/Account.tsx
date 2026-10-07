@@ -327,11 +327,6 @@ export const Account: React.FC<AccountProps> = ({
                 />
                 <RowCard
                     title={t("two_factor")}
-                    subtitle={
-                        twoFactorEnabled === undefined
-                            ? undefined
-                            : t(twoFactorEnabled ? "on" : "off")
-                    }
                     endIcon={
                         <EnteSwitch
                             checked={twoFactorEnabled === true}
