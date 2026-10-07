@@ -222,7 +222,11 @@ const WatchList: React.FC<WatchListProps> = ({
     removeWatch,
     refreshWatches,
 }) =>
-    watches?.length ? (
+    watches === undefined ? (
+        <Stack sx={{ alignItems: "center", py: 2 }}>
+            <CircularProgress size={24} aria-label="Loading watched folders" />
+        </Stack>
+    ) : watches.length ? (
         <Stack sx={{ gap: 1 }}>
             {watches.map((watch) => (
                 <WatchEntry
