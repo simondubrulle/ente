@@ -112,6 +112,7 @@ export const Help: React.FC<HelpProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("help")}

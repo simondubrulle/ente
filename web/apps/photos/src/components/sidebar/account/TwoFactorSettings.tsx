@@ -48,6 +48,7 @@ export const TwoFactorSettings: React.FC<
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("two_factor_authentication")}

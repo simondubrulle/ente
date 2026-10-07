@@ -138,6 +138,7 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
     return (
         <>
             <TitledNestedSidebarDrawer
+                maxWidth="440px"
                 {...{ open, onClose }}
                 onRootClose={handleRootClose}
                 title={t("watch_folders")}

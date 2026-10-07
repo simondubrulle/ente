@@ -64,6 +64,7 @@ export const FreeUpSpace: React.FC<FreeUpSpaceProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("free_up_space")}

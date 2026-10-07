@@ -230,7 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [pendingAction]);
 
     return (
-        <RootSidebarDrawer open={open} onClose={onClose}>
+        <RootSidebarDrawer open={open} onClose={onClose} maxWidth="440px">
             <HeaderSection onCloseSidebar={onClose} />
             <UserDetailsSection
                 sidebarOpen={open}

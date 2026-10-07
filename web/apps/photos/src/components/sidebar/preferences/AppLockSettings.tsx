@@ -177,6 +177,7 @@ export const AppLockSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
     return (
         <>
             <TitledNestedSidebarDrawer
+                maxWidth="440px"
                 {...{ open, onClose }}
                 onRootClose={handleRootClose}
                 title={t("app_lock")}
@@ -852,6 +853,7 @@ const AutoLockOptionsDrawer: React.FC<AutoLockOptionsDrawerProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             anchor="left"
             {...{ open, onClose }}
             onRootClose={onRootClose}

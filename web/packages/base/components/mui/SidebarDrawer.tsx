@@ -13,9 +13,12 @@ import { isDesktop } from "ente-base/app";
 import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
 import React from "react";
 
-export const SidebarDrawer: React.FC<DrawerProps> = ({
+type SidebarDrawerProps = DrawerProps & { maxWidth?: string };
+
+export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     slotProps,
     children,
+    maxWidth = "375px",
     ...rest
 }) => (
     <Drawer
@@ -24,7 +27,7 @@ export const SidebarDrawer: React.FC<DrawerProps> = ({
             ...(slotProps ?? {}),
             paper: {
                 sx: {
-                    maxWidth: "440px",
+                    maxWidth,
                     width: "100%",
                     scrollbarWidth: "thin",
                     // Extra specificity overrides inherited padding.
@@ -56,7 +59,7 @@ export type NestedSidebarDrawerVisibilityProps = ModalVisibilityProps & {
 };
 
 const NestedSidebarDrawer: React.FC<
-    NestedSidebarDrawerVisibilityProps & DrawerProps
+    NestedSidebarDrawerVisibilityProps & SidebarDrawerProps
 > = ({ onClose, onRootClose, ...rest }) => {
     // Backdrop taps close the entire stack.
     const handleClose: DrawerProps["onClose"] = (_, reason) => {
@@ -135,11 +138,11 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
 export const TitledNestedSidebarDrawer: React.FC<
     React.PropsWithChildren<
         NestedSidebarDrawerVisibilityProps &
-            Pick<DrawerProps, "anchor"> &
+            Pick<SidebarDrawerProps, "anchor" | "maxWidth"> &
             SidebarDrawerTitlebarProps
     >
-> = ({ open, onClose, onRootClose, anchor, children, ...rest }) => (
-    <NestedSidebarDrawer {...{ open, onClose, onRootClose, anchor }}>
+> = ({ open, onClose, onRootClose, anchor, maxWidth, children, ...rest }) => (
+    <NestedSidebarDrawer {...{ open, onClose, onRootClose, anchor, maxWidth }}>
         <Stack sx={{ gap: "4px", py: "12px" }}>
             <SidebarDrawerTitlebar {...{ onClose, onRootClose }} {...rest} />
             {children}
