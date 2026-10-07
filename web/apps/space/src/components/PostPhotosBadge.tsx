@@ -3,9 +3,11 @@ import { Box } from "@mui/material";
 export const SpacePostPhotosBadge = ({
     count,
     inset = 10,
+    subtle = false,
 }: {
     count: number;
     inset?: number;
+    subtle?: boolean;
 }) =>
     count > 1 ? (
         <Box
@@ -18,6 +20,7 @@ export const SpacePostPhotosBadge = ({
                 filter: "drop-shadow(0 1px 2px rgba(0, 0, 0, 0.5))",
                 height: 24,
                 justifyContent: "center",
+                opacity: subtle ? 0.7 : 1,
                 pointerEvents: "none",
                 position: "absolute",
                 right: inset,
@@ -28,8 +31,8 @@ export const SpacePostPhotosBadge = ({
         >
             <svg
                 aria-hidden
-                width={18}
-                height={18}
+                width={subtle ? 15 : 18}
+                height={subtle ? 15 : 18}
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"

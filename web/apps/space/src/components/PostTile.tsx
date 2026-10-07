@@ -37,6 +37,7 @@ export interface SpacePostTileItem {
 interface SpacePostTileProps {
     displayName: string;
     showAvatar?: boolean;
+    subtlePhotosBadge?: boolean;
     onLoadAvatar?: () => Promise<string | null>;
     flexGrow: number;
     imageUrl?: string;
@@ -55,6 +56,7 @@ interface SpacePostTileProps {
 export const SpacePostTile: React.FC<SpacePostTileProps> = ({
     displayName,
     showAvatar = false,
+    subtlePhotosBadge,
     onLoadAvatar,
     flexGrow,
     imageUrl,
@@ -236,7 +238,11 @@ export const SpacePostTile: React.FC<SpacePostTileProps> = ({
                 ) : null}
                 {!isUnavailable && (
                     <>
-                        <SpacePostPhotosBadge count={photoCount} inset={8} />
+                        <SpacePostPhotosBadge
+                            count={photoCount}
+                            inset={8}
+                            subtle={subtlePhotosBadge}
+                        />
                         <SpacePostVideoBadge
                             durationMs={item.photos?.[0]?.video?.durationMs}
                             size={18}
@@ -288,6 +294,7 @@ export const SpacePostTile: React.FC<SpacePostTileProps> = ({
                     }}
                 >
                     <SpacePostAvatar
+                        outerRing
                         ready={!isAvatarPending && decodedAvatar.ready}
                         size={26}
                         src={
