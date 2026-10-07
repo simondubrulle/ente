@@ -205,16 +205,17 @@ export const Sidebar: React.FC<SidebarProps> = ({
         void (async () => {
             try {
                 if (!(await onAuthenticateUser())) return;
+                closeSections();
                 showExport();
             } catch (error) {
                 log.error("Failed to authenticate before export", error);
             }
         })();
-    }, [onAuthenticateUser, showExport, showMiniDialog]);
+    }, [closeSections, onAuthenticateUser, showExport, showMiniDialog]);
 
     const performSidebarAction = useCallback(
         async (actionID: SidebarActionID) => {
-            closeSections();
+            if (actionID !== "utility.export") closeSections();
             return performSidebarRegistryAction(actionID, {
                 onClose,
                 onShowCollectionSummary,
@@ -323,7 +324,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         />
                         <UtilitySection
                             {...{
-                                showExport: selectSection(handleShowExport),
+                                showExport: handleShowExport,
                                 showAccount: selectSection(showAccount),
                                 showReferrals: selectSection(showReferrals),
                                 showPreferences: selectSection(showPreferences),
