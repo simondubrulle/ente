@@ -171,6 +171,7 @@ const StorageSection: React.FC<StorageSectionProps> = ({ usage, storage }) => {
             </Typography>
             <Typography
                 variant="h3"
+                noWrap
                 sx={{
                     fontSize: "24px",
                     lineHeight: "32px",
