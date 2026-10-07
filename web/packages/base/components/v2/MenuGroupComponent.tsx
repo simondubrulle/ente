@@ -6,7 +6,6 @@ interface MenuGroupComponentProps {
     dividerInset?: number;
 }
 
-/** A shared rounded surface with inset dividers, like mobile menu groups. */
 export function MenuGroupComponent({
     children,
     dividerInset = 16,
@@ -28,7 +27,6 @@ export function MenuGroupComponent({
                     overflow: "hidden",
                     "& > button": { borderRadius: 0 },
                 },
-                // Mobile's fillLight surface contrasts with the drawer background.
                 (theme) => theme.applyStyles("dark", { bgcolor: "#212121" }),
             ]}
         >

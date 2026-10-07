@@ -10,7 +10,6 @@ interface MenuComponentProps {
     startIcon?: ReactNode;
 }
 
-/** A selectable menu row, matching the mobile MenuComponent. */
 export function MenuComponent({
     title,
     selected,
