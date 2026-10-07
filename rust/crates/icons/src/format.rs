@@ -42,7 +42,7 @@ fn validate_ico(data: &[u8]) -> Option<()> {
     let count = usize::from(u16::from_le_bytes([count[0], count[1]]));
     let directory = data.get(6..6 + count * 16)?;
     let mut budget = MAX_BYTES;
-    for entry in directory.chunks_exact(16) {
+    for entry in directory.as_chunks::<16>().0 {
         let length = u32::from_le_bytes([entry[8], entry[9], entry[10], entry[11]]) as usize;
         if length < 8 {
             return None;

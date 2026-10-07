@@ -41,9 +41,6 @@ pub(crate) fn icon_urls(html: &str, page: &Url) -> Vec<Url> {
         if !icon && !touch {
             continue;
         }
-        let svg = element
-            .attr("type")
-            .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("image/svg+xml"));
         let Some(href) = element
             .attr("href")
             .map(str::trim)
@@ -58,6 +55,13 @@ pub(crate) fn icon_urls(html: &str, page: &Url) -> Vec<Url> {
             continue;
         }
         url.set_fragment(None);
+        let svg = element
+            .attr("type")
+            .is_some_and(|kind| kind.trim().eq_ignore_ascii_case("image/svg+xml"))
+            || url
+                .path()
+                .rsplit_once('.')
+                .is_some_and(|(_, extension)| extension.eq_ignore_ascii_case("svg"));
         let rank = (svg, size_rank(element.attr("sizes").unwrap_or("")), !icon);
         candidates.push((rank, url));
     }
