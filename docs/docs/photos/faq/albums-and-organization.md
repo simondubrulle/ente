@@ -7,6 +7,12 @@ description: Frequently asked questions about albums, slideshows, hiding, archiv
 
 ## Albums {#albums-section}
 
+### How do I change an album's cover or description? {#edit-album-details}
+
+Open the album and select the three-dot menu, then **Edit details**. To change the cover, select the pencil icon on the current cover and choose a photo. You can also add or update the album description here. Save your changes when finished.
+
+See the [Albums guide](/photos/features/albums-and-organization/albums) for steps on mobile, web, and desktop.
+
 ### Can Ente albums be nested? {#nested-albums}
 
 No, Ente albums cannot be nested currently. When you upload a nested folder structure using the "Separate albums" option, Ente will create a separate album for each nested folder, but these albums themselves will not be nested - they will all appear as top-level albums.
