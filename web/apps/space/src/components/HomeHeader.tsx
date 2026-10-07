@@ -26,7 +26,7 @@ const avatarFadeSx = {
     "@media (prefers-reduced-motion: reduce)": { animation: "none" },
 } as const;
 
-const spaceHomeHeaderHeight = 60;
+const spaceHomeHeaderHeight = 68;
 const spaceHomeHeaderBarHeight = 44;
 
 interface SpaceHomeHeaderProps {
@@ -58,9 +58,10 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
             gridTemplateColumns: `${headerSideWidth}px minmax(0, 1fr) ${headerSideWidth}px`,
             height: spaceHomeHeaderHeight,
             maxWidth: "100%",
+            pb: "12px",
             position: "relative",
+            pt: "12px",
             px: "8px",
-            py: "8px",
             width: "100%",
             zIndex: 4,
             "&::after": {
@@ -72,7 +73,7 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
                 pointerEvents: "none",
                 position: "absolute",
                 right: "8px",
-                top: "8px",
+                top: "12px",
                 zIndex: 0,
             },
             "&::before": {

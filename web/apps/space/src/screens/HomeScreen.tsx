@@ -2285,11 +2285,11 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         flexDirection: "column",
                         gap: 0,
                         justifyContent: showFeedCards ? "flex-start" : "center",
-                        minHeight: "calc(100svh - 60px)",
+                        minHeight: "calc(100svh - 68px)",
                         minWidth: 0,
                         pb: "calc(env(safe-area-inset-bottom) + 112px)",
                         px: feedHorizontalPadding,
-                        pt: showFeedCards ? "4px" : "8px",
+                        pt: showFeedCards ? 0 : "8px",
                         width: "100%",
                     }}
                 >
