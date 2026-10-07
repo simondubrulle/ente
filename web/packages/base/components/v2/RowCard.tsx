@@ -4,7 +4,7 @@ import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton"
 import React from "react";
 
 interface RowCardProps {
-    title: string;
+    title: React.ReactNode;
     subtitle?: string;
     onClick?: () => void;
     endIcon?: React.ReactNode;

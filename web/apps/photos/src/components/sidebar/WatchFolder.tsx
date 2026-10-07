@@ -315,50 +315,48 @@ const WatchEntry: React.FC<WatchEntryProps> = ({
     };
 
     return (
-        <Tooltip title={watch.folderPath}>
-            <Box>
-                <RowCard
-                    title={`/${watch.folderPath
+        <RowCard
+            title={
+                <Tooltip title={watch.folderPath}>
+                    <span>{`/${watch.folderPath
                         .split(/[\\/]/)
                         .filter(Boolean)
                         .slice(-2)
-                        .join("/")}`}
-                    subtitle={
-                        !isAccessible ? t("folder_not_accessible") : undefined
-                    }
-                    endIcon={
-                        <Stack
-                            direction="row"
-                            sx={{ alignItems: "center", flexShrink: 0 }}
+                        .join("/")}`}</span>
+                </Tooltip>
+            }
+            subtitle={!isAccessible ? t("folder_not_accessible") : undefined}
+            endIcon={
+                <Stack
+                    direction="row"
+                    sx={{ alignItems: "center", flexShrink: 0 }}
+                >
+                    {!isAccessible && (
+                        <Tooltip title={t("retry_watching")}>
+                            <IconButton
+                                aria-label={`${t("retry_watching")}: ${watch.folderPath}`}
+                                onClick={handleRetry}
+                                disabled={isRetrying}
+                            >
+                                {isRetrying ? (
+                                    <CircularProgress size={20} />
+                                ) : (
+                                    <RefreshIcon />
+                                )}
+                            </IconButton>
+                        </Tooltip>
+                    )}
+                    <Tooltip title={t("stop_watching")}>
+                        <IconButton
+                            aria-label={`${t("stop_watching")}: ${watch.folderPath}`}
+                            onClick={confirmStopWatching}
                         >
-                            {!isAccessible && (
-                                <Tooltip title={t("retry_watching")}>
-                                    <IconButton
-                                        aria-label={`${t("retry_watching")}: ${watch.folderPath}`}
-                                        onClick={handleRetry}
-                                        disabled={isRetrying}
-                                    >
-                                        {isRetrying ? (
-                                            <CircularProgress size={20} />
-                                        ) : (
-                                            <RefreshIcon />
-                                        )}
-                                    </IconButton>
-                                </Tooltip>
-                            )}
-                            <Tooltip title={t("stop_watching")}>
-                                <IconButton
-                                    aria-label={`${t("stop_watching")}: ${watch.folderPath}`}
-                                    onClick={confirmStopWatching}
-                                >
-                                    <StopCircleOutlinedIcon />
-                                </IconButton>
-                            </Tooltip>
-                        </Stack>
-                    }
-                />
-            </Box>
-        </Tooltip>
+                            <StopCircleOutlinedIcon />
+                        </IconButton>
+                    </Tooltip>
+                </Stack>
+            }
+        />
     );
 };
 
