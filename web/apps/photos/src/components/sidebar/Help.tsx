@@ -1,5 +1,4 @@
-import { Divider, Stack, Typography } from "@mui/material";
-import { desktopAppVersion } from "ente-base/app";
+import { Divider, Stack } from "@mui/material";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
@@ -126,6 +125,11 @@ export const Help: React.FC<HelpProps> = ({
                     onClick={handleHelp}
                 />
                 <RowCard
+                    title={t("blog")}
+                    subtitle="ente.com/blog"
+                    onClick={handleBlog}
+                />
+                <RowCard
                     title="Request a feature"
                     subtitle="github.com/ente/ente"
                     onClick={handleRequestFeature}
@@ -141,41 +145,6 @@ export const Help: React.FC<HelpProps> = ({
                     subtitle="Share with support when something goes wrong"
                     onClick={confirmViewLogs}
                 />
-                <Stack
-                    direction="row"
-                    sx={{
-                        p: "14px 8px 14px 0.5rem",
-                        justifyContent: "space-between",
-                        alignItems: "center",
-                    }}
-                >
-                    <Stack>
-                        <Typography sx={{ fontWeight: "medium" }}>
-                            About
-                        </Typography>
-                        <Typography
-                            variant="small"
-                            sx={{
-                                color: "text.muted",
-                                fontWeight: 400,
-                                lineHeight: "20px",
-                            }}
-                        >
-                            {desktopAppVersion
-                                ? `Photos v${desktopAppVersion}`
-                                : "Ente Photos"}
-                        </Typography>
-                    </Stack>
-                    {desktopAppVersion && (
-                        <Typography
-                            variant="small"
-                            sx={{ color: "text.muted", fontWeight: 400 }}
-                        >
-                            {`v${desktopAppVersion}`}
-                        </Typography>
-                    )}
-                </Stack>
-                <Divider sx={{ my: 1, opacity: 0.4 }} />
             </Stack>
         </TitledNestedSidebarDrawer>
     );
