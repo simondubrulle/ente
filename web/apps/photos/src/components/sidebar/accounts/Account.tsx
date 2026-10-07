@@ -286,6 +286,7 @@ export const Account: React.FC<AccountProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("account")}

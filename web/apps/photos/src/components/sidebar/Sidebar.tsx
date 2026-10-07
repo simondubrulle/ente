@@ -230,7 +230,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [pendingAction]);
 
     return (
-        <RootSidebarDrawer open={open} onClose={onClose}>
+        <RootSidebarDrawer open={open} onClose={onClose} maxWidth="440px">
             <HeaderSection onCloseSidebar={onClose} />
             <UserDetailsSection
                 sidebarOpen={open}
@@ -670,6 +670,7 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 <WatchFolder
                     open={watchFolderView}
                     onClose={onCloseWatchFolder}
+                    onRootClose={onCloseSidebar}
                 />
             )}
             <Account

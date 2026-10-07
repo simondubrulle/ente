@@ -13,9 +13,12 @@ import { isDesktop } from "ente-base/app";
 import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
 import React from "react";
 
-export const SidebarDrawer: React.FC<DrawerProps> = ({
+type SidebarDrawerProps = DrawerProps & { maxWidth?: string };
+
+export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     slotProps,
     children,
+    maxWidth = "375px",
     ...rest
 }) => (
     <Drawer
@@ -24,7 +27,7 @@ export const SidebarDrawer: React.FC<DrawerProps> = ({
             ...(slotProps ?? {}),
             paper: {
                 sx: {
-                    maxWidth: "375px",
+                    maxWidth,
                     width: "100%",
                     scrollbarWidth: "thin",
                     // Extra specificity overrides inherited padding.
@@ -56,7 +59,7 @@ export type NestedSidebarDrawerVisibilityProps = ModalVisibilityProps & {
 };
 
 const NestedSidebarDrawer: React.FC<
-    NestedSidebarDrawerVisibilityProps & DrawerProps
+    NestedSidebarDrawerVisibilityProps & SidebarDrawerProps
 > = ({ onClose, onRootClose, ...rest }) => {
     // Backdrop taps close the entire stack.
     const handleClose: DrawerProps["onClose"] = (_, reason) => {
@@ -88,9 +91,6 @@ type SidebarDrawerTitlebarProps = Pick<
 > & {
     title: string;
     caption?: string;
-    // TODO: Default to the new UI's inset and title size once it is adopted.
-    contentInset?: string;
-    titleFontSize?: string;
     actionButton?: React.ReactNode;
     showRootCloseButton?: boolean;
 };
@@ -98,8 +98,6 @@ type SidebarDrawerTitlebarProps = Pick<
 export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
     title,
     caption,
-    contentInset,
-    titleFontSize,
     onClose,
     onRootClose,
     actionButton,
@@ -108,29 +106,28 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
     <Stack sx={{ gap: "4px" }}>
         <Stack direction="row" sx={{ justifyContent: "space-between" }}>
             <IconButton
+                aria-label="Back"
                 onClick={onClose}
                 color="primary"
-                sx={{ ml: contentInset }}
+                sx={{ ml: "0.5rem" }}
             >
                 <ArrowBackIcon />
             </IconButton>
             <Stack direction="row" sx={{ gap: "4px" }}>
                 {actionButton && actionButton}
                 {showRootCloseButton && (
-                    <IconButton onClick={onRootClose} color="secondary">
+                    <IconButton
+                        aria-label="Close"
+                        onClick={onRootClose}
+                        color="secondary"
+                    >
                         <CloseIcon />
                     </IconButton>
                 )}
             </Stack>
         </Stack>
-        <Stack
-            sx={{
-                pl: contentInset ? `calc(16px + ${contentInset})` : "16px",
-                pr: "16px",
-                gap: "4px",
-            }}
-        >
-            <Typography variant="h3" sx={{ fontSize: titleFontSize }}>
+        <Stack sx={{ pl: "calc(16px + 0.5rem)", pr: "16px", gap: "4px" }}>
+            <Typography variant="h3" sx={{ fontSize: "22px" }}>
                 {title}
             </Typography>
             <Typography
@@ -138,7 +135,6 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
                 sx={{
                     color: "text.muted",
                     wordBreak: "break-all",
-                    px: contentInset ? 0 : "1px",
                     minHeight: "17px",
                 }}
             >
@@ -151,11 +147,11 @@ export const SidebarDrawerTitlebar: React.FC<SidebarDrawerTitlebarProps> = ({
 export const TitledNestedSidebarDrawer: React.FC<
     React.PropsWithChildren<
         NestedSidebarDrawerVisibilityProps &
-            Pick<DrawerProps, "anchor"> &
+            Pick<SidebarDrawerProps, "anchor" | "maxWidth"> &
             SidebarDrawerTitlebarProps
     >
-> = ({ open, onClose, onRootClose, anchor, children, ...rest }) => (
-    <NestedSidebarDrawer {...{ open, onClose, onRootClose, anchor }}>
+> = ({ open, onClose, onRootClose, anchor, maxWidth, children, ...rest }) => (
+    <NestedSidebarDrawer {...{ open, onClose, onRootClose, anchor, maxWidth }}>
         <Stack sx={{ gap: "4px", py: "12px" }}>
             <SidebarDrawerTitlebar {...{ onClose, onRootClose }} {...rest} />
             {children}

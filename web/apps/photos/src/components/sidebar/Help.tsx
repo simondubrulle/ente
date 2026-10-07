@@ -112,11 +112,10 @@ export const Help: React.FC<HelpProps> = ({
 
     return (
         <TitledNestedSidebarDrawer
+            maxWidth="440px"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("help")}
-            contentInset="0.5rem"
-            titleFontSize="22px"
         >
             <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                 <RowCard

@@ -1,24 +1,28 @@
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
-import { Stack, Typography } from "@mui/material";
+import { Box, Stack, Typography } from "@mui/material";
 import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
 import React from "react";
 
 interface RowCardProps {
-    title: string;
-    subtitle: string;
-    onClick: () => void;
+    title: React.ReactNode;
+    subtitle?: string;
+    onClick?: () => void;
+    endIcon?: React.ReactNode;
 }
 
 export const RowCard: React.FC<RowCardProps> = ({
     title,
     subtitle,
     onClick,
+    endIcon = <ChevronRightIcon />,
 }) => (
-    <FocusVisibleButton
-        fullWidth
+    <Box
+        component={onClick ? FocusVisibleButton : "div"}
         onClick={onClick}
         sx={[
             {
+                display: "flex",
+                width: "100%",
                 p: "14px 8px 14px 0.5rem",
                 gap: 1,
                 justifyContent: "space-between",
@@ -40,18 +44,20 @@ export const RowCard: React.FC<RowCardProps> = ({
             <Typography noWrap sx={{ fontWeight: "medium" }}>
                 {title}
             </Typography>
-            <Typography
-                noWrap
-                variant="small"
-                sx={{
-                    color: "text.muted",
-                    lineHeight: "20px",
-                    fontWeight: 400,
-                }}
-            >
-                {subtitle}
-            </Typography>
+            {subtitle && (
+                <Typography
+                    noWrap
+                    variant="small"
+                    sx={{
+                        color: "text.muted",
+                        lineHeight: "20px",
+                        fontWeight: 400,
+                    }}
+                >
+                    {subtitle}
+                </Typography>
+            )}
         </Stack>
-        <ChevronRightIcon />
-    </FocusVisibleButton>
+        {endIcon}
+    </Box>
 );
