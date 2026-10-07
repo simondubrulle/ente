@@ -9,10 +9,6 @@ interface RowCardProps {
     onClick: () => void;
 }
 
-/**
- * A tappable summary card with a title, subtitle, and trailing chevron.
- * Its background appears on hover.
- */
 export const RowCard: React.FC<RowCardProps> = ({
     title,
     subtitle,
