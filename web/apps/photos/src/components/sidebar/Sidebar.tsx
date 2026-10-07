@@ -698,43 +698,53 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 }
                 onClick={onShowExport}
             />
-            <Help
-                {...helpVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingHelpAction}
-                onActionHandled={onHelpActionHandled}
-            />
-            {isDesktop && (
+            {helpVisibilityProps.open && (
+                <Help
+                    {...helpVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingHelpAction}
+                    onActionHandled={onHelpActionHandled}
+                />
+            )}
+            {isDesktop && watchFolderView && (
                 <WatchFolder
                     open={watchFolderView}
                     onClose={onCloseWatchFolder}
                     onRootClose={onCloseSidebar}
                 />
             )}
-            <Account
-                {...accountVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingAccountAction}
-                onActionHandled={onAccountActionHandled}
-                {...{ onAuthenticateUser, onShowPlanSelector }}
-            />
-            <ReferralSettings
-                {...referralsVisibilityProps}
-                onRootClose={onCloseSidebar}
-            />
-            <Preferences
-                {...preferencesVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingPreferencesAction}
-                onActionHandled={onPreferencesActionHandled}
-                onAuthenticateUser={onAuthenticateUser}
-            />
-            <FreeUpSpace
-                {...freeUpSpaceVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingFreeUpSpaceAction}
-                onActionHandled={onFreeUpSpaceActionHandled}
-            />
+            {accountVisibilityProps.open && (
+                <Account
+                    {...accountVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingAccountAction}
+                    onActionHandled={onAccountActionHandled}
+                    {...{ onAuthenticateUser, onShowPlanSelector }}
+                />
+            )}
+            {referralsVisibilityProps.open && (
+                <ReferralSettings
+                    {...referralsVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                />
+            )}
+            {preferencesVisibilityProps.open && (
+                <Preferences
+                    {...preferencesVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingPreferencesAction}
+                    onActionHandled={onPreferencesActionHandled}
+                    onAuthenticateUser={onAuthenticateUser}
+                />
+            )}
+            {freeUpSpaceVisibilityProps.open && (
+                <FreeUpSpace
+                    {...freeUpSpaceVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingFreeUpSpaceAction}
+                    onActionHandled={onFreeUpSpaceActionHandled}
+                />
+            )}
         </>
     );
 };

@@ -1864,10 +1864,12 @@ const Page: React.FC = () => {
                 setLoading={(v) => setBlockingLoad(v)}
                 onManageFamily={showFamilyManagement}
             />
-            <FamilyManagement
-                {...familyManagementVisibilityProps}
-                onShowPlanSelector={showPlanSelector}
-            />
+            {familyManagementVisibilityProps.open && (
+                <FamilyManagement
+                    {...familyManagementVisibilityProps}
+                    onShowPlanSelector={showPlanSelector}
+                />
+            )}
         </>
     );
 
@@ -2056,11 +2058,13 @@ const Page: React.FC = () => {
                 onAuthenticateUser={authenticateUser}
             >
                 {sidebarVisibilityProps.open && subscriptionDialogs}
-                <Export
-                    {...exportVisibilityProps}
-                    {...{ collectionNameByID }}
-                    onRootClose={handleSidebarClose}
-                />
+                {exportVisibilityProps.open && (
+                    <Export
+                        {...exportVisibilityProps}
+                        {...{ collectionNameByID }}
+                        onRootClose={handleSidebarClose}
+                    />
+                )}
             </Sidebar>
             <WhatsNew {...whatsNewVisibilityProps} />
             <AssignPersonDialog
