@@ -177,7 +177,6 @@ export const Preferences: React.FC<PreferencesProps> = ({
                     subtitle={mode ? t(mode) : undefined}
                     onClick={showThemeSettings}
                 />
-                <Divider sx={{ my: "2px", opacity: 0.1 }} />
                 {isMLSupported && (
                     <RowCard
                         title={t("ml_search")}

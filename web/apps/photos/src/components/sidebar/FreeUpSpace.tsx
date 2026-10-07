@@ -70,7 +70,7 @@ export const FreeUpSpace: React.FC<FreeUpSpaceProps> = ({
             title={t("free_up_space")}
             caption="Review large files and duplicates to reclaim storage."
         >
-            <Stack sx={{ px: 2, py: 1 }}>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                 <RowCard
                     title="Duplicates"
                     subtitle="Remove exact duplicates"
