@@ -383,7 +383,7 @@ class FeedMotionList extends React.Component<FeedMotionListProps> {
                     sx={{
                         boxSizing: "border-box",
                         minWidth: 0,
-                        pb: "8px",
+                        pb: "12px",
                         position: "relative",
                         width: "100%",
                     }}
@@ -2289,7 +2289,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         minWidth: 0,
                         pb: "calc(env(safe-area-inset-bottom) + 112px)",
                         px: feedHorizontalPadding,
-                        pt: showFeedCards ? 0 : "8px",
+                        pt: showFeedCards ? "4px" : "8px",
                         width: "100%",
                     }}
                 >
