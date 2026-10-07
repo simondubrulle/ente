@@ -13,7 +13,6 @@ import {
     Typography,
     useTheme,
 } from "@mui/material";
-import { CenteredFill } from "ente-base/components/containers";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
@@ -217,26 +216,29 @@ const WatchList: React.FC<WatchListProps> = ({
     );
 
 const NoWatches: React.FC = () => (
-    <CenteredFill sx={{ mb: 4 }}>
-        <Stack sx={{ gap: 1.5 }}>
-            <Typography variant="h6">{t("no_folders_added")}</Typography>
-            <Typography variant="small" sx={{ py: 1, color: "text.muted" }}>
-                {t("watch_folders_hint_1")}
+    <Stack sx={{ p: "14px 8px 14px 0.5rem", gap: 1 }}>
+        <Typography sx={{ fontWeight: "medium" }}>
+            {t("no_folders_added")}
+        </Typography>
+        <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
+            <Check />
+            <Typography
+                variant="small"
+                sx={{ color: "text.muted", fontWeight: 400 }}
+            >
+                {t("watch_folders_hint_2")}
             </Typography>
-            <Stack direction="row" sx={{ gap: 1 }}>
-                <Check />
-                <Typography variant="small" sx={{ color: "text.muted" }}>
-                    {t("watch_folders_hint_2")}
-                </Typography>
-            </Stack>
-            <Stack direction="row" sx={{ gap: 1 }}>
-                <Check />
-                <Typography variant="small" sx={{ color: "text.muted" }}>
-                    {t("watch_folders_hint_3")}
-                </Typography>
-            </Stack>
         </Stack>
-    </CenteredFill>
+        <Stack direction="row" sx={{ gap: 1, alignItems: "center" }}>
+            <Check />
+            <Typography
+                variant="small"
+                sx={{ color: "text.muted", fontWeight: 400 }}
+            >
+                {t("watch_folders_hint_3")}
+            </Typography>
+        </Stack>
+    </Stack>
 );
 
 const Check: React.FC = () => (
