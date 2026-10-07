@@ -1,3 +1,4 @@
+import { Export } from "@/components/Export";
 import { downloadAppDialogAttributes } from "@/components/utils/download";
 import exportService from "@/services/export";
 import { performSidebarAction as performSidebarRegistryAction } from "@/services/search/sidebar-search-registry";
@@ -89,7 +90,7 @@ type SidebarProps = ModalVisibilityProps & {
         collectionSummaryID: number,
         isHiddenCollectionSummary?: boolean,
     ) => Promise<void>;
-    onShowExport: () => void;
+    collectionNameByID: Map<number, string>;
     onCloseOverlays: () => void;
     children?: React.ReactNode;
     onAuthenticateUser: () => Promise<boolean>;
@@ -106,7 +107,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onActionHandled,
     onShowPlanSelector,
     onShowCollectionSummary,
-    onShowExport,
+    collectionNameByID,
     onAuthenticateUser,
 }) => {
     const { show: showHelp, props: helpVisibilityProps } = useModalVisibility();
@@ -118,6 +119,14 @@ export const Sidebar: React.FC<SidebarProps> = ({
         useModalVisibility();
     const { show: showFreeUpSpace, props: freeUpSpaceVisibilityProps } =
         useModalVisibility();
+    const { show: showExport, props: exportVisibilityProps } =
+        useModalVisibility();
+    const { onClose: closeExport } = exportVisibilityProps;
+
+    useEffect(() => {
+        if (!open) closeExport();
+    }, [open, closeExport]);
+
     const { watchFolderView, setWatchFolderView } = usePhotosAppContext();
     const { showMiniDialog, logout } = useBaseContext();
 
@@ -140,6 +149,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         closePreferences();
         closeHelp();
         closeFreeUpSpace();
+        closeExport();
         setWatchFolderView(false);
         onCloseOverlays();
     }, [
@@ -148,6 +158,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         closePreferences,
         closeHelp,
         closeFreeUpSpace,
+        closeExport,
         setWatchFolderView,
         onCloseOverlays,
     ]);
@@ -195,12 +206,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
         void (async () => {
             try {
                 if (!(await onAuthenticateUser())) return;
-                onShowExport();
+                showExport();
             } catch (error) {
                 log.error("Failed to authenticate before export", error);
             }
         })();
-    }, [onAuthenticateUser, onShowExport, showMiniDialog]);
+    }, [onAuthenticateUser, showExport, showMiniDialog]);
 
     const performSidebarAction = useCallback(
         async (actionID: SidebarActionID) => {
@@ -295,7 +306,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <UtilitySection
                         onCloseSidebar={onClose}
                         {...{
-                            onShowExport: selectSection(handleShowExport),
+                            showExport: selectSection(handleShowExport),
                             onAuthenticateUser,
                             onShowPlanSelector,
                             showAccount: selectSection(showAccount),
@@ -330,6 +341,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <InfoSection />
                 </Stack>
             </RootSidebarDrawer>
+            {open && exportVisibilityProps.open && (
+                <Export
+                    {...exportVisibilityProps}
+                    collectionNameByID={collectionNameByID}
+                    onRootClose={onClose}
+                />
+            )}
             {children}
         </SidebarDrawerShell>
     );
@@ -615,10 +633,8 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
 };
 
 type UtilitySectionProps = SectionProps &
-    Pick<
-        SidebarProps,
-        "onShowExport" | "onAuthenticateUser" | "onShowPlanSelector"
-    > & {
+    Pick<SidebarProps, "onAuthenticateUser" | "onShowPlanSelector"> & {
+        showExport: () => void;
         showAccount: () => void;
         accountVisibilityProps: ModalVisibilityProps;
         showReferrals: () => void;
@@ -644,7 +660,7 @@ type UtilitySectionProps = SectionProps &
 
 const UtilitySection: React.FC<UtilitySectionProps> = ({
     onCloseSidebar,
-    onShowExport,
+    showExport,
     onAuthenticateUser,
     onShowPlanSelector,
     showAccount,
@@ -711,7 +727,7 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                         <RowButtonEndActivityIndicator />
                     )
                 }
-                onClick={onShowExport}
+                onClick={showExport}
             />
             {helpVisibilityProps.open && (
                 <Help
