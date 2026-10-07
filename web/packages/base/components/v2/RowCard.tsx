@@ -5,7 +5,7 @@ import React from "react";
 
 interface RowCardProps {
     title: string;
-    subtitle: string;
+    subtitle?: string;
     onClick?: () => void;
     endIcon?: React.ReactNode;
 }
@@ -44,17 +44,19 @@ export const RowCard: React.FC<RowCardProps> = ({
             <Typography noWrap sx={{ fontWeight: "medium" }}>
                 {title}
             </Typography>
-            <Typography
-                noWrap
-                variant="small"
-                sx={{
-                    color: "text.muted",
-                    lineHeight: "20px",
-                    fontWeight: 400,
-                }}
-            >
-                {subtitle}
-            </Typography>
+            {subtitle && (
+                <Typography
+                    noWrap
+                    variant="small"
+                    sx={{
+                        color: "text.muted",
+                        lineHeight: "20px",
+                        fontWeight: 400,
+                    }}
+                >
+                    {subtitle}
+                </Typography>
+            )}
         </Stack>
         {endIcon}
     </Box>

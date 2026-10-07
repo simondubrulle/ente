@@ -25,7 +25,8 @@ import {
     ensureElectron,
     suppressMainWindowBlurForTrustedPrompt,
 } from "ente-base/electron";
-import { basename, dirname } from "ente-base/file-name";
+import { dirname } from "ente-base/file-name";
+import log from "ente-base/log";
 import type { CollectionMapping, FolderWatch } from "ente-base/types/ipc";
 import { t } from "i18next";
 import React, { useEffect, useRef, useState } from "react";
@@ -53,17 +54,27 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
         setWatches(ws);
     };
 
-    useEffect(() => {
-        void refreshWatches();
-    }, []);
-
     // Recheck inaccessible folders when the window regains focus.
     useEffect(() => {
         if (!open) return;
 
-        const handleFocus = () => void refreshWatches();
+        let active = true;
+        const handleFocus = () => {
+            void watcher
+                .getWatches()
+                .then((ws) => {
+                    if (active) setWatches(ws);
+                })
+                .catch((e: unknown) =>
+                    log.error("Failed to refresh watched folders", e),
+                );
+        };
+        handleFocus();
         window.addEventListener("focus", handleFocus);
-        return () => window.removeEventListener("focus", handleFocus);
+        return () => {
+            active = false;
+            window.removeEventListener("focus", handleFocus);
+        };
     }, [open]);
 
     useEffect(() => {
@@ -282,7 +293,7 @@ const WatchEntry: React.FC<WatchEntryProps> = ({
     const confirmStopWatching = () =>
         showMiniDialog({
             title: t("stop_watching_folder_title"),
-            message: t("stop_watching_folder_message"),
+            message: `${t("stop_watching_folder_message")}\n\n${watch.folderPath}`,
             continue: {
                 text: t("yes_stop"),
                 color: "critical",
@@ -298,54 +309,51 @@ const WatchEntry: React.FC<WatchEntryProps> = ({
         retryTimerRef.current = setTimeout(() => setIsRetrying(false), 1000);
     };
 
-    const count = watch.syncedFiles.length;
-    const mapping =
-        watch.collectionMapping == "root"
-            ? `synced to "${basename(watch.folderPath)}"`
-            : "synced to separate albums";
-    const subtitle = !isAccessible
-        ? t("folder_not_accessible")
-        : `${count.toLocaleString()} ${count == 1 ? "file" : "files"} · ${watcher.isSyncingFolder(watch.folderPath) ? "Syncing" : mapping}`;
-
     return (
-        <RowCard
-            title={`/${watch.folderPath
-                .split(/[\\/]/)
-                .filter(Boolean)
-                .slice(-2)
-                .join("/")}`}
-            subtitle={subtitle}
-            endIcon={
-                <Stack
-                    direction="row"
-                    sx={{ alignItems: "center", flexShrink: 0 }}
-                >
-                    {!isAccessible && (
-                        <Tooltip title={t("retry_watching")}>
-                            <IconButton
-                                aria-label={`${t("retry_watching")}: ${watch.folderPath}`}
-                                onClick={handleRetry}
-                                disabled={isRetrying}
-                            >
-                                {isRetrying ? (
-                                    <CircularProgress size={20} />
-                                ) : (
-                                    <RefreshIcon />
-                                )}
-                            </IconButton>
-                        </Tooltip>
-                    )}
-                    <Tooltip title={t("stop_watching")}>
-                        <IconButton
-                            aria-label={`${t("stop_watching")}: ${watch.folderPath}`}
-                            onClick={confirmStopWatching}
+        <Tooltip title={watch.folderPath}>
+            <Box>
+                <RowCard
+                    title={`/${watch.folderPath
+                        .split(/[\\/]/)
+                        .filter(Boolean)
+                        .slice(-2)
+                        .join("/")}`}
+                    subtitle={
+                        !isAccessible ? t("folder_not_accessible") : undefined
+                    }
+                    endIcon={
+                        <Stack
+                            direction="row"
+                            sx={{ alignItems: "center", flexShrink: 0 }}
                         >
-                            <StopCircleOutlinedIcon />
-                        </IconButton>
-                    </Tooltip>
-                </Stack>
-            }
-        />
+                            {!isAccessible && (
+                                <Tooltip title={t("retry_watching")}>
+                                    <IconButton
+                                        aria-label={`${t("retry_watching")}: ${watch.folderPath}`}
+                                        onClick={handleRetry}
+                                        disabled={isRetrying}
+                                    >
+                                        {isRetrying ? (
+                                            <CircularProgress size={20} />
+                                        ) : (
+                                            <RefreshIcon />
+                                        )}
+                                    </IconButton>
+                                </Tooltip>
+                            )}
+                            <Tooltip title={t("stop_watching")}>
+                                <IconButton
+                                    aria-label={`${t("stop_watching")}: ${watch.folderPath}`}
+                                    onClick={confirmStopWatching}
+                                >
+                                    <StopCircleOutlinedIcon />
+                                </IconButton>
+                            </Tooltip>
+                        </Stack>
+                    }
+                />
+            </Box>
+        </Tooltip>
     );
 };
 
