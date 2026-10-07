@@ -258,7 +258,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <UtilitySection
                         onCloseSidebar={onClose}
                         {...{
-                            onShowExport: handleShowExport,
+                            showExport: handleShowExport,
                             onAuthenticateUser,
                             onShowPlanSelector,
                             showAccount,
@@ -582,7 +582,7 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
 
 type UtilitySectionProps = SectionProps &
     Pick<SidebarProps, "onAuthenticateUser" | "onShowPlanSelector"> & {
-        onShowExport: () => void;
+        showExport: () => void;
         showAccount: () => void;
         accountVisibilityProps: ModalVisibilityProps;
         showReferrals: () => void;
@@ -608,7 +608,7 @@ type UtilitySectionProps = SectionProps &
 
 const UtilitySection: React.FC<UtilitySectionProps> = ({
     onCloseSidebar,
-    onShowExport,
+    showExport,
     onAuthenticateUser,
     onShowPlanSelector,
     showAccount,
@@ -675,7 +675,7 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                         <RowButtonEndActivityIndicator />
                     )
                 }
-                onClick={onShowExport}
+                onClick={showExport}
             />
             <Help
                 {...helpVisibilityProps}
