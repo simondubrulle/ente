@@ -6,9 +6,10 @@ import type { ReactNode } from "react";
 interface MenuComponentProps {
     title: string;
     description?: ReactNode;
-    selected: boolean;
+    selected?: boolean;
     onClick: () => void;
     startIcon?: ReactNode;
+    endIcon?: ReactNode;
 }
 
 export function MenuComponent({
@@ -17,6 +18,7 @@ export function MenuComponent({
     selected,
     onClick,
     startIcon,
+    endIcon,
 }: MenuComponentProps) {
     return (
         <FocusVisibleButton
@@ -85,9 +87,12 @@ export function MenuComponent({
                     placeItems: "center",
                 }}
             >
-                {selected && (
-                    <CheckIcon sx={{ fontSize: 20, color: "accent.main" }} />
-                )}
+                {endIcon ??
+                    (selected && (
+                        <CheckIcon
+                            sx={{ fontSize: 20, color: "accent.main" }}
+                        />
+                    ))}
             </Box>
         </FocusVisibleButton>
     );

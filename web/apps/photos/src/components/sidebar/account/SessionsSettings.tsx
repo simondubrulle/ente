@@ -1,3 +1,4 @@
+import CheckIcon from "@mui/icons-material/Check";
 import DevicesIcon from "@mui/icons-material/Devices";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import {
@@ -241,7 +242,11 @@ const SessionRow: React.FC<SessionRowProps> = ({
         <MenuComponent
             startIcon={<DevicesIcon />}
             title={isCurrentDevice ? t("this_device") : session.prettyUA}
-            selected={isCurrentDevice}
+            endIcon={
+                isCurrentDevice ? (
+                    <CheckIcon sx={{ fontSize: 20, color: "accent.main" }} />
+                ) : undefined
+            }
             description={
                 <Stack sx={{ gap: 0.5, mt: 0.5 }}>
                     {!isCurrentDevice && (
