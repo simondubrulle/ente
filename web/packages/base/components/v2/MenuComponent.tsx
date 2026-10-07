@@ -1,5 +1,6 @@
 import CheckIcon from "@mui/icons-material/Check";
 import { Box, Typography } from "@mui/material";
+import { ActivityIndicator } from "ente-base/components/mui/ActivityIndicator";
 import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
 import type { ReactNode } from "react";
 
@@ -10,6 +11,8 @@ interface MenuComponentProps {
     onClick: () => void;
     startIcon?: ReactNode;
     endIcon?: ReactNode;
+    disabled?: boolean;
+    loading?: boolean;
 }
 
 export function MenuComponent({
@@ -19,12 +22,16 @@ export function MenuComponent({
     onClick,
     startIcon,
     endIcon,
+    disabled = false,
+    loading = false,
 }: MenuComponentProps) {
     return (
         <FocusVisibleButton
             fullWidth
             onClick={onClick}
             aria-pressed={selected}
+            aria-busy={loading}
+            disabled={disabled || loading}
             sx={[
                 {
                     minHeight: 58,
@@ -39,6 +46,7 @@ export function MenuComponent({
                     "&:hover": { bgcolor: "fill.faintHover" },
                     "&:active": { bgcolor: "fill.muted" },
                     "&.Mui-focusVisible": { outlineOffset: "-2px" },
+                    "&.Mui-disabled": { color: "text.muted" },
                 },
                 (theme) =>
                     theme.applyStyles("dark", {
@@ -87,12 +95,16 @@ export function MenuComponent({
                     placeItems: "center",
                 }}
             >
-                {endIcon ??
-                    (selected && (
+                {loading ? (
+                    <ActivityIndicator size="20px" />
+                ) : (
+                    (endIcon ??
+                    (selected ? (
                         <CheckIcon
                             sx={{ fontSize: 20, color: "accent.main" }}
                         />
-                    ))}
+                    ) : null))
+                )}
             </Box>
         </FocusVisibleButton>
     );
