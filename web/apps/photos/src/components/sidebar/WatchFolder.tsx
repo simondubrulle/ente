@@ -141,6 +141,16 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                         onClick={addNewWatch}
                         sx={[
                             {
+                                display: "flex",
+                                width: "100%",
+                                padding: "8px 8px 8px 0.5rem",
+                                alignItems: "center",
+                                justifyContent: "space-between",
+                                border: 0,
+                                color: "inherit",
+                                font: "inherit",
+                                textAlign: "left",
+                                cursor: "pointer",
                                 borderRadius: "10px",
                                 bgcolor: "transparent",
                                 "&:hover": { bgcolor: "fill.faintHover" },
@@ -150,18 +160,6 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                                     "&:hover": { bgcolor: "backdrop.muted" },
                                 }),
                         ]}
-                        style={{
-                            display: "flex",
-                            width: "100%",
-                            padding: "8px 8px 8px 0.5rem",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            border: 0,
-                            color: "inherit",
-                            font: "inherit",
-                            textAlign: "left",
-                            cursor: "pointer",
-                        }}
                     >
                         <span
                             style={{ display: "flex", flexDirection: "column" }}
