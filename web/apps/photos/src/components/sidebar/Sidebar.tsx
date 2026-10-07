@@ -11,10 +11,18 @@ import {
 import { HugeiconsIcon } from "@hugeicons/react";
 import CloseIcon from "@mui/icons-material/Close";
 import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
-import { Box, Divider, IconButton, Stack, styled } from "@mui/material";
+import {
+    Box,
+    Dialog,
+    Divider,
+    IconButton,
+    Stack,
+    ThemeProvider,
+    useMediaQuery,
+    useTheme,
+} from "@mui/material";
 import Typography from "@mui/material/Typography";
 import { isDesktop } from "ente-base/app";
-import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
 import { LinkButton } from "ente-base/components/LinkButton";
 import {
     RowButton,
@@ -22,6 +30,7 @@ import {
 } from "ente-base/components/RowButton";
 import { SpacedRow } from "ente-base/components/containers";
 import { SidebarDrawer } from "ente-base/components/mui/SidebarDrawer";
+import { SidebarPanelContext } from "ente-base/components/mui/SidebarDrawerContext";
 import {
     useModalVisibility,
     type ModalVisibilityProps,
@@ -66,7 +75,6 @@ import { Trans } from "react-i18next";
 import { FreeUpSpace, type FreeUpSpaceAction } from "./FreeUpSpace";
 import { Help, type HelpAction } from "./Help";
 import { ReferralSettings } from "./ReferralSettings";
-import { SidebarDrawerShell } from "./SidebarDrawerShell";
 import { WatchFolder } from "./WatchFolder";
 import { SubscriptionCard } from "./account/SubscriptionCard";
 import { Account, type AccountAction } from "./accounts/Account";
@@ -270,97 +278,258 @@ export const Sidebar: React.FC<SidebarProps> = ({
             .finally(() => onActionHandledRef.current?.(pendingAction));
     }, [pendingAction]);
 
+    const hasOpenSection =
+        accountVisibilityProps.open ||
+        referralsVisibilityProps.open ||
+        preferencesVisibilityProps.open ||
+        helpVisibilityProps.open ||
+        freeUpSpaceVisibilityProps.open ||
+        exportVisibilityProps.open ||
+        watchFolderView;
+
     return (
-        <SidebarDrawerShell
+        <RootSidebarDrawer
             open={open}
             onClose={onClose}
-            onEnter={pendingAction ? undefined : showAccount}
+            onEnter={pendingAction || hasOpenSection ? undefined : showAccount}
+            menu={
+                <>
+                    <UserDetailsSection
+                        sidebarOpen={open}
+                        {...{ onShowPlanSelector }}
+                    />
+                    <Stack sx={{ gap: 0.5 }}>
+                        <ShortcutSection
+                            onCloseSidebar={onClose}
+                            {...{
+                                normalCollectionSummaries,
+                                uncategorizedCollectionSummaryID,
+                                onShowCollectionSummary,
+                            }}
+                        />
+                        <UtilitySection
+                            {...{
+                                showExport: selectSection(handleShowExport),
+                                showAccount: selectSection(showAccount),
+                                showReferrals: selectSection(showReferrals),
+                                showPreferences: selectSection(showPreferences),
+                                showHelp: selectSection(showHelp),
+                                showFreeUpSpace: selectSection(showFreeUpSpace),
+                                onShowWatchFolder: selectSection(
+                                    handleOpenWatchFolder,
+                                ),
+                            }}
+                        />
+                        <Divider sx={{ my: "2px" }} />
+                        <ExitSection onLogout={handleLogout} />
+                        <InfoSection />
+                    </Stack>
+                </>
+            }
         >
-            <RootSidebarDrawer
-                open={open}
-                onClose={onClose}
-                maxWidth="440px"
-                shellRoot
-            >
-                <HeaderSection onCloseSidebar={onClose} />
-                <UserDetailsSection
-                    sidebarOpen={open}
-                    {...{ onShowPlanSelector }}
+            {open && exportVisibilityProps.open && (
+                <Export
+                    {...exportVisibilityProps}
+                    collectionNameByID={collectionNameByID}
+                    onRootClose={onClose}
                 />
-                <Stack sx={{ gap: 0.5 }}>
-                    <ShortcutSection
-                        onCloseSidebar={onClose}
-                        {...{
-                            normalCollectionSummaries,
-                            uncategorizedCollectionSummaryID,
-                            onShowCollectionSummary,
-                        }}
-                    />
-                    <UtilitySection
-                        onCloseSidebar={onClose}
-                        exportVisibilityProps={{
-                            ...exportVisibilityProps,
-                            open: open && exportVisibilityProps.open,
-                        }}
-                        {...{
-                            collectionNameByID,
-                            showExport: selectSection(handleShowExport),
-                            onAuthenticateUser,
-                            onShowPlanSelector,
-                            showAccount: selectSection(showAccount),
-                            accountVisibilityProps,
-                            showReferrals: selectSection(showReferrals),
-                            referralsVisibilityProps,
-                            showPreferences: selectSection(showPreferences),
-                            preferencesVisibilityProps,
-                            showHelp: selectSection(showHelp),
-                            helpVisibilityProps,
-                            showFreeUpSpace: selectSection(showFreeUpSpace),
-                            freeUpSpaceVisibilityProps,
-                            watchFolderView,
-                            onShowWatchFolder: selectSection(
-                                handleOpenWatchFolder,
-                            ),
-                            onCloseWatchFolder: handleCloseWatchFolder,
-                            pendingAccountAction,
-                            onAccountActionHandled: setPendingAccountAction,
-                            pendingPreferencesAction,
-                            onPreferencesActionHandled:
-                                setPendingPreferencesAction,
-                            pendingHelpAction,
-                            onHelpActionHandled: setPendingHelpAction,
-                            pendingFreeUpSpaceAction,
-                            onFreeUpSpaceActionHandled:
-                                setPendingFreeUpSpaceAction,
-                        }}
-                    />
-                    <Divider sx={{ my: "2px" }} />
-                    <ExitSection onLogout={handleLogout} />
-                    <InfoSection />
-                </Stack>
-            </RootSidebarDrawer>
+            )}
+            {helpVisibilityProps.open && (
+                <Help
+                    {...helpVisibilityProps}
+                    onRootClose={onClose}
+                    pendingAction={pendingHelpAction}
+                    onActionHandled={setPendingHelpAction}
+                />
+            )}
+            {isDesktop && watchFolderView && (
+                <WatchFolder
+                    open={watchFolderView}
+                    onClose={handleCloseWatchFolder}
+                    onRootClose={onClose}
+                />
+            )}
+            {accountVisibilityProps.open && (
+                <Account
+                    {...accountVisibilityProps}
+                    onRootClose={onClose}
+                    pendingAction={pendingAccountAction}
+                    onActionHandled={setPendingAccountAction}
+                    {...{ onAuthenticateUser, onShowPlanSelector }}
+                />
+            )}
+            {referralsVisibilityProps.open && (
+                <ReferralSettings
+                    {...referralsVisibilityProps}
+                    onRootClose={onClose}
+                />
+            )}
+            {preferencesVisibilityProps.open && (
+                <Preferences
+                    {...preferencesVisibilityProps}
+                    onRootClose={onClose}
+                    pendingAction={pendingPreferencesAction}
+                    onActionHandled={setPendingPreferencesAction}
+                    onAuthenticateUser={onAuthenticateUser}
+                />
+            )}
+            {freeUpSpaceVisibilityProps.open && (
+                <FreeUpSpace
+                    {...freeUpSpaceVisibilityProps}
+                    onRootClose={onClose}
+                    pendingAction={pendingFreeUpSpaceAction}
+                    onActionHandled={setPendingFreeUpSpaceAction}
+                />
+            )}
             {children}
-        </SidebarDrawerShell>
+        </RootSidebarDrawer>
     );
 };
 
-const RootSidebarDrawer = styled(SidebarDrawer)(({ theme }) => ({
-    "& .MuiPaper-root": { padding: theme.spacing(1.5) },
-}));
+type RootSidebarDrawerProps = React.PropsWithChildren<
+    ModalVisibilityProps & { menu: React.ReactNode; onEnter?: () => void }
+>;
+
+function RootSidebarDrawer({
+    open,
+    onClose,
+    onEnter,
+    menu,
+    children,
+}: RootSidebarDrawerProps) {
+    const theme = useTheme();
+    const wide = useMediaQuery(theme.breakpoints.up("md"));
+    const [panel, setPanel] = useState<HTMLDivElement | null>(null);
+    const container = () => panel;
+
+    if (!wide) {
+        return (
+            <>
+                <SidebarDrawer open={open} onClose={onClose} maxWidth="440px">
+                    <HeaderSection onCloseSidebar={onClose} />
+                    {menu}
+                </SidebarDrawer>
+                {children}
+            </>
+        );
+    }
+
+    return (
+        <Dialog
+            open={open}
+            onClose={onClose}
+            maxWidth={false}
+            aria-label={t("settings")}
+            slotProps={{
+                transition: { onEnter },
+                paper: {
+                    sx: {
+                        width: "min(1200px, calc(100vw - 48px))",
+                        maxWidth: "calc(100vw - 48px)",
+                        height: "min(900px, calc(100dvh - 48px))",
+                        maxHeight: "calc(100dvh - 48px)",
+                        m: 3,
+                        p: 2,
+                        gap: 2,
+                        boxSizing: "border-box",
+                        borderRadius: 3,
+                        bgcolor: "background.default",
+                        overflow: "hidden",
+                    },
+                },
+            }}
+        >
+            <HeaderSection onCloseSidebar={onClose} />
+            <SidebarPanelContext.Provider value={container}>
+                <ThemeProvider
+                    theme={{
+                        ...theme,
+                        components: {
+                            ...theme.components,
+                            MuiDialog: {
+                                ...theme.components?.MuiDialog,
+                                defaultProps: {
+                                    ...theme.components?.MuiDialog
+                                        ?.defaultProps,
+                                    container,
+                                    disableEnforceFocus: true,
+                                },
+                                styleOverrides: {
+                                    ...theme.components?.MuiDialog
+                                        ?.styleOverrides,
+                                    root: [
+                                        theme.components?.MuiDialog
+                                            ?.styleOverrides?.root,
+                                        { position: "absolute" },
+                                    ],
+                                },
+                            },
+                            MuiBackdrop: {
+                                ...theme.components?.MuiBackdrop,
+                                styleOverrides: {
+                                    ...theme.components?.MuiBackdrop
+                                        ?.styleOverrides,
+                                    root: [
+                                        theme.components?.MuiBackdrop
+                                            ?.styleOverrides?.root,
+                                        { position: "absolute" },
+                                    ],
+                                },
+                            },
+                        },
+                    }}
+                >
+                    <Box
+                        sx={{
+                            display: "grid",
+                            gridTemplateColumns: "360px minmax(0, 1fr)",
+                            gap: 3,
+                            flex: 1,
+                            minHeight: 0,
+                        }}
+                    >
+                        <Box sx={{ overflowY: "auto", scrollbarWidth: "thin" }}>
+                            {menu}
+                        </Box>
+                        <Box
+                            ref={setPanel}
+                            sx={{
+                                position: "relative",
+                                minWidth: 0,
+                                minHeight: 0,
+                                borderRadius: 3,
+                                bgcolor: "background.paper2",
+                                overflow: "hidden",
+                            }}
+                        >
+                            {/* Wait for the portal target when resizing with a drawer open. */}
+                            {panel && children}
+                        </Box>
+                    </Box>
+                </ThemeProvider>
+            </SidebarPanelContext.Provider>
+        </Dialog>
+    );
+}
 
 interface SectionProps {
     onCloseSidebar: SidebarProps["onClose"];
 }
 
 const HeaderSection: React.FC<SectionProps> = ({ onCloseSidebar }) => (
-    <SpacedRow sx={{ mt: "6px", pl: "12px" }}>
-        <EnteLogoBox>
-            <EnteLogo height={16} />
-        </EnteLogoBox>
+    <SpacedRow sx={{ mt: { xs: "6px", md: 0 }, pl: "12px", flexShrink: 0 }}>
+        <Typography variant="h3" sx={{ fontSize: "22px" }}>
+            {t("settings")}
+        </Typography>
         <IconButton
             aria-label={t("close")}
             onClick={onCloseSidebar}
             color="primary"
+            sx={{
+                width: { md: 40 },
+                height: { md: 40 },
+                bgcolor: { md: "fill.faint" },
+            }}
         >
             <CloseIcon fontSize="small" />
         </IconButton>
@@ -615,64 +784,24 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
     );
 };
 
-type UtilitySectionProps = SectionProps &
-    Pick<
-        SidebarProps,
-        "onAuthenticateUser" | "onShowPlanSelector" | "collectionNameByID"
-    > & {
-        showExport: () => void;
-        exportVisibilityProps: ModalVisibilityProps;
-        showAccount: () => void;
-        accountVisibilityProps: ModalVisibilityProps;
-        showReferrals: () => void;
-        referralsVisibilityProps: ModalVisibilityProps;
-        showPreferences: () => void;
-        preferencesVisibilityProps: ModalVisibilityProps;
-        showHelp: () => void;
-        helpVisibilityProps: ModalVisibilityProps;
-        showFreeUpSpace: () => void;
-        freeUpSpaceVisibilityProps: ModalVisibilityProps;
-        watchFolderView: boolean;
-        onShowWatchFolder: () => void;
-        onCloseWatchFolder: () => void;
-        pendingAccountAction?: AccountAction;
-        onAccountActionHandled: (action?: AccountAction) => void;
-        pendingPreferencesAction?: PreferencesAction;
-        onPreferencesActionHandled: (action?: PreferencesAction) => void;
-        pendingHelpAction?: HelpAction;
-        onHelpActionHandled: (action?: HelpAction) => void;
-        pendingFreeUpSpaceAction?: FreeUpSpaceAction;
-        onFreeUpSpaceActionHandled: (action?: FreeUpSpaceAction) => void;
-    };
+interface UtilitySectionProps {
+    showExport: () => void;
+    showAccount: () => void;
+    showReferrals: () => void;
+    showPreferences: () => void;
+    showHelp: () => void;
+    showFreeUpSpace: () => void;
+    onShowWatchFolder: () => void;
+}
 
 const UtilitySection: React.FC<UtilitySectionProps> = ({
-    onCloseSidebar,
     showExport,
-    exportVisibilityProps,
-    collectionNameByID,
-    onAuthenticateUser,
-    onShowPlanSelector,
     showAccount,
-    accountVisibilityProps,
     showReferrals,
-    referralsVisibilityProps,
     showPreferences,
-    preferencesVisibilityProps,
     showHelp,
-    helpVisibilityProps,
     showFreeUpSpace,
-    freeUpSpaceVisibilityProps,
-    watchFolderView,
     onShowWatchFolder,
-    onCloseWatchFolder,
-    pendingAccountAction,
-    onAccountActionHandled,
-    pendingPreferencesAction,
-    onPreferencesActionHandled,
-    pendingHelpAction,
-    onHelpActionHandled,
-    pendingFreeUpSpaceAction,
-    onFreeUpSpaceActionHandled,
 }) => {
     return (
         <>
@@ -714,60 +843,6 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 }
                 onClick={showExport}
             />
-            {exportVisibilityProps.open && (
-                <Export
-                    {...exportVisibilityProps}
-                    collectionNameByID={collectionNameByID}
-                    onRootClose={onCloseSidebar}
-                />
-            )}
-            {helpVisibilityProps.open && (
-                <Help
-                    {...helpVisibilityProps}
-                    onRootClose={onCloseSidebar}
-                    pendingAction={pendingHelpAction}
-                    onActionHandled={onHelpActionHandled}
-                />
-            )}
-            {isDesktop && watchFolderView && (
-                <WatchFolder
-                    open={watchFolderView}
-                    onClose={onCloseWatchFolder}
-                    onRootClose={onCloseSidebar}
-                />
-            )}
-            {accountVisibilityProps.open && (
-                <Account
-                    {...accountVisibilityProps}
-                    onRootClose={onCloseSidebar}
-                    pendingAction={pendingAccountAction}
-                    onActionHandled={onAccountActionHandled}
-                    {...{ onAuthenticateUser, onShowPlanSelector }}
-                />
-            )}
-            {referralsVisibilityProps.open && (
-                <ReferralSettings
-                    {...referralsVisibilityProps}
-                    onRootClose={onCloseSidebar}
-                />
-            )}
-            {preferencesVisibilityProps.open && (
-                <Preferences
-                    {...preferencesVisibilityProps}
-                    onRootClose={onCloseSidebar}
-                    pendingAction={pendingPreferencesAction}
-                    onActionHandled={onPreferencesActionHandled}
-                    onAuthenticateUser={onAuthenticateUser}
-                />
-            )}
-            {freeUpSpaceVisibilityProps.open && (
-                <FreeUpSpace
-                    {...freeUpSpaceVisibilityProps}
-                    onRootClose={onCloseSidebar}
-                    pendingAction={pendingFreeUpSpaceAction}
-                    onActionHandled={onFreeUpSpaceActionHandled}
-                />
-            )}
         </>
     );
 };

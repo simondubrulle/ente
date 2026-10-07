@@ -17,16 +17,12 @@ import {
     SidebarPanelContext,
 } from "./SidebarDrawerContext";
 
-type SidebarDrawerProps = DrawerProps & {
-    maxWidth?: string;
-    shellRoot?: boolean;
-};
+type SidebarDrawerProps = DrawerProps & { maxWidth?: string };
 
 export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
     slotProps,
     children,
     maxWidth = "375px",
-    shellRoot = false,
     ...rest
 }) => {
     const container = useContext(SidebarPanelContext);
@@ -35,12 +31,10 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
         <Drawer
             {...rest}
             {...(inShell && {
-                variant: shellRoot ? "permanent" : "temporary",
-                ...(!shellRoot && {
-                    container,
-                    disableEnforceFocus: true,
-                    disableScrollLock: true,
-                }),
+                variant: "temporary",
+                container,
+                disableEnforceFocus: true,
+                disableScrollLock: true,
                 sx: { position: "absolute", inset: 0 },
             })}
             slotProps={{
@@ -56,10 +50,13 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                 paper: {
                     sx: {
                         maxWidth: inShell ? "none" : maxWidth,
-                        width: inShell && shellRoot ? "360px" : "100%",
+                        width: "100%",
                         ...(inShell && {
                             position: "absolute",
                             boxSizing: "border-box",
+                            bgcolor: "background.paper2",
+                            boxShadow: "none",
+                            border: 0,
                         }),
                         scrollbarWidth: "thin",
                         // Extra specificity overrides inherited padding.
@@ -68,7 +65,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
                 },
             }}
         >
-            {isDesktop && <AppTitlebarBackdrop />}
+            {isDesktop && !inShell && <AppTitlebarBackdrop />}
             <Box sx={{ p: 1 }}>{children}</Box>
         </Drawer>
     );
@@ -203,6 +200,9 @@ export const TitledNestedSidebarDrawer: React.FC<
                 <SidebarDrawerTitlebar
                     {...{ onClose, onRootClose }}
                     {...rest}
+                    showRootCloseButton={
+                        !container && (rest.showRootCloseButton ?? true)
+                    }
                     showBackButton={
                         rest.showBackButton ?? (!container || depth > 0)
                     }
