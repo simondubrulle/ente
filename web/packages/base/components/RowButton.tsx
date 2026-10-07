@@ -1,3 +1,4 @@
+import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import {
     Box,
     Divider,
@@ -149,6 +150,63 @@ export const RowButton: React.FC<RowButtonProps> = ({
             {endIcon && endIcon}
         </Stack>
     </RowButtonRoot>
+);
+
+interface RowCardProps {
+    title: string;
+    subtitle: string;
+    onClick: () => void;
+}
+
+/**
+ * A tappable summary card with a title, subtitle, and trailing chevron.
+ * Its background appears on hover.
+ */
+export const RowCard: React.FC<RowCardProps> = ({
+    title,
+    subtitle,
+    onClick,
+}) => (
+    <FocusVisibleButton
+        fullWidth
+        onClick={onClick}
+        sx={[
+            {
+                p: "14px 8px 14px 0.5rem",
+                gap: 1,
+                justifyContent: "space-between",
+                alignItems: "center",
+                textAlign: "left",
+                borderRadius: "10px",
+                color: "text.base",
+                bgcolor: "transparent",
+                "&:hover": { bgcolor: "fill.faintHover" },
+                "& .MuiSvgIcon-root": { fontSize: "20px", color: "text.muted" },
+            },
+            (theme) =>
+                theme.applyStyles("dark", {
+                    "&:hover": { bgcolor: "backdrop.muted" },
+                }),
+        ]}
+    >
+        <Stack sx={{ minWidth: 0 }}>
+            <Typography noWrap sx={{ fontWeight: "medium" }}>
+                {title}
+            </Typography>
+            <Typography
+                noWrap
+                variant="small"
+                sx={{
+                    color: "text.muted",
+                    lineHeight: "20px",
+                    fontWeight: 400,
+                }}
+            >
+                {subtitle}
+            </Typography>
+        </Stack>
+        <ChevronRightIcon />
+    </FocusVisibleButton>
 );
 
 type RowButtonRootProps = ButtonProps & {

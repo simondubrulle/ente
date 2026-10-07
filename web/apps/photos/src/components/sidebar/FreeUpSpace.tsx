@@ -1,9 +1,5 @@
 import { Stack } from "@mui/material";
-import {
-    RowButton,
-    RowButtonDivider,
-    RowButtonGroup,
-} from "ente-base/components/RowButton";
+import { RowCard } from "ente-base/components/RowButton";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
@@ -71,19 +67,21 @@ export const FreeUpSpace: React.FC<FreeUpSpaceProps> = ({
             {...{ open, onClose }}
             onRootClose={handleRootClose}
             title={t("free_up_space")}
+            caption="Review large files and duplicates to reclaim storage."
+            contentInset="0.5rem"
+            titleFontSize="22px"
         >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("deduplicate_files")}
-                        onClick={handleDeduplicate}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={t("large_files_title")}
-                        onClick={handleLargeFiles}
-                    />
-                </RowButtonGroup>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                <RowCard
+                    title="Duplicates"
+                    subtitle="Remove exact duplicates"
+                    onClick={handleDeduplicate}
+                />
+                <RowCard
+                    title={t("large_files_title")}
+                    subtitle="Identify items using the most space"
+                    onClick={handleLargeFiles}
+                />
             </Stack>
         </TitledNestedSidebarDrawer>
     );
