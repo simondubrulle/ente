@@ -26,6 +26,7 @@ import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
 import { customAPIHost } from "ente-base/origins";
@@ -286,7 +287,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     sidebarOpen={open}
                     {...{ onShowPlanSelector }}
                 />
-                <Stack sx={{ gap: 0.5, mb: 3 }}>
+                <Stack sx={{ gap: 0.5 }}>
                     <ShortcutSection
                         onCloseSidebar={onClose}
                         {...{
@@ -675,45 +676,41 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
 }) => {
     return (
         <>
-            <RowButton
-                variant="secondary"
-                label={t("account")}
+            <RowCard
+                variant="parent"
+                title={t("account")}
                 onClick={showAccount}
             />
-            <RowButton
-                variant="secondary"
-                label={t("referrals")}
+            <RowCard
+                variant="parent"
+                title={t("referrals")}
                 onClick={showReferrals}
             />
             {isDesktop && (
-                <RowButton
-                    variant="secondary"
-                    label={t("watch_folders")}
+                <RowCard
+                    variant="parent"
+                    title={t("watch_folders")}
                     onClick={onShowWatchFolder}
                 />
             )}
-            <RowButton
-                variant="secondary"
-                label={t("free_up_space")}
+            <RowCard
+                variant="parent"
+                title={t("free_up_space")}
                 onClick={showFreeUpSpace}
             />
-            <RowButton
-                variant="secondary"
-                label={t("preferences")}
+            <RowCard
+                variant="parent"
+                title={t("preferences")}
                 onClick={showPreferences}
             />
-            <RowButton
-                variant="secondary"
-                label={t("help")}
-                onClick={showHelp}
-            />
-            <RowButton
-                variant="secondary"
-                label={t("export_data")}
+            <RowCard variant="parent" title={t("help")} onClick={showHelp} />
+            <RowCard
+                variant="parent"
+                title={t("export_data")}
                 endIcon={
-                    exportService.isExportInProgress() && (
+                    exportService.isExportInProgress() ? (
                         <RowButtonEndActivityIndicator />
-                    )
+                    ) : undefined
                 }
                 onClick={showExport}
             />
@@ -777,23 +774,27 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
 
 const ExitSection: React.FC<{ onLogout: () => void }> = ({ onLogout }) => (
     <>
-        <RowButton
-            variant="secondary"
-            color="critical"
-            label={t("logout")}
+        <RowCard
+            variant="parent"
+            title={
+                <Box component="span" sx={{ color: "critical.main" }}>
+                    {t("logout")}
+                </Box>
+            }
+            endIcon={null}
             onClick={onLogout}
         />
     </>
 );
 
 const InfoSection: React.FC = () => {
-    const [appVersion, setAppVersion] = useState("");
     const [host, setHost] = useState<string | undefined>("");
 
     useEffect(() => {
-        void globalThis.electron?.appVersion().then(setAppVersion);
         void customAPIHost().then(setHost);
     }, []);
+
+    if (!host) return null;
 
     return (
         <>
@@ -804,9 +805,6 @@ const InfoSection: React.FC = () => {
                     color: "text.muted",
                 }}
             >
-                {appVersion && (
-                    <Typography variant="mini">{appVersion}</Typography>
-                )}
                 {host && <Typography variant="mini">{host}</Typography>}
             </Stack>
         </>

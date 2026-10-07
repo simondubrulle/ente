@@ -35,11 +35,19 @@ export function SidebarDrawerShell({
                 paper: {
                     sx: {
                         width: "min(1200px, calc(100vw - 48px))",
-                        height: "calc(100dvh - 48px)",
-                        maxHeight: "none",
+                        maxHeight: "calc(100dvh - 48px)",
                         m: 3,
                         borderRadius: 3,
                         overflow: "hidden",
+                        "& > .MuiDrawer-docked": {
+                            position: "relative",
+                            width: "360px",
+                            "& > .MuiDrawer-paper": {
+                                position: "relative",
+                                height: "auto",
+                                maxHeight: "calc(100dvh - 48px)",
+                            },
+                        },
                     },
                 },
             }}
