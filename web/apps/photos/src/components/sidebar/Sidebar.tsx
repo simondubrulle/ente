@@ -213,7 +213,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     const performSidebarAction = useCallback(
         async (actionID: SidebarActionID) => {
-            // Export only replaces the section after desktop authentication.
             if (actionID !== "utility.export") closeSections();
             return performSidebarRegistryAction(actionID, {
                 onClose,
