@@ -300,7 +300,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                     <UtilitySection
                         onCloseSidebar={onClose}
+                        exportVisibilityProps={{
+                            ...exportVisibilityProps,
+                            open: open && exportVisibilityProps.open,
+                        }}
                         {...{
+                            collectionNameByID,
                             showExport: selectSection(handleShowExport),
                             onAuthenticateUser,
                             onShowPlanSelector,
@@ -336,13 +341,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <InfoSection />
                 </Stack>
             </RootSidebarDrawer>
-            {open && exportVisibilityProps.open && (
-                <Export
-                    {...exportVisibilityProps}
-                    collectionNameByID={collectionNameByID}
-                    onRootClose={onClose}
-                />
-            )}
             {children}
         </SidebarDrawerShell>
     );
@@ -628,8 +626,12 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
 };
 
 type UtilitySectionProps = SectionProps &
-    Pick<SidebarProps, "onAuthenticateUser" | "onShowPlanSelector"> & {
+    Pick<
+        SidebarProps,
+        "onAuthenticateUser" | "onShowPlanSelector" | "collectionNameByID"
+    > & {
         showExport: () => void;
+        exportVisibilityProps: ModalVisibilityProps;
         showAccount: () => void;
         accountVisibilityProps: ModalVisibilityProps;
         showReferrals: () => void;
@@ -656,6 +658,8 @@ type UtilitySectionProps = SectionProps &
 const UtilitySection: React.FC<UtilitySectionProps> = ({
     onCloseSidebar,
     showExport,
+    exportVisibilityProps,
+    collectionNameByID,
     onAuthenticateUser,
     onShowPlanSelector,
     showAccount,
@@ -724,6 +728,13 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 }
                 onClick={showExport}
             />
+            {exportVisibilityProps.open && (
+                <Export
+                    {...exportVisibilityProps}
+                    collectionNameByID={collectionNameByID}
+                    onRootClose={onCloseSidebar}
+                />
+            )}
             {helpVisibilityProps.open && (
                 <Help
                     {...helpVisibilityProps}

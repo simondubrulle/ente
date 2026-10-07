@@ -23,7 +23,6 @@ export function SidebarDrawerShell({
     const panel = useRef<HTMLDivElement>(null);
     const container = () => panel.current;
 
-    // ponytail: retain stacked drawers outside the internal wide-screen preview.
     if (!isInternalUser || !wide) return children;
 
     return (
