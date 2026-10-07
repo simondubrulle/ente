@@ -365,9 +365,18 @@ const Page: React.FC = () => {
         }
     }, []);
 
+    const closeSidebarOverlays = useCallback(() => {
+        planSelectorVisibilityProps.onClose();
+        familyManagementVisibilityProps.onClose();
+    }, [
+        planSelectorVisibilityProps.onClose,
+        familyManagementVisibilityProps.onClose,
+    ]);
+
     const handleSidebarClose = useCallback(() => {
+        closeSidebarOverlays();
         sidebarVisibilityProps.onClose();
-    }, [sidebarVisibilityProps.onClose]);
+    }, [closeSidebarOverlays, sidebarVisibilityProps.onClose]);
 
     const handleSidebarActionHandled = useCallback(
         () => setPendingSidebarAction(undefined),
@@ -1842,6 +1851,22 @@ const Page: React.FC = () => {
         return <div></div>;
     }
 
+    const subscriptionDialogs = (
+        <>
+            <PlanSelector
+                {...planSelectorVisibilityProps}
+                setLoading={(v) => setBlockingLoad(v)}
+                onManageFamily={showFamilyManagement}
+            />
+            {familyManagementVisibilityProps.open && (
+                <FamilyManagement
+                    {...familyManagementVisibilityProps}
+                    onShowPlanSelector={showPlanSelector}
+                />
+            )}
+        </>
+    );
+
     return (
         <FullScreenDropZone
             message={
@@ -1851,15 +1876,7 @@ const Page: React.FC = () => {
             onDrop={setDragAndDropFiles}
         >
             {blockingLoad && <TranslucentLoadingOverlay />}
-            <PlanSelector
-                {...planSelectorVisibilityProps}
-                setLoading={(v) => setBlockingLoad(v)}
-                onManageFamily={showFamilyManagement}
-            />
-            <FamilyManagement
-                {...familyManagementVisibilityProps}
-                onShowPlanSelector={showPlanSelector}
-            />
+            {!sidebarVisibilityProps.open && subscriptionDialogs}
             <CollectionSelector
                 open={openCollectionSelector}
                 onClose={handleCloseCollectionSelector}
@@ -2031,8 +2048,11 @@ const Page: React.FC = () => {
                 onShowPlanSelector={showPlanSelector}
                 onShowCollectionSummary={handleSidebarShowCollectionSummary}
                 collectionNameByID={collectionNameByID}
+                onCloseOverlays={closeSidebarOverlays}
                 onAuthenticateUser={authenticateUser}
-            />
+            >
+                {sidebarVisibilityProps.open && subscriptionDialogs}
+            </Sidebar>
             <WhatsNew {...whatsNewVisibilityProps} />
             <AssignPersonDialog
                 {...contextMenuAssignPersonProps}

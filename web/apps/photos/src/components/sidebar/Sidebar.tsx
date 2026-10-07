@@ -72,6 +72,7 @@ import { Trans } from "react-i18next";
 import { FreeUpSpace, type FreeUpSpaceAction } from "./FreeUpSpace";
 import { Help, type HelpAction } from "./Help";
 import { ReferralSettings } from "./ReferralSettings";
+import { SidebarDrawerShell } from "./SidebarDrawerShell";
 import { WatchFolder } from "./WatchFolder";
 import { SubscriptionCard } from "./account/SubscriptionCard";
 import { Account, type AccountAction } from "./accounts/Account";
@@ -90,12 +91,16 @@ type SidebarProps = ModalVisibilityProps & {
         isHiddenCollectionSummary?: boolean,
     ) => Promise<void>;
     collectionNameByID: Map<number, string>;
+    onCloseOverlays: () => void;
+    children?: React.ReactNode;
     onAuthenticateUser: () => Promise<boolean>;
 };
 
 export const Sidebar: React.FC<SidebarProps> = ({
     open,
-    onClose,
+    onClose: closeRoot,
+    onCloseOverlays,
+    children,
     normalCollectionSummaries,
     uncategorizedCollectionSummaryID,
     pendingAction,
@@ -132,6 +137,36 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [pendingHelpAction, setPendingHelpAction] = useState<HelpAction>();
     const [pendingFreeUpSpaceAction, setPendingFreeUpSpaceAction] =
         useState<FreeUpSpaceAction>();
+
+    const closeSections = useCallback(() => {
+        accountVisibilityProps.onClose();
+        referralsVisibilityProps.onClose();
+        preferencesVisibilityProps.onClose();
+        helpVisibilityProps.onClose();
+        freeUpSpaceVisibilityProps.onClose();
+        closeExport();
+        setWatchFolderView(false);
+        onCloseOverlays();
+    }, [
+        accountVisibilityProps,
+        referralsVisibilityProps,
+        preferencesVisibilityProps,
+        helpVisibilityProps,
+        freeUpSpaceVisibilityProps,
+        closeExport,
+        setWatchFolderView,
+        onCloseOverlays,
+    ]);
+
+    const onClose = useCallback(() => {
+        closeSections();
+        closeRoot();
+    }, [closeSections, closeRoot]);
+
+    const selectSection = (show: () => void) => () => {
+        closeSections();
+        show();
+    };
 
     const handleLogout = useCallback(
         () =>
@@ -174,8 +209,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [onAuthenticateUser, showExport, showMiniDialog]);
 
     const performSidebarAction = useCallback(
-        async (actionID: SidebarActionID) =>
-            performSidebarRegistryAction(actionID, {
+        async (actionID: SidebarActionID) => {
+            closeSections();
+            return performSidebarRegistryAction(actionID, {
                 onClose,
                 onShowCollectionSummary,
                 onShowPlanSelector,
@@ -205,8 +241,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     setPendingFreeUpSpaceAction(
                         a as FreeUpSpaceAction | undefined,
                     ),
-            }),
+            });
+        },
         [
+            closeSections,
             handleLogout,
             handleOpenWatchFolder,
             onClose,
@@ -239,8 +277,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
     }, [pendingAction]);
 
     return (
-        <>
-            <RootSidebarDrawer open={open} onClose={onClose} maxWidth="440px">
+        <SidebarDrawerShell open={open} onClose={onClose}>
+            <RootSidebarDrawer
+                open={open}
+                onClose={onClose}
+                maxWidth="440px"
+                shellRoot
+            >
                 <HeaderSection onCloseSidebar={onClose} />
                 <UserDetailsSection
                     sidebarOpen={open}
@@ -257,22 +300,29 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     />
                     <UtilitySection
                         onCloseSidebar={onClose}
+                        exportVisibilityProps={{
+                            ...exportVisibilityProps,
+                            open: open && exportVisibilityProps.open,
+                        }}
                         {...{
-                            showExport: handleShowExport,
+                            collectionNameByID,
+                            showExport: selectSection(handleShowExport),
                             onAuthenticateUser,
                             onShowPlanSelector,
-                            showAccount,
+                            showAccount: selectSection(showAccount),
                             accountVisibilityProps,
-                            showReferrals,
+                            showReferrals: selectSection(showReferrals),
                             referralsVisibilityProps,
-                            showPreferences,
+                            showPreferences: selectSection(showPreferences),
                             preferencesVisibilityProps,
-                            showHelp,
+                            showHelp: selectSection(showHelp),
                             helpVisibilityProps,
-                            showFreeUpSpace,
+                            showFreeUpSpace: selectSection(showFreeUpSpace),
                             freeUpSpaceVisibilityProps,
                             watchFolderView,
-                            onShowWatchFolder: handleOpenWatchFolder,
+                            onShowWatchFolder: selectSection(
+                                handleOpenWatchFolder,
+                            ),
                             onCloseWatchFolder: handleCloseWatchFolder,
                             pendingAccountAction,
                             onAccountActionHandled: setPendingAccountAction,
@@ -291,13 +341,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
                     <InfoSection />
                 </Stack>
             </RootSidebarDrawer>
-            <Export
-                {...exportVisibilityProps}
-                open={open && exportVisibilityProps.open}
-                collectionNameByID={collectionNameByID}
-                onRootClose={onClose}
-            />
-        </>
+            {children}
+        </SidebarDrawerShell>
     );
 };
 
@@ -581,8 +626,12 @@ const ShortcutSection: React.FC<ShortcutSectionProps> = ({
 };
 
 type UtilitySectionProps = SectionProps &
-    Pick<SidebarProps, "onAuthenticateUser" | "onShowPlanSelector"> & {
+    Pick<
+        SidebarProps,
+        "onAuthenticateUser" | "onShowPlanSelector" | "collectionNameByID"
+    > & {
         showExport: () => void;
+        exportVisibilityProps: ModalVisibilityProps;
         showAccount: () => void;
         accountVisibilityProps: ModalVisibilityProps;
         showReferrals: () => void;
@@ -609,6 +658,8 @@ type UtilitySectionProps = SectionProps &
 const UtilitySection: React.FC<UtilitySectionProps> = ({
     onCloseSidebar,
     showExport,
+    exportVisibilityProps,
+    collectionNameByID,
     onAuthenticateUser,
     onShowPlanSelector,
     showAccount,
@@ -677,43 +728,60 @@ const UtilitySection: React.FC<UtilitySectionProps> = ({
                 }
                 onClick={showExport}
             />
-            <Help
-                {...helpVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingHelpAction}
-                onActionHandled={onHelpActionHandled}
-            />
-            {isDesktop && (
+            {exportVisibilityProps.open && (
+                <Export
+                    {...exportVisibilityProps}
+                    collectionNameByID={collectionNameByID}
+                    onRootClose={onCloseSidebar}
+                />
+            )}
+            {helpVisibilityProps.open && (
+                <Help
+                    {...helpVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingHelpAction}
+                    onActionHandled={onHelpActionHandled}
+                />
+            )}
+            {isDesktop && watchFolderView && (
                 <WatchFolder
                     open={watchFolderView}
                     onClose={onCloseWatchFolder}
                     onRootClose={onCloseSidebar}
                 />
             )}
-            <Account
-                {...accountVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingAccountAction}
-                onActionHandled={onAccountActionHandled}
-                {...{ onAuthenticateUser, onShowPlanSelector }}
-            />
-            <ReferralSettings
-                {...referralsVisibilityProps}
-                onRootClose={onCloseSidebar}
-            />
-            <Preferences
-                {...preferencesVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingPreferencesAction}
-                onActionHandled={onPreferencesActionHandled}
-                onAuthenticateUser={onAuthenticateUser}
-            />
-            <FreeUpSpace
-                {...freeUpSpaceVisibilityProps}
-                onRootClose={onCloseSidebar}
-                pendingAction={pendingFreeUpSpaceAction}
-                onActionHandled={onFreeUpSpaceActionHandled}
-            />
+            {accountVisibilityProps.open && (
+                <Account
+                    {...accountVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingAccountAction}
+                    onActionHandled={onAccountActionHandled}
+                    {...{ onAuthenticateUser, onShowPlanSelector }}
+                />
+            )}
+            {referralsVisibilityProps.open && (
+                <ReferralSettings
+                    {...referralsVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                />
+            )}
+            {preferencesVisibilityProps.open && (
+                <Preferences
+                    {...preferencesVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingPreferencesAction}
+                    onActionHandled={onPreferencesActionHandled}
+                    onAuthenticateUser={onAuthenticateUser}
+                />
+            )}
+            {freeUpSpaceVisibilityProps.open && (
+                <FreeUpSpace
+                    {...freeUpSpaceVisibilityProps}
+                    onRootClose={onCloseSidebar}
+                    pendingAction={pendingFreeUpSpaceAction}
+                    onActionHandled={onFreeUpSpaceActionHandled}
+                />
+            )}
         </>
     );
 };
