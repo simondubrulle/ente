@@ -105,8 +105,9 @@ export const sidebarTheme = (theme: Theme): Theme => {
                     theme.colorSchemes.dark?.palette.stroke.faint,
             }),
         },
-        '& svg[data-testid="ChevronRightIcon"]:not([data-sidebar-subscription] *)':
-            { color: "#969696" },
+        "& .ente-chevron-right:not([data-sidebar-subscription] *)": {
+            color: "#969696",
+        },
     };
 
     return {
