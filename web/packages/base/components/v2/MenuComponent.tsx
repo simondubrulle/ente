@@ -5,6 +5,7 @@ import type { ReactNode } from "react";
 
 interface MenuComponentProps {
     title: string;
+    description?: ReactNode;
     selected: boolean;
     onClick: () => void;
     startIcon?: ReactNode;
@@ -12,6 +13,7 @@ interface MenuComponentProps {
 
 export function MenuComponent({
     title,
+    description,
     selected,
     onClick,
     startIcon,
@@ -58,21 +60,22 @@ export function MenuComponent({
                     {startIcon}
                 </Box>
             )}
-            <Typography
-                sx={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 14,
-                    lineHeight: "20px",
-                    fontWeight: 500,
-                    display: "-webkit-box",
-                    WebkitBoxOrient: "vertical",
-                    WebkitLineClamp: 2,
-                    overflow: "hidden",
-                }}
-            >
-                {title}
-            </Typography>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography
+                    sx={{
+                        fontSize: 14,
+                        lineHeight: "20px",
+                        fontWeight: 500,
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: 2,
+                        overflow: "hidden",
+                    }}
+                >
+                    {title}
+                </Typography>
+                {description}
+            </Box>
             <Box
                 sx={{
                     width: 36,
