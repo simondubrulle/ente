@@ -2,22 +2,17 @@ import {
     generatePasskeyRecovery,
     recoveryKeyMnemonic,
 } from "@/services/recovery-key";
-import { Stack } from "@mui/material";
-import Typography from "@mui/material/Typography";
+import { Box, Stack } from "@mui/material";
 import { RecoveryKey } from "ente-accounts/components/RecoveryKey";
 import { openAccountsManagePasskeysPage } from "ente-accounts/services/passkey";
 import { getActiveSessions } from "ente-accounts/services/sessions";
 import { isDesktop } from "ente-base/app";
 import {
-    RowButton,
-    RowButtonDivider,
-    RowButtonGroup,
-} from "ente-base/components/RowButton";
-import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
 import { useModalVisibility } from "ente-base/components/utils/modal";
+import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import { formattedStorageByteSize } from "ente-gallery/utils/units";
 import { useUserDetailsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
@@ -79,30 +74,6 @@ export const Account: React.FC<AccountProps> = ({
     const [twoFactorEnabled, setTwoFactorEnabled] = useState<boolean>();
     const [sessionCount, setSessionCount] = useState<number>();
 
-    const accountLabel = (label: string, subtext?: string) => (
-        <Stack
-            sx={{
-                gap: 0.5,
-                minWidth: 0,
-                alignItems: "flex-start",
-                textAlign: "left",
-            }}
-        >
-            <Typography sx={{ fontWeight: "medium" }}>{label}</Typography>
-            {subtext && (
-                <Typography
-                    variant="small"
-                    sx={{
-                        color: "text.muted",
-                        fontWeight: 400,
-                        overflowWrap: "anywhere",
-                    }}
-                >
-                    {subtext}
-                </Typography>
-            )}
-        </Stack>
-    );
     let planSubtext: string | undefined;
     if (userDetails) {
         let storage =
@@ -291,68 +262,52 @@ export const Account: React.FC<AccountProps> = ({
             onRootClose={handleRootClose}
             title={t("account")}
         >
-            <Stack sx={{ px: 2, py: 1, gap: 3 }}>
-                <RowButtonGroup>
-                    <RowButton
-                        label={accountLabel(t("manage_plan"), planSubtext)}
-                        onClick={handleManageSubscription}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("recovery_key")}
-                        onClick={() => void handleRecoveryKey()}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={accountLabel(
-                            t("two_factor"),
-                            twoFactorEnabled === undefined
-                                ? undefined
-                                : t(twoFactorEnabled ? "on" : "off"),
-                        )}
-                        onClick={showTwoFactor}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(t("passkeys"))}
-                        onClick={handlePasskeys}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(
-                            t("active_sessions"),
-                            sessionCount === undefined
-                                ? undefined
-                                : t("account_sessions", {
-                                      count: sessionCount,
-                                  }),
-                        )}
-                        onClick={handleActiveSessions}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        label={t("change_password")}
-                        onClick={handleChangePassword}
-                    />
-                    <RowButtonDivider />
-                    <RowButton
-                        label={accountLabel(
-                            t("change_email"),
-                            userDetails?.email,
-                        )}
-                        onClick={handleChangeEmail}
-                    />
-                </RowButtonGroup>
-                <RowButtonGroup>
-                    <RowButton
-                        color="critical"
-                        label={t("delete_account")}
-                        onClick={handleDeleteAccount}
-                    />
-                </RowButtonGroup>
+            <Stack sx={{ px: 2, py: 1, gap: 1 }}>
+                <RowCard
+                    title={t("manage_plan")}
+                    subtitle={planSubtext}
+                    onClick={handleManageSubscription}
+                />
+                <RowCard
+                    title={t("recovery_key")}
+                    onClick={() => void handleRecoveryKey()}
+                />
+                <RowCard
+                    title={t("two_factor")}
+                    subtitle={
+                        twoFactorEnabled === undefined
+                            ? undefined
+                            : t(twoFactorEnabled ? "on" : "off")
+                    }
+                    onClick={showTwoFactor}
+                />
+                <RowCard title={t("passkeys")} onClick={handlePasskeys} />
+                <RowCard
+                    title={t("active_sessions")}
+                    subtitle={
+                        sessionCount === undefined
+                            ? undefined
+                            : t("account_sessions", { count: sessionCount })
+                    }
+                    onClick={handleActiveSessions}
+                />
+                <RowCard
+                    title={t("change_password")}
+                    onClick={handleChangePassword}
+                />
+                <RowCard
+                    title={t("change_email")}
+                    subtitle={userDetails?.email}
+                    onClick={handleChangeEmail}
+                />
+                <RowCard
+                    title={
+                        <Box component="span" sx={{ color: "critical.main" }}>
+                            {t("delete_account")}
+                        </Box>
+                    }
+                    onClick={handleDeleteAccount}
+                />
             </Stack>
             <RecoveryKey
                 {...recoveryKeyVisibilityProps}
