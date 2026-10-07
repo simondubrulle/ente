@@ -2311,7 +2311,6 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                     {hasFeedItems ? (
                         <>
                             <SpacePostGrid
-                                fixedRows
                                 postCount={
                                     isFeedComplete
                                         ? latestFeedEntries.length +

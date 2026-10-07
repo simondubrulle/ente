@@ -13,12 +13,10 @@ interface PostGridItem {
 export const SpacePostGrid = <Item extends PostGridItem>({
     items,
     postCount,
-    fixedRows = false,
     renderTile,
 }: {
     items: Item[];
     postCount?: number;
-    fixedRows?: boolean;
     renderTile: (
         item: Item,
         index: number,
@@ -27,7 +25,7 @@ export const SpacePostGrid = <Item extends PostGridItem>({
 }) => {
     const [width, setWidth] = React.useState(0);
     const [previousLayout, setLayout] = React.useState(() => ({
-        ...postPhotoLayout([], 0, undefined, postCount, fixedRows),
+        ...postPhotoLayout([], 0),
         items,
         postCount,
     }));
@@ -45,7 +43,6 @@ export const SpacePostGrid = <Item extends PostGridItem>({
     const layout =
         previousLayout.items == items &&
         previousLayout.width == width &&
-        previousLayout.fixedRows == fixedRows &&
         previousLayout.postCount == postCount
             ? previousLayout
             : {
@@ -59,7 +56,6 @@ export const SpacePostGrid = <Item extends PostGridItem>({
                       width,
                       previousLayout,
                       postCount,
-                      fixedRows,
                   ),
                   items,
                   postCount,
