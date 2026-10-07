@@ -659,7 +659,7 @@ const AdvancedSettings: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                     />
                     <Typography
                         variant="small"
-                        sx={{ color: "text.faint", px: 1, py: "6px" }}
+                        sx={{ color: "text.faint", pl: 2, pr: 1, py: "6px" }}
                     >
                         {t("faster_upload_description")}
                     </Typography>
