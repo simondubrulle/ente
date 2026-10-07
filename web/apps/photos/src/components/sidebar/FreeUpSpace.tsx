@@ -1,9 +1,9 @@
 import { Stack } from "@mui/material";
-import { RowCard } from "ente-base/components/RowButton";
 import {
     TitledNestedSidebarDrawer,
     type NestedSidebarDrawerVisibilityProps,
 } from "ente-base/components/mui/SidebarDrawer";
+import { RowCard } from "ente-base/components/v2/RowButton";
 import type { SidebarActionID } from "ente-new/photos/services/search/types";
 import { t } from "i18next";
 import { useRouter } from "next/router";
