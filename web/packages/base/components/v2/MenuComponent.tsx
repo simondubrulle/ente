@@ -6,18 +6,22 @@ import type { ReactNode } from "react";
 
 interface MenuComponentProps {
     title: string;
-    selected: boolean;
+    description?: ReactNode;
+    selected?: boolean;
     onClick: () => void;
     startIcon?: ReactNode;
+    endIcon?: ReactNode;
     disabled?: boolean;
     loading?: boolean;
 }
 
 export function MenuComponent({
     title,
+    description,
     selected,
     onClick,
     startIcon,
+    endIcon,
     disabled = false,
     loading = false,
 }: MenuComponentProps) {
@@ -66,21 +70,22 @@ export function MenuComponent({
                     {startIcon}
                 </Box>
             )}
-            <Typography
-                sx={{
-                    flex: 1,
-                    minWidth: 0,
-                    fontSize: 14,
-                    lineHeight: "20px",
-                    fontWeight: 500,
-                    display: "-webkit-box",
-                    WebkitBoxOrient: "vertical",
-                    WebkitLineClamp: 2,
-                    overflow: "hidden",
-                }}
-            >
-                {title}
-            </Typography>
+            <Box sx={{ flex: 1, minWidth: 0 }}>
+                <Typography
+                    sx={{
+                        fontSize: 14,
+                        lineHeight: "20px",
+                        fontWeight: 500,
+                        display: "-webkit-box",
+                        WebkitBoxOrient: "vertical",
+                        WebkitLineClamp: 2,
+                        overflow: "hidden",
+                    }}
+                >
+                    {title}
+                </Typography>
+                {description}
+            </Box>
             <Box
                 sx={{
                     width: 36,
@@ -92,9 +97,14 @@ export function MenuComponent({
             >
                 {loading ? (
                     <ActivityIndicator size="20px" />
-                ) : selected ? (
-                    <CheckIcon sx={{ fontSize: 20, color: "accent.main" }} />
-                ) : null}
+                ) : (
+                    (endIcon ??
+                    (selected ? (
+                        <CheckIcon
+                            sx={{ fontSize: 20, color: "accent.main" }}
+                        />
+                    ) : null))
+                )}
             </Box>
         </FocusVisibleButton>
     );
