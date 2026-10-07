@@ -35,7 +35,6 @@ class SelectedRecipientChips extends StatefulWidget {
 }
 
 class _SelectedRecipientChipsState extends State<SelectedRecipientChips> {
-  // Keep outgoing chips in the layout until their exit animation completes.
   late final _displayedSuggestions = List<UserSuggestion>.of(
     widget.suggestions,
   );

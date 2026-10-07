@@ -29,7 +29,6 @@ import {
     type CollectionOp,
     type FileOp,
 } from "@/components/SelectedFileOptions";
-import { Sidebar } from "@/components/Sidebar";
 import { Upload } from "@/components/Upload";
 import { WhatsNew } from "@/components/WhatsNew";
 import {
@@ -46,6 +45,7 @@ import {
     useGalleryReducer,
     type GalleryBarMode,
 } from "@/components/gallery/reducer";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import {
     notifyOthersFilesDialogAttributes,
     notifyUnsupportedSharedFavoritesDialogAttributes,
@@ -2067,7 +2067,12 @@ const Page: React.FC = () => {
                     files={filteredFiles}
                     onShowMap={handleShowCollectionMap}
                     enableDownload={true}
-                    disableGrouping={state.searchSuggestion?.type == "clip"}
+                    disableGrouping={
+                        state.searchSuggestion?.type == "clip" ||
+                        (!isInSearchMode &&
+                            activeCollection?.pubMagicMetadata?.data.sortBy ===
+                                "fileName")
+                    }
                     enableSelect={true}
                     selected={selected}
                     setSelected={setSelected}

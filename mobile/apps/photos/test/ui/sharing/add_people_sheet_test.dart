@@ -63,7 +63,6 @@ void main() {
         buildNumber: '1',
       ),
     );
-    // Only preferences are needed; native plugins are unavailable in this test.
     try {
       await Configuration.instance.init(preferences);
     } catch (_) {}

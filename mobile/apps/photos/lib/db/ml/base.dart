@@ -130,10 +130,6 @@ abstract class IMLDataDB<T> {
 
   Future<void> checkMigrateFillClipVectorDB({bool force});
   Future<void> checkMigrateFillClusterCentroidVectorDB({bool force});
-  Future<Map<String, int>> getClusterCentroidVectorIdMap(
-    Iterable<String> clusterIDs, {
-    bool createIfMissing,
-  });
   Future<Set<String>> getClustersForMemoryLane(Set<String> assigned);
   Future<List<String>> getFaceIDsForClusterOrderedByScore(
     String clusterID, {
@@ -158,29 +154,8 @@ abstract class IMLDataDB<T> {
   Future<Map<int, PreviewInfo>> getFileIDsVidPreview();
   Future<Set<int>> getFileIDsWithFDData({DataType? type});
 
-  Future<void> clearClusterCentroidVectorIdMappings();
-  Future<void> deleteClusterCentroidVectorIdMapping(String clusterID);
   Future<int> getClipVectorizableFileCount({int minimumMlVersion});
   Future<Map<String, String>> getFaceIdToPersonIdForFaces(
     Iterable<String> faceIDs,
   );
-
-  Future<void> clearNonPetTables();
-  Future<void> clearPetTables();
-  Future<void> resetClusterTables({required bool faces});
-  Future<void> upsertClusterSummaryRows(Map<String, (Uint8List, int)> summary);
-  Future<void> deleteClusterSummaryRow(String clusterID);
-  Future<void> insertClipRows(List<ClipEmbedding> embeddings);
-  Future<void> deleteClipRows(List<int> fileIDs);
-  Future<void> deleteAllClipRows();
-  Future<int> countClusterSummaries();
-  Future<List<(String, Uint8List)>> getClusterSummaryPage({
-    String? beforeClusterID,
-    required int limit,
-  });
-  Future<int> countClipRows();
-  Future<List<(int, Uint8List)>> getClipRowsPage({
-    required int limit,
-    required int offset,
-  });
 }

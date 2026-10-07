@@ -8,6 +8,7 @@ import 'package:path/path.dart' show join;
 import 'package:path_provider/path_provider.dart';
 import "package:photos/db/common/base.dart";
 import "package:photos/db/ml/base.dart";
+import "package:photos/db/ml/clip_vector_db.dart";
 import "package:photos/db/ml/db_model_mappers.dart";
 import "package:photos/db/ml/ml_data_db_orchestration.dart";
 import 'package:photos/db/ml/schema.dart';
@@ -1481,7 +1482,7 @@ class DartMLDataDB
     final List<EmbeddingVector> embeddings = [];
     for (final result in results) {
       final bytes = result[embeddingColumn] as Uint8List;
-      if (bytes.lengthInBytes != UsearchClipVectorDB.embeddingBytesLength) {
+      if (bytes.lengthInBytes != ClipVectorDB.embeddingBytesLength) {
         continue;
       }
       final embedding = EmbeddingVector(
@@ -1595,7 +1596,7 @@ class DartMLDataDB
         'WHERE $mlVersionColumn >= ? AND LENGTH($embeddingColumn) = ?';
     final List<Map<String, dynamic>> maps = await db.getAll(query, [
       minimumMlVersion,
-      UsearchClipVectorDB.embeddingBytesLength,
+      ClipVectorDB.embeddingBytesLength,
     ]);
     return maps.first['count'] as int;
   }

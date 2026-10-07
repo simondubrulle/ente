@@ -1,3 +1,5 @@
+import "package:photos/db/ml/db.dart";
+import "package:photos/db/ml/store_cluster_centroid_vector_db.dart";
 import "package:photos/db/ml/usearch_cluster_centroid_vector_db.dart";
 
 typedef ClusterCentroidMatches = ({
@@ -6,10 +8,15 @@ typedef ClusterCentroidMatches = ({
 });
 
 abstract class ClusterCentroidVectorDB {
-  static ClusterCentroidVectorDB get instance =>
-      UsearchClusterCentroidVectorDB.instance;
+  static const int embeddingDimensions = 192;
+
+  static ClusterCentroidVectorDB get instance => MLDataDB.isRustBackend
+      ? StoreClusterCentroidVectorDB.instance
+      : UsearchClusterCentroidVectorDB.instance;
   static ClusterCentroidVectorDB get localGalleryInstance =>
-      UsearchClusterCentroidVectorDB.localGalleryInstance;
+      MLDataDB.isRustBackend
+      ? StoreClusterCentroidVectorDB.localGalleryInstance
+      : UsearchClusterCentroidVectorDB.localGalleryInstance;
 
   Future<bool> isReady();
   Future<void> warmup();

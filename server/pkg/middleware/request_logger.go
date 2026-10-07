@@ -61,7 +61,9 @@ func shouldSkipBodyLog(method string, path string) bool {
 			"/legacy-kits/recovery/session",
 			"/legacy-kits/recovery/info",
 			"/legacy-kits/recovery/init-change-password",
-			"/legacy-kits/recovery/change-password":
+			"/legacy-kits/recovery/change-password",
+			"/public-collection/verify-password", "/file-link/verify-password",
+			"/collections/share-url", "/files/share-url":
 			return true
 		}
 	}
@@ -95,7 +97,8 @@ func shouldSkipBodyLog(method string, path string) bool {
 	if method == http.MethodPost && (path == "/cast/cast-data" || path == "/cast/cast-data/") {
 		return true
 	}
-	if !isReadOnly && (strings.HasPrefix(path, "/space") || strings.HasPrefix(path, "/account/space")) {
+	if !isReadOnly && (strings.HasPrefix(path, "/space") || strings.HasPrefix(path, "/account/space") ||
+		strings.HasPrefix(path, "/public-collection/comments") || strings.HasPrefix(path, "/public-collection/reactions")) {
 		return true
 	}
 	if !isReadOnly && (path == "/user-entity/key" || path == "/user-entity/key/ensure") {
