@@ -2351,6 +2351,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                                             item={{ ...item, avatarUrl }}
                                             displayName={item.name}
                                             showAvatar
+                                            subtlePhotosBadge
                                             flexGrow={flexGrow}
                                             index={index}
                                             imageUrl={imageUrl}
