@@ -5,7 +5,7 @@ const inter =
 
 const sidebarHeadingFont = '"Outfit Variable", Outfit, sans-serif';
 
-/** Keep the settings palette local, including drawers and portalled menus. */
+// Keep the settings palette local, including drawers and portalled menus.
 export const sidebarTheme = (theme: Theme): Theme => {
     const colors: CSSObject = {
         "--mui-palette-background-default": "#F4F4F4",
@@ -43,7 +43,6 @@ export const sidebarTheme = (theme: Theme): Theme => {
         "--mui-palette-FilledInput-bg": "var(--mui-palette-background-default)",
         "--mui-palette-FilledInput-hoverBg":
             "var(--mui-palette-background-default)",
-        "--mui-palette-fixed-switchOn": "#08C225",
         "--mui-palette-backdrop-muted": "rgba(0, 0, 0, 0.4)",
         ...theme.applyStyles("dark", {
             "--mui-palette-background-default": "#161616",
@@ -86,8 +85,25 @@ export const sidebarTheme = (theme: Theme): Theme => {
             backgroundColor:
                 "color-mix(in srgb, var(--mui-palette-text-base) 8%, var(--mui-palette-background-paper))",
         },
-        "& .MuiSwitch-switchBase:not(.Mui-disabled) .MuiSwitch-thumb": {
-            color: "var(--mui-palette-background-paper)",
+        "& .MuiSwitch-root": {
+            "--mui-palette-primary-main":
+                theme.colorSchemes.light?.palette.primary.main,
+            "--mui-palette-fill-muted":
+                theme.colorSchemes.light?.palette.fill.muted,
+            "--mui-palette-stroke-muted":
+                theme.colorSchemes.light?.palette.stroke.muted,
+            "--mui-palette-stroke-faint":
+                theme.colorSchemes.light?.palette.stroke.faint,
+            ...theme.applyStyles("dark", {
+                "--mui-palette-primary-main":
+                    theme.colorSchemes.dark?.palette.primary.main,
+                "--mui-palette-fill-muted":
+                    theme.colorSchemes.dark?.palette.fill.muted,
+                "--mui-palette-stroke-muted":
+                    theme.colorSchemes.dark?.palette.stroke.muted,
+                "--mui-palette-stroke-faint":
+                    theme.colorSchemes.dark?.palette.stroke.faint,
+            }),
         },
         '& svg[data-testid="ChevronRightIcon"]:not([data-sidebar-subscription] *)':
             { color: "#969696" },
