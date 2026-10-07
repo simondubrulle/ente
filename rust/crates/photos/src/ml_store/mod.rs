@@ -61,6 +61,7 @@ impl MlStore {
     }
 
     pub fn fill_state(&self, index: Index) -> Result<FillState> {
+        self.ensure_index_open(index)?;
         state::read(&self.db, index)
     }
 
@@ -122,6 +123,15 @@ impl MlStore {
         operation: impl Fn(&VecDb) -> IndexResult<T>,
     ) -> Result<T> {
         self.indexes[index.position()].with_open(&self.db, operation)
+    }
+
+    fn ensure_index_open(&self, index: Index) -> Result<()> {
+        let slot = &self.indexes[index.position()];
+        if slot.is_open() {
+            return Ok(());
+        }
+        let _mutations = self.lock_mutations();
+        slot.reopen(&self.db)
     }
 
     fn read_index<T>(
