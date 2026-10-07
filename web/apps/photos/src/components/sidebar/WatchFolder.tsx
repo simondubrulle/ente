@@ -5,6 +5,7 @@ import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import RefreshIcon from "@mui/icons-material/Refresh";
 import StopCircleOutlinedIcon from "@mui/icons-material/StopCircleOutlined";
 import {
+    Box,
     CircularProgress,
     Divider,
     IconButton,
@@ -134,9 +135,21 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                 <Stack sx={{ px: 2, py: 1, gap: 1 }}>
                     <WatchList {...{ watches, removeWatch, refreshWatches }} />
                     <Divider sx={{ opacity: 0.4 }} />
-                    <button
+                    <Box
+                        component="button"
                         type="button"
                         onClick={addNewWatch}
+                        sx={[
+                            {
+                                borderRadius: "10px",
+                                bgcolor: "transparent",
+                                "&:hover": { bgcolor: "fill.faintHover" },
+                            },
+                            (theme) =>
+                                theme.applyStyles("dark", {
+                                    "&:hover": { bgcolor: "backdrop.muted" },
+                                }),
+                        ]}
                         style={{
                             display: "flex",
                             width: "100%",
@@ -144,7 +157,6 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                             alignItems: "center",
                             justifyContent: "space-between",
                             border: 0,
-                            background: "transparent",
                             color: "inherit",
                             font: "inherit",
                             textAlign: "left",
@@ -177,7 +189,7 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                                 sx={{ fontSize: "20px", color: "text.muted" }}
                             />
                         </span>
-                    </button>
+                    </Box>
                     <Divider sx={{ opacity: 0.4 }} />
                 </Stack>
             </TitledNestedSidebarDrawer>
