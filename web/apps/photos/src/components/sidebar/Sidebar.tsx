@@ -117,14 +117,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const { show: showExport, props: exportVisibilityProps } =
         useModalVisibility();
     const { onClose: closeExport } = exportVisibilityProps;
-    const exportAuthGeneration = useRef(0);
 
     useEffect(() => {
         if (!open) closeExport();
-        return () => {
-            // Discard authentication results after Sidebar closes or unmounts.
-            exportAuthGeneration.current += 1;
-        };
     }, [open, closeExport]);
 
     const { watchFolderView, setWatchFolderView } = usePhotosAppContext();
@@ -168,11 +163,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
             return;
         }
 
-        const authGeneration = exportAuthGeneration.current;
         void (async () => {
             try {
                 if (!(await onAuthenticateUser())) return;
-                if (authGeneration !== exportAuthGeneration.current) return;
                 showExport();
             } catch (error) {
                 log.error("Failed to authenticate before export", error);
