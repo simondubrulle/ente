@@ -419,6 +419,7 @@ class FileViewerState extends State<FileViewer> {
     return ExternalVideoViewer(
       uri: uri,
       key: _externalVideoKey,
+      onBackPressed: () => unawaited(_closeViewer()),
       onFullscreenChanged: (fullscreen) {
         setState(() => _isVideoFullscreen = fullscreen);
       },
@@ -426,8 +427,12 @@ class FileViewerState extends State<FileViewer> {
   }
 
   Widget _buildSingleFileScaffold() {
+    final isVideo =
+        action.type == MediaType.video ||
+        widget.sharedMediaFile?.type == SharedMediaType.video;
+    final uri = widget.sharedMediaFile?.path ?? action.data;
     return Scaffold(
-      appBar: _isVideoFullscreen
+      appBar: isVideo && uri != null && uri.isNotEmpty
           ? null
           : AppBar(
               leading: IconButton(

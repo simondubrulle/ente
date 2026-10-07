@@ -1,22 +1,33 @@
 import "dart:async";
 import "dart:io";
 
+import "package:ente_components/ente_components.dart";
+import "package:ente_strings/ente_strings.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:hugeicons/hugeicons.dart";
 import "package:logging/logging.dart";
 import "package:native_video_player/native_video_player.dart";
 import "package:photos/ui/viewer/file/native_video_player_controls/play_pause_button.dart";
+import "package:photos/ui/viewer/file/native_video_player_controls/seek_bar.dart";
+import "package:photos/ui/viewer/file/video_control/gallery_video_controls.dart";
+import "package:photos/ui/viewer/file/video_control/mute_button.dart";
+import "package:photos/ui/viewer/file/video_control/video_speed_bottom_sheet.dart";
+import "package:photos/ui/viewer/file/video_double_tap_seek.dart";
 import "package:photos/ui/viewer/file/video_seek_controller.dart";
+import "package:photos/ui/viewer/file/viewer_app_bar.dart";
 import "package:video_player/video_player.dart" as vp;
 import "package:wakelock_plus/wakelock_plus.dart";
 
 class ExternalVideoViewer extends StatefulWidget {
   final String uri;
   final ValueChanged<bool> onFullscreenChanged;
+  final VoidCallback onBackPressed;
 
   const ExternalVideoViewer({
     required this.uri,
     required this.onFullscreenChanged,
+    required this.onBackPressed,
     super.key,
   });
 
@@ -31,6 +42,7 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
   StreamSubscription<PlaybackEvent>? _subscription;
   late final VideoSeekController _seekController;
   Timer? _hideControlsTimer;
+  OverlayEntry? _longPressSpeedIndicator;
   bool _hasError = false;
   bool _isPlaybackReady = false;
   bool _preparingPlayback = false;
@@ -39,6 +51,8 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
   bool _resumePlayback = false;
   bool _showControls = true;
   bool _isSeeking = false;
+  bool _isShowingMenu = false;
+  double _playbackSpeed = 1;
   double? _displayAspectRatio;
 
   NativeVideoPlayerController? get controller => _controller;
@@ -192,6 +206,7 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
     _logger.warning("Could not play external video", error, stackTrace);
     if (!mounted || _hasError) return;
     _hideControlsTimer?.cancel();
+    _removeLongPressSpeedIndicator();
     unawaited(_subscription?.cancel());
     _controller?.dispose();
     _controller = null;
@@ -209,6 +224,7 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
           !_isPlaybackReady ||
           _controller?.playbackStatus == PlaybackStatus.playing;
       _isForeground = false;
+      _stopLongPressSpeed();
       unawaited(_run(() async => _controller?.pause()));
       unawaited(WakelockPlus.disable());
     } else if (state == AppLifecycleState.resumed) {
@@ -224,16 +240,21 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
     if (!mounted) return;
     final isSeeking = _seekController.state.isInteracting;
     if (_isSeeking != isSeeking) {
-      _isSeeking = isSeeking;
-      if (isSeeking) _showControls = true;
+      setState(() {
+        _isSeeking = isSeeking;
+        if (isSeeking) _showControls = true;
+      });
       _scheduleHideControls();
     }
-    setState(() {});
   }
 
   void _scheduleHideControls() {
     _hideControlsTimer?.cancel();
-    if (_controller?.playbackStatus == PlaybackStatus.playing && !_isSeeking) {
+    if (_isForeground &&
+        _controller?.playbackStatus == PlaybackStatus.playing &&
+        !_isSeeking &&
+        !_isShowingMenu &&
+        _longPressSpeedIndicator == null) {
       _hideControlsTimer = Timer(const Duration(seconds: 2), () {
         if (mounted) setState(() => _showControls = false);
       });
@@ -260,6 +281,7 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _hideControlsTimer?.cancel();
+    _removeLongPressSpeedIndicator();
     unawaited(_subscription?.cancel());
     _controller?.dispose();
     _seekController.dispose();
@@ -273,14 +295,83 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
     super.dispose();
   }
 
+  void _startLongPressSpeed() {
+    if (!_isForeground ||
+        _controller?.playbackStatus != PlaybackStatus.playing ||
+        _longPressSpeedIndicator != null) {
+      return;
+    }
+    _longPressSpeedIndicator = showVideoLongPressSpeedIndicator(context);
+    _hideControlsTimer?.cancel();
+    unawaited(
+      _run(() => _controller!.setPlaybackSpeed(kVideoLongPressPlaybackSpeed)),
+    );
+  }
+
+  void _stopLongPressSpeed() {
+    if (_longPressSpeedIndicator == null) return;
+    _removeLongPressSpeedIndicator();
+    unawaited(_run(() async => _controller?.setPlaybackSpeed(_playbackSpeed)));
+    _scheduleHideControls();
+  }
+
+  void _removeLongPressSpeedIndicator() {
+    _longPressSpeedIndicator?.remove();
+    _longPressSpeedIndicator?.dispose();
+    _longPressSpeedIndicator = null;
+  }
+
+  void _toggleControls() {
+    setState(() => _showControls = !_showControls);
+    _scheduleHideControls();
+  }
+
+  void _onBackPressed() {
+    if (_isFullscreen) {
+      unawaited(exitFullscreen());
+    } else {
+      widget.onBackPressed();
+    }
+  }
+
+  Future<void> _showPlaybackMenu(BuildContext buttonContext) async {
+    _isShowingMenu = true;
+    _hideControlsTimer?.cancel();
+    try {
+      final selected = await showEntePopupMenu<bool>(
+        context: buttonContext,
+        options: [
+          EntePopupMenuOption(
+            value: true,
+            label: context.strings.playbackSpeed,
+            leadingWidget: const HugeIcon(
+              icon: HugeIcons.strokeRoundedDashboardSpeed02,
+              size: IconSizes.small,
+            ),
+            trailingWidget: Text(
+              _playbackSpeed == 1 ? "1x" : "${_playbackSpeed}x",
+              style: TextStyles.tiny,
+            ),
+          ),
+        ],
+      );
+      if (!mounted || _hasError || selected != true) return;
+      await showVideoSpeedBottomSheet(
+        context,
+        currentSpeed: _playbackSpeed,
+        onSpeedSelected: (speed) {
+          setState(() => _playbackSpeed = speed);
+          unawaited(_run(() => _controller!.setPlaybackSpeed(speed)));
+        },
+      );
+    } finally {
+      _isShowingMenu = false;
+      if (mounted) _scheduleHideControls();
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_hasError) {
-      return const ColoredBox(
-        color: Colors.black,
-        child: Center(child: Icon(Icons.error_outline, color: Colors.white)),
-      );
-    }
     final info = _controller?.videoInfo;
     final aspectRatio =
         _displayAspectRatio ??
@@ -292,117 +383,125 @@ class ExternalVideoViewerState extends State<ExternalVideoViewer>
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Center(
-            child: AspectRatio(
-              aspectRatio: aspectRatio,
-              child: NativeVideoPlayerView(onViewReady: _initializeController),
+          if (_hasError)
+            const Center(child: Icon(Icons.error_outline, color: Colors.white))
+          else ...[
+            Center(
+              child: AspectRatio(
+                aspectRatio: aspectRatio,
+                child: NativeVideoPlayerView(
+                  onViewReady: _initializeController,
+                ),
+              ),
+            ),
+            if (!_isPlaybackReady)
+              const Center(
+                child: CircularProgressIndicator(color: Colors.white),
+              ),
+            if (_isPlaybackReady) ..._buildControls(),
+          ],
+          Positioned(
+            top: 0,
+            left: 0,
+            right: 0,
+            height: MediaQuery.paddingOf(context).top + 80,
+            child: ViewerAppBar(
+              visible: _hasError || _showControls,
+              onBackPressed: _onBackPressed,
+              actions: _isPlaybackReady && !_hasError
+                  ? [
+                      IconButton(
+                        onPressed: () =>
+                            unawaited(_setFullscreen(!_isFullscreen)),
+                        icon: Icon(
+                          _isFullscreen
+                              ? Icons.fullscreen_exit
+                              : Icons.fullscreen,
+                        ),
+                      ),
+                      Builder(
+                        builder: (buttonContext) => IconButton(
+                          tooltip: MaterialLocalizations.of(
+                            context,
+                          ).moreButtonTooltip,
+                          onPressed: () =>
+                              unawaited(_showPlaybackMenu(buttonContext)),
+                          icon: const HugeIcon(
+                            icon: HugeIcons.strokeRoundedMoreVertical,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                    ]
+                  : [],
             ),
           ),
-          if (!_isPlaybackReady)
-            const Center(child: CircularProgressIndicator(color: Colors.white)),
-          if (_isPlaybackReady) _buildControls(),
         ],
       ),
     );
   }
 
-  Widget _buildControls() {
-    final duration = _seekController.duration ?? Duration.zero;
-    final position = _seekController.position;
-    final isMuted = _controller!.volume == 0;
-    return GestureDetector(
-      behavior: HitTestBehavior.opaque,
-      onTap: () {
-        setState(() => _showControls = !_showControls);
-        _scheduleHideControls();
-      },
-      child: AnimatedOpacity(
+  List<Widget> _buildControls() {
+    final controller = _controller!;
+    final isMuted = controller.volume == 0;
+    return [
+      AnimatedOpacity(
         opacity: _showControls ? 1 : 0,
         duration: const Duration(milliseconds: 200),
-        child: IgnorePointer(
-          ignoring: !_showControls,
-          child: Stack(
-            children: [
-              Center(child: PlayPauseButton(_controller)),
-              Positioned(
-                left: 0,
-                right: 0,
-                bottom: 0,
-                child: SafeArea(
-                  top: false,
-                  child: ColoredBox(
-                    color: Colors.black54,
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Slider(
-                            value: duration > Duration.zero
-                                ? (position.inMilliseconds /
-                                          duration.inMilliseconds)
-                                      .clamp(0.0, 1.0)
-                                : 0,
-                            activeColor: Colors.white,
-                            inactiveColor: Colors.white30,
-                            onChangeStart: _seekController.canSeek
-                                ? (_) =>
-                                      _seekController.beginSliderInteraction()
-                                : null,
-                            onChanged: _seekController.canSeek
-                                ? (value) => _seekController.updateSliderTarget(
-                                    _positionAt(value),
-                                  )
-                                : null,
-                            onChangeEnd: _seekController.canSeek
-                                ? (value) => _seekController
-                                      .endSliderInteraction(_positionAt(value))
-                                : null,
-                          ),
-                        ),
-                        Text(
-                          "${_formatTime(position)} / ${_formatTime(duration)}",
-                          style: const TextStyle(
-                            color: Colors.white,
-                            fontSize: 12,
-                          ),
-                        ),
-                        IconButton(
-                          color: Colors.white,
-                          onPressed: () => unawaited(
-                            _run(() => _controller!.setVolume(isMuted ? 1 : 0)),
-                          ),
-                          icon: Icon(
-                            isMuted ? Icons.volume_off : Icons.volume_up,
-                          ),
-                        ),
-                        IconButton(
-                          color: Colors.white,
-                          onPressed: () =>
-                              unawaited(_setFullscreen(!_isFullscreen)),
-                          icon: Icon(
-                            _isFullscreen
-                                ? Icons.fullscreen_exit
-                                : Icons.fullscreen,
-                          ),
-                        ),
-                      ],
-                    ),
+        child: const VideoBottomScrim(hasCaption: false),
+      ),
+      Listener(
+        // Long-press cancellation only fires before recognition in Flutter.
+        onPointerCancel: (_) => _stopLongPressSpeed(),
+        child: DoubleTapSeekOverlay(
+          enabled: () => _isPlaybackReady && !_hasError,
+          position: () => _seekController.position,
+          duration: () => _seekController.duration ?? Duration.zero,
+          seekBy: _seekController.seekBy,
+          onSingleTap: _toggleControls,
+          onSeekInteraction: () {
+            setState(() => _showControls = true);
+            _scheduleHideControls();
+          },
+          onLongPress: _startLongPressSpeed,
+          onLongPressUp: _stopLongPressSpeed,
+          onLongPressCancel: _stopLongPressSpeed,
+        ),
+      ),
+      IgnorePointer(
+        ignoring: !_showControls,
+        child: AnimatedOpacity(
+          opacity: _showControls ? 1 : 0,
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeInQuad,
+          child: Center(child: PlayPauseButton(controller)),
+        ),
+      ),
+      GalleryBottomControlsPositioned(
+        bottom: kVideoProgressRowBottomInset,
+        child: SafeArea(
+          top: false,
+          child: IgnorePointer(
+            ignoring: !_showControls,
+            child: AnimatedOpacity(
+              opacity: _showControls ? 1 : 0,
+              duration: const Duration(milliseconds: 200),
+              curve: Curves.easeInQuad,
+              child: NativeVideoProgressControls(
+                controller,
+                _duration?.inSeconds,
+                _seekController,
+                muteButton: VideoMuteIconButton(
+                  isMuted: isMuted,
+                  onPressed: () => unawaited(
+                    _run(() => controller.setVolume(isMuted ? 1 : 0)),
                   ),
                 ),
               ),
-            ],
+            ),
           ),
         ),
       ),
-    );
-  }
-
-  Duration _positionAt(double value) {
-    final duration = _seekController.duration ?? Duration.zero;
-    return Duration(milliseconds: (duration.inMilliseconds * value).round());
-  }
-
-  String _formatTime(Duration value) {
-    final seconds = (value.inSeconds % 60).toString().padLeft(2, "0");
-    return "${value.inMinutes}:$seconds";
+    ];
   }
 }
