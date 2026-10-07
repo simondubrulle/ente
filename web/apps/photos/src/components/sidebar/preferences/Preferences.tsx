@@ -81,6 +81,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
     pendingAction,
     onActionHandled,
 }) => {
+    const { mode } = useColorScheme();
     const {
         show: showLanguageSettings,
         props: languageSettingsVisibilityProps,
@@ -164,8 +165,16 @@ export const Preferences: React.FC<PreferencesProps> = ({
             title={t("preferences")}
         >
             <Stack sx={{ px: 2, py: 1, gap: 1 }}>
-                <RowCard title={t("language")} onClick={showLanguageSettings} />
-                <RowCard title={t("theme")} onClick={showThemeSettings} />
+                <RowCard
+                    title={t("language")}
+                    subtitle={localeName(getLocaleInUse())}
+                    onClick={showLanguageSettings}
+                />
+                <RowCard
+                    title={t("theme")}
+                    subtitle={mode ? t(mode) : undefined}
+                    onClick={showThemeSettings}
+                />
                 <Divider sx={{ my: "2px", opacity: 0.1 }} />
                 {isMLSupported && (
                     <RowCard title={t("ml_search")} onClick={showMLSettings} />
