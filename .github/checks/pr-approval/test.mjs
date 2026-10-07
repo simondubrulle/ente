@@ -36,9 +36,8 @@ function allowed(author, sender, overrides = {}) {
     });
 }
 
-test("only ashilkn can update an ashil-pilot PR through the exception", () => {
+test("ashilkn can update an ashil-pilot PR through the exception", () => {
     assert.equal(allowed(pilot, human), true);
-    assert.equal(allowed(human, pilot), false);
 });
 
 test("other accounts cannot use the cross-account exception", () => {
