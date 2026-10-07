@@ -138,26 +138,21 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const [pendingFreeUpSpaceAction, setPendingFreeUpSpaceAction] =
         useState<FreeUpSpaceAction>();
 
-    const closeAccount = accountVisibilityProps.onClose;
-    const closeReferrals = referralsVisibilityProps.onClose;
-    const closePreferences = preferencesVisibilityProps.onClose;
-    const closeHelp = helpVisibilityProps.onClose;
-    const closeFreeUpSpace = freeUpSpaceVisibilityProps.onClose;
     const closeSections = useCallback(() => {
-        closeAccount();
-        closeReferrals();
-        closePreferences();
-        closeHelp();
-        closeFreeUpSpace();
+        accountVisibilityProps.onClose();
+        referralsVisibilityProps.onClose();
+        preferencesVisibilityProps.onClose();
+        helpVisibilityProps.onClose();
+        freeUpSpaceVisibilityProps.onClose();
         closeExport();
         setWatchFolderView(false);
         onCloseOverlays();
     }, [
-        closeAccount,
-        closeReferrals,
-        closePreferences,
-        closeHelp,
-        closeFreeUpSpace,
+        accountVisibilityProps,
+        referralsVisibilityProps,
+        preferencesVisibilityProps,
+        helpVisibilityProps,
+        freeUpSpaceVisibilityProps,
         closeExport,
         setWatchFolderView,
         onCloseOverlays,
