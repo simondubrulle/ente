@@ -25,6 +25,7 @@ import type { MiniDialogAttributes } from "ente-base/components/MiniDialog";
 import { LoadingButton } from "ente-base/components/mui/LoadingButton";
 import { ShowHidePasswordInputAdornment } from "ente-base/components/mui/PasswordInputAdornment";
 import {
+    peopleActionFocusSx,
     v2CancelButtonSx,
     v2CloseButtonSx,
     v2HeaderRowSx,
@@ -209,7 +210,7 @@ const AuthenticateUserForm: React.FC<
                 <ButtonBase
                     onClick={onCancel}
                     disabled={isSubmitting}
-                    sx={v2CancelButtonSx}
+                    sx={[v2CancelButtonSx, peopleActionFocusSx]}
                 >
                     {t("cancel")}
                 </ButtonBase>
