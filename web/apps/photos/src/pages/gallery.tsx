@@ -81,6 +81,7 @@ import { useModalVisibility } from "ente-base/components/utils/modal";
 import { useBaseContext } from "ente-base/context";
 import { subscribeMainWindowFocus } from "ente-base/electron";
 import { isNamedError } from "ente-base/error";
+import { isHTTPErrorWithStatus } from "ente-base/http";
 import { hasPendingAlbumToJoin } from "ente-base/join-album";
 import log from "ente-base/log";
 import {
@@ -1143,6 +1144,22 @@ const Page: React.FC = () => {
         }
     };
 
+    const onSendLinkError = useCallback(
+        (e: unknown) => {
+            if (isHTTPErrorWithStatus(e, 402)) {
+                log.error("Could not create share link", e);
+                showMiniDialog(
+                    errorDialogAttributes(
+                        t("share_link_subscription_required"),
+                    ),
+                );
+            } else {
+                onGenericError(e);
+            }
+        },
+        [showMiniDialog, onGenericError],
+    );
+
     const createFileOpHandler =
         (op: FileOp, options?: { suppressSelectionBar?: boolean }) => () => {
             void (async () => {
@@ -1250,7 +1267,11 @@ const Page: React.FC = () => {
                     clearSelection();
                     await remotePull({ silent: true, source: `file-op:${op}` });
                 } catch (e) {
-                    onGenericError(e);
+                    if (op == "sendLink") {
+                        onSendLinkError(e);
+                    } else {
+                        onGenericError(e);
+                    }
                 } finally {
                     if (options?.suppressSelectionBar) {
                         setSuppressContextSelectionBar(false);
@@ -1494,7 +1515,7 @@ const Page: React.FC = () => {
                 setPublicLinkToast({ open: true, url: resolvedURL });
                 await remotePull({ silent: true, source: "viewer-send-link" });
             } catch (e) {
-                onGenericError(e);
+                onSendLinkError(e);
             } finally {
                 hideLoadingBar();
             }
@@ -1506,7 +1527,7 @@ const Page: React.FC = () => {
             customDomain,
             quickLinkVisibility,
             remotePull,
-            onGenericError,
+            onSendLinkError,
         ],
     );
 
