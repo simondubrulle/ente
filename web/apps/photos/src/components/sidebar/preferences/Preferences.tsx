@@ -252,7 +252,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
                                 title={
                                     <Typography
                                         component="span"
-                                        sx={{ color: "text.faint" }}
+                                        sx={{ color: "text.faint", pl: 1 }}
                                     >
                                         {t("processed")}
                                     </Typography>
