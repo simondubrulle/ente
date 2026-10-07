@@ -241,6 +241,9 @@ class _CollectionPageState extends State<CollectionPage> {
                                   tagPrefix: "${tagPrefix}_files",
                                   selectedFiles: _selectedFiles,
                                   appBar: appBar,
+                                  hiddenCollectionID: c.collection.isHidden()
+                                      ? c.collection.id
+                                      : null,
                                 )
                               : gallery;
                         },

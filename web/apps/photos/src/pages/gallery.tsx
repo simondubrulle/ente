@@ -16,7 +16,6 @@ import {
 } from "@/components/Collections/EditAlbumDetailsDialog";
 import { GalleryBarAndListHeader } from "@/components/Collections/GalleryBarAndListHeader";
 import { slideshowFiles } from "@/components/Collections/album-slideshow";
-import { Export } from "@/components/Export";
 import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
 import { FileListWithViewer } from "@/components/FileListWithViewer";
@@ -287,8 +286,6 @@ const Page: React.FC = () => {
         useModalVisibility();
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
         useModalVisibility();
-    const { show: showExport, props: exportVisibilityProps } =
-        useModalVisibility();
     const {
         show: showAuthenticateUser,
         props: authenticateUserVisibilityProps,
@@ -368,9 +365,18 @@ const Page: React.FC = () => {
         }
     }, []);
 
+    const closeSidebarOverlays = useCallback(() => {
+        planSelectorVisibilityProps.onClose();
+        familyManagementVisibilityProps.onClose();
+    }, [
+        planSelectorVisibilityProps.onClose,
+        familyManagementVisibilityProps.onClose,
+    ]);
+
     const handleSidebarClose = useCallback(() => {
+        closeSidebarOverlays();
         sidebarVisibilityProps.onClose();
-    }, [sidebarVisibilityProps.onClose]);
+    }, [closeSidebarOverlays, sidebarVisibilityProps.onClose]);
 
     const handleSidebarActionHandled = useCallback(
         () => setPendingSidebarAction(undefined),
@@ -740,7 +746,6 @@ const Page: React.FC = () => {
             sidebarVisibilityProps.open ||
             planSelectorVisibilityProps.open ||
             fixCreationTimeVisibilityProps.open ||
-            exportVisibilityProps.open ||
             authenticateUserVisibilityProps.open ||
             albumNameInputVisibilityProps.open ||
             editAlbumDetailsVisibilityProps.open ||
@@ -1846,6 +1851,22 @@ const Page: React.FC = () => {
         return <div></div>;
     }
 
+    const subscriptionDialogs = (
+        <>
+            <PlanSelector
+                {...planSelectorVisibilityProps}
+                setLoading={(v) => setBlockingLoad(v)}
+                onManageFamily={showFamilyManagement}
+            />
+            {familyManagementVisibilityProps.open && (
+                <FamilyManagement
+                    {...familyManagementVisibilityProps}
+                    onShowPlanSelector={showPlanSelector}
+                />
+            )}
+        </>
+    );
+
     return (
         <FullScreenDropZone
             message={
@@ -1855,15 +1876,7 @@ const Page: React.FC = () => {
             onDrop={setDragAndDropFiles}
         >
             {blockingLoad && <TranslucentLoadingOverlay />}
-            <PlanSelector
-                {...planSelectorVisibilityProps}
-                setLoading={(v) => setBlockingLoad(v)}
-                onManageFamily={showFamilyManagement}
-            />
-            <FamilyManagement
-                {...familyManagementVisibilityProps}
-                onShowPlanSelector={showPlanSelector}
-            />
+            {!sidebarVisibilityProps.open && subscriptionDialogs}
             <CollectionSelector
                 open={openCollectionSelector}
                 onClose={handleCloseCollectionSelector}
@@ -2034,9 +2047,12 @@ const Page: React.FC = () => {
                 onActionHandled={handleSidebarActionHandled}
                 onShowPlanSelector={showPlanSelector}
                 onShowCollectionSummary={handleSidebarShowCollectionSummary}
-                onShowExport={showExport}
+                collectionNameByID={collectionNameByID}
+                onCloseOverlays={closeSidebarOverlays}
                 onAuthenticateUser={authenticateUser}
-            />
+            >
+                {sidebarVisibilityProps.open && subscriptionDialogs}
+            </Sidebar>
             <WhatsNew {...whatsNewVisibilityProps} />
             <AssignPersonDialog
                 {...contextMenuAssignPersonProps}
@@ -2067,7 +2083,12 @@ const Page: React.FC = () => {
                     files={filteredFiles}
                     onShowMap={handleShowCollectionMap}
                     enableDownload={true}
-                    disableGrouping={state.searchSuggestion?.type == "clip"}
+                    disableGrouping={
+                        state.searchSuggestion?.type == "clip" ||
+                        (!isInSearchMode &&
+                            activeCollection?.pubMagicMetadata?.data.sortBy ===
+                                "fileName")
+                    }
                     enableSelect={true}
                     selected={selected}
                     setSelected={setSelected}
@@ -2158,7 +2179,6 @@ const Page: React.FC = () => {
                     onSubmit={handleEditAlbumDetails}
                 />
             )}
-            <Export {...exportVisibilityProps} {...{ collectionNameByID }} />
             <AuthenticateUser
                 open={authenticateUserVisibilityProps.open}
                 onClose={handleCloseAuthenticateUser}
