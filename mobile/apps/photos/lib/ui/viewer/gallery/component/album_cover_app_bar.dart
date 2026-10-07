@@ -29,6 +29,7 @@ class AlbumCoverAppBar extends StatefulWidget {
     required this.collapsedHeight,
     this.heroTag,
     this.bottom,
+    this.onDetailsTap,
   });
 
   final Collection collection;
@@ -40,6 +41,7 @@ class AlbumCoverAppBar extends StatefulWidget {
   final double collapsedHeight;
   final String? heroTag;
   final PreferredSizeWidget? bottom;
+  final VoidCallback? onDetailsTap;
 
   static HeaderAppBarGeometry resolveGeometry(
     BuildContext context, {
@@ -119,6 +121,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
         isCovered: _isCovered,
         title: widget.title,
         actionsBuilder: widget.actionsBuilder,
+        onDetailsTap: widget.onDetailsTap,
         bottom: widget.bottom,
         photo: _CoverPhoto(
           cover: widget.cover,
@@ -134,29 +137,37 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
               _CoverCaption(
                 GalleryFilesState.maybeOf(context)?.galleryFilesOrNull,
               ),
-              Semantics(
-                header: true,
-                child: Text(
-                  widget.title,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: TextAlign.center,
-                  style: TextStyles.display1.copyWith(
-                    color: colors.specialWhite,
+              GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: widget.onDetailsTap,
+                child: Semantics(
+                  header: true,
+                  child: Text(
+                    widget.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: TextStyles.display1.copyWith(
+                      color: colors.specialWhite,
+                    ),
                   ),
                 ),
               ),
               if (description != null) ...[
                 const SizedBox(height: Spacing.sm),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 18),
-                  child: Text(
-                    description,
-                    maxLines: _descriptionMaxLines,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: TextStyles.mini.copyWith(
-                      color: colors.specialWhite.withValues(alpha: 0.92),
+                GestureDetector(
+                  behavior: HitTestBehavior.opaque,
+                  onTap: widget.onDetailsTap,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 18),
+                    child: Text(
+                      description,
+                      maxLines: _descriptionMaxLines,
+                      overflow: TextOverflow.ellipsis,
+                      textAlign: TextAlign.center,
+                      style: TextStyles.mini.copyWith(
+                        color: colors.specialWhite.withValues(alpha: 0.92),
+                      ),
                     ),
                   ),
                 ),
@@ -645,6 +656,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
     required this.bottom,
     required this.photo,
     required this.content,
+    required this.onDetailsTap,
   });
 
   final HeaderAppBarGeometry geometry;
@@ -658,6 +670,7 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
   final String title;
   final List<Widget> Function(Color foregroundColor) actionsBuilder;
   final PreferredSizeWidget? bottom;
+  final VoidCallback? onDetailsTap;
   final Widget photo;
   final Widget content;
 
@@ -772,14 +785,21 @@ class _AlbumCoverDelegate extends SliverPersistentHeaderDelegate {
                 Expanded(
                   child: ExcludeSemantics(
                     excluding: contentOpacity > 0,
-                    child: Opacity(
-                      opacity: titleOpacity,
-                      child: Text(
-                        title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyles.display3.copyWith(
-                          color: foregroundColor,
+                    child: IgnorePointer(
+                      ignoring: titleOpacity == 0,
+                      child: Opacity(
+                        opacity: titleOpacity,
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTap: onDetailsTap,
+                          child: Text(
+                            title,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyles.display3.copyWith(
+                              color: foregroundColor,
+                            ),
+                          ),
                         ),
                       ),
                     ),

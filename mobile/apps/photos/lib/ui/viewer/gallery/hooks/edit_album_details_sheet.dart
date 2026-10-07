@@ -40,32 +40,34 @@ Future<void> showEditAlbumDetailsSheet({
 
   await showBottomSheetComponent<void>(
     context: context,
-    builder: (sheetContext) => EditAlbumDetailsSheet(
-      initialName: collection.displayName,
-      initialDescription: collection.displayDescription ?? "",
-      initialCover: initialCover,
-      onSelectCover: (pendingCoverID) async {
-        final hasEffectiveCustomCover = pendingCoverID == null
-            ? collection.hasCover
-            : pendingCoverID != 0;
-        final coverID = await showPickCoverPhotoSheet(
-          sheetContext,
-          collection,
-          hasEffectiveCustomCover: hasEffectiveCustomCover,
-        );
-        if (coverID == null) {
-          return null;
-        }
+    builder: (sheetContext) => SingleChildScrollView(
+      child: EditAlbumDetailsSheet(
+        initialName: collection.displayName,
+        initialDescription: collection.displayDescription ?? "",
+        initialCover: initialCover,
+        onSelectCover: (pendingCoverID) async {
+          final hasEffectiveCustomCover = pendingCoverID == null
+              ? collection.hasCover
+              : pendingCoverID != 0;
+          final coverID = await showPickCoverPhotoSheet(
+            sheetContext,
+            collection,
+            hasEffectiveCustomCover: hasEffectiveCustomCover,
+          );
+          if (coverID == null) {
+            return null;
+          }
 
-        final file = coverID == 0
-            ? await FilesDB.instance.getCollectionFileFirstOrLast(
-                collection.id,
-                collection.pubMagicMetadata.asc ?? false,
-              )
-            : await FilesDB.instance.getUploadedFile(coverID, collection.id);
-        return AlbumCoverSelection(id: coverID, file: file);
-      },
-      onSave: onSave,
+          final file = coverID == 0
+              ? await FilesDB.instance.getCollectionFileFirstOrLast(
+                  collection.id,
+                  collection.pubMagicMetadata.asc ?? false,
+                )
+              : await FilesDB.instance.getUploadedFile(coverID, collection.id);
+          return AlbumCoverSelection(id: coverID, file: file);
+        },
+        onSave: onSave,
+      ),
     ),
   );
 }

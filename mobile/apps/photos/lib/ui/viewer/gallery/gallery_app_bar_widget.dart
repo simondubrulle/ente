@@ -365,6 +365,9 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
       cover: widget.cover!,
       heroTag: widget.coverHeroTag,
       title: _appBarTitle,
+      onDetailsTap: widget.selectedFiles.files.isEmpty
+          ? () => _showAlbumDetails(context)
+          : null,
       backgroundColor: GalleryAppBarWidget.backgroundColor(context),
       collapsedHeight: GalleryAppBarWidget.toolbarHeight,
       bottom: bottom,
@@ -385,6 +388,42 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             ),
         ],
       ],
+    );
+  }
+
+  Future<void> _showAlbumDetails(BuildContext context) async {
+    if (galleryType.canEditDetails()) {
+      await _editAlbumDetails(context);
+      return;
+    }
+
+    await showBottomSheetComponent<void>(
+      context: context,
+      builder: (context) => BottomSheetComponent(
+        title: context.strings.details,
+        closeTooltip: context.strings.close,
+        isScrollable: true,
+        content: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              _appBarTitle,
+              style: TextStyles.h2.copyWith(
+                color: context.componentColors.textBase,
+              ),
+            ),
+            if (widget.collection!.displayDescription != null) ...[
+              const SizedBox(height: Spacing.lg),
+              Text(
+                widget.collection!.displayDescription!,
+                style: TextStyles.body.copyWith(
+                  color: context.componentColors.textLight,
+                ),
+              ),
+            ],
+          ],
+        ),
+      ),
     );
   }
 
