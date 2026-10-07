@@ -35,6 +35,7 @@ import {
 } from "ente-gallery/services/video";
 import {
     useHLSGenerationStatusSnapshot,
+    useMLStatusSnapshot,
     useSettingsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
 import { suppressAppLockRefreshFromSessionForTrustedReload } from "ente-new/photos/services/app-lock";
@@ -82,6 +83,7 @@ export const Preferences: React.FC<PreferencesProps> = ({
     onActionHandled,
 }) => {
     const { mode } = useColorScheme();
+    const mlStatus = useMLStatusSnapshot();
     const {
         show: showLanguageSettings,
         props: languageSettingsVisibilityProps,
@@ -177,7 +179,19 @@ export const Preferences: React.FC<PreferencesProps> = ({
                 />
                 <Divider sx={{ my: "2px", opacity: 0.1 }} />
                 {isMLSupported && (
-                    <RowCard title={t("ml_search")} onClick={showMLSettings} />
+                    <RowCard
+                        title={t("ml_search")}
+                        subtitle={
+                            mlStatus
+                                ? t(
+                                      mlStatus.phase === "disabled"
+                                          ? "off"
+                                          : "on",
+                                  )
+                                : undefined
+                        }
+                        onClick={showMLSettings}
+                    />
                 )}
                 <RowCard
                     title={t("custom_domains")}
