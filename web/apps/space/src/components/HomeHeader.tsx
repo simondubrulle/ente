@@ -7,6 +7,7 @@ import type { SetupProfile } from "screens/SetupProfileScreen";
 import { useSpaceAppState } from "state/app-state";
 import {
     spaceAppBackgroundColor,
+    spaceHomeSurface,
     spaceSurface,
     spaceText,
 } from "styles/colors";
@@ -25,7 +26,7 @@ const avatarFadeSx = {
     "@media (prefers-reduced-motion: reduce)": { animation: "none" },
 } as const;
 
-const spaceHomeHeaderHeight = 64;
+const spaceHomeHeaderHeight = 60;
 const spaceHomeHeaderBarHeight = 44;
 
 interface SpaceHomeHeaderProps {
@@ -57,22 +58,21 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
             gridTemplateColumns: `${headerSideWidth}px minmax(0, 1fr) ${headerSideWidth}px`,
             height: spaceHomeHeaderHeight,
             maxWidth: "100%",
-            pb: 2,
             position: "relative",
-            pt: 1.5,
-            px: 2,
+            px: "8px",
+            py: "8px",
             width: "100%",
             zIndex: 4,
             "&::after": {
-                bgcolor: spaceSurface,
+                bgcolor: spaceHomeSurface,
                 borderRadius: "16px",
                 content: '""',
                 height: spaceHomeHeaderBarHeight,
-                left: "16px",
+                left: "8px",
                 pointerEvents: "none",
                 position: "absolute",
-                right: "16px",
-                top: "12px",
+                right: "8px",
+                top: "8px",
                 zIndex: 0,
             },
             "&::before": {
@@ -232,7 +232,7 @@ export const SpaceHomeHeader: React.FC<SpaceHomeHeaderProps> = ({
                                 "&::after": { display: "none" },
                             },
                             bgcolor: dangerColor,
-                            border: `2px solid ${spaceSurface}`,
+                            border: `2px solid ${spaceHomeSurface}`,
                             borderRadius: "50%",
                             boxSizing: "border-box",
                             height: 12.5,

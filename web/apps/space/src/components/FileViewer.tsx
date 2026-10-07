@@ -21,7 +21,6 @@ import { SpaceAvatarImage } from "components/AvatarImage";
 import { SpaceCaptionText } from "components/CaptionText";
 import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
 import { spacePostLikePopDurationMs } from "components/post-like-animation";
-import { SpacePostPhotosCounter } from "components/PostPhotosCounter";
 import { SpacePostPhotosDots } from "components/PostPhotosDots";
 import { SpacePostReplyControls } from "components/PostReplyControls";
 import { createSpaceVideoContent } from "components/PostVideoContent";
@@ -55,7 +54,6 @@ const textTertiary = "rgba(244, 244, 244, 0.52)";
 const viewerBackground = "#000000";
 const inputBackground = spaceControlBackground;
 const inputBackgroundActive = spaceControlBackgroundHover;
-const controlIcon = spaceText;
 const dangerColor = "#F63A3A";
 const viewerHeaderHeight = 56;
 const viewerBottomPadding = 88;
@@ -68,7 +66,7 @@ const viewerActionDoneDurationMs = 1000;
 const captionInputMaxHeight = 112;
 const defaultPhotoWidth = 900;
 const defaultPhotoHeight = 680;
-const viewerHeaderAvatarSize = 28;
+const viewerHeaderAvatarSize = 32;
 const draftPostExitDurationMs = 320;
 const keyboardInsetThresholdPx = 80;
 const keyboardDismissMaxDurationMs = 500;
@@ -1462,7 +1460,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     minHeight: viewerHeaderHeight,
                     position: "relative",
                     pl: "16px",
-                    pr: isDraftPost ? "8px" : "16px",
+                    pr: "8px",
                     width: "100%",
                     zIndex: 2,
                 }}
@@ -1471,7 +1469,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     sx={{
                         alignItems: "center",
                         display: "flex",
-                        gap: "8px",
+                        gap: "12px",
                         minWidth: 0,
                     }}
                 >
@@ -1597,7 +1595,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                     sx={{
                         alignItems: "center",
                         display: "flex",
-                        gap: "8px",
+                        gap: canManagePost && !isCaptionEditing ? 0 : "8px",
                         justifySelf: "flex-end",
                     }}
                 >
@@ -1615,30 +1613,23 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             onClick={(event) =>
                                 setActionsAnchor(event.currentTarget)
                             }
-                            sx={{
-                                alignItems: "center",
-                                bgcolor: "transparent",
-                                border: 0,
-                                color: controlIcon,
-                                cursor: "pointer",
-                                display: "flex",
-                                height: spaceTouchTargetSize,
-                                justifyContent: "center",
-                                p: 0,
-                                width: spaceTouchTargetSize,
-                                "&:focus-visible": {
-                                    borderRadius: "50%",
-                                    outline: `2px solid ${green}`,
-                                    outlineOffset: 2,
-                                },
-                                "&:hover": { color: textBase },
-                            }}
+                            sx={draftHeaderButtonSx}
                         >
-                            <HugeiconsIcon
-                                icon={MoreHorizontalIcon}
-                                size={26}
-                                strokeWidth={2}
-                            />
+                            <Box
+                                component="span"
+                                sx={{
+                                    ...draftHeaderButtonContentSx,
+                                    width: 32,
+                                    p: 0,
+                                    justifyContent: "center",
+                                }}
+                            >
+                                <HugeiconsIcon
+                                    icon={MoreHorizontalIcon}
+                                    size={20}
+                                    strokeWidth={1.8}
+                                />
+                            </Box>
                         </Box>
                     )}
                     {isDraftPost && onAddDraftPhoto && (
@@ -1696,12 +1687,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                             </Box>
                         </Box>
                     )}
-                    {!isDraftPost && (
-                        <SpacePostPhotosCounter
-                            index={postPhotoIndex}
-                            count={postPhotoCount}
-                        />
-                    )}
                     <Box
                         component="button"
                         type="button"
@@ -1712,35 +1697,23 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                         }
                         disabled={isDraftPostActionRunning}
                         onClick={closeViewer}
-                        sx={
-                            isDraftPost
-                                ? draftHeaderButtonSx
-                                : viewerHeaderButtonSx
-                        }
+                        sx={draftHeaderButtonSx}
                     >
-                        {isDraftPost ? (
-                            <Box
-                                component="span"
-                                sx={{
-                                    ...draftHeaderButtonContentSx,
-                                    width: 32,
-                                    p: 0,
-                                    justifyContent: "center",
-                                }}
-                            >
-                                <HugeiconsIcon
-                                    icon={Cancel01Icon}
-                                    size={20}
-                                    strokeWidth={1.8}
-                                />
-                            </Box>
-                        ) : (
+                        <Box
+                            component="span"
+                            sx={{
+                                ...draftHeaderButtonContentSx,
+                                width: 32,
+                                p: 0,
+                                justifyContent: "center",
+                            }}
+                        >
                             <HugeiconsIcon
                                 icon={Cancel01Icon}
                                 size={20}
                                 strokeWidth={1.8}
                             />
-                        )}
+                        </Box>
                     </Box>
                 </Box>
                 {canManagePost && (
