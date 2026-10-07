@@ -122,6 +122,9 @@ android {
         debug {
           applicationIdSuffix '.debug'
           versionNameSuffix "-debug"
+          ndk {
+            abiFilters "x86_64"
+          }
           externalNativeBuild {
             cmake {
               arguments "-DANDROID_PACKAGE_NAME=${android.defaultConfig.applicationId}${applicationIdSuffix}"
