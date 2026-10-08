@@ -286,4 +286,14 @@ Future<void> _pumpSheet(
     ),
   );
   await tester.pumpAndSettle();
+  final boundaries = tester.state<GalleryBoundariesProviderState>(
+    find.byType(GalleryBoundariesProvider),
+  );
+  final sheet = tester.widget<DraggableScrollableSheet>(
+    find.byType(DraggableScrollableSheet),
+  );
+  expect(
+    boundaries.selectionSheetMinHeightNotifier.value,
+    closeTo(sheet.minChildSize * size.height, 0.01),
+  );
 }

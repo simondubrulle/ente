@@ -52,6 +52,7 @@ class _SelectionActionSheetState extends State<SelectionActionSheet> {
   ScrollController? _galleryController;
   ValueNotifier<bool>? _galleryScrolling;
   ScrollController? _actionsController;
+  double? _minHeight;
   double _minExtent = 0;
   double _maxExtent = 1;
   bool _isCollapsing = false;
@@ -123,6 +124,20 @@ class _SelectionActionSheetState extends State<SelectionActionSheet> {
     }
   }
 
+  void _reportMinHeight(double? height) {
+    _minHeight = height;
+    final boundaries = _boundaries;
+    if (boundaries == null ||
+        boundaries.selectionSheetMinHeightNotifier.value == height) {
+      return;
+    }
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted && _boundaries == boundaries) {
+        boundaries.setSelectionSheetMinHeight(_minHeight);
+      }
+    });
+  }
+
   @override
   void dispose() {
     _boundaries?.scrollControllerNotifier.removeListener(_bindGallery);
@@ -142,7 +157,10 @@ class _SelectionActionSheetState extends State<SelectionActionSheet> {
           ..sort((a, b) => a.gridOrder!.compareTo(b.gridOrder!));
     final grid = preferred.isEmpty ? visible.take(4).toList() : preferred;
     final rows = visible.where((action) => !grid.contains(action)).toList();
-    if (visible.isEmpty) return const SizedBox.shrink();
+    if (visible.isEmpty) {
+      _reportMinHeight(null);
+      return const SizedBox.shrink();
+    }
     final media = MediaQuery.of(context);
     final isLandscape = media.orientation == Orientation.landscape;
     final handlePadding = EdgeInsets.only(
@@ -234,6 +252,7 @@ class _SelectionActionSheetState extends State<SelectionActionSheet> {
           ),
         );
         if (maxHeight <= controlsHeight + controlsSpacing) {
+          _reportMinHeight(null);
           return const SizedBox.shrink();
         }
         final minHeight = math.min(
@@ -246,6 +265,7 @@ class _SelectionActionSheetState extends State<SelectionActionSheet> {
               (rows.isEmpty ? Spacing.sm : dividerHeight + rowHeight / 2),
           maxHeight,
         );
+        _reportMinHeight(minHeight);
         _minExtent = minHeight / availableHeight;
         _maxExtent = maxHeight / availableHeight;
         final peekExtent = peekHeight / availableHeight;

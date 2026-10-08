@@ -35,7 +35,9 @@ import "package:photos/ui/components/bottom_action_bar/action_bar_widget.dart";
 import "package:photos/ui/viewer/actions/file_selection_overlay_bar.dart";
 import "package:photos/ui/viewer/gallery/collection_page.dart";
 import "package:photos/ui/viewer/gallery/component/album_cover_app_bar.dart";
+import "package:photos/ui/viewer/gallery/gallery.dart";
 import "package:photos/ui/viewer/gallery/gallery_app_bar_widget.dart";
+import "package:photos/ui/viewer/gallery/state/gallery_boundaries_provider.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
@@ -174,12 +176,49 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(AlbumCoverActionButton), findsNothing);
       expect(find.byTooltip("Sort"), findsNothing);
+      final boundaries = tester.state<GalleryBoundariesProviderState>(
+        find.byType(GalleryBoundariesProvider),
+      );
+      final gallery = tester.state<GalleryState>(find.byType(Gallery));
+      final padding = gallery.scrollbarBottomPaddingNotifier;
+      final minHeight = boundaries.selectionSheetMinHeightNotifier.value!;
+      expect(padding.value, minHeight);
+      final position = boundaries.scrollControllerNotifier.value!.position;
+      final scrollExtent = position.maxScrollExtent;
+      final sheetToggle = find.descendant(
+        of: find.byType(DraggableScrollableSheet),
+        matching: find.bySemanticsLabel("More"),
+      );
+      var paddingUpdates = 0;
+      void trackPadding() => paddingUpdates++;
+      padding.addListener(trackPadding);
+      await tester.tap(sheetToggle);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
+      final expandedBoundary = boundaries.bottomBoundaryNotifier.value!;
+      expect(padding.value, minHeight);
+      expect(position.maxScrollExtent, scrollExtent);
+      await tester.tap(sheetToggle);
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        boundaries.bottomBoundaryNotifier.value!,
+        greaterThan(expandedBoundary),
+      );
+      expect(paddingUpdates, 0);
+      expect(padding.value, minHeight);
+      expect(position.maxScrollExtent, scrollExtent);
+      padding.removeListener(trackPadding);
       await tester.tap(find.byType(SelectAllButton));
       await tester.pumpAndSettle();
       expect(selectedFiles.files, containsAll([oldest, newest]));
       await tester.tap(find.byType(ActionBarWidget));
       await tester.pumpAndSettle();
       expect(selectedFiles.files, isEmpty);
+      expect(
+        padding.value,
+        MediaQuery.paddingOf(tester.element(find.byType(Gallery))).bottom,
+      );
       expect(find.byType(AlbumCoverActionButton), findsNWidgets(2));
       expect(find.byTooltip("Sort"), findsOneWidget);
 

@@ -370,14 +370,15 @@ class GalleryState extends State<Gallery> {
     _inheritedSearchFilterData = InheritedSearchFilterData.maybeOf(context);
     final boundaries = GalleryBoundariesProvider.of(context);
     if (_boundariesProvider != boundaries) {
-      _boundariesProvider?.bottomBoundaryNotifier.removeListener(
+      _boundariesProvider?.selectionSheetMinHeightNotifier.removeListener(
         _selectedFilesListener,
       );
       _boundariesProvider = boundaries;
-      _boundariesProvider?.bottomBoundaryNotifier.addListener(
+      _boundariesProvider?.selectionSheetMinHeightNotifier.addListener(
         _selectedFilesListener,
       );
     }
+    _selectedFilesListener();
   }
 
   void _updateGalleryGroups({bool callSetState = true}) {
@@ -496,14 +497,11 @@ class GalleryState extends State<Gallery> {
   void _selectedFilesListener() {
     final bottomInset = MediaQuery.paddingOf(context).bottom;
     final extra = widget.galleryType == GalleryType.homepage ? 76.0 : 0.0;
-    final bottomBoundary = _boundariesProvider?.bottomBoundaryNotifier.value;
+    final minHeight =
+        _boundariesProvider?.selectionSheetMinHeightNotifier.value;
     scrollbarBottomPaddingNotifier.value =
-        (widget.selectedFiles?.files.isNotEmpty ?? false) &&
-            bottomBoundary != null
-        ? (MediaQuery.sizeOf(context).height - bottomBoundary).clamp(
-            0.0,
-            double.infinity,
-          )
+        (widget.selectedFiles?.files.isNotEmpty ?? false) && minHeight != null
+        ? minHeight
         : bottomInset + extra;
   }
 
@@ -742,7 +740,7 @@ class GalleryState extends State<Gallery> {
 
   @override
   void dispose() {
-    _boundariesProvider?.bottomBoundaryNotifier.removeListener(
+    _boundariesProvider?.selectionSheetMinHeightNotifier.removeListener(
       _selectedFilesListener,
     );
     if (_boundariesProvider?.scrollControllerNotifier.value ==
