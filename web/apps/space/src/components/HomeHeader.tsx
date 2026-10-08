@@ -128,6 +128,7 @@ export const SpaceHomeHeader: React.FC = () => {
                     {notificationsUnread && (
                         <Box
                             aria-hidden
+                            className="space-unread-indicator"
                             sx={{
                                 bgcolor: "#F63A3A",
                                 border: `2.5px solid ${spaceAppBackgroundColor}`,

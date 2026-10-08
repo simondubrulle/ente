@@ -60,7 +60,6 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
         let cancelled = false;
         let sequence = 0;
         const refresh = () => {
-            if (document.visibilityState == "hidden") return;
             const request = ++sequence;
             void loadCurrentUnreadStatus(spaceID)
                 .then((status) => {
@@ -72,14 +71,10 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
                 );
         };
         refresh();
-        window.addEventListener("focus", refresh);
         window.addEventListener(spaceUnreadStatusChangedEvent, refresh);
-        document.addEventListener("visibilitychange", refresh);
         return () => {
             cancelled = true;
-            window.removeEventListener("focus", refresh);
             window.removeEventListener(spaceUnreadStatusChangedEvent, refresh);
-            document.removeEventListener("visibilitychange", refresh);
         };
     }, [spaceID, path]);
 
@@ -263,6 +258,7 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
                                                 unreadStatus.messagesUnread && (
                                                     <Box
                                                         aria-hidden
+                                                        className="space-unread-indicator"
                                                         sx={{
                                                             bgcolor: "#F63A3A",
                                                             border: `2.5px solid ${spaceAppBackgroundColor}`,

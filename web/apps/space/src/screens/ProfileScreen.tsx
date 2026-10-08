@@ -1555,8 +1555,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             )}
             <ConfirmationActionSheet
                 open={isUnfriendSheetOpen}
-                title="Are you sure you want to unfriend?"
-                confirmLabel="Yes, unfriend"
+                title={`Unfriend ${profile.fullName.trim().split(/\s+/)[0] || profile.username}?`}
+                description="You’ll no longer see each other’s posts or message each other."
+                confirmLabel="Unfriend"
                 confirmActionPhase={unfriendActionPhase}
                 confirmDisabled={isUnfriendActionRunning}
                 errorMessage={unfriendErrorMessage}
