@@ -127,6 +127,7 @@ func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int6
 		log.WithError(err).Warn("album share push token lookup failed")
 		return
 	}
+	var unregisteredTokens []string
 	for _, token := range tokens {
 		ciphertext, err := box.SealAnonymous(nil, []byte(`{"version":1,"eventType":"album_shared"}`), (*[32]byte)(token.NotificationPublicKey), rand.Reader)
 		if err != nil {
@@ -154,8 +155,12 @@ func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int6
 		})
 		if err != nil {
 			log.WithError(err).Warn("album share push failed; album remains shared")
+			if errors.Is(err, errUnregisteredToken) {
+				unregisteredTokens = append(unregisteredTokens, token.FCMToken)
+			}
 		}
 	}
+	c.pruneTokens(unregisteredTokens)
 }
 
 func (c *PushController) RemoveTokensForUser(userID int64) error {

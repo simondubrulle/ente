@@ -246,6 +246,54 @@ func TestAlbumShareEncryptsEventForEachDevice(t *testing.T) {
 	require.Len(t, messages, 2, "one device failure must not stop the other send")
 }
 
+func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {
+	testutil.WithServerRoot(t)
+	db := testutil.RequireTestDB(t)
+	testutil.ResetTables(t, db)
+	t.Cleanup(func() { testutil.ResetTables(t, db) })
+	testutil.InsertUser(t, db, testutil.UserFixture{UserID: 1, Email: "internal@example.com", CreationTime: 1})
+	_, err := db.Exec(`INSERT INTO remote_store(user_id,key_name,key_value) VALUES(1,'internalUser','true')`)
+	require.NoError(t, err)
+	require.NoError(t, (&repo.UserAuthRepository{DB: db}).AddToken(1, ente.Photos, "session", "", ""))
+	hash := auth.HashToken("session")
+	platform := "ios"
+	publicKey, _, err := box.GenerateKey(rand.Reader)
+	require.NoError(t, err)
+	controller := &PushController{PushRepo: &repo.PushTokenRepository{DB: db}}
+	responses := map[string]struct {
+		status int
+		body   string
+	}{
+		"active":           {http.StatusOK, "{}"},
+		"unregistered":     {http.StatusNotFound, fcmUnregisteredBody},
+		"unavailable":      {http.StatusServiceUnavailable, "unavailable"},
+		"unauthorized":     {http.StatusUnauthorized, "unauthorized"},
+		"invalid-argument": {http.StatusBadRequest, fcmInvalidArgumentBody},
+	}
+	for token := range responses {
+		require.NoError(t, controller.AddToken(1, hash[:], ente.PushTokenRequest{
+			FCMToken: token, Platform: &platform,
+			Notification: &ente.PushNotificationRegistration{Version: 1, PublicKey: publicKey[:]},
+		}))
+	}
+	var attempted []string
+	controller.fcm = &fcmClient{projectID: "test-project", httpClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
+		var message wireMsg
+		require.NoError(t, json.NewDecoder(request.Body).Decode(&message))
+		attempted = append(attempted, message.Message.Token)
+		response := responses[message.Message.Token]
+		return jsonResponse(response.status, response.body), nil
+	})}}
+	controller.NotifyAlbumShare(context.Background(), []int64{1})
+	require.ElementsMatch(t, []string{"active", "unregistered", "unavailable", "unauthorized", "invalid-argument"}, attempted)
+	var unregisteredExists bool
+	require.NoError(t, db.QueryRow(`SELECT EXISTS(SELECT 1 FROM push_tokens WHERE fcm_token='unregistered')`).Scan(&unregisteredExists))
+	require.False(t, unregisteredExists)
+	attempted = nil
+	controller.NotifyAlbumShare(context.Background(), []int64{1})
+	require.ElementsMatch(t, []string{"active", "unavailable", "unauthorized", "invalid-argument"}, attempted)
+}
+
 func TestAlbumShareHonorsSilentMode(t *testing.T) {
 	previous := viper.GetBool("internal.silent")
 	viper.Set("internal.silent", true)
