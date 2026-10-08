@@ -2938,7 +2938,6 @@ dependencies = [
  "ente-vecdb",
  "flutter_rust_bridge",
  "log",
- "tokio",
 ]
 
 [[package]]

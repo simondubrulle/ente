@@ -2,6 +2,7 @@ use std::path::Path;
 
 use ente_assets::AssetStore;
 use ente_ml::{assets, error::MlError, indexing, types};
+use flutter_rust_bridge::spawn_blocking_with;
 
 #[cfg(any(feature = "flutter", frb_expand))]
 use crate::frb_generated::StreamSink;
@@ -144,7 +145,7 @@ pub async fn init_ml_runtime(
         run_pets,
     )
     .await?;
-    tokio::task::spawn_blocking(move || indexing::init_ml_runtime(paths))
+    spawn_blocking_with(move || indexing::init_ml_runtime(paths), ())
         .await
         .map_err(task_error)
 }
@@ -175,7 +176,7 @@ pub async fn analyze_image_rust(
         model_paths,
     };
 
-    tokio::task::spawn_blocking(move || indexing::analyze_image(shared_req))
+    spawn_blocking_with(move || indexing::analyze_image(shared_req), ())
         .await
         .map_err(task_error)?
         .map(to_api_analyze_image_result)
@@ -191,7 +192,7 @@ pub async fn run_clip_text_rust(req: RunClipTextRequest) -> Result<RunClipTextRe
         vocab_path: paths.vocab.to_string_lossy().into_owned(),
     };
 
-    tokio::task::spawn_blocking(move || indexing::run_clip_text(shared_req))
+    spawn_blocking_with(move || indexing::run_clip_text(shared_req), ())
         .await
         .map_err(task_error)?
         .map(|result| RunClipTextResult {
@@ -266,7 +267,7 @@ pub fn remove_indexing_models(assets_dir: String) -> Result<(), String> {
     assets::remove_mobile_indexing_models(&AssetStore::new(&assets_dir), Path::new(&assets_dir))
 }
 
-fn task_error(error: tokio::task::JoinError) -> RustMlError {
+fn task_error(error: impl std::fmt::Display) -> RustMlError {
     RustMlError::Other {
         message: error.to_string(),
     }
