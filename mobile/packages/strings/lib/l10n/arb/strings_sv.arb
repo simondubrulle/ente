@@ -195,7 +195,7 @@
   "albumsOnDevicePermissionCta": "Tillåt åtkomst",
   "albumsOnEnteEmptyCta": "Välj album att säkerhetskopiera",
   "albumsOnEnteEmptyTitle": "Säkerhetskopiera dina minnen",
-  "albumsReceivedEmptyTitle": "Visa minnen som har delats\nmed dig",
+  "albumsReceivedEmptyTitle": "Visa minnen som har delats med dig",
   "albumsSharedEmptyTitle": "Dela dina minnen",
   "albumsWidgetDesc": "Markera de album du vill ska synas på startskärmen.",
   "albumTitle": "Albumtitel",
@@ -2724,7 +2724,7 @@
   },
   "nightLights": "Neonnätter",
   "no": "Nej",
-  "noAlbumsOnThisDevice": "Inga album\npå den här enheten",
+  "noAlbumsOnThisDevice": "Inga album på den här enheten",
   "noAppToOpenFileDownloadInstead": "Ingen app kan förhandsvisa den här filen. Du kan ladda ner den och öppna den i en annan app.",
   "@noAppToOpenFileDownloadInstead": {
     "description": "Message shown when Android cannot find an app to open or preview a file"

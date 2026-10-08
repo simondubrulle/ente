@@ -2519,7 +2519,7 @@
   },
   "nightLights": "Неоновая ночь",
   "no": "Нет",
-  "noAlbumsOnThisDevice": "Нет альбомов\nна этом устройстве",
+  "noAlbumsOnThisDevice": "Нет альбомов на этом устройстве",
   "noAppToOpenFileDownloadInstead": "Нет приложения для предварительного просмотра этого файла. Вы можете скачать его и открыть с помощью другого приложения.",
   "@noAppToOpenFileDownloadInstead": {
     "description": "Message shown when Android cannot find an app to open or preview a file"

@@ -199,7 +199,7 @@
   "albumsOnDevicePermissionCta": "Zugriff erlauben",
   "albumsOnEnteEmptyCta": "Alben zum Sichern auswählen",
   "albumsOnEnteEmptyTitle": "Sichere deine Erinnerungen",
-  "albumsReceivedEmptyTitle": "Zeige geteilte\n Erinnerungen mit dir",
+  "albumsReceivedEmptyTitle": "Zeige geteilte Erinnerungen mit dir",
   "albumsSharedEmptyTitle": "Teile deine Erinnerungen",
   "albumsWidgetDesc": "Wähle die Alben, die du auf der Startseite sehen möchtest.",
   "albumTitle": "Albumtitel",
@@ -2559,7 +2559,7 @@
   },
   "nightLights": "Nächte in Neon",
   "no": "Nein",
-  "noAlbumsOnThisDevice": "Keine Alben\nauf diesem Gerät",
+  "noAlbumsOnThisDevice": "Keine Alben auf diesem Gerät",
   "noAppToOpenFileDownloadInstead": "Es ist keine Anwendung verfügbar, um eine Vorschau dieser Datei anzuzeigen. Sie können sie herunterladen und mit einer anderen Anwendung öffnen.",
   "@noAppToOpenFileDownloadInstead": {
     "description": "Message shown when Android cannot find an app to open or preview a file"

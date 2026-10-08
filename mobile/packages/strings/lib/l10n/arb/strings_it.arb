@@ -199,7 +199,7 @@
   "albumsOnDevicePermissionCta": "Consenti l'accesso",
   "albumsOnEnteEmptyCta": "Seleziona album da eseguire il backup",
   "albumsOnEnteEmptyTitle": "Esegui il backup dei tuoi ricordi",
-  "albumsReceivedEmptyTitle": "Visualizza i ricordi condivisi\n con te",
+  "albumsReceivedEmptyTitle": "Visualizza i ricordi condivisi con te",
   "albumsSharedEmptyTitle": "Condividi i tuoi ricordi",
   "albumsWidgetDesc": "Seleziona gli album che desideri vedere nella schermata principale.",
   "albumTitle": "Titolo album",
@@ -2296,7 +2296,7 @@
   },
   "nextTotpTitle": "successivo",
   "nightLights": "Notti al neon",
-  "noAlbumsOnThisDevice": "Nessun album\nsu questo dispositivo",
+  "noAlbumsOnThisDevice": "Nessun album su questo dispositivo",
   "noAppToOpenFileDownloadInstead": "Nessuna applicazione è disponibile per visualizzare in anteprima questo file. Puoi scaricarlo e aprirlo in un'altra app.",
   "@noAppToOpenFileDownloadInstead": {
     "description": "Message shown when Android cannot find an app to open or preview a file"
