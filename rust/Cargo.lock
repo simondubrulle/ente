@@ -2483,6 +2483,19 @@ dependencies = [
 ]
 
 [[package]]
+name = "ente-auth"
+version = "0.0.0"
+dependencies = [
+ "ente-core",
+ "serde",
+ "serde_json",
+ "thiserror 2.0.21",
+ "url",
+ "uuid",
+ "zeroize",
+]
+
+[[package]]
 name = "ente-auth-wasm"
 version = "0.0.0"
 dependencies = [
@@ -2533,6 +2546,7 @@ dependencies = [
  "dialoguer",
  "dirs",
  "ente-accounts",
+ "ente-auth",
  "ente-collections",
  "ente-core",
  "ente-photos",
