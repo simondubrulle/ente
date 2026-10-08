@@ -170,6 +170,7 @@ class GalleryState extends State<Gallery> {
   final _scrollController = ScrollController();
   final _headerKey = GlobalKey();
   final _headerHeightNotifier = ValueNotifier<double?>(null);
+  Timer? _headerHeightRetryTimer;
   final scrollBarInUseNotifier = ValueNotifier<bool>(false);
   late GroupType _groupType;
   final scrollbarBottomPaddingNotifier = ValueNotifier<double>(0);
@@ -329,9 +330,9 @@ class GalleryState extends State<Gallery> {
     }
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        _selectedFilesListener();
-      }
+      if (!mounted) return;
+      _selectedFilesListener();
+      _measureHeaderHeight();
     });
 
     widget.selectedFiles?.addListener(_selectedFilesListener);
@@ -759,12 +760,31 @@ class GalleryState extends State<Gallery> {
     _priorityDebouncer.cancelDebounceTimer();
     _scrollController.dispose();
     scrollBarInUseNotifier.dispose();
+    _headerHeightRetryTimer?.cancel();
     _headerHeightNotifier.dispose();
     widget.selectedFiles?.removeListener(_selectedFilesListener);
     scrollbarBottomPaddingNotifier.dispose();
     _swipeHelper?.dispose();
     _swipeActiveNotifier.dispose();
     super.dispose();
+  }
+
+  void _measureHeaderHeight() {
+    if (!mounted) return;
+    try {
+      final renderBox = _headerKey.currentContext?.findRenderObject();
+      if (renderBox is! RenderBox || !renderBox.hasSize) {
+        _headerHeightRetryTimer = Timer(
+          const Duration(milliseconds: 750),
+          _measureHeaderHeight,
+        );
+        return;
+      }
+      _headerHeightNotifier.value = renderBox.size.height;
+    } catch (e, s) {
+      _logger.warning("Error getting renderBox offset", e, s);
+    }
+    if (mounted) setState(() {});
   }
 
   double get _headerHeight {
@@ -922,16 +942,6 @@ class GalleryState extends State<Gallery> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           _boundariesProvider?.setTopBoundary(appBarPinnedHeight);
-        }
-      });
-    }
-
-    if (_headerHeightNotifier.value == null && _allGalleryFiles.isNotEmpty) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        final renderBox = _headerKey.currentContext?.findRenderObject();
-        if (renderBox is RenderBox && renderBox.hasSize) {
-          _headerHeightNotifier.value = renderBox.size.height;
         }
       });
     }

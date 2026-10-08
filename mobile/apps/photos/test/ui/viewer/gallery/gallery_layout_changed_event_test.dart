@@ -1,3 +1,5 @@
+import "dart:async";
+
 import "package:dio/dio.dart";
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
@@ -118,6 +120,54 @@ void main() {
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pumpAndSettle();
   });
+
+  testWidgets(
+    "retries late headers, refreshes pinned dates immediately and stops on disposal",
+    (tester) async {
+      final pinnedHeader = find.byWidgetPredicate(
+        (widget) => widget is GroupHeaderWidget && widget.isPinnedHeader,
+      );
+      for (final disposeWhileLoading in [false, true]) {
+        final load = Completer<FileLoadResult>();
+        await tester.pumpWidget(
+          MaterialApp(
+            theme: lightThemeData,
+            localizationsDelegates: StringsLocalizations.localizationsDelegates,
+            supportedLocales: StringsLocalizations.supportedLocales,
+            home: _galleryHost(
+              Gallery(
+                asyncLoader: (start, end, {limit, asc}) => load.future,
+                tagPrefix: "late_header",
+                groupType: GroupType.day,
+                header: const SizedBox(height: 80),
+                loadingWidget: const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        );
+        await tester.pump(const Duration(milliseconds: 750));
+        if (!disposeWhileLoading) {
+          load.complete(
+            FileLoadResult(List.generate(100, _justifiedTestFile), false),
+          );
+          await tester.pumpAndSettle();
+          final pinned = tester.widget<PinnedGroupHeader>(
+            find.byType(PinnedGroupHeader),
+          );
+          expect(pinned.headerHeightNotifier.value, isNull);
+          pinned.scrollController.jumpTo(160);
+          await tester.pump();
+          expect(pinnedHeader, findsNothing);
+          await tester.pump(const Duration(milliseconds: 750));
+          expect(pinned.headerHeightNotifier.value, 80);
+          expect(pinnedHeader, findsOneWidget);
+        }
+        await tester.pumpWidget(const SizedBox.shrink());
+        await tester.pump(const Duration(seconds: 1));
+        expect(tester.takeException(), isNull);
+      }
+    },
+  );
 
   testWidgets("Flex remains unavailable when internal features are disabled", (
     tester,
