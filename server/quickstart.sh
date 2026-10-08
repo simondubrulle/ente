@@ -41,6 +41,8 @@ then
     exit 1
 fi
 
+umask 077
+
 printf "\n - \033[1mH E L L O\033[0m - \033[1;32mE N T E\033[0m -\n\n"
 
 gen_user_suffix () { head -c 6 /dev/urandom | base64 | tr -d '\n'; }
