@@ -235,6 +235,14 @@ func TestAlbumShareTokensRequireInternalIOSAndActiveSession(t *testing.T) {
 	require.Len(t, tokens, 1)
 	require.Equal(t, "eligible", tokens[0].FCMToken)
 	require.Equal(t, key, tokens[0].NotificationPublicKey)
+	for _, apnsToken := range []any{"", nil} {
+		_, err := db.Exec(`UPDATE push_tokens SET apns_token=$1 WHERE fcm_token='eligible'`, apnsToken)
+		require.NoError(t, err)
+		tokens, err := r.GetTokensForAlbumShare(context.Background(), []int64{1})
+		require.NoError(t, err)
+		require.Len(t, tokens, 1)
+		require.Equal(t, "eligible", tokens[0].FCMToken)
+	}
 	tokens, err = r.GetTokensForAlbumShare(context.Background(), []int64{2})
 	require.NoError(t, err)
 	require.Empty(t, tokens)
