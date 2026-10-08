@@ -3,6 +3,8 @@ package controller
 import (
 	"bytes"
 	"context"
+	"crypto/rand"
+	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -17,10 +19,12 @@ import (
 	"github.com/ente/museum/ente"
 	"github.com/ente/museum/pkg/repo"
 	"github.com/ente/museum/pkg/utils/config"
+	"github.com/ente/museum/pkg/utils/crypto"
 	"github.com/ente/museum/pkg/utils/time"
 	"github.com/ente/stacktrace"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
+	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -100,7 +104,58 @@ func newFCMClient() (*fcmClient, error) {
 }
 
 func (c *PushController) AddToken(userID int64, sessionTokenHash []byte, token ente.PushTokenRequest) error {
+	if token.Notification != nil {
+		if *token.Platform != "ios" {
+			return ente.NewBadRequestWithMessage("notification enrollment is only supported on iOS")
+		}
+		if err := crypto.ValidateSealedBoxPublicKey(base64.StdEncoding.EncodeToString(token.Notification.PublicKey)); err != nil {
+			return ente.NewBadRequestWithMessage("invalid notification public key")
+		}
+	}
 	return stacktrace.Propagate(c.PushRepo.AddToken(userID, sessionTokenHash, token), "")
+}
+
+func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int64) {
+	if viper.GetBool("internal.silent") || c.fcm == nil || len(recipients) == 0 {
+		return
+	}
+	ctx = context.WithoutCancel(ctx)
+	lookupCtx, cancel := context.WithTimeout(ctx, 5*gotime.Second)
+	tokens, err := c.PushRepo.GetTokensForAlbumShare(lookupCtx, recipients)
+	cancel()
+	if err != nil {
+		log.WithError(err).Warn("album share push token lookup failed")
+		return
+	}
+	for _, token := range tokens {
+		ciphertext, err := box.SealAnonymous(nil, []byte(`{"version":1,"eventType":"album_shared"}`), (*[32]byte)(token.NotificationPublicKey), rand.Reader)
+		if err != nil {
+			log.WithError(err).Warn("album share notification encryption failed")
+			continue
+		}
+		err = c.fcm.sendMessage(ctx, map[string]any{
+			"token": token.FCMToken,
+			"apns": map[string]any{
+				"headers": map[string]string{
+					"apns-push-type":  "alert",
+					"apns-priority":   "10",
+					"apns-expiration": strconv.FormatInt(gotime.Now().Add(24*gotime.Hour).Unix(), 10),
+				},
+				"payload": map[string]any{
+					"aps": map[string]any{
+						"alert":           map[string]string{"title": "Ente Photos", "body": "New activity"},
+						"mutable-content": 1,
+						"sound":           "default",
+					},
+					"notificationVersion":    1,
+					"notificationCiphertext": base64.StdEncoding.EncodeToString(ciphertext),
+				},
+			},
+		})
+		if err != nil {
+			log.WithError(err).Warn("album share push failed; album remains shared")
+		}
+	}
 }
 
 func (c *PushController) RemoveTokensForUser(userID int64) error {
@@ -224,21 +279,23 @@ func (c *PushController) pruneTokens(fcmTokens []string) {
 }
 
 func (c *fcmClient) send(ctx context.Context, token string, data map[string]string) error {
-	body, err := json.Marshal(map[string]any{
-		"message": map[string]any{
-			"token":   token,
-			"data":    data,
-			"android": map[string]any{"priority": "high"},
-			"apns": map[string]any{
-				"headers": map[string]string{
-					"apns-push-type": "background",
-					"apns-priority":  "5",
-					"apns-topic":     "io.ente.frame",
-				},
-				"payload": map[string]any{"aps": map[string]any{"content-available": 1}},
+	return c.sendMessage(ctx, map[string]any{
+		"token":   token,
+		"data":    data,
+		"android": map[string]any{"priority": "high"},
+		"apns": map[string]any{
+			"headers": map[string]string{
+				"apns-push-type": "background",
+				"apns-priority":  "5",
+				"apns-topic":     "io.ente.frame",
 			},
+			"payload": map[string]any{"aps": map[string]any{"content-available": 1}},
 		},
 	})
+}
+
+func (c *fcmClient) sendMessage(ctx context.Context, message map[string]any) error {
+	body, err := json.Marshal(map[string]any{"message": message})
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
