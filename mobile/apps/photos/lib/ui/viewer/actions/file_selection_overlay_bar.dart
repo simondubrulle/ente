@@ -264,8 +264,7 @@ class SelectAllButton extends StatelessWidget {
         ).galleryFilesOrNull;
         if (allGalleryFiles == null) return const SizedBox.shrink();
         final allSelected =
-            allGalleryFiles.isNotEmpty &&
-            allGalleryFiles.every(selectionState.selectedFiles.files.contains);
+            selectionState.selectedFiles.files.length == allGalleryFiles.length;
         return SelectionControlChip(
           label: context.strings.selectAllShort,
           semanticLabel: context.strings.selectAll,
