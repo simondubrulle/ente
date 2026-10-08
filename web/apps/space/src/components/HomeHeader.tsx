@@ -81,7 +81,12 @@ export const SpaceHomeHeader: React.FC = () => {
                 onClick={() => void router.push(spaceRoutes.settings)}
                 sx={{ ...actionSx, justifyContent: "flex-start" }}
             >
-                <HugeiconsIcon icon={Menu01Icon} size={22} strokeWidth={2.4} />
+                <HugeiconsIcon
+                    icon={Menu01Icon}
+                    size={23}
+                    strokeWidth={1.8}
+                    absoluteStrokeWidth
+                />
             </Box>
             <Box
                 component="img"
@@ -109,28 +114,29 @@ export const SpaceHomeHeader: React.FC = () => {
                     component="span"
                     sx={{
                         display: "flex",
-                        height: 25,
+                        height: 23,
                         position: "relative",
-                        width: 25,
+                        width: 23,
                     }}
                 >
                     <HugeiconsIcon
                         icon={Notification01Icon}
-                        size={25}
+                        size={23}
                         strokeWidth={1.8}
+                        absoluteStrokeWidth
                     />
                     {notificationsUnread && (
                         <Box
                             aria-hidden
                             sx={{
                                 bgcolor: "#F63A3A",
-                                border: `2px solid ${spaceAppBackgroundColor}`,
+                                border: `2.5px solid ${spaceAppBackgroundColor}`,
                                 borderRadius: "50%",
-                                height: 11,
+                                height: 11.5,
                                 position: "absolute",
-                                right: 0,
-                                top: 0,
-                                width: 11,
+                                right: "-0.75px",
+                                top: "-0.75px",
+                                width: 11.5,
                             }}
                         />
                     )}

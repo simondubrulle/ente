@@ -521,7 +521,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         [loadedPhotoDimensionsByID],
     );
 
-    const profileViewerPhotos = viewerPostItems.flatMap((item) =>
+    const profileViewerPhotos = viewerPostItems.map((item) =>
         viewerPhotosFromPost({
             ...item,
             ...dimensionsForPost(item),
@@ -530,13 +530,29 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             name: displayName,
         }),
     );
+    const selectedPostIndex = selectedPost
+        ? viewerPostIndexByID.get(selectedPost.id)
+        : undefined;
+    const selectedPostPhotos =
+        selectedPostIndex == undefined
+            ? undefined
+            : profileViewerPhotos[selectedPostIndex];
     const handleSelectedPostIndexChange = (photoIndex: number) => {
-        const photo = profileViewerPhotos[photoIndex];
-        if (!photo) return;
-        const item = viewerPostItems.find(
-            (item) => item.postId == photo.postId,
-        );
-        if (item) setSelectedPost({ id: item.id, photo, photoIndex });
+        const photo = selectedPostPhotos?.[photoIndex];
+        if (photo && selectedPost)
+            setSelectedPost({ ...selectedPost, photo, photoIndex });
+    };
+    const navigatePost = (direction: -1 | 1) => {
+        if (selectedPostIndex == undefined) return false;
+        const postIndex = selectedPostIndex + direction;
+        const item = viewerPostItems[postIndex];
+        if (!item) return false;
+        setSelectedPost({
+            id: item.id,
+            photo: profileViewerPhotos[postIndex]![0]!,
+            photoIndex: 0,
+        });
+        return true;
     };
 
     const shareInvite = async () => {
@@ -593,14 +609,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 onOpen={(openedImageUrl) => {
                     const postIndex = viewerPostIndexByID.get(item.id);
                     if (postIndex == undefined) return;
-                    const photoIndex = profileViewerPhotos.findIndex(
-                        (photo) => photo.postId == item.postId,
-                    );
                     setSelectedPost({
                         id: item.id,
-                        photoIndex,
+                        photoIndex: 0,
                         photo: {
-                            ...profileViewerPhotos[photoIndex]!,
+                            ...profileViewerPhotos[postIndex]![0]!,
                             imageUrl: openedImageUrl,
                         },
                     });
@@ -1497,13 +1510,15 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 </Box>
                 {selectedPost && (
                     <SpaceFileViewer
+                        closeOnSwipePastEnd
                         photo={selectedPost.photo}
-                        photos={profileViewerPhotos}
+                        photos={selectedPostPhotos}
                         photoIndex={selectedPost.photoIndex}
                         onPhotoIndexChange={handleSelectedPostIndexChange}
                         onLoadPhoto={onLoadPostImage}
                         postActionMode={selectedPostActionMode}
                         onClose={closeSelectedPost}
+                        onNavigatePost={navigatePost}
                         onAddFriendForPostAction={
                             isPublicProfile
                                 ? onAddFriendForPostAction

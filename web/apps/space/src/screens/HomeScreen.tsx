@@ -1897,6 +1897,20 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         );
     const hasFeedItems =
         latestFeedEntries.length > 0 || gridFeedItems.length > 0;
+    const viewerPosts = [
+        ...latestFeedEntries.flatMap((entry) =>
+            entry.kind == "remote"
+                ? [entry.item]
+                : entry.item.status == "posted" || entry.item.status == "ready"
+                  ? [entry.item.post]
+                  : [],
+        ),
+        ...gridFeedItems,
+    ].filter(
+        (item) =>
+            !item.isUnavailable &&
+            !unavailableFeedPostsByKey[feedPostImageCacheKey(item)],
+    );
     const isEmptyFeedLoading = !hasFeedItems && isFeedLoading;
     const showFeedCards = hasFeedItems;
     const isInstallPromptEnabled =
@@ -2037,6 +2051,42 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
         },
         [loadedFeedAvatarURLFor, onLoadPostAvatar],
     );
+    const navigatePost = (direction: -1 | 1) => {
+        const postIndex = viewerPosts.findIndex(
+            (post) => post.postId == selectedViewer?.photo.postId,
+        );
+        const post = viewerPosts[postIndex + direction];
+        if (!post) return false;
+        const photo = viewerPhotosFromPost({
+            ...post,
+            avatarUrl: loadedFeedAvatarURLFor(post),
+        })[0]!;
+        openFeedPhoto(post, {
+            ...photo,
+            imageUrl:
+                loadedFeedImageURLFor({
+                    ...spacePostPhotos(post)[0]!,
+                    postId: post.postId,
+                    spaceId: post.spaceId,
+                }) ?? "",
+        });
+        setFeedPhotoIndices((current) => ({ ...current, [post.postId]: 0 }));
+        void loadFeedPostAvatar(post).then((avatarUrl) => {
+            setSelectedViewer((current) =>
+                current?.photo.postId == post.postId
+                    ? {
+                          ...current,
+                          photo: { ...current.photo, avatarUrl },
+                          photos: current.photos.map((photo) => ({
+                              ...photo,
+                              avatarUrl,
+                          })),
+                      }
+                    : current,
+            );
+        });
+        return true;
+    };
     const feedItemFor = (
         item: SpacePost,
         key: React.Key,
@@ -2583,6 +2633,7 @@ export const HomeScreen: React.FC<HomeScreenProps> = ({
                         onLoadPhoto={onLoadPostImage}
                         postActionMode={selectedViewer.postActionMode}
                         onClose={closeSelectedPhoto}
+                        onNavigatePost={navigatePost}
                         onOpenProfile={
                             selectedPhotoIsOwn && onOpenProfile
                                 ? () => {

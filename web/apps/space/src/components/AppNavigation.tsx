@@ -107,25 +107,25 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
     }, [showNavigation]);
 
     const destinations = [
-        { label: "Home", href: spaceRoutes.home, icon: Home01Icon, size: 25 },
+        { label: "Home", href: spaceRoutes.home, icon: Home01Icon, size: 23 },
         {
             label: "Messages",
             href: spaceRoutes.messages,
             icon: BubbleChatIcon,
-            size: 25,
+            size: 23,
         },
         { label: "Post", icon: PlusSignSquareIcon, href: undefined, size: 25 },
         {
             label: "Friends",
             href: spaceRoutes.friends,
             icon: UserMultiple02Icon,
-            size: 23,
+            size: 22,
         },
         {
             label: "Profile",
             href: spaceRoutes.profile,
             icon: UserCircleIcon,
-            size: 24,
+            size: 22,
         },
     ];
 
@@ -256,9 +256,8 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
                                             <HugeiconsIcon
                                                 icon={icon}
                                                 size={size}
-                                                strokeWidth={
-                                                    selected ? 2.2 : 1.8
-                                                }
+                                                strokeWidth={1.8}
+                                                absoluteStrokeWidth
                                             />
                                             {label == "Messages" &&
                                                 unreadStatus.messagesUnread && (
@@ -266,14 +265,14 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
                                                         aria-hidden
                                                         sx={{
                                                             bgcolor: "#F63A3A",
-                                                            border: `2px solid ${spaceAppBackgroundColor}`,
+                                                            border: `2.5px solid ${spaceAppBackgroundColor}`,
                                                             borderRadius: "50%",
-                                                            height: 11,
+                                                            height: 11.5,
                                                             position:
                                                                 "absolute",
-                                                            right: 0,
-                                                            top: 0,
-                                                            width: 11,
+                                                            right: "-0.75px",
+                                                            top: "-0.75px",
+                                                            width: 11.5,
                                                         }}
                                                     />
                                                 )}
