@@ -1,0 +1,1 @@
+- Redesigned the empty Feed and Albums screens with simpler copy and a new illustration for received albums.
