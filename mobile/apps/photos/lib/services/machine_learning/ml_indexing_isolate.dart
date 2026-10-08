@@ -3,12 +3,10 @@ import "package:logging/logging.dart";
 import "package:photos/models/ml/ml_versions.dart"
     show mlIndexFlagCoreML, mlIndexFlagRuntimeRust, mlIndexFlagWebGPU;
 import "package:photos/service_locator.dart" show flagService, localSettings;
-import "package:photos/services/machine_learning/ml_model_assets.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
-import "package:photos/services/machine_learning/ml_models_overview.dart";
 import "package:photos/services/machine_learning/ml_result.dart";
 import "package:photos/services/machine_learning/webgpu_execution_policy.dart";
-import "package:photos/services/remote_assets_service.dart";
+import "package:photos/src/rust/api/ml_indexing_api.dart" as rust_ml;
 import "package:photos/utils/isolate/isolate_operations.dart";
 import "package:photos/utils/isolate/super_isolate.dart";
 import "package:photos/utils/ml_util.dart";
@@ -179,57 +177,19 @@ class MLIndexingIsolate extends SuperIsolate {
     if (!MLModelDownloadService.instance.areIndexingModelsDownloaded) return;
 
     if (delete) {
-      final remoteModelPaths = <String>[
-        for (final model in MLModels.values)
-          if (model.isIndexingModel) model.model.modelRemotePath,
-      ];
-      await RemoteAssetsService.instance.cleanupSelectedModels(
-        remoteModelPaths,
+      await rust_ml.removeIndexingModels(
+        assetsDir: await MLModelDownloadService.instance.getAssetsDirectory(),
       );
       MLModelDownloadService.instance.invalidateModelDownloadCache();
     }
   }
 
   Future<Map<String, dynamic>> _buildRustRuntimeArgs() async {
-    final faceDetectionPath = await FaceDetectionModel.instance.getModelPath();
-    final faceEmbeddingPath = await FaceEmbeddingModel.instance.getModelPath();
-    final clipImagePath = await ClipImageModel.instance.getModelPath();
-
-    String petFaceDetectionPath = "";
-    String petFaceEmbeddingDogPath = "";
-    String petFaceEmbeddingCatPath = "";
-    String petBodyDetectionPath = "";
-    String petBodyEmbeddingDogPath = "";
-    String petBodyEmbeddingCatPath = "";
-
-    if (flagService.petEnabled && localSettings.petRecognitionEnabled) {
-      petFaceDetectionPath = await PetFaceDetectionModel.instance
-          .getModelPath();
-      petFaceEmbeddingDogPath = await PetFaceEmbeddingDogModel.instance
-          .getModelPath();
-      petFaceEmbeddingCatPath = await PetFaceEmbeddingCatModel.instance
-          .getModelPath();
-      petBodyDetectionPath = await PetBodyDetectionModel.instance
-          .getModelPath();
-      petBodyEmbeddingDogPath = await PetBodyEmbeddingDogModel.instance
-          .getModelPath();
-      petBodyEmbeddingCatPath = await PetBodyEmbeddingCatModel.instance
-          .getModelPath();
-    }
-
     return {
-      // Sessions are lazy, so the inference call re-evaluates this app-side
-      // policy before Rust applies its own durable crash canary.
+      "assetsDir": await MLModelDownloadService.instance.getAssetsDirectory(),
+      "preparePets":
+          flagService.petEnabled && localSettings.petRecognitionEnabled,
       "enableWebGpu": await webGpuExecutionPolicy.isEligible(),
-      "faceDetectionModelPath": faceDetectionPath,
-      "faceEmbeddingModelPath": faceEmbeddingPath,
-      "clipImageModelPath": clipImagePath,
-      "petFaceDetectionModelPath": petFaceDetectionPath,
-      "petFaceEmbeddingDogModelPath": petFaceEmbeddingDogPath,
-      "petFaceEmbeddingCatModelPath": petFaceEmbeddingCatPath,
-      "petBodyDetectionModelPath": petBodyDetectionPath,
-      "petBodyEmbeddingDogModelPath": petBodyEmbeddingDogPath,
-      "petBodyEmbeddingCatModelPath": petBodyEmbeddingCatPath,
     };
   }
 

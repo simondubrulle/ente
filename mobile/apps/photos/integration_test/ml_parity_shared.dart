@@ -10,9 +10,9 @@ import "package:photos/core/configuration.dart";
 import "package:photos/core/network/network.dart";
 import "package:photos/service_locator.dart";
 import "package:photos/services/machine_learning/ml_indexing_isolate.dart";
-import "package:photos/services/machine_learning/ml_model.dart";
-import "package:photos/services/machine_learning/ml_model_assets.dart";
 import "package:photos/services/machine_learning/ml_result.dart";
+import "package:photos/src/rust/api/ml_indexing_api.dart" as rust_ml;
+import "package:photos/src/rust/frb_generated.dart" show EntePhotosRust;
 import "package:photos/utils/isolate/isolate_operations.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
@@ -44,9 +44,14 @@ class _ManifestItem {
 
 class _ModelSpec {
   final String schemaName;
-  final MlModelAsset model;
+  final String fileName;
+  final String sha256;
 
-  const _ModelSpec({required this.schemaName, required this.model});
+  const _ModelSpec({
+    required this.schemaName,
+    required this.fileName,
+    required this.sha256,
+  });
 }
 
 void runMLParityIntegrationTest({required String expectedPlatform}) {
@@ -169,37 +174,51 @@ List<_ManifestItem> _loadManifestItems() {
 }
 
 List<_ModelSpec> _modelSpecs() {
-  return [
+  return const [
     _ModelSpec(
       schemaName: "face_detection",
-      model: FaceDetectionModel.instance,
+      fileName: "yolov5s_face_640_640_static_b1.onnx",
+      sha256:
+          "e047647409403d52696035ecd445792173e50d7fbdcccac97b958a585db9aa3d",
     ),
     _ModelSpec(
       schemaName: "face_embedding",
-      model: FaceEmbeddingModel.instance,
+      fileName: "mobilefacenet_portable_static_b1.onnx",
+      sha256:
+          "0763fc33f54e138476194da95987e133b3e976075a6b1d3e1b2caedb251b1a36",
     ),
-    _ModelSpec(schemaName: "clip", model: ClipImageModel.instance),
+    _ModelSpec(
+      schemaName: "clip",
+      fileName: "mobileclip_s2_image_gelu_opset20.onnx",
+      sha256:
+          "205a430af825e501c5138e5bb9abea942482a7a4fd4a680e98e47cf0830dce7e",
+    ),
   ];
 }
 
 class _LoadedModels {
   final Map<String, String> modelMetadata;
-  final Map<String, String> modelPathsBySchema;
+  final String assetsDir;
 
-  const _LoadedModels({
-    required this.modelMetadata,
-    required this.modelPathsBySchema,
-  });
+  const _LoadedModels({required this.modelMetadata, required this.assetsDir});
 }
 
 Future<_LoadedModels> _downloadModels(List<_ModelSpec> modelSpecs) async {
   await _ensureModelNetworkContext();
 
   final modelMetadata = <String, String>{};
-  final modelPathsBySchema = <String, String>{};
+  final assetsDir = "${(await getApplicationSupportDirectory()).path}/assets";
+  await EntePhotosRust.init();
+  await rust_ml.initMlRuntime(
+    assetsDir: assetsDir,
+    runFaces: true,
+    runClip: true,
+    runPets: false,
+  );
 
   for (final modelSpec in modelSpecs) {
-    final modelPath = await modelSpec.model.getModelPath();
+    final key = modelSpec.fileName.substring(0, modelSpec.fileName.length - 5);
+    final modelPath = "$assetsDir/models/$key/${modelSpec.fileName}";
     final modelFile = File(modelPath);
     if (!modelFile.existsSync()) {
       throw StateError(
@@ -207,23 +226,18 @@ Future<_LoadedModels> _downloadModels(List<_ModelSpec> modelSpecs) async {
       );
     }
 
-    modelPathsBySchema[modelSpec.schemaName] = modelFile.path;
     final modelSHA256 = await _sha256HexOfFile(modelFile);
-    if (modelSHA256.toLowerCase() !=
-        modelSpec.model.modelSha256.toLowerCase()) {
+    if (modelSHA256.toLowerCase() != modelSpec.sha256.toLowerCase()) {
       throw StateError(
         "Model SHA mismatch for ${modelSpec.schemaName}: "
-        "expected ${modelSpec.model.modelSha256}, got $modelSHA256",
+        "expected ${modelSpec.sha256}, got $modelSHA256",
       );
     }
     modelMetadata[modelSpec.schemaName] =
         "${modelFile.uri.pathSegments.last}:$modelSHA256";
   }
 
-  return _LoadedModels(
-    modelMetadata: modelMetadata,
-    modelPathsBySchema: modelPathsBySchema,
-  );
+  return _LoadedModels(modelMetadata: modelMetadata, assetsDir: assetsDir);
 }
 
 bool _modelNetworkContextInitialized = false;
@@ -283,7 +297,7 @@ Future<void> _stageModelsFromLocalMirror(
   await assetsDir.create(recursive: true);
 
   for (final modelSpec in modelSpecs) {
-    final canonicalURL = modelSpec.model.modelRemotePath;
+    final canonicalURL = "https://models.ente.com/${modelSpec.fileName}";
     final modelFile = Uri.parse(canonicalURL).pathSegments.last;
     final targetPath =
         "${assetsDir.path}/${_remoteAssetPathToLocalFileName(canonicalURL)}";
@@ -433,23 +447,7 @@ Future<MLResult> _analyzeImage({
     "runClip": true,
   };
 
-  final faceDetectionModelPath =
-      loadedModels.modelPathsBySchema["face_detection"];
-  final faceEmbeddingModelPath =
-      loadedModels.modelPathsBySchema["face_embedding"];
-  final clipImageModelPath = loadedModels.modelPathsBySchema["clip"];
-  if (faceDetectionModelPath == null ||
-      faceEmbeddingModelPath == null ||
-      clipImageModelPath == null) {
-    throw StateError(
-      "Missing model paths for Rust ML parity route: face_detection/face_embedding/clip",
-    );
-  }
-  args.addAll({
-    "faceDetectionModelPath": faceDetectionModelPath,
-    "faceEmbeddingModelPath": faceEmbeddingModelPath,
-    "clipImageModelPath": clipImageModelPath,
-  });
+  args["assetsDir"] = loadedModels.assetsDir;
 
   final resultJSONString =
       await MLIndexingIsolate.instance.runInIsolate(
