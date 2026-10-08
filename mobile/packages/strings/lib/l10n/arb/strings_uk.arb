@@ -1028,9 +1028,9 @@
       }
     }
   },
-  "memoryLaneCaptionNow": "{name} зараз",
-  "@memoryLaneCaptionNow": {
-    "description": "Memory Lane caption for a photo taken less than a year ago, without a number.",
+  "memoryLaneCaptionToday": "{name} сьогодні",
+  "@memoryLaneCaptionToday": {
+    "description": "Memory Lane caption for a photo taken today, without a number.",
     "placeholders": {
       "name": {
         "type": "String"
