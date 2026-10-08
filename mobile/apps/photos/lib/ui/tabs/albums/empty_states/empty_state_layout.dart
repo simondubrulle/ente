@@ -2,7 +2,6 @@ import "package:ente_components/ente_components.dart";
 import "package:flutter/material.dart";
 import "package:photos/ui/home/home_bottom_nav_bar.dart";
 
-// Figma: https://www.figma.com/design/BuBNPPytxlVnqfmCUW0mgz/ENTE-VISUAL-DESIGN?node-id=25356-304869
 class EmptyStateLayout extends StatelessWidget {
   const EmptyStateLayout({
     required this.assetPath,
@@ -33,7 +32,6 @@ class EmptyStateLayout extends StatelessWidget {
   Widget build(BuildContext context) {
     final colors = context.componentColors;
     final bottomSafeArea = MediaQuery.paddingOf(context).bottom;
-    // Balances the nav clearance so the block centers where Figma places it.
     final padding = reservesBottomNavigationSpace
         ? EdgeInsets.fromLTRB(
             Spacing.lg,
