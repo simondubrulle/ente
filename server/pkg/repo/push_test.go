@@ -29,36 +29,14 @@ func TestPushTokenRegistrationMigration(t *testing.T) {
 	_, err = tx.Exec(`INSERT INTO push_tokens (fcm_token) VALUES ('old-server')`)
 	require.NoError(t, err)
 	var count int
-	require.NoError(t, tx.QueryRow(`SELECT count(*) FROM push_tokens WHERE platform = 'ios' AND session_token_hash IS NULL`).Scan(&count))
+	require.NoError(t, tx.QueryRow(`SELECT count(*) FROM push_tokens WHERE session_token_hash IS NULL`).Scan(&count))
 	require.Equal(t, 3, count)
-	_, err = tx.Exec(`UPDATE push_tokens SET platform = 'android' WHERE fcm_token = 'without-apns'`)
-	require.NoError(t, err)
 	down, err := os.ReadFile("migrations/149_push_token_registration.down.sql")
 	require.NoError(t, err)
 	_, err = tx.Exec(string(down))
 	require.NoError(t, err)
 	require.NoError(t, tx.QueryRow(`SELECT count(*) FROM push_tokens`).Scan(&count))
 	require.Equal(t, 3, count)
-}
-
-func TestGetTokensToBeNotifiedFiltersPlatformBeforeLimit(t *testing.T) {
-	testutil.WithServerRoot(t)
-	db := testutil.RequireTestDB(t)
-	testutil.ResetTables(t, db)
-	t.Cleanup(func() { testutil.ResetTables(t, db) })
-	testutil.InsertUser(t, db, testutil.UserFixture{UserID: 1, Email: "user@example.com", CreationTime: 1})
-	_, err := db.Exec(`INSERT INTO push_tokens (user_id, fcm_token, platform, last_notified_at) VALUES
-		(1, 'android-one', 'android', 0), (1, 'android-two', 'android', 0),
-		(1, 'ios-one', 'ios', 0), (1, 'ios-two', 'ios', 0), (1, 'ios-recent', 'ios', 100)`)
-	require.NoError(t, err)
-	r := PushTokenRepository{DB: db}
-	tokens, err := r.GetTokensToBeNotified(100, 2)
-	require.NoError(t, err)
-	var fcmTokens []string
-	for _, token := range tokens {
-		fcmTokens = append(fcmTokens, token.FCMToken)
-	}
-	require.ElementsMatch(t, []string{"ios-one", "ios-two"}, fcmTokens)
 }
 
 func TestPeriodicPushExcludesRevokedSessions(t *testing.T) {
@@ -86,10 +64,10 @@ func TestPeriodicPushExcludesRevokedSessions(t *testing.T) {
 		_, err := db.Exec(`INSERT INTO push_tokens(user_id, fcm_token, session_token_hash, last_notified_at) VALUES(1, $1, $2, 0)`, token, hash[:])
 		require.NoError(t, err)
 	}
-	_, err = db.Exec(`INSERT INTO push_tokens(user_id, fcm_token, last_notified_at) VALUES(1, 'legacy', 0)`)
+	_, err = db.Exec(`INSERT INTO push_tokens(user_id, fcm_token, last_notified_at) VALUES(1, 'legacy', 0), (1, 'recent', 1)`)
 	require.NoError(t, err)
 	r := &PushTokenRepository{DB: db}
-	tokens, err := r.GetTokensToBeNotified(1, 10)
+	tokens, err := r.GetTokensToBeNotified(1, 2)
 	require.NoError(t, err)
 	var fcmTokens []string
 	for _, token := range tokens {

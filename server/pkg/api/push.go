@@ -16,8 +16,7 @@ type PushHandler struct {
 }
 
 func (h *PushHandler) AddToken(c *gin.Context) {
-	platform := "ios"
-	req := ente.PushTokenRequest{Platform: &platform}
+	var req ente.PushTokenRequest
 	err := handler.BindJSON(c, &req)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))

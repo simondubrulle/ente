@@ -14,12 +14,12 @@ type PushTokenRepository struct {
 }
 
 func (repo *PushTokenRepository) AddToken(userID int64, sessionTokenHash []byte, token ente.PushTokenRequest) error {
-	result, err := repo.DB.Exec(`INSERT INTO push_tokens(user_id, fcm_token, apns_token, session_token_hash, platform)
-			SELECT user_id, $2, $3, token_hash, COALESCE($5, 'ios') FROM tokens
+	result, err := repo.DB.Exec(`INSERT INTO push_tokens(user_id, fcm_token, apns_token, session_token_hash)
+			SELECT user_id, $2, $3, token_hash FROM tokens
 			WHERE user_id = $1 AND token_hash = $4 AND is_deleted = false FOR SHARE
 			ON CONFLICT (fcm_token) DO UPDATE
-			SET user_id = $1, apns_token = $3, session_token_hash = $4, platform = EXCLUDED.platform`,
-		userID, token.FCMToken, token.APNSToken, sessionTokenHash, token.Platform)
+			SET user_id = EXCLUDED.user_id, apns_token = EXCLUDED.apns_token, session_token_hash = EXCLUDED.session_token_hash`,
+		userID, token.FCMToken, token.APNSToken, sessionTokenHash)
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
@@ -35,7 +35,7 @@ func (repo *PushTokenRepository) AddToken(userID int64, sessionTokenHash []byte,
 
 func (repo *PushTokenRepository) GetTokensToBeNotified(lastNotificationTime int64, limit int) ([]ente.PushToken, error) {
 	rows, err := repo.DB.Query(`SELECT p.user_id, p.fcm_token, p.created_at, p.last_notified_at FROM push_tokens p
-		WHERE p.platform = 'ios' AND p.last_notified_at < $1
+		WHERE p.last_notified_at < $1
 		AND (p.session_token_hash IS NULL OR EXISTS (
 			SELECT 1 FROM tokens t WHERE t.token_hash = p.session_token_hash
 			AND t.user_id = p.user_id AND t.is_deleted = false
