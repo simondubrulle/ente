@@ -90,6 +90,7 @@ const Page: React.FC = () => {
                 friendRequests={friendRequests}
                 friends={friends}
                 isLoading={isFriendsLoading}
+                onBack={() => void router.back(spaceRoutes.home)}
                 onLoadFriendAvatar={loadCurrentFriendAvatarURL}
                 onAddFriend={async (username) => {
                     const actorSpaceId = profile.spaceId;

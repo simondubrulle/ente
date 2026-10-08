@@ -127,7 +127,7 @@ const Page: React.FC = () => {
                 postItems={postItems}
                 profile={profile}
                 showPostLoadingIndicator={showInitialPostLoadingIndicator}
-                onBack={() => void router.push(spaceRoutes.home)}
+                onBack={() => void router.back(spaceRoutes.home)}
                 onPostPhotoSelect={setPendingPostPhotoFiles}
                 onDeletePost={async (postId) => {
                     const spaceId = profile.spaceId;

@@ -251,7 +251,7 @@ export const ProfileImageViewerScreen: React.FC<
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Back to profile"
+                        aria-label="Back"
                         onClick={onBack}
                         sx={{
                             alignItems: "center",

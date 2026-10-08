@@ -32,7 +32,7 @@ const Page: React.FC = () => {
         <>
             <SpacePageMeta themeColor={spaceAppBackgroundColor} />
             <SettingsScreen
-                onBack={() => void router.push(spaceRoutes.home)}
+                onBack={() => void router.back(spaceRoutes.home)}
                 onChangeCoverImage={() =>
                     void router.push(spaceRoutes.profileCoverFrom("settings"))
                 }

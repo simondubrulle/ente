@@ -448,7 +448,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Back to home"
+                        aria-label="Back"
                         onClick={onBack}
                         sx={{
                             alignItems: "center",
@@ -691,7 +691,7 @@ export const ChangeNameSettingsScreen: React.FC<
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Back to profile settings"
+                        aria-label="Back"
                         onClick={onBack}
                         sx={{
                             alignItems: "center",

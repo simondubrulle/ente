@@ -107,6 +107,7 @@ interface MessagesScreenProps {
     isThreadReadOnly?: boolean;
     isThreadRecipientLoading?: boolean;
     messages: SpaceMessage[];
+    onBack: () => void;
     onCloseThread: () => void;
     onDeleteMessage: (messageId: string) => Promise<void>;
     onOpenSelectedFriendProfile: (
@@ -130,7 +131,6 @@ interface MessagesScreenProps {
     profileLink?: string;
     profile: SetupProfile;
     selectedFriend?: SpaceMessageConversation["friend"];
-    threadBackLabel?: string;
 }
 
 interface MessageContextMenuState {
@@ -1547,6 +1547,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     isThreadReadOnly = false,
     isThreadRecipientLoading = false,
     messages,
+    onBack,
     onCloseThread,
     onDeleteMessage,
     onOpenSelectedFriendProfile,
@@ -1559,7 +1560,6 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
     profile,
     profileLink,
     selectedFriend,
-    threadBackLabel = "Back to messages",
 }) => {
     const [messageText, setMessageText] = React.useState("");
     const [messageContextMenu, setMessageContextMenu] =
@@ -2129,20 +2129,16 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                         }}
                     >
                         <Box
-                            component={isThreadOpen ? "button" : "span"}
-                            type={isThreadOpen ? "button" : undefined}
-                            aria-hidden={!isThreadOpen || undefined}
-                            aria-label={
-                                isThreadOpen ? threadBackLabel : undefined
-                            }
-                            onClick={isThreadOpen ? onCloseThread : undefined}
+                            component="button"
+                            type="button"
+                            aria-label="Back"
+                            onClick={isThreadOpen ? onCloseThread : onBack}
                             sx={{
                                 alignItems: "center",
                                 bgcolor: "transparent",
                                 border: 0,
                                 color: conversationPrimaryText,
-                                cursor: isThreadOpen ? "pointer" : undefined,
-                                visibility: isThreadOpen ? "visible" : "hidden",
+                                cursor: "pointer",
                                 display: "flex",
                                 height: spaceTouchTargetSize,
                                 justifyContent: "flex-start",

@@ -52,6 +52,37 @@ export const spaceRoutes = {
     verifyLogin: "/verify?flow=login",
 } as const;
 
+export const spaceBackFallback = (asPath: string, page = asPath) => {
+    const [path = "/", search = ""] = asPath.split("?", 2);
+    if (page == spaceRoutes.friendPage) return spaceRoutes.home;
+    if (path.startsWith("/app/messages/")) return spaceRoutes.messages;
+    if (path.startsWith("/app/posts/")) return spaceRoutes.home;
+
+    const source = profileImageFlowSourceFromQuery(
+        new URLSearchParams(search).get("from") ?? undefined,
+    );
+    if (path == spaceRoutes.profilePhoto || path == spaceRoutes.profileCover)
+        return source == "settings"
+            ? spaceRoutes.settings
+            : spaceRoutes.profile;
+    if (path == spaceRoutes.editProfilePhoto)
+        return spaceRoutes.profilePhotoFrom(source);
+    if (path == spaceRoutes.editProfileCover)
+        return spaceRoutes.profileCoverFrom(source);
+
+    return (
+        {
+            [spaceRoutes.friends]: spaceRoutes.home,
+            [spaceRoutes.messages]: spaceRoutes.home,
+            [spaceRoutes.notifications]: spaceRoutes.home,
+            [spaceRoutes.profile]: spaceRoutes.home,
+            [spaceRoutes.settings]: spaceRoutes.home,
+            [spaceRoutes.settingsProfileName]: spaceRoutes.settings,
+            "/app/post": spaceRoutes.home,
+        } as Record<string, string | undefined>
+    )[path];
+};
+
 export const verifyFlowFromQuery = (
     value: string | string[] | undefined,
 ): VerifyFlow => (valueFromQuery(value) == "login" ? "login" : "signup");

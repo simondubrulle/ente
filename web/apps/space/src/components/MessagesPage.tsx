@@ -350,7 +350,7 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
     );
 
     const closeConversation = React.useCallback(() => {
-        if (selectedSpaceId) void router.push(spaceRoutes.messages);
+        if (selectedSpaceId) void router.back(spaceRoutes.messages);
     }, [router, selectedSpaceId]);
 
     const appendMessageIfThreadIsCurrent = React.useCallback(
@@ -602,6 +602,7 @@ export const SpaceMessagesPage: React.FC<SpaceMessagesPageProps> = ({
                 isThreadReadOnly={isThreadReadOnly}
                 isThreadRecipientLoading={isThreadRecipientLoading}
                 messages={messages}
+                onBack={() => void router.back(spaceRoutes.home)}
                 onCloseThread={closeConversation}
                 onOpenSelectedFriendProfile={(friend) => {
                     const username = friend.username || friend.spaceSlug;

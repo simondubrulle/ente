@@ -1039,8 +1039,8 @@ const Page: React.FC = () => {
                         <Box
                             component="button"
                             type="button"
-                            aria-label="Back to home"
-                            onClick={() => void router.push(spaceRoutes.home)}
+                            aria-label="Back"
+                            onClick={() => void router.back(spaceRoutes.home)}
                             sx={{
                                 display: "flex",
                                 alignItems: "center",

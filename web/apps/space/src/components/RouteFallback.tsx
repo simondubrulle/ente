@@ -74,7 +74,17 @@ export const SpaceRouteFallback: React.FC<SpaceRouteFallbackProps> = ({
                     </Box>
                 </Box>
             ) : (
-                <SpaceLoadingSpinner />
+                <Box
+                    sx={{
+                        display: "grid",
+                        inset: 0,
+                        placeItems: "center",
+                        pointerEvents: "none",
+                        position: "fixed",
+                    }}
+                >
+                    <SpaceLoadingSpinner />
+                </Box>
             )}
         </Box>
     </>

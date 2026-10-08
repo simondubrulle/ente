@@ -676,22 +676,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 ) : (
                     <>
                         <Box
-                            component={isFriendProfile ? "button" : "span"}
-                            type={isFriendProfile ? "button" : undefined}
-                            aria-hidden={!isFriendProfile || undefined}
-                            aria-label={
-                                isFriendProfile ? "Back to friends" : undefined
-                            }
-                            onClick={isFriendProfile ? onBack : undefined}
+                            component="button"
+                            type="button"
+                            aria-label="Back"
+                            onClick={onBack}
                             sx={{
                                 alignItems: "center",
                                 bgcolor: "transparent",
                                 border: 0,
                                 color: "inherit",
-                                cursor: isFriendProfile ? "pointer" : undefined,
-                                visibility: isFriendProfile
-                                    ? "visible"
-                                    : "hidden",
+                                cursor: "pointer",
                                 display: "flex",
                                 height: spaceTouchTargetSize,
                                 justifyContent: "flex-start",

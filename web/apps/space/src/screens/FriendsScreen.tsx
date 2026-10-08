@@ -1,4 +1,5 @@
 import {
+    ArrowLeft02Icon,
     BubbleChatIcon,
     Cancel01Icon,
     HandPointingRightIcon,
@@ -56,6 +57,7 @@ interface FriendsScreenProps {
     friendRequests: SpaceFriendRequest[];
     friends: FriendProfile[];
     isLoading: boolean;
+    onBack: () => void;
     onAcceptFriendRequest: (requestID: number) => Promise<void>;
     onDeleteFriendRequest: (requestID: number) => Promise<void>;
     onLoadFriendAvatar?: (friend: FriendProfile) => Promise<string | null>;
@@ -711,6 +713,7 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
     isLoading,
     onAcceptFriendRequest,
     onAddFriend,
+    onBack,
     onDeleteFriendRequest,
     onLoadFriendAvatar,
     onMessage,
@@ -862,7 +865,36 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                         width: "100%",
                     }}
                 >
-                    <Box aria-hidden />
+                    <Box
+                        component="button"
+                        type="button"
+                        aria-label="Back"
+                        onClick={onBack}
+                        sx={{
+                            alignItems: "center",
+                            bgcolor: "transparent",
+                            border: 0,
+                            color: textBase,
+                            cursor: "pointer",
+                            display: "flex",
+                            height: spaceTouchTargetSize,
+                            justifyContent: "flex-start",
+                            ml: "-2px",
+                            p: 0,
+                            width: spaceTouchTargetSize,
+                            "&:focus-visible": {
+                                borderRadius: "50%",
+                                outline: `2px solid ${green}`,
+                                outlineOffset: 2,
+                            },
+                        }}
+                    >
+                        <HugeiconsIcon
+                            icon={ArrowLeft02Icon}
+                            size={24}
+                            strokeWidth={1.8}
+                        />
+                    </Box>
                     <Box
                         component="h1"
                         sx={{
