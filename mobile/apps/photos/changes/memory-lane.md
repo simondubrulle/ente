@@ -1,1 +1,1 @@
-- Added memory lanes to revisit photos of your favorite people through the years.
+- Improved memory lanes and added them to the home screen.
