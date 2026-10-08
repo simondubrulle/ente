@@ -64,7 +64,9 @@ museum_key=`gen_key`
 museum_hash=`gen_hash`
 museum_jwt_secret=`gen_jwt_secret`
 
-mkdir my-ente && cd my-ente
+mkdir my-ente
+chmod 700 my-ente
+cd my-ente
 printf " \033[1;32mE\033[0m   Created directory \033[1mmy-ente\033[0m\n"
 sleep 1
 
@@ -218,6 +220,8 @@ key:
 jwt:
       secret: $museum_jwt_secret
 EOF
+
+chmod 644 museum.yaml
 
 printf " \033[1;32mT\033[0m   Created \033[1mmuseum.yaml\033[0m\n"
 sleep 1
