@@ -1014,6 +1014,7 @@ export const loadCurrentUnreadStatus = async (
 
 export interface SpaceNotification {
     id: string;
+    notificationIds: string[];
     kind: string;
     actors: FriendProfile[];
     actorCount: number;
@@ -1046,6 +1047,7 @@ export const loadCurrentNotifications = async (
                     );
                     return {
                         id: item.notificationId,
+                        notificationIds: item.notificationIds,
                         kind: item.kind,
                         actors,
                         actorCount: item.actorCount,

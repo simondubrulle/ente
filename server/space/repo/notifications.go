@@ -15,6 +15,7 @@ type NotificationsRepository struct {
 
 type SpaceNotificationRecord struct {
 	NotificationID  string
+	NotificationIDs []string
 	Kind            string
 	Actors          []SpaceActorRecord
 	ActorCount      int64
@@ -54,6 +55,7 @@ func (r *NotificationsRepository) List(ctx context.Context, recipientSpaceID, cu
 		` + notificationSourcesSQL + ` WHERE n.recipient_space_id = $1 AND ` + notificationVisibleSQL + `
 	), ranked AS (
 		SELECT notification_id, kind, actor_space_id, post_id, friend_request_id, created_at, group_id,
+			ARRAY_AGG(notification_id) OVER (PARTITION BY kind, group_id) AS notification_ids,
 			CASE WHEN kind = 'post_like' THEN COUNT(*) OVER (PARTITION BY kind, group_id) ELSE 1 END AS actor_count,
 			BOOL_OR(read_at IS NULL) OVER (PARTITION BY kind, group_id) AS unread,
 			ROW_NUMBER() OVER (PARTITION BY kind, group_id ORDER BY created_at DESC, notification_id DESC) AS position
@@ -68,7 +70,7 @@ func (r *NotificationsRepository) List(ctx context.Context, recipientSpaceID, cu
 	args = append(args, limit+1)
 	query += ` ORDER BY created_at DESC, notification_id DESC LIMIT $` + strconv.Itoa(len(args)) + `
 	)
-	SELECT page.notification_id, page.kind, page.post_id, page.friend_request_id, page.created_at, page.actor_count, page.unread, ` + spaceActorSelectColumns("actor", "avatar", "actor") + `
+	SELECT page.notification_id, page.notification_ids, page.kind, page.post_id, page.friend_request_id, page.created_at, page.actor_count, page.unread, ` + spaceActorSelectColumns("actor", "avatar", "actor") + `
 	FROM page
 	JOIN ranked sample ON sample.kind = page.kind AND sample.group_id = page.group_id
 		AND sample.position <= CASE WHEN page.kind = 'post_like' THEN 2 ELSE 1 END
@@ -84,7 +86,7 @@ func (r *NotificationsRepository) List(ctx context.Context, recipientSpaceID, cu
 	for rows.Next() {
 		var item SpaceNotificationRecord
 		var actor SpaceActorRecord
-		dest := []any{&item.NotificationID, &item.Kind, &item.PostID, &item.FriendRequestID, &item.CreatedAt, &item.ActorCount, &item.Unread}
+		dest := []any{&item.NotificationID, pq.Array(&item.NotificationIDs), &item.Kind, &item.PostID, &item.FriendRequestID, &item.CreatedAt, &item.ActorCount, &item.Unread}
 		dest = append(dest, spaceActorScanDest(&actor)...)
 		if err := rows.Scan(dest...); err != nil {
 			return nil, "", stacktrace.Propagate(err, "")
@@ -116,20 +118,12 @@ func (r *NotificationsRepository) HasUnread(ctx context.Context, recipientSpaceI
 func (r *NotificationsRepository) MarkRead(ctx context.Context, recipientSpaceID string, notificationIDs []string) error {
 	_, err := r.DB.ExecContext(ctx, `
 		WITH visible AS (
-			SELECT n.notification_id, n.kind, n.actor_space_id, l.post_id, n.created_at
-			`+notificationSourcesSQL+` WHERE n.recipient_space_id = $1 AND `+notificationVisibleSQL+`
+			SELECT n.notification_id
+			`+notificationSourcesSQL+` WHERE n.recipient_space_id = $1 AND n.notification_id = ANY($2) AND `+notificationVisibleSQL+`
 		)
 		UPDATE space_notifications n SET read_at = now_utc_micro_seconds()
-		FROM visible item, visible anchor
+		FROM visible item
 		WHERE n.notification_id = item.notification_id AND n.read_at IS NULL
-			AND anchor.notification_id = ANY($2)
-			AND (item.notification_id = anchor.notification_id OR (
-				item.kind = anchor.kind AND (
-					(item.kind = 'post_like' AND item.post_id = anchor.post_id)
-					OR (item.kind IN ('friend_accepted', 'poke') AND item.actor_space_id = anchor.actor_space_id)
-				)
-				AND (item.created_at, item.notification_id) <= (anchor.created_at, anchor.notification_id)
-			))
 	`, recipientSpaceID, pq.Array(notificationIDs))
 	return stacktrace.Propagate(err, "")
 }

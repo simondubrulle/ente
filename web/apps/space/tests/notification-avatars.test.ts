@@ -56,6 +56,7 @@ beforeEach(() => {
         items: [
             {
                 notificationId: "like-1",
+                notificationIds: ["like-1"],
                 kind: "post_like",
                 actors: [actor],
                 actorCount: 1,
@@ -94,6 +95,10 @@ test("notifications restore the same cached avatar as Messages before returning 
 });
 
 test("notification groups preserve full counts with only the latest two actors", async () => {
+    const notificationIds = Array.from(
+        { length: 50 },
+        (_, i) => `like-${i + 1}`,
+    );
     const secondActor = {
         ...actor,
         spaceId: "second-friend",
@@ -104,6 +109,7 @@ test("notification groups preserve full counts with only the latest two actors",
         items: [
             {
                 notificationId: "like-50",
+                notificationIds,
                 kind: "post_like",
                 actors: [actor, secondActor],
                 actorCount: 50,
@@ -125,6 +131,7 @@ test("notification groups preserve full counts with only the latest two actors",
     expect(page.items).toHaveLength(1);
     expect(page.items[0]).toMatchObject({
         id: "like-50",
+        notificationIds,
         actorCount: 50,
         read: false,
         actors: [{ fullName: "Maya Patel" }, { fullName: "Sam Reed" }],
@@ -160,6 +167,7 @@ test("friend notifications preserve request targets without inventing post targe
         items: [
             {
                 notificationId: "request-1",
+                notificationIds: ["request-1"],
                 kind: "friend_request",
                 actors: [{ spaceId: "requester", spaceSlug: "maya" }],
                 actorCount: 1,
@@ -169,6 +177,7 @@ test("friend notifications preserve request targets without inventing post targe
             },
             {
                 notificationId: "accepted-1",
+                notificationIds: ["accepted-1"],
                 kind: "friend_accepted",
                 actors: [actor],
                 actorCount: 1,

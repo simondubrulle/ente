@@ -153,12 +153,14 @@ func TestFriendAcceptanceNotificationsGroupByActor(t *testing.T) {
 		UPDATE space_notifications SET created_at = 1500 WHERE kind = 'post_like' RETURNING notification_id
 	`).Scan(&likeID))
 
+	groups := make(map[string][]string)
 	cursor := ""
 	for i, id := range []string{"bob-z-latest", "charlie-latest", likeID} {
 		items, next, err := module.Notifications.List(ctx, alice.SpaceID, cursor, 1)
 		require.NoError(t, err)
 		require.Len(t, items, 1)
 		require.Equal(t, id, items[0].NotificationID)
+		groups[id] = items[0].NotificationIDs
 		require.Equal(t, int64(1), items[0].ActorCount)
 		require.Len(t, items[0].Actors, 1)
 		require.True(t, items[0].Unread)
@@ -174,11 +176,11 @@ func TestFriendAcceptanceNotificationsGroupByActor(t *testing.T) {
 		cursor = next
 	}
 
-	require.NoError(t, module.Notifications.MarkRead(ctx, bob.SpaceID, []string{"bob-z-latest"}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, bob.SpaceID, groups["bob-z-latest"]))
 	require.Equal(t, int64(2), countSpaceRows(t, module, `
 		SELECT COUNT(*) FROM space_notifications WHERE recipient_space_id = $1 AND actor_space_id = $2 AND kind = 'friend_accepted' AND read_at IS NULL
 	`, alice.SpaceID, bob.SpaceID))
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{"bob-z-latest"}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, groups["bob-z-latest"]))
 	items, _, err := module.Notifications.List(ctx, alice.SpaceID, "", 20)
 	require.NoError(t, err)
 	require.Len(t, items, 3)
@@ -188,7 +190,7 @@ func TestFriendAcceptanceNotificationsGroupByActor(t *testing.T) {
 	require.Equal(t, int64(0), countSpaceRows(t, module, `
 		SELECT COUNT(*) FROM space_notifications WHERE recipient_space_id = $1 AND actor_space_id = $2 AND kind = 'friend_accepted' AND read_at IS NULL
 	`, alice.SpaceID, bob.SpaceID))
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{"charlie-latest", likeID}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, append(groups["charlie-latest"], likeID)))
 	unread, err := module.Notifications.HasUnread(ctx, alice.SpaceID)
 	require.NoError(t, err)
 	require.False(t, unread)
@@ -201,7 +203,7 @@ func TestFriendAcceptanceNotificationsGroupByActor(t *testing.T) {
 		VALUES ('bob-new', $1, $2, 'friend_accepted', 5000)
 	`, alice.SpaceID, bob.SpaceID)
 	require.NoError(t, err)
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{"bob-z-latest"}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, groups["bob-z-latest"]))
 	items, _, err = module.Notifications.List(ctx, alice.SpaceID, "", 20)
 	require.NoError(t, err)
 	require.Len(t, items, 3)

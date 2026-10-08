@@ -424,6 +424,7 @@ type ReadNotificationsRequest struct {
 
 type NotificationResponse struct {
 	NotificationID  string               `json:"notificationId"`
+	NotificationIDs []string             `json:"notificationIds"`
 	Kind            string               `json:"kind"`
 	Actors          []SpaceActorResponse `json:"actors"`
 	ActorCount      int64                `json:"actorCount"`

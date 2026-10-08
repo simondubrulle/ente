@@ -222,6 +222,7 @@ pub struct MessagePage {
 
 pub struct Notification {
     pub notification_id: String,
+    pub notification_ids: Vec<String>,
     pub kind: String,
     pub actors: Vec<SpaceActor>,
     pub actor_count: i64,

@@ -689,7 +689,11 @@ const NotificationsFeed: React.FC<{ spaceId: string; profileLink: string }> = ({
                 setItems(
                     page.items.map((item) => ({
                         ...item,
-                        read: item.read || readIDs.current.has(item.id),
+                        read:
+                            item.read ||
+                            item.notificationIds.every((id) =>
+                                readIDs.current.has(id),
+                            ),
                     })),
                 );
                 setNewIDs(
@@ -704,7 +708,10 @@ const NotificationsFeed: React.FC<{ spaceId: string; profileLink: string }> = ({
                 setCursor(page.nextCursor);
                 setFailedReadIDs((current) =>
                     current.filter((id) =>
-                        page.items.some((item) => item.id == id && !item.read),
+                        page.items.some(
+                            (item) =>
+                                item.notificationIds.includes(id) && !item.read,
+                        ),
                     ),
                 );
             })
@@ -751,7 +758,11 @@ const NotificationsFeed: React.FC<{ spaceId: string; profileLink: string }> = ({
                 ids.forEach((id) => readIDs.current.add(id));
                 setItems((current) =>
                     current.map((item) =>
-                        ids.includes(item.id) ? { ...item, read: true } : item,
+                        item.notificationIds.every((id) =>
+                            readIDs.current.has(id),
+                        )
+                            ? { ...item, read: true }
+                            : item,
                     ),
                 );
                 setFailedReadIDs((current) =>
@@ -769,8 +780,10 @@ const NotificationsFeed: React.FC<{ spaceId: string; profileLink: string }> = ({
     );
 
     React.useEffect(() => {
-        const unreadIDs = new Set(
-            items.filter((item) => !item.read).map((item) => item.id),
+        const unreadGroups = new Map(
+            items
+                .filter((item) => !item.read)
+                .map((item) => [item.id, item.notificationIds]),
         );
         const observer = new IntersectionObserver(
             (entries) => {
@@ -786,11 +799,8 @@ const NotificationsFeed: React.FC<{ spaceId: string; profileLink: string }> = ({
                             (entry.target as HTMLElement).dataset
                                 .notificationId!,
                     )
-                    .filter(
-                        (id) =>
-                            unreadIDs.has(id) &&
-                            !attemptedReadIDs.current.has(id),
-                    );
+                    .flatMap((id) => unreadGroups.get(id) ?? [])
+                    .filter((id) => !attemptedReadIDs.current.has(id));
                 if (ids.length > 0) void markRead(ids);
             },
             { threshold: 0.5 },

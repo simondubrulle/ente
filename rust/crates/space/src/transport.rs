@@ -681,6 +681,7 @@ pub struct SpaceLookupResponse {
 #[serde(rename_all = "camelCase")]
 pub struct NotificationResponse {
     pub notification_id: String,
+    pub notification_ids: Vec<String>,
     pub kind: String,
     pub actors: Vec<SpaceActorResponse>,
     pub actor_count: i64,

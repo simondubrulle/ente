@@ -51,6 +51,7 @@ impl AccountSpaceCtx {
             }
             items.push(Notification {
                 notification_id: item.notification_id,
+                notification_ids: item.notification_ids,
                 kind: item.kind,
                 actors,
                 actor_count: item.actor_count,
@@ -107,7 +108,7 @@ mod tests {
         let mut server = mockito::Server::new_async().await;
         let ctx = test_account_ctx(&server.url());
         let page = server.mock("GET", "/spaces/space_owner_main/notifications")
-            .with_body(json!({"items":[{"notificationId":"request-1","kind":"friend_request","actors":[{"spaceId":"requester","spaceSlug":"maya"}],"actorCount":1,"friendRequestId":7,"createdAt":"2026-10-07T10:00:00Z","unread":true}]}).to_string())
+            .with_body(json!({"items":[{"notificationId":"request-1","notificationIds":["request-1"],"kind":"friend_request","actors":[{"spaceId":"requester","spaceSlug":"maya"}],"actorCount":1,"friendRequestId":7,"createdAt":"2026-10-07T10:00:00Z","unread":true}]}).to_string())
             .create_async().await;
         let notifications = ctx
             .list_notifications("space_owner_main", None, None)
@@ -121,12 +122,13 @@ mod tests {
 
     #[tokio::test]
     async fn notification_feed_and_read_state_use_separate_endpoints() {
+        let notification_ids: Vec<String> = (0..50).map(|i| format!("wnot_{i}")).collect();
         let mut server = mockito::Server::new_async().await;
         let ctx = test_account_ctx(&server.url());
         let page = server.mock("GET", "/spaces/space_owner_main/notifications")
             .match_query(Matcher::AllOf(vec![Matcher::UrlEncoded("cursor".into(), "1000:wnot_a".into()), Matcher::UrlEncoded("limit".into(), "20".into())]))
             .match_header("x-space-session-token", "space-session-token")
-            .with_body(json!({"items": [{"notificationId":"wnot_b", "kind":"post_like", "actors":[{"spaceId":"friend", "spaceSlug":"bob"},{"spaceId":"friend2", "spaceSlug":"maya"}], "actorCount":50, "unread":true, "postId":42, "createdAt":"2026-10-07T10:00:00Z"}]}).to_string())
+            .with_body(json!({"items": [{"notificationId":"wnot_49", "notificationIds":notification_ids, "kind":"post_like", "actors":[{"spaceId":"friend", "spaceSlug":"bob"},{"spaceId":"friend2", "spaceSlug":"maya"}], "actorCount":50, "unread":true, "postId":42, "createdAt":"2026-10-07T10:00:00Z"}]}).to_string())
             .create_async().await;
         let shares = server
             .mock("GET", "/spaces/space_owner_main/friends/shares")
@@ -140,7 +142,7 @@ mod tests {
             .await;
         let read = server
             .mock("POST", "/spaces/space_owner_main/notifications/read")
-            .match_body(Matcher::Json(json!({"notificationIds":["wnot_b"]})))
+            .match_body(Matcher::Json(json!({"notificationIds":notification_ids})))
             .with_status(200)
             .create_async()
             .await;
@@ -154,12 +156,16 @@ mod tests {
         assert_eq!(notifications.items[0].actors[1].space_slug, "maya");
         assert_eq!(notifications.items[0].actors.len(), 2);
         assert_eq!(notifications.items[0].actor_count, 50);
+        assert_eq!(notifications.items[0].notification_ids, notification_ids);
         assert!(notifications.items[0].unread);
         assert!(notifications.next_cursor.is_empty());
         assert!(ctx.notifications_unread("space_owner_main").await.unwrap());
-        ctx.mark_notification_items_read("space_owner_main", vec!["wnot_b".into()])
-            .await
-            .unwrap();
+        ctx.mark_notification_items_read(
+            "space_owner_main",
+            notifications.items[0].notification_ids.clone(),
+        )
+        .await
+        .unwrap();
         page.assert_async().await;
         shares.assert_async().await;
         unread.assert_async().await;

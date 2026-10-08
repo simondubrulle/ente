@@ -94,10 +94,7 @@ async fn request_and_confirm_friend(
     assert!(notification.unread);
     assert!(notification.actors[0].profile.as_ref().unwrap().is_some());
     requester_ctx
-        .mark_notification_items_read(
-            requester_space_id,
-            vec![notification.notification_id.clone()],
-        )
+        .mark_notification_items_read(requester_space_id, notification.notification_ids.clone())
         .await
         .expect("acceptance should be readable");
 }

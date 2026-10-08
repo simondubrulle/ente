@@ -51,6 +51,7 @@ func TestNotificationsAPIIsRecipientScoped(t *testing.T) {
 	var page models.NotificationPage
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
 	require.Len(t, page.Items, 1)
+	require.Equal(t, []string{page.Items[0].NotificationID}, page.Items[0].NotificationIDs)
 	require.NotNil(t, page.Items[0].PostID)
 	require.Equal(t, postID, *page.Items[0].PostID)
 	require.Equal(t, friend.SpaceID, page.Items[0].Actors[0].SpaceID)
@@ -88,6 +89,7 @@ func TestNotificationsAPIIsRecipientScoped(t *testing.T) {
 	page = models.NotificationPage{}
 	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &page))
 	require.Len(t, page.Items, 1)
+	require.Equal(t, []string{page.Items[0].NotificationID}, page.Items[0].NotificationIDs)
 	require.Equal(t, "friend_request", page.Items[0].Kind)
 	require.NotNil(t, page.Items[0].FriendRequestID)
 	require.Equal(t, request.RequestID, *page.Items[0].FriendRequestID)

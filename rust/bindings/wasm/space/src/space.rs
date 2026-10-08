@@ -339,6 +339,7 @@ pub struct PostPage {
 #[serde(rename_all = "camelCase")]
 pub struct Notification {
     notification_id: String,
+    notification_ids: Vec<String>,
     kind: String,
     actors: Vec<SpaceActorResponse>,
     actor_count: i64,
@@ -365,6 +366,7 @@ impl From<ente_space::NotificationPage> for NotificationPage {
                 .into_iter()
                 .map(|item| Notification {
                     notification_id: item.notification_id,
+                    notification_ids: item.notification_ids,
                     kind: item.kind,
                     actors: item.actors.into_iter().map(Into::into).collect(),
                     actor_count: item.actor_count,

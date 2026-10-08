@@ -178,6 +178,8 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 	require.Len(t, first, 2)
 	require.Equal(t, posts[0], first[0].PostID.Int64)
 	require.Equal(t, int64(25), first[0].ActorCount)
+	require.Len(t, first[0].NotificationIDs, 25)
+	require.Contains(t, first[0].NotificationIDs, first[0].NotificationID)
 	require.Len(t, first[0].Actors, 2)
 	require.Equal(t, actors[24].SpaceID, first[0].Actors[0].SpaceID)
 	require.Equal(t, actors[23].SpaceID, first[0].Actors[1].SpaceID)
@@ -199,7 +201,7 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 
 	require.NoError(t, testSetPostLike(ctx, module, posts[0], bob.SpaceID, false))
 	require.NoError(t, testSetPostLike(ctx, module, posts[0], bob.SpaceID, true))
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{first[0].NotificationID}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, first[0].NotificationIDs))
 	updated, _, err := module.Notifications.List(ctx, alice.SpaceID, "", 2)
 	require.NoError(t, err)
 	require.True(t, updated[0].Unread)
@@ -211,7 +213,7 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 		SELECT COUNT(*) FROM space_notifications n JOIN space_post_likes l ON l.like_id = n.post_like_id
 		WHERE l.post_id = $1 AND n.read_at IS NULL
 	`, posts[0]))
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{updated[0].NotificationID}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, updated[0].NotificationIDs))
 	updated, _, err = module.Notifications.List(ctx, alice.SpaceID, "", 2)
 	require.NoError(t, err)
 	require.False(t, updated[0].Unread)
@@ -233,7 +235,7 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 	require.Equal(t, int64(22), updated[0].ActorCount)
 	require.Equal(t, actors[22].SpaceID, updated[0].Actors[0].SpaceID)
 	require.False(t, updated[0].Unread)
-	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, []string{updated[0].NotificationID}))
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, updated[0].NotificationIDs))
 	require.Equal(t, int64(2), countSpaceRows(t, module, `
 		SELECT COUNT(*) FROM space_notifications n JOIN space_post_likes l ON l.like_id = n.post_like_id
 		WHERE l.post_id = $1 AND n.read_at IS NULL
@@ -251,6 +253,46 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 	require.Len(t, remaining, 1)
 	require.Equal(t, posts[2], remaining[0].PostID.Int64)
 	require.Empty(t, next)
+}
+
+func TestNotificationReadAfterLatestLikeRemoved(t *testing.T) {
+	for _, newLike := range []bool{false, true} {
+		t.Run(fmt.Sprintf("newLike=%t", newLike), func(t *testing.T) {
+			module := newSpaceTestModule(t)
+			ctx := t.Context()
+			alice, bob := notificationTestSpaces(t, module)
+			charlieID := insertSpaceUser(t, module, "charlie-notifications@example.com", "public")
+			charlie, err := testCreateSpace(ctx, module, charlieID, "charlie_notifications", "root", "public", "secret", "nonce", "profile")
+			require.NoError(t, err)
+			require.NoError(t, testAddFriend(ctx, module, charlieID, charlie.SpaceID, alice.SpaceID, "share", 1, "share", 1))
+			postID, err := testCreatePost(ctx, module, alice.OwnerID, alice.SpaceID, "key", nil, 1, nil)
+			require.NoError(t, err)
+			require.NoError(t, testSetPostLike(ctx, module, postID, bob.SpaceID, true))
+			_, err = module.Notifications.DB.ExecContext(ctx, `UPDATE space_notifications SET created_at = 1000`)
+			require.NoError(t, err)
+			require.NoError(t, testSetPostLike(ctx, module, postID, charlie.SpaceID, true))
+			page, _, err := module.Notifications.List(ctx, alice.SpaceID, "", 20)
+			require.NoError(t, err)
+			require.Len(t, page, 1)
+			require.Len(t, page[0].NotificationIDs, 2)
+			require.Equal(t, charlie.SpaceID, page[0].Actors[0].SpaceID)
+			require.NoError(t, testSetPostLike(ctx, module, postID, charlie.SpaceID, false))
+			require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE notification_id = $1`, page[0].NotificationID))
+			if newLike {
+				require.NoError(t, testSetPostLike(ctx, module, postID, charlie.SpaceID, true))
+			}
+
+			require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, page[0].NotificationIDs))
+			require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, page[0].NotificationIDs))
+			require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE actor_space_id = $1 AND read_at IS NULL`, bob.SpaceID))
+			unread, err := module.Notifications.HasUnread(ctx, alice.SpaceID)
+			require.NoError(t, err)
+			require.Equal(t, newLike, unread)
+			if newLike {
+				require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE read_at IS NULL`))
+			}
+		})
+	}
 }
 
 func TestNotificationsMigrationPreservesLikesAndReadState(t *testing.T) {

@@ -20,12 +20,13 @@ func (c *NotificationsController) List(ctx context.Context, space *repo.SpaceRec
 	items := make([]models.NotificationResponse, 0, len(records))
 	for _, record := range records {
 		item := models.NotificationResponse{
-			NotificationID: record.NotificationID,
-			Kind:           record.Kind,
-			Actors:         make([]models.SpaceActorResponse, 0, len(record.Actors)),
-			ActorCount:     record.ActorCount,
-			CreatedAt:      formatMicros(record.CreatedAt),
-			Unread:         record.Unread,
+			NotificationID:  record.NotificationID,
+			NotificationIDs: record.NotificationIDs,
+			Kind:            record.Kind,
+			Actors:          make([]models.SpaceActorResponse, 0, len(record.Actors)),
+			ActorCount:      record.ActorCount,
+			CreatedAt:       formatMicros(record.CreatedAt),
+			Unread:          record.Unread,
 		}
 		if record.PostID.Valid {
 			item.PostID = &record.PostID.Int64
