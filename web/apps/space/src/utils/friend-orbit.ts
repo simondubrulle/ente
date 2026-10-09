@@ -50,8 +50,7 @@ export const friendOrbitCircleSize = (
     return Math.max(48, Math.min(maximum, diameter)) / bounds.scale;
 };
 
-export const friendOrbitAngle = (elapsed: number) =>
-    (elapsed / 240000) * Math.PI * 2;
+const friendOrbitAngle = (elapsed: number) => (elapsed / 240000) * Math.PI * 2;
 
 export const stepFriendOrbit = (
     circles: FriendOrbitCircle[],

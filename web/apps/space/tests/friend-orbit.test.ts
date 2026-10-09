@@ -2,15 +2,26 @@ import { describe, expect, it } from "vitest";
 import {
     arrangeFriendOrbit,
     createFriendOrbitCircle,
-    friendOrbitAngle,
     friendOrbitCircleSize,
     stepFriendOrbit,
 } from "../src/utils/friend-orbit";
 
 describe("friend orbit", () => {
     it("completes the reference orbit in four minutes", () => {
-        expect(friendOrbitAngle(60000)).toBeCloseTo(Math.PI / 2);
-        expect(friendOrbitAngle(240000)).toBeCloseTo(Math.PI * 2);
+        const bounds = { width: 1280, height: 720, scale: 1.4 };
+        const circles = Array.from({ length: 2 }, (_, index) =>
+            createFriendOrbitCircle(String(index), index),
+        );
+        arrangeFriendOrbit(circles, bounds, 60000);
+        for (const circle of circles) {
+            expect(circle.x).toBeCloseTo(-circle.homeY);
+            expect(circle.y).toBeCloseTo(circle.homeX);
+        }
+        arrangeFriendOrbit(circles, bounds, 240000);
+        for (const circle of circles) {
+            expect(circle.x).toBeCloseTo(circle.homeX);
+            expect(circle.y).toBeCloseTo(circle.homeY);
+        }
     });
 
     for (const [width, height, scale, count] of [
