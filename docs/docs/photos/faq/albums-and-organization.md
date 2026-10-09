@@ -125,7 +125,7 @@ Tap the left side of the screen to see the previous photo. Tap the right side to
 
 Tap pause to stop the slideshow or play to continue.
 
-On desktop, click the previous and next buttons or use the left and right arrow keys. Click pause or play, or press the Space bar, to pause or resume.
+On desktop, you can also use the left and right arrow keys to move between photos, and the space bar to pause or resume.
 
 ### Which items appear in an album slideshow? {#album-slideshow-supported-items}
 
