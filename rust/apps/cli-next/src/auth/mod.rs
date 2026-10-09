@@ -29,8 +29,10 @@ pub async fn run(command: AuthCommand, selected: Option<&str>, options: &Options
         AuthCommand::Decrypt { input, output } => {
             let destination = Destination::file(output.unwrap_or_else(|| PathBuf::from("-")));
             destination.prepare()?;
+            let encrypted =
+                fs::read(&input).with_context(|| format!("cannot read {}", input.display()))?;
             let password = export_password(false)?;
-            let plaintext = backup::decrypt(&fs::read(input)?, &password)?;
+            let plaintext = backup::decrypt(&encrypted, &password)?;
             let published = destination.publish(&plaintext)?;
             if let Some(path) = published.path {
                 crate::output::action(
@@ -130,9 +132,7 @@ fn export_password(confirm: bool) -> Result<Zeroizing<String>> {
                 io::stdin().is_terminal() && io::stderr().is_terminal(),
                 "set ENTE_CLI_EXPORT_PASSWORD for noninteractive encrypted export or decryption"
             );
-            let mut prompt = Password::new()
-                .with_prompt("Export password")
-                .allow_empty_password(true);
+            let mut prompt = Password::new().with_prompt("Export password");
             if confirm {
                 prompt =
                     prompt.with_confirmation("Confirm export password", "Passwords do not match");

@@ -42,7 +42,6 @@ fn interpret(plaintext: &[u8]) -> Result<Zeroizing<String>> {
             let legacy: Legacy<'_> =
                 serde_json::from_str(value.get()).map_err(|_| Error::InvalidRecord)?;
             let raw = Zeroizing::new(legacy.raw_data);
-            let raw = Zeroizing::new(raw.replace('#', "%23"));
             validate_uri(&raw)?;
             let display = match legacy.display {
                 Some(display) if display.get().starts_with('{') => display.get(),
@@ -70,6 +69,7 @@ fn interpret(plaintext: &[u8]) -> Result<Zeroizing<String>> {
         }
         _ => return Err(Error::InvalidRecord),
     };
+    line = Zeroizing::new(line.replace(',', "%2C"));
     line.push('\n');
     Ok(line)
 }
@@ -78,7 +78,8 @@ fn validate_uri(uri: &str) -> Result<()> {
     if !uri.starts_with("otpauth://") || uri.chars().any(char::is_control) {
         return Err(Error::InvalidRecord);
     }
-    let parsed = Url::parse(uri).map_err(|_| Error::InvalidRecord)?;
+    let validation_uri = Zeroizing::new(uri.replace('#', "%23"));
+    let parsed = Url::parse(&validation_uri).map_err(|_| Error::InvalidRecord)?;
     if parsed.host_str().is_none()
         || !parsed
             .query_pairs()
@@ -97,26 +98,29 @@ mod tests {
 
     #[test]
     fn records_preserve_uri_text_and_legacy_display() {
-        let uri = "otpauth://hotp/Issuer:label?secret=JBSWY3DPEHPK3PXP&counter=19&digits=8&algorithm=SHA512&x=%252C&x=two&codeDisplay=%7B%22note%22%3A%22literal%252C%22%7D";
+        let uri = "otpauth://hotp/Work#login,otpauth://label?secret=JBSWY3DPEHPK3PXP&counter=19&digits=8&algorithm=Algorithm.SHA256&x=%2C&x=%252C&x=two&codeDisplay=%7B%22note%22%3A%22literal%252C%22%7D";
+        let expected = "otpauth://hotp/Work#login%2Cotpauth://label?secret=JBSWY3DPEHPK3PXP&counter=19&digits=8&algorithm=Algorithm.SHA256&x=%2C&x=%252C&x=two&codeDisplay=%7B%22note%22%3A%22literal%252C%22%7D";
         assert_eq!(
             interpret(&serde_json::to_vec(uri).unwrap())
                 .unwrap()
                 .as_str(),
-            format!("{uri}\n")
+            format!("{expected}\n")
         );
         let display = json!({"note": "literal%2C, + # 😀", "tags": ["one,two", "%2C"], "pinned": true,
             "trashed": true, "position": 45, "lastUsedAt": 123, "tapCount": 7,
             "iconSrc": "custom", "iconID": "saved", "future": {"unknown": true}});
         for kind in ["totp", "hotp", "steam"] {
             let raw = format!(
-                "otpauth://{kind}/Issuer:label?secret=JBSWY3DPEHPK3PXP&period=60&counter=19&digits=8&algorithm=SHA512&x=%252C&x=two&codeDisplay=old"
+                "otpauth://{kind}/Work#login,otpauth://label?secret=JBSWY3DPEHPK3PXP&period=60&counter=19&digits=8&algorithm=Algorithm.SHA512&x=%2C&x=%252C&x=two&codeDisplay=old"
             );
             let line = interpret(
                 &serde_json::to_vec(&json!({"rawData": raw, "display": display})).unwrap(),
             )
             .unwrap();
-            assert!(line.starts_with(raw.strip_suffix("&codeDisplay=old").unwrap()));
-            let parsed = Url::parse(line.trim_end()).unwrap();
+            assert!(line.starts_with(&format!(
+                "otpauth://{kind}/Work#login%2Cotpauth://label?secret=JBSWY3DPEHPK3PXP&period=60&counter=19&digits=8&algorithm=Algorithm.SHA512&x=%2C&x=%252C&x=two&"
+            )));
+            let parsed = Url::parse(&line.trim_end().replace('#', "%23")).unwrap();
             let metadata: Vec<_> = parsed
                 .query_pairs()
                 .filter(|(name, _)| name == "codeDisplay")
@@ -132,7 +136,7 @@ mod tests {
             json!({"rawData": uri, "display": null}),
         ] {
             let line = interpret(&serde_json::to_vec(&object).unwrap()).unwrap();
-            let parsed = Url::parse(line.trim_end()).unwrap();
+            let parsed = Url::parse(&line.trim_end().replace('#', "%23")).unwrap();
             let display = parsed
                 .query_pairs()
                 .find(|(name, _)| name == "codeDisplay")
@@ -149,7 +153,7 @@ mod tests {
         let display = r#"{"unknown":184467440737095516160001,"decimal":0.123456789012345678901}"#;
         let legacy = format!(r#"{{"rawData":"{uri}","display":{display}}}"#);
         let line = interpret(legacy.as_bytes()).unwrap();
-        let parsed = Url::parse(line.trim_end()).unwrap();
+        let parsed = Url::parse(&line.trim_end().replace('#', "%23")).unwrap();
         assert_eq!(
             parsed
                 .query_pairs()
@@ -171,7 +175,7 @@ mod tests {
             )
             .unwrap()
             .as_str(),
-            format!("{uri}\n")
+            format!("{expected}\n")
         );
     }
 

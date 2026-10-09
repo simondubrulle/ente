@@ -281,6 +281,24 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
     initial.assert();
     initial.remove();
     let directory = tempfile::tempdir().unwrap();
+    let nested = success(
+        home.command(&[
+            "auth",
+            "export",
+            "nested/backups",
+            "--offline",
+            "--plaintext",
+            "--json",
+        ])
+        .current_dir(directory.path())
+        .output()
+        .unwrap(),
+    );
+    let nested: Value = serde_json::from_slice(&nested.stdout).unwrap();
+    assert_eq!(
+        fs::read(directory.path().join(nested["output"].as_str().unwrap())).unwrap(),
+        plain
+    );
     let encrypted = directory.path().join("backup.json");
     let plaintext_file = directory.path().join("backup.txt");
     let plain_summary = home.json(&[
@@ -406,6 +424,10 @@ fn password_and_destination_errors_are_resolved_before_account_access() {
             .unwrap();
         assert!(failure(&output).contains("must be UTF-8"));
     }
+    let missing = home.run(&["auth", "decrypt", path.to_str().unwrap()]);
+    assert!(failure(&missing).contains(&format!("cannot read {}", path.display())));
+    assert!(!failure(&missing).contains("ENTE_CLI_EXPORT_PASSWORD"));
+    assert!(missing.stdout.is_empty());
     fs::write(&path, "existing").unwrap();
     let occupied = home.run(&["auth", "export", "--output", path.to_str().unwrap()]);
     assert!(failure(&occupied).contains("already exists"));

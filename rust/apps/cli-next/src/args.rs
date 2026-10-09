@@ -106,7 +106,7 @@ pub enum AuthCommand {
     Export(AuthExportArgs),
     #[command(about = "Decrypt an Auth export without an account")]
     Decrypt {
-        #[arg(value_name = "PATH")]
+        #[arg(value_name = "PATH", help = "Encrypted Auth backup to decrypt")]
         input: PathBuf,
         #[arg(
             long,
@@ -122,7 +122,8 @@ pub struct AuthExportArgs {
     #[arg(
         value_name = "DIR",
         required_unless_present = "output",
-        conflicts_with = "output"
+        conflicts_with = "output",
+        help = "Directory for dated backups"
     )]
     pub directory: Option<PathBuf>,
     #[arg(

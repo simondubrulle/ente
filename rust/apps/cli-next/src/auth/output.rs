@@ -51,6 +51,13 @@ impl Destination {
                 Ok(())
             }
             Self::Directory { path, .. } => {
+                let mut missing = Vec::new();
+                for directory in path.ancestors() {
+                    if directory.as_os_str().is_empty() || directory.try_exists()? {
+                        break;
+                    }
+                    missing.push(directory);
+                }
                 let mut builder = fs::DirBuilder::new();
                 builder.recursive(true);
                 #[cfg(unix)]
@@ -58,9 +65,18 @@ impl Destination {
                     use std::os::unix::fs::DirBuilderExt;
                     builder.mode(0o700);
                 }
-                builder
-                    .create(path)
-                    .with_context(|| format!("cannot create export directory {}", path.display()))
+                builder.create(path).with_context(|| {
+                    format!("cannot create export directory {}", path.display())
+                })?;
+                for directory in missing.into_iter().rev() {
+                    sync_directory(parent(directory)).with_context(|| {
+                        format!(
+                            "cannot sync parent of export directory {}",
+                            directory.display()
+                        )
+                    })?;
+                }
+                Ok(())
             }
         }
     }
