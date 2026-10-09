@@ -162,26 +162,6 @@ pub fn is_clip_text_available(store: &AssetStore, legacy_dir: &Path, include_voc
     })
 }
 
-pub fn remove_mobile_indexing_models(store: &AssetStore, legacy_dir: &Path) -> Result<(), String> {
-    for model in models::selected_indexing_models(true, true, true) {
-        store
-            .remove(&model_asset(model))
-            .map_err(|error| error.to_string())?;
-        for file in model_asset_spec(model).files {
-            for path in legacy_mobile_paths(legacy_dir, file.name) {
-                for path in [
-                    &path,
-                    &path.with_extension("temp"),
-                    &path.with_extension("temp.resume.json"),
-                ] {
-                    remove_file_if_exists(path).map_err(|error| error.to_string())?;
-                }
-            }
-        }
-    }
-    Ok(())
-}
-
 fn import_mobile_model(
     legacy_dir: &Path,
     staging: &Path,
@@ -195,24 +175,19 @@ fn import_mobile_model(
         }
     }
     for file in files {
+        let destination = staging.join(file.name);
         for source in legacy_mobile_paths(legacy_dir, file.name) {
             remove_file_if_exists(&source.with_extension("temp"))?;
             remove_file_if_exists(&source.with_extension("temp.resume.json"))?;
-            let destination = staging.join(file.name);
-            if !source.is_file()
-                || destination.exists()
-                || staging.join(format!("{}.tmp", file.name)).exists()
-                || staging
-                    .join(format!("{}.tmp.ranges.json", file.name))
-                    .exists()
-                || staging
-                    .join(format!("{}.tmp.partial.json", file.name))
-                    .exists()
-            {
+            if !source.is_file() {
                 continue;
             }
-            fs::create_dir_all(staging)?;
-            fs::rename(source, destination)?;
+            if destination.exists() {
+                remove_file_if_exists(&source)?;
+            } else {
+                fs::create_dir_all(staging)?;
+                fs::rename(source, &destination)?;
+            }
         }
     }
     Ok(())
@@ -625,23 +600,46 @@ mod tests {
         assert!(!store.asset_dir(&mobile_test_asset()).exists());
     }
 
-    #[test]
-    fn mobile_import_preserves_existing_rust_resume_data() {
+    #[tokio::test]
+    async fn mobile_legacy_file_beats_rust_resume_data() {
         let root = TempDir::new().unwrap();
-        let staging = root.path().join("staging");
-        fs::create_dir(&staging).unwrap();
-        let file = &MOBILE_TEST_FILES[0];
-        let source = &legacy_mobile_paths(root.path(), file.name)[0];
-        fs::write(source, b"model").unwrap();
-        let partial = staging.join(format!("{}.tmp", file.name));
-        let metadata = staging.join(format!("{}.tmp.partial.json", file.name));
+        let store = AssetStore::new(root.path());
+        let asset = mobile_test_asset();
+        let staged = store
+            .staged_file_path(&asset, MOBILE_TEST_FILES[0].name)
+            .unwrap();
+        let partial = PathBuf::from(format!("{}.tmp", staged.display()));
+        let metadata = PathBuf::from(format!("{}.tmp.partial.json", staged.display()));
+        fs::create_dir_all(staged.parent().unwrap()).unwrap();
         fs::write(&partial, b"rust partial").unwrap();
         fs::write(&metadata, b"rust metadata").unwrap();
-        import_mobile_model(root.path(), &staging, MOBILE_TEST_FILES).unwrap();
-        assert_eq!(fs::read(partial).unwrap(), b"rust partial");
-        assert_eq!(fs::read(metadata).unwrap(), b"rust metadata");
-        assert_eq!(fs::read(source).unwrap(), b"model");
-        assert!(!staging.join(file.name).exists());
+        for (file, bytes) in MOBILE_TEST_FILES.iter().zip([b"model", b"vocab"]) {
+            fs::write(&legacy_mobile_paths(root.path(), file.name)[0], bytes).unwrap();
+        }
+        acquire_mobile_test_pair(&store, root.path()).await.unwrap();
+        assert_eq!(
+            fs::read(store.file_path(&asset, MOBILE_TEST_FILES[0].name).unwrap()).unwrap(),
+            b"model"
+        );
+        assert!(!partial.exists());
+        assert!(!metadata.exists());
+    }
+
+    #[tokio::test]
+    async fn mobile_import_removes_duplicate_legacy_domains() {
+        let root = TempDir::new().unwrap();
+        let store = AssetStore::new(root.path());
+        for (file, bytes) in MOBILE_TEST_FILES.iter().zip([b"model", b"vocab"]) {
+            for path in legacy_mobile_paths(root.path(), file.name) {
+                fs::write(path, bytes).unwrap();
+            }
+        }
+        acquire_mobile_test_pair(&store, root.path()).await.unwrap();
+        for file in MOBILE_TEST_FILES {
+            for path in legacy_mobile_paths(root.path(), file.name) {
+                assert!(!path.exists());
+            }
+        }
     }
 
     #[tokio::test]
