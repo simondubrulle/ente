@@ -18,6 +18,14 @@ func (r *PokesRepository) Create(ctx context.Context, senderSpaceID, recipientSp
 		return false, stacktrace.Propagate(err, "")
 	}
 	defer tx.Rollback()
+	for _, spaceID := range []string{senderSpaceID, recipientSpaceID} {
+		var lockedSpaceID string
+		if err := tx.QueryRowContext(ctx, `
+            SELECT space_id FROM spaces WHERE space_id = $1 FOR KEY SHARE
+        `, spaceID).Scan(&lockedSpaceID); err != nil {
+			return false, stacktrace.Propagate(err, "")
+		}
+	}
 	var friendSpaceID string
 	if err := tx.QueryRowContext(ctx, `
         SELECT friend_space_id FROM space_friend_shares

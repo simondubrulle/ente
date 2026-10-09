@@ -1,11 +1,80 @@
 package repo
 
 import (
+	"context"
+	"database/sql"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/require"
 )
+
+func TestPokesCreateDuringShareChanges(t *testing.T) {
+	for _, operation := range []string{"update-recipient-shares", "reset-sender-access", "reset-recipient-access"} {
+		t.Run(operation, func(t *testing.T) {
+			module := newSpaceTestModule(t)
+			alice, bob := notificationTestSpaces(t, module)
+			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+			defer cancel()
+			space := alice
+			if operation == "reset-sender-access" {
+				space = bob
+			}
+			tx, err := module.Spaces.DB.BeginTx(ctx, nil)
+			require.NoError(t, err)
+			defer tx.Rollback()
+			var pid int
+			require.NoError(t, tx.QueryRowContext(ctx, `
+				SELECT pg_backend_pid() FROM spaces WHERE space_id = $1 FOR UPDATE
+			`, space.SpaceID).Scan(&pid))
+			result := make(chan error, 1)
+			go func() {
+				defer close(result)
+				_, err := module.Pokes.Create(ctx, bob.SpaceID, alice.SpaceID, "concurrent")
+				result <- err
+			}()
+			t.Cleanup(func() {
+				cancel()
+				for range result {
+				}
+			})
+			for {
+				var waiting bool
+				require.NoError(t, module.Spaces.DB.QueryRowContext(ctx, `
+					SELECT EXISTS (
+						SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+						AND $1 = ANY(pg_blocking_pids(pid))
+					)
+				`, pid).Scan(&waiting))
+				if waiting {
+					break
+				}
+				time.Sleep(10 * time.Millisecond)
+			}
+			if operation == "update-recipient-shares" {
+				_, err = tx.ExecContext(ctx, `
+					UPDATE space_friend_shares SET friend_sealed_space_key = $3, key_version = $4
+					WHERE space_id = $1 AND friend_space_id = $2
+				`, alice.SpaceID, bob.SpaceID, testSpaceBytes("updated-share"), 1)
+			} else {
+				err = resetSpaceAccessTx(ctx, tx, space.OwnerID, []string{space.SpaceID})
+			}
+			require.NoError(t, err)
+			require.NoError(t, tx.Commit())
+			err = <-result
+			if operation == "update-recipient-shares" {
+				require.NoError(t, err)
+				require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_pokes`))
+				require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE kind = 'poke'`))
+			} else {
+				require.ErrorIs(t, err, sql.ErrNoRows)
+				require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_pokes`))
+				require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE kind = 'poke'`))
+			}
+		})
+	}
+}
 
 func TestPokesCreateNotificationsOnceAndGroupReadState(t *testing.T) {
 	module := newSpaceTestModule(t)
