@@ -1,11 +1,7 @@
 mod output;
 pub mod replica;
 
-use std::{
-    env, fs,
-    io::{self, IsTerminal},
-    path::PathBuf,
-};
+use std::{env, fs, path::PathBuf};
 
 use anyhow::{Context, Result, bail, ensure};
 use dialoguer::{Password, console::Term};
@@ -31,8 +27,9 @@ pub async fn run(command: AuthCommand, selected: Option<&str>, options: &Options
             destination.prepare()?;
             let encrypted =
                 fs::read(&input).with_context(|| format!("cannot read {}", input.display()))?;
-            let password = export_password(false)?;
-            let plaintext = backup::decrypt(&encrypted, &password)?;
+            let password = export_password(false, options)?;
+            let plaintext = backup::decrypt(&encrypted, &password)
+                .with_context(|| format!("cannot decrypt {}", input.display()))?;
             if let Some(path) = destination.publish(&plaintext)? {
                 crate::output::action(
                     options.json,
@@ -61,7 +58,7 @@ async fn export(args: AuthExportArgs, selected: Option<&str>, options: &Options)
     let password = if args.plaintext {
         None
     } else {
-        Some(export_password(true)?)
+        Some(export_password(true, options)?)
     };
     let payload = {
         let (account, home) = home::open_account(selected, !options.offline)?;
@@ -109,13 +106,13 @@ async fn export(args: AuthExportArgs, selected: Option<&str>, options: &Options)
     Ok(())
 }
 
-fn export_password(confirm: bool) -> Result<Zeroizing<String>> {
+fn export_password(confirm: bool, options: &Options) -> Result<Zeroizing<String>> {
     let password = match env::var("ENTE_CLI_EXPORT_PASSWORD") {
         Ok(password) => Zeroizing::new(password),
         Err(env::VarError::NotUnicode(_)) => bail!("ENTE_CLI_EXPORT_PASSWORD must be UTF-8"),
         Err(env::VarError::NotPresent) => {
             ensure!(
-                io::stdin().is_terminal() && io::stderr().is_terminal(),
+                options.can_prompt(),
                 "set ENTE_CLI_EXPORT_PASSWORD for noninteractive encrypted export or decryption"
             );
             let mut prompt = Password::new().with_prompt("Export password");

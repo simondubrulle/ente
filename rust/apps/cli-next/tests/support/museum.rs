@@ -21,7 +21,7 @@ fn auth_login_refresh_and_offline_export_across_processes() -> TestResult {
         let email = format!("auth-export-{}@example.org", Uuid::new_v4());
         let owner = create_account(&origin, &email).await;
         let home = TestHome::new();
-        login(&home, "auth", &email, &["--host", &origin]);
+        login(&home, "auth", &email, &["--host", &origin, "--no-input"]);
         let export = ["auth", "export", "--output", "-", "--plaintext"];
         assert!(success(home.run(&export)).stdout.is_empty());
         let key = Key::generate();
