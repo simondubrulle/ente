@@ -1,1 +1,1 @@
-- Improved ML model download reliability and reuse of existing downloaded models.
+- Migrate ML model download to the rust assets crate
