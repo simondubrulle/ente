@@ -96,8 +96,6 @@ fn refresh_keeps_progress_and_refuses_unreadable_records_until_updated() {
         "export",
         output_dir.path().to_str().unwrap(),
         "--plaintext",
-        "--keep",
-        "1",
         "--json",
     ]);
     let stderr = failure(&failed);
@@ -107,7 +105,7 @@ fn refresh_keeps_progress_and_refuses_unreadable_records_until_updated() {
     assert!(!stderr.contains("JBSWY3DPEHPK3PXP"));
     assert_eq!(
         serde_json::from_slice::<Value>(&failed.stdout).unwrap(),
-        json!({"output": null, "records": 0, "failed": 2, "pruned": 0})
+        json!({"output": null, "records": 0, "failed": 2})
     );
     assert_eq!(fs::read_dir(output_dir.path()).unwrap().count(), 1);
     changed.assert();
@@ -327,7 +325,6 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
     );
     let summary: Value = serde_json::from_slice(&result.stdout).unwrap();
     assert_eq!(summary["records"], 1);
-    assert_eq!(summary["pruned"], 0);
     assert_eq!(summary["failed"], 0);
     let encoded = fs::read(&encrypted).unwrap();
     let stream = success(
@@ -435,8 +432,6 @@ fn password_and_destination_errors_are_resolved_before_account_access() {
     for args in [
         vec!["auth", "export"],
         vec!["auth", "export", "dir", "--output", "-"],
-        vec!["auth", "export", "--output", "-", "--keep", "1"],
-        vec!["auth", "export", "dir", "--keep", "0"],
     ] {
         failure(&home.run(&args));
     }

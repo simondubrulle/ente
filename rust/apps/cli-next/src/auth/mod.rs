@@ -33,8 +33,7 @@ pub async fn run(command: AuthCommand, selected: Option<&str>, options: &Options
                 fs::read(&input).with_context(|| format!("cannot read {}", input.display()))?;
             let password = export_password(false)?;
             let plaintext = backup::decrypt(&encrypted, &password)?;
-            let published = destination.publish(&plaintext)?;
-            if let Some(path) = published.path {
+            if let Some(path) = destination.publish(&plaintext)? {
                 crate::output::action(
                     options.json,
                     &json!({"output": path.to_string_lossy()}),
@@ -51,7 +50,6 @@ async fn export(args: AuthExportArgs, selected: Option<&str>, options: &Options)
         Destination::Directory {
             path,
             extension: if args.plaintext { "txt" } else { "json" },
-            keep: args.keep,
         }
     } else {
         Destination::file(
@@ -79,7 +77,7 @@ async fn export(args: AuthExportArgs, selected: Option<&str>, options: &Options)
         if !matches!(destination, Destination::Stdout) {
             crate::output::action(
                 options.json,
-                &json!({"output": null, "records": 0, "pruned": 0, "failed": payload.failed}),
+                &json!({"output": null, "records": 0, "failed": payload.failed}),
                 &format!(
                     "{} unreadable Auth record{plural}; no new backup was written.",
                     payload.failed
@@ -96,29 +94,17 @@ async fn export(args: AuthExportArgs, selected: Option<&str>, options: &Options)
         Some(password) => Zeroizing::new(backup::encrypt(&payload.bytes, &password)?),
         None => payload.bytes,
     };
-    let published = destination.publish(&artifact)?;
-    if let Some(path) = published.path {
-        let mut summary = format!(
-            "Exported {} code{} to {}.",
-            payload.records,
-            if payload.records == 1 { "" } else { "s" },
-            path.display(),
-        );
-        if published.pruned > 0 {
-            summary.push_str(&format!(
-                " Pruned {} backup{}.",
-                published.pruned,
-                if published.pruned == 1 { "" } else { "s" },
-            ));
-        }
+    if let Some(path) = destination.publish(&artifact)? {
         crate::output::action(
             options.json,
-            &json!({"output": path.to_string_lossy(), "records": payload.records, "pruned": published.pruned, "failed": 0}),
-            &summary,
+            &json!({"output": path.to_string_lossy(), "records": payload.records, "failed": 0}),
+            &format!(
+                "Exported {} code{} to {}.",
+                payload.records,
+                if payload.records == 1 { "" } else { "s" },
+                path.display(),
+            ),
         )?;
-    }
-    if let Some(error) = published.prune_error {
-        return Err(error);
     }
     Ok(())
 }

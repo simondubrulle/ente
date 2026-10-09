@@ -134,13 +134,6 @@ pub struct AuthExportArgs {
     pub output: Option<PathBuf>,
     #[arg(long, help = "Export readable URI lines without encryption")]
     pub plaintext: bool,
-    #[arg(
-        long,
-        value_name = "N",
-        requires = "directory",
-        help = "Keep the N newest backups in this format"
-    )]
-    pub keep: Option<NonZeroUsize>,
 }
 
 #[derive(Subcommand)]
