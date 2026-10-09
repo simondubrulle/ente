@@ -168,7 +168,7 @@ func TestFCMSendDoesNotClassifyInvalidArgumentAsUnregistered(t *testing.T) {
 	require.False(t, errors.Is(err, errUnregisteredToken))
 }
 
-func TestAlbumShareEncryptsEventForEachDevice(t *testing.T) {
+func TestAlbumShareSendsPlatformPayloads(t *testing.T) {
 	testutil.WithServerRoot(t)
 	db := testutil.RequireTestDB(t)
 	testutil.ResetTables(t, db)
@@ -190,6 +190,8 @@ func TestAlbumShareEncryptsEventForEachDevice(t *testing.T) {
 			Notification: &ente.PushNotificationRegistration{Version: 1, PublicKey: publicKey[:]},
 		}))
 	}
+	platform = "android"
+	require.NoError(t, controller.AddToken(1, hash[:], ente.PushTokenRequest{FCMToken: "android-device", Platform: &platform}))
 	var messages []map[string]any
 	controller.fcm = &fcmClient{projectID: "test-project", httpClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		require.NoError(t, request.Context().Err())
@@ -204,8 +206,16 @@ func TestAlbumShareEncryptsEventForEachDevice(t *testing.T) {
 	cancel()
 	before := time.Now().Add(24 * time.Hour).Unix()
 	controller.NotifyAlbumShare(ctx, []int64{1})
-	require.Len(t, messages, 2)
+	require.Len(t, messages, 3)
 	for _, message := range messages {
+		if message["token"] == "android-device" {
+			require.Equal(t, map[string]any{
+				"token":   "android-device",
+				"data":    map[string]any{"action": "sync"},
+				"android": map[string]any{"priority": "high", "ttl": "86400s"},
+			}, message)
+			continue
+		}
 		require.Len(t, message, 2)
 		device := message["token"].(string)
 		apns := message["apns"].(map[string]any)
@@ -243,7 +253,7 @@ func TestAlbumShareEncryptsEventForEachDevice(t *testing.T) {
 		return jsonResponse(http.StatusInternalServerError, "unavailable"), nil
 	})
 	controller.NotifyAlbumShare(context.Background(), []int64{1})
-	require.Len(t, messages, 2, "one device failure must not stop the other send")
+	require.Len(t, messages, 3, "one device failure must not stop the other sends")
 }
 
 func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {

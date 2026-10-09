@@ -511,18 +511,18 @@ func (repo *CollectionRepository) Share(
 	toUserID int64,
 	encryptedKey string,
 	role ente.CollectionParticipantRole,
-	updationTime int64) (bool, error) {
+	updationTime int64) error {
 	context := context.Background()
 	tx, err := repo.DB.BeginTx(context, nil)
 	if err != nil {
-		return false, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	defer tx.Rollback()
 	if role != ente.VIEWER && role != ente.COLLABORATOR && role != ente.ADMIN {
 		err = fmt.Errorf("invalid role %s", string(role))
-		return false, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
-	result, err := tx.ExecContext(context, `INSERT INTO collection_shares(collection_id, from_user_id, to_user_id, encrypted_key, updation_time, role_type, shared_at) VALUES($1, $2, $3, $4, $5, $6, $7)
+	_, err = tx.ExecContext(context, `INSERT INTO collection_shares(collection_id, from_user_id, to_user_id, encrypted_key, updation_time, role_type, shared_at) VALUES($1, $2, $3, $4, $5, $6, $7)
 			ON CONFLICT (collection_id, from_user_id, to_user_id)
 			DO UPDATE SET
 				is_deleted = FALSE,
@@ -531,40 +531,24 @@ func (repo *CollectionRepository) Share(
 				shared_at = CASE
 					WHEN collection_shares.is_deleted = TRUE THEN $7
 					ELSE collection_shares.shared_at
-				END
-			WHERE collection_shares.is_deleted IS NOT FALSE`,
+				END`,
 		collectionID, fromUserID, toUserID, encryptedKey, updationTime, role, updationTime)
 	if err != nil {
-		return false, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
-	added, err := result.RowsAffected()
-	if err != nil {
-		return false, stacktrace.Propagate(err, "")
-	}
-	if added == 0 {
-		_, err = tx.ExecContext(context, `UPDATE collection_shares SET updation_time = $4, role_type = $5
-			WHERE collection_id = $1 AND from_user_id = $2 AND to_user_id = $3`,
-			collectionID, fromUserID, toUserID, updationTime, role)
-		if err != nil {
-			return false, stacktrace.Propagate(err, "")
-		}
-	}
-	result, err = tx.ExecContext(context, `UPDATE collections SET updation_time = $1
+	result, err := tx.ExecContext(context, `UPDATE collections SET updation_time = $1
 		WHERE collection_id = $2 AND is_deleted = FALSE`, updationTime, collectionID)
 	if err != nil {
-		return false, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	updated, err := result.RowsAffected()
 	if err != nil {
-		return false, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	if updated == 0 {
-		return false, stacktrace.Propagate(ente.ErrCollectionDeleted, "")
+		return stacktrace.Propagate(ente.ErrCollectionDeleted, "")
 	}
-	if err := tx.Commit(); err != nil {
-		return false, stacktrace.Propagate(err, "")
-	}
-	return added == 1, nil
+	return stacktrace.Propagate(tx.Commit(), "")
 }
 
 func (repo *CollectionRepository) BatchShare(
@@ -573,7 +557,7 @@ func (repo *CollectionRepository) BatchShare(
 	fromUserID int64,
 	shares []CollectionShareItem,
 	updationTime int64,
-) ([]int64, error) {
+) error {
 	toUserIDs := make([]int64, len(shares))
 	encryptedKeys := make([]string, len(shares))
 	roles := make([]string, len(shares))
@@ -585,11 +569,11 @@ func (repo *CollectionRepository) BatchShare(
 
 	tx, err := repo.DB.BeginTx(ctx, nil)
 	if err != nil {
-		return nil, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	defer tx.Rollback()
 
-	rows, err := tx.QueryContext(ctx, `INSERT INTO collection_shares
+	_, err = tx.ExecContext(ctx, `INSERT INTO collection_shares
 			(collection_id, from_user_id, to_user_id, encrypted_key, updation_time, role_type, shared_at)
 		SELECT $1, $2, input.to_user_id, input.encrypted_key, $3, input.role, $3
 		FROM unnest($4::bigint[], $5::text[], $6::role_enum[])
@@ -603,9 +587,7 @@ func (repo *CollectionRepository) BatchShare(
 			shared_at = CASE
 				WHEN collection_shares.is_deleted = TRUE THEN EXCLUDED.shared_at
 				ELSE collection_shares.shared_at
-			END
-		WHERE collection_shares.is_deleted IS NOT FALSE
-		RETURNING to_user_id`,
+			END`,
 		collectionID,
 		fromUserID,
 		updationTime,
@@ -614,49 +596,22 @@ func (repo *CollectionRepository) BatchShare(
 		pq.Array(roles),
 	)
 	if err != nil {
-		return nil, stacktrace.Propagate(err, "")
-	}
-
-	added := []int64{}
-	for rows.Next() {
-		var id int64
-		if err := rows.Scan(&id); err != nil {
-			rows.Close()
-			return nil, stacktrace.Propagate(err, "")
-		}
-		added = append(added, id)
-	}
-	rows.Close()
-	if err := rows.Err(); err != nil {
-		return nil, stacktrace.Propagate(err, "")
-	}
-	if len(added) < len(shares) {
-		_, err = tx.ExecContext(ctx, `UPDATE collection_shares s SET role_type = input.role, updation_time = $3
-			FROM unnest($4::bigint[], $5::role_enum[]) AS input(to_user_id, role)
-			WHERE s.collection_id = $1 AND s.from_user_id = $2 AND s.to_user_id = input.to_user_id
-				AND s.to_user_id <> ALL($6::bigint[])`,
-			collectionID, fromUserID, updationTime, pq.Array(toUserIDs), pq.Array(roles), pq.Array(added))
-		if err != nil {
-			return nil, stacktrace.Propagate(err, "")
-		}
+		return stacktrace.Propagate(err, "")
 	}
 
 	result, err := tx.ExecContext(ctx, `UPDATE collections SET updation_time = $1
 		WHERE collection_id = $2 AND is_deleted = FALSE`, updationTime, collectionID)
 	if err != nil {
-		return nil, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	updated, err := result.RowsAffected()
 	if err != nil {
-		return nil, stacktrace.Propagate(err, "")
+		return stacktrace.Propagate(err, "")
 	}
 	if updated == 0 {
-		return nil, stacktrace.Propagate(ente.ErrCollectionDeleted, "")
+		return stacktrace.Propagate(ente.ErrCollectionDeleted, "")
 	}
-	if err := tx.Commit(); err != nil {
-		return nil, stacktrace.Propagate(err, "")
-	}
-	return added, nil
+	return stacktrace.Propagate(tx.Commit(), "")
 }
 
 // ShareAutomatically creates a share without modifying a prior share.

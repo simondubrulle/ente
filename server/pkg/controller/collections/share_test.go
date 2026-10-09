@@ -189,7 +189,7 @@ func addShareTestShare(
 	role ente.CollectionParticipantRole,
 ) {
 	t.Helper()
-	if _, err := collectionRepo.Share(collectionID, ownerID, shareeID, "share-key", role, 1); err != nil {
+	if err := collectionRepo.Share(collectionID, ownerID, shareeID, "share-key", role, 1); err != nil {
 		t.Fatal(err)
 	}
 }
@@ -369,7 +369,7 @@ func TestAutomaticShareLifecycle(t *testing.T) {
 	ctx := context.Background()
 
 	manualCollectionID := createShareTestCollection(t, collectionRepo, ownerID)
-	if _, err := collectionRepo.Share(
+	if err := collectionRepo.Share(
 		manualCollectionID,
 		ownerID,
 		shareeID,
@@ -444,7 +444,7 @@ func TestUnShareContextBumpsCollectionForDeletedShareRow(t *testing.T) {
 	db, collectionRepo, ownerID, shareeID := setupCollectionShareTest(t)
 	ctx := context.Background()
 	collectionID := createShareTestCollection(t, collectionRepo, ownerID)
-	if _, err := collectionRepo.Share(
+	if err := collectionRepo.Share(
 		collectionID,
 		ownerID,
 		shareeID,
@@ -787,7 +787,7 @@ func TestBatchShareRollsBackWhenAnyWriteFails(t *testing.T) {
 	collectionID := createShareTestCollection(t, collectionRepo, ownerID)
 	originalCollectionTime := collectionUpdationTime(t, db, collectionID)
 
-	_, err := collectionRepo.BatchShare(
+	err := collectionRepo.BatchShare(
 		context.Background(),
 		collectionID,
 		ownerID,
@@ -836,7 +836,7 @@ func TestBatchShareRejectsDeletedCollection(t *testing.T) {
 		t.Fatalf("unauthorized BatchShare() error = %v, want %v", err, ente.ErrPermissionDenied)
 	}
 
-	_, err = collectionRepo.BatchShare(
+	err = collectionRepo.BatchShare(
 		context.Background(),
 		collectionID,
 		ownerID,
@@ -955,7 +955,7 @@ func (f albumSharePushFunc) NotifyAlbumShare(ctx context.Context, recipients []i
 	f(ctx, recipients)
 }
 
-func TestAlbumShareNotifiesOnlyNewAccess(t *testing.T) {
+func TestAlbumShareNotifiesAfterEverySuccessfulShare(t *testing.T) {
 	db, r, owner, recipient := setupCollectionShareTest(t)
 	c := newBatchShareTestController(db, r)
 	id := createShareTestCollection(t, r, owner)
@@ -979,7 +979,9 @@ func TestAlbumShareNotifiesOnlyNewAccess(t *testing.T) {
 	request.Role = &role
 	_, err = c.Share(newBatchShareTestContext(owner), request)
 	require.NoError(t, err)
-	require.Never(t, func() bool { return len(notifications) > 0 }, 50*time.Millisecond, time.Millisecond, "retry and role change must not notify")
+	require.Eventually(t, func() bool { return len(notifications) == 2 }, time.Second, time.Millisecond, "retry and role change must notify")
+	require.Equal(t, []int64{recipient}, <-notifications)
+	require.Equal(t, []int64{recipient}, <-notifications)
 	var storedRole ente.CollectionParticipantRole
 	var deleted bool
 	var encryptedKey string
@@ -1013,7 +1015,7 @@ func TestAlbumShareNotifiesOnlyNewAccess(t *testing.T) {
 	require.True(t, deleted, "failed share must roll back restored access")
 }
 
-func TestBatchShareNotifiesOnlyNewRecipient(t *testing.T) {
+func TestBatchShareNotifiesAllRecipients(t *testing.T) {
 	db, r, owner, existingRecipient := setupCollectionShareTest(t)
 	newRecipient := testutil.InsertUser(t, db, testutil.UserFixture{
 		UserID: 3, Email: "new-sharee@example.com", CreationTime: 1,
@@ -1040,29 +1042,33 @@ func TestBatchShareNotifiesOnlyNewRecipient(t *testing.T) {
 	require.Equal(t, ente.COLLABORATOR, roles[newRecipient])
 	select {
 	case recipients := <-notifications:
-		require.Equal(t, []int64{newRecipient}, recipients)
+		require.ElementsMatch(t, []int64{existingRecipient, newRecipient}, recipients)
 	case <-time.After(time.Second):
 		t.Fatal("new recipient was not notified")
 	}
 }
 
-func TestConcurrentAlbumShareGrantsAccessOnce(t *testing.T) {
-	_, r, owner, recipient := setupCollectionShareTest(t)
+func TestConcurrentAlbumSharesNotifyAfterEachSuccess(t *testing.T) {
+	db, r, owner, recipient := setupCollectionShareTest(t)
+	c := newBatchShareTestController(db, r)
 	id := createShareTestCollection(t, r, owner)
 	var count atomic.Int32
+	c.PushCtrl = albumSharePushFunc(func(context.Context, []int64) { count.Add(1) })
 	var wg sync.WaitGroup
 	for range 8 {
 		wg.Go(func() {
-			added, err := r.BatchShare(context.Background(), id, owner, []repo.CollectionShareItem{{ToUserID: recipient, EncryptedKey: "test-key", Role: ente.VIEWER}}, 2)
+			_, err := c.BatchShare(newBatchShareTestContext(owner), []ente.AlterShareRequest{{CollectionID: id, Email: "sharee@example.com", EncryptedKey: b64OfLen(sealedCollectionKeyLen)}})
 			if err != nil {
 				t.Error(err)
-				return
 			}
-			count.Add(int32(len(added)))
 		})
 	}
 	wg.Wait()
-	require.EqualValues(t, 1, count.Load())
+	require.Eventually(t, func() bool { return count.Load() == 8 }, time.Second, time.Millisecond)
+	require.Equal(t, 1, collectionShareCount(t, db, id))
+	var active bool
+	require.NoError(t, db.QueryRow(`SELECT NOT is_deleted FROM collection_shares WHERE collection_id=$1 AND to_user_id=$2`, id, recipient).Scan(&active))
+	require.True(t, active)
 }
 
 func TestBulkAlbumShareNotifiesOnceAfterAllMutations(t *testing.T) {
@@ -1085,8 +1091,7 @@ func TestBulkAlbumShareNotifiesOnceAfterAllMutations(t *testing.T) {
 		_, err := c.BulkShare(newBatchShareTestContext(owner), request)
 		require.NoError(t, err)
 	}
-	require.Eventually(t, func() bool { return calls.Load() == 1 }, time.Second, time.Millisecond)
-	require.Never(t, func() bool { return calls.Load() > 1 }, 50*time.Millisecond, time.Millisecond)
+	require.Eventually(t, func() bool { return calls.Load() == 2 }, time.Second, time.Millisecond)
 }
 
 func TestAlbumSharePushEligibility(t *testing.T) {

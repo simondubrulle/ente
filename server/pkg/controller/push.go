@@ -129,14 +129,17 @@ func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int6
 	}
 	var unregisteredTokens []string
 	for _, token := range tokens {
-		ciphertext, err := box.SealAnonymous(nil, []byte(`{"version":1,"eventType":"album_shared"}`), (*[32]byte)(token.NotificationPublicKey), rand.Reader)
-		if err != nil {
-			log.WithError(err).Warn("album share notification encryption failed")
-			continue
-		}
-		err = c.fcm.sendMessage(ctx, map[string]any{
-			"token": token.FCMToken,
-			"apns": map[string]any{
+		message := map[string]any{"token": token.FCMToken}
+		if token.Platform == "android" {
+			message["data"] = map[string]string{"action": "sync"}
+			message["android"] = map[string]string{"priority": "high", "ttl": "86400s"}
+		} else {
+			ciphertext, err := box.SealAnonymous(nil, []byte(`{"version":1,"eventType":"album_shared"}`), (*[32]byte)(token.NotificationPublicKey), rand.Reader)
+			if err != nil {
+				log.WithError(err).Warn("album share notification encryption failed")
+				continue
+			}
+			message["apns"] = map[string]any{
 				"headers": map[string]string{
 					"apns-push-type":  "alert",
 					"apns-priority":   "10",
@@ -151,8 +154,9 @@ func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int6
 					"notificationVersion":    1,
 					"notificationCiphertext": base64.StdEncoding.EncodeToString(ciphertext),
 				},
-			},
-		})
+			}
+		}
+		err = c.fcm.sendMessage(ctx, message)
 		if err != nil {
 			log.WithError(err).Warn("album share push failed; album remains shared")
 			if errors.Is(err, errUnregisteredToken) {

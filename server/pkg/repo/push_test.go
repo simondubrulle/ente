@@ -180,19 +180,20 @@ func TestPushNotificationRegistrationMigration(t *testing.T) {
 	require.Equal(t, 2, count)
 }
 
-func TestAlbumShareTokensRequireInternalIOSAndActiveSession(t *testing.T) {
+func TestAlbumShareTokensRequireInternalAndActiveSession(t *testing.T) {
 	testutil.WithServerRoot(t)
 	db := testutil.RequireTestDB(t)
 	testutil.ResetTables(t, db)
 	t.Cleanup(func() { testutil.ResetTables(t, db) })
 	key := append([]byte{9}, make([]byte, 31)...)
+	var userIDs []int64
 	for id, tc := range []struct {
 		name, platform, flag, session string
 		app                           ente.App
 		key                           []byte
 	}{
 		{"eligible", "ios", "true", "active", ente.Photos, key},
-		{"android", "android", "true", "active", ente.Photos, key},
+		{"android", "android", "true", "active", ente.Photos, nil},
 		{"non-internal", "ios", "false", "active", ente.Photos, key},
 		{"missing flag", "ios", "", "active", ente.Photos, key},
 		{"unenrolled", "ios", "true", "active", ente.Photos, nil},
@@ -200,8 +201,14 @@ func TestAlbumShareTokensRequireInternalIOSAndActiveSession(t *testing.T) {
 		{"revoked", "ios", "true", "revoked", ente.Photos, key},
 		{"wrong owner", "ios", "true", "wrong owner", ente.Photos, key},
 		{"other app", "ios", "true", "active", ente.Locker, key},
+		{"android non-internal", "android", "false", "active", ente.Photos, nil},
+		{"android legacy", "android", "true", "missing", ente.Photos, nil},
+		{"android revoked", "android", "true", "revoked", ente.Photos, nil},
+		{"android wrong owner", "android", "true", "wrong owner", ente.Photos, nil},
+		{"android other app", "android", "true", "active", ente.Locker, nil},
 	} {
 		userID := int64(id + 1)
+		userIDs = append(userIDs, userID)
 		testutil.InsertUser(t, db, testutil.UserFixture{UserID: userID, Email: fmt.Sprintf("user%d@example.com", userID), CreationTime: 1})
 		hash := sha256.Sum256([]byte(tc.name))
 		var sessionHash []byte
@@ -230,11 +237,13 @@ func TestAlbumShareTokensRequireInternalIOSAndActiveSession(t *testing.T) {
 		}
 	}
 	r := &PushTokenRepository{DB: db}
-	tokens, err := r.GetTokensForAlbumShare(context.Background(), []int64{1, 2, 3, 4, 5, 6, 7, 8, 9})
+	tokens, err := r.GetTokensForAlbumShare(context.Background(), userIDs)
 	require.NoError(t, err)
-	require.Len(t, tokens, 1)
-	require.Equal(t, "eligible", tokens[0].FCMToken)
-	require.Equal(t, key, tokens[0].NotificationPublicKey)
+	var selected []string
+	for _, token := range tokens {
+		selected = append(selected, token.FCMToken)
+	}
+	require.ElementsMatch(t, []string{"eligible", "android"}, selected)
 	for _, apnsToken := range []any{"", nil} {
 		_, err := db.Exec(`UPDATE push_tokens SET apns_token=$1 WHERE fcm_token='eligible'`, apnsToken)
 		require.NoError(t, err)
@@ -242,10 +251,13 @@ func TestAlbumShareTokensRequireInternalIOSAndActiveSession(t *testing.T) {
 		require.NoError(t, err)
 		require.Len(t, tokens, 1)
 		require.Equal(t, "eligible", tokens[0].FCMToken)
+		require.Equal(t, key, tokens[0].NotificationPublicKey)
 	}
 	tokens, err = r.GetTokensForAlbumShare(context.Background(), []int64{2})
 	require.NoError(t, err)
-	require.Empty(t, tokens)
+	require.Len(t, tokens, 1)
+	require.Equal(t, "android", tokens[0].FCMToken)
+	require.Empty(t, tokens[0].NotificationPublicKey)
 	tokens, err = r.GetTokensToBeNotified(1, 100)
 	require.NoError(t, err)
 	for _, token := range tokens {
