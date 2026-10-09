@@ -15,6 +15,7 @@ use tempfile::TempDir;
 
 #[test]
 fn reads_do_not_initialize_storage() {
+    let binary = format!("ente-cli-next{}", std::env::consts::EXE_SUFFIX);
     for existing_home in [false, true] {
         let home = TestHome::new();
         let path = home.dir.path().join("unused");
@@ -30,10 +31,10 @@ fn reads_do_not_initialize_storage() {
         );
         assert!(help.stderr.is_empty());
         let help = String::from_utf8(help.stdout).unwrap();
-        assert!(help.contains("=== ente-cli-next ==="));
+        assert!(help.contains(&format!("=== {binary} ===")));
         assert!(help.contains("Usage: ente-cli-next [OPTIONS] <COMMAND>"));
-        assert!(help.contains("=== ente-cli-next photos file download ==="));
-        assert!(help.contains("=== ente-cli-next vault key generate ==="));
+        assert!(help.contains(&format!("=== {binary} photos file download ===")));
+        assert!(help.contains(&format!("=== {binary} vault key generate ===")));
         let output = home
             .command(&["accounts", "list"])
             .env("ENTE_CLI_HOME", &path)
