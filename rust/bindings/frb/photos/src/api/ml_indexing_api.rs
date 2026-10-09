@@ -263,10 +263,6 @@ pub fn is_clip_text_downloaded(assets_dir: String, include_vocab: bool) -> bool 
     )
 }
 
-pub fn remove_indexing_models(assets_dir: String) -> Result<(), String> {
-    assets::remove_mobile_indexing_models(&AssetStore::new(&assets_dir), Path::new(&assets_dir))
-}
-
 fn task_error(error: impl std::fmt::Display) -> RustMlError {
     RustMlError::Other {
         message: error.to_string(),

@@ -6,7 +6,6 @@ import "package:photos/service_locator.dart" show flagService, localSettings;
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
 import "package:photos/services/machine_learning/ml_result.dart";
 import "package:photos/services/machine_learning/webgpu_execution_policy.dart";
-import "package:photos/src/rust/api/ml_indexing_api.dart" as rust_ml;
 import "package:photos/utils/isolate/isolate_operations.dart";
 import "package:photos/utils/isolate/super_isolate.dart";
 import "package:photos/utils/ml_util.dart";
@@ -172,17 +171,7 @@ class MLIndexingIsolate extends SuperIsolate {
     return "Rust+${acceleratedProviders.join('+')}";
   }
 
-  Future<void> cleanupLocalIndexingModels({bool delete = false}) async {
-    await releaseRustRuntime();
-    if (!MLModelDownloadService.instance.areIndexingModelsDownloaded) return;
-
-    if (delete) {
-      await rust_ml.removeIndexingModels(
-        assetsDir: await MLModelDownloadService.instance.getAssetsDirectory(),
-      );
-      MLModelDownloadService.instance.invalidateModelDownloadCache();
-    }
-  }
+  Future<void> cleanupLocalIndexingModels() => releaseRustRuntime();
 
   Future<Map<String, dynamic>> _buildRustRuntimeArgs() async {
     return {
