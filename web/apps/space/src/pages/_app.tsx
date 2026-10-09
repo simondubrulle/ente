@@ -119,7 +119,7 @@ const App: React.FC<AppProps> = ({ Component, pageProps }) => {
         >
             <CustomHead
                 title={spacePageTitle(router.pathname)}
-                viewportContent="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover"
+                viewportContent="width=device-width, initial-scale=1, maximum-scale=1"
             >
                 <link
                     rel="preload"
