@@ -129,6 +129,22 @@ pub struct SpaceUnreadStatusResponse {
     pub notifications_unread: bool,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadActivityResponse {
+    pub kind: String,
+    pub message_cipher: String,
+    pub encrypted_message_key: String,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UnreadActivityPageResponse {
+    pub items: Vec<UnreadActivityResponse>,
+    #[serde(default)]
+    pub next_cursor: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LikeMessageResponse {
     pub liked: bool,

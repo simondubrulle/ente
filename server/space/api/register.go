@@ -15,6 +15,7 @@ func Register(privateAPI, publicAPI gin.IRouter, handlers *Handlers) {
 	spaceAPI.PATCH("/slug", selected(handlers.UpdateSpaceSlug))
 	spaceAPI.POST("/uploads/presign", selected(handlers.PresignUpload))
 	spaceAPI.GET("/unread", selected(handlers.GetUnreadStatus))
+	spaceAPI.GET("/unread/activities", selected(handlers.ListUnreadActivities))
 	spaceAPI.GET("/notifications", selected(handlers.ListNotifications))
 	spaceAPI.GET("/notifications/unread", selected(handlers.GetNotificationUnread))
 	spaceAPI.POST("/notifications/read", selected(handlers.ReadNotifications))

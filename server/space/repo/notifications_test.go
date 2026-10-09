@@ -310,6 +310,58 @@ func TestNotificationsPaginateCompletePostGroups(t *testing.T) {
 	require.Empty(t, next)
 }
 
+func TestNotificationsLargeLikeGroup(t *testing.T) {
+	module := newSpaceTestModule(t)
+	ctx := t.Context()
+	alice, bob := notificationTestSpaces(t, module)
+	postID, err := testCreatePost(ctx, module, alice.OwnerID, alice.SpaceID, "key", nil, 1, nil)
+	require.NoError(t, err)
+	_, err = module.Pokes.Create(ctx, bob.SpaceID, alice.SpaceID, "older")
+	require.NoError(t, err)
+	_, err = module.Spaces.DB.ExecContext(ctx, `
+		INSERT INTO spaces (space_id, owner_id, space_slug, root_wrapped_space_key, public_key, encrypted_secret_key)
+		SELECT 'large-group-' || i, $1, 'large_group_' || i, '\x00'::bytea, '\x00'::bytea, '\x00'::bytea
+		FROM generate_series(1, 2000) i
+	`, bob.OwnerID)
+	require.NoError(t, err)
+	_, err = module.Friends.DB.ExecContext(ctx, `
+		INSERT INTO space_friend_shares (space_id, friend_space_id, friend_sealed_space_key, key_version)
+		SELECT $1, 'large-group-' || i, '\x00'::bytea, 1 FROM generate_series(1, 2000) i
+	`, alice.SpaceID)
+	require.NoError(t, err)
+	_, err = module.Posts.DB.ExecContext(ctx, `
+		INSERT INTO space_post_likes (like_id, post_id, actor_space_id)
+		SELECT 'large-like-' || i, $1, 'large-group-' || i FROM generate_series(1, 2000) i
+	`, postID)
+	require.NoError(t, err)
+	_, err = module.Notifications.DB.ExecContext(ctx, `
+		INSERT INTO space_notifications (notification_id, recipient_space_id, actor_space_id, kind, post_like_id, read_at)
+		SELECT 'large-notification-' || i, $1, 'large-group-' || i, 'post_like', 'large-like-' || i,
+			CASE WHEN i = 1 THEN NULL ELSE now_utc_micro_seconds() END
+		FROM generate_series(1, 2000) i
+	`, alice.SpaceID)
+	require.NoError(t, err)
+	page, cursor, err := module.Notifications.List(ctx, alice.SpaceID, "", 1)
+	require.NoError(t, err)
+	require.Len(t, page, 1)
+	require.Equal(t, postID, page[0].PostID.Int64)
+	require.Equal(t, int64(2000), page[0].ActorCount)
+	require.Len(t, page[0].NotificationIDs, 2000)
+	require.Len(t, page[0].Actors, 2)
+	require.True(t, page[0].Unread)
+	require.NotEmpty(t, cursor)
+	require.NoError(t, module.Notifications.MarkRead(ctx, alice.SpaceID, page[0].NotificationIDs))
+	page, _, err = module.Notifications.List(ctx, alice.SpaceID, "", 1)
+	require.NoError(t, err)
+	require.False(t, page[0].Unread)
+	older, cursor, err := module.Notifications.List(ctx, alice.SpaceID, cursor, 1)
+	require.NoError(t, err)
+	require.Len(t, older, 1)
+	require.Equal(t, "poke", older[0].Kind)
+	require.Len(t, older[0].NotificationIDs, 1)
+	require.Empty(t, cursor)
+}
+
 func TestNotificationReadAfterLatestLikeRemoved(t *testing.T) {
 	for _, newLike := range []bool{false, true} {
 		t.Run(fmt.Sprintf("newLike=%t", newLike), func(t *testing.T) {

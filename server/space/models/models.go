@@ -408,6 +408,22 @@ type SpaceUnreadStatusResponse struct {
 	NotificationsUnread bool `json:"notificationsUnread"`
 }
 
+type ListUnreadActivitiesRequest struct {
+	Cursor string `form:"cursor"`
+	Limit  int    `form:"limit" binding:"omitempty,min=1,max=100"`
+}
+
+type UnreadActivityResponse struct {
+	Kind                string `json:"kind"`
+	MessageCipher       string `json:"messageCipher"`
+	EncryptedMessageKey string `json:"encryptedMessageKey"`
+}
+
+type UnreadActivityPage struct {
+	Items      []UnreadActivityResponse `json:"items"`
+	NextCursor string                   `json:"nextCursor,omitempty"`
+}
+
 type PostPage struct {
 	Items      []PostResponse `json:"items"`
 	NextCursor string         `json:"nextCursor,omitempty"`

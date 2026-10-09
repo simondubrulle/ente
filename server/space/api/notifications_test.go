@@ -2,6 +2,7 @@ package api
 
 import (
 	"crypto/sha256"
+	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -12,6 +13,7 @@ import (
 	timeutil "github.com/ente/museum/pkg/utils/time"
 	"github.com/ente/museum/space/controller"
 	"github.com/ente/museum/space/models"
+	"github.com/ente/museum/space/repo"
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/require"
 )
@@ -79,6 +81,29 @@ func TestNotificationsAPIIsRecipientScoped(t *testing.T) {
 	require.Equal(t, http.StatusOK, response.Code)
 	response = serve(http.MethodGet, "/spaces/"+owner.SpaceID+"/notifications/unread", "")
 	require.JSONEq(t, `{"unread":false}`, response.Body.String())
+	_, err = repos.Messages.CreateMessage(ctx, repo.CreateSpaceMessageRecord{
+		Kind:                         "regular",
+		SenderSpaceID:                friend.SpaceID,
+		RecipientSpaceID:             owner.SpaceID,
+		MessageCipher:                []byte("cipher"),
+		SenderEncryptedMessageKey:    []byte("sender-key"),
+		RecipientEncryptedMessageKey: []byte("recipient-key"),
+	})
+	require.NoError(t, err)
+	response = serve(http.MethodGet, "/spaces/"+owner.SpaceID+"/unread/activities?limit=1", "")
+	require.Equal(t, http.StatusOK, response.Code, response.Body.String())
+	var unreadPage models.UnreadActivityPage
+	require.NoError(t, json.Unmarshal(response.Body.Bytes(), &unreadPage))
+	require.Equal(t, []models.UnreadActivityResponse{{
+		Kind:                "regular",
+		MessageCipher:       base64.StdEncoding.EncodeToString([]byte("cipher")),
+		EncryptedMessageKey: base64.StdEncoding.EncodeToString([]byte("recipient-key")),
+	}}, unreadPage.Items)
+	require.Empty(t, unreadPage.NextCursor)
+	response = serve(http.MethodGet, "/spaces/"+friend.SpaceID+"/unread/activities", "")
+	require.Equal(t, http.StatusForbidden, response.Code)
+	response = serve(http.MethodGet, "/spaces/"+owner.SpaceID+"/unread/activities?limit=101", "")
+	require.Equal(t, http.StatusBadRequest, response.Code)
 	require.NoError(t, repos.Friends.DeleteFriendship(ctx, owner.SpaceID, friend.SpaceID))
 	_, err = repos.Spaces.DB.ExecContext(ctx, `INSERT INTO space_profile_assets (space_id, asset_type, object_id, bucket_id, key_version) VALUES ($1, 'avatar', 'private-avatar', 'test-bucket', 1)`, friend.SpaceID)
 	require.NoError(t, err)

@@ -451,7 +451,7 @@ impl AccountSpaceCtx {
         .await
     }
 
-    async fn decrypt_message_fields(
+    pub(super) async fn decrypt_message_fields(
         &self,
         space_id: &str,
         kind: &str,

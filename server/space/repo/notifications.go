@@ -55,9 +55,6 @@ func (r *NotificationsRepository) List(ctx context.Context, recipientSpaceID, cu
 		` + notificationSourcesSQL + ` WHERE n.recipient_space_id = $1 AND ` + notificationVisibleSQL + `
 	), ranked AS (
 		SELECT notification_id, kind, actor_space_id, post_id, friend_request_id, created_at, group_id,
-			ARRAY_AGG(notification_id) OVER (PARTITION BY kind, group_id) AS notification_ids,
-			CASE WHEN kind = 'post_like' THEN COUNT(*) OVER (PARTITION BY kind, group_id) ELSE 1 END AS actor_count,
-			BOOL_OR(read_at IS NULL) OVER (PARTITION BY kind, group_id) AS unread,
 			ROW_NUMBER() OVER (PARTITION BY kind, group_id ORDER BY created_at DESC, notification_id DESC) AS position
 		FROM visible
 	), page AS (
@@ -69,9 +66,18 @@ func (r *NotificationsRepository) List(ctx context.Context, recipientSpaceID, cu
 	}
 	args = append(args, limit+1)
 	query += ` ORDER BY created_at DESC, notification_id DESC LIMIT $` + strconv.Itoa(len(args)) + `
+	), grouped AS MATERIALIZED (
+		SELECT visible.kind, visible.group_id,
+			ARRAY_AGG(visible.notification_id) AS notification_ids,
+			CASE WHEN visible.kind = 'post_like' THEN COUNT(*) ELSE 1 END AS actor_count,
+			BOOL_OR(visible.read_at IS NULL) AS unread
+		FROM visible
+		JOIN page ON page.kind = visible.kind AND page.group_id = visible.group_id
+		GROUP BY visible.kind, visible.group_id
 	)
-	SELECT page.notification_id, page.notification_ids, page.kind, page.post_id, page.friend_request_id, page.created_at, page.actor_count, page.unread, ` + spaceActorSelectColumns("actor", "avatar", "actor") + `
+	SELECT page.notification_id, grouped.notification_ids, page.kind, page.post_id, page.friend_request_id, page.created_at, grouped.actor_count, grouped.unread, ` + spaceActorSelectColumns("actor", "avatar", "actor") + `
 	FROM page
+	JOIN grouped ON grouped.kind = page.kind AND grouped.group_id = page.group_id
 	JOIN ranked sample ON sample.kind = page.kind AND sample.group_id = page.group_id
 		AND sample.position <= CASE WHEN page.kind = 'post_like' THEN 2 ELSE 1 END
 	JOIN spaces actor ON actor.space_id = sample.actor_space_id

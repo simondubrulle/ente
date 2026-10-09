@@ -1696,6 +1696,57 @@ async fn like_post_uses_post_like_endpoint() {
 }
 
 #[tokio::test]
+async fn unread_badge_stops_without_loading_conversations() {
+    for kind in ["regular", "post_reply"] {
+        let mut server = Server::new_async().await;
+        let ctx = test_account_ctx(&server.url());
+        let key = generate_key();
+        let encrypted_key =
+            b64::encode(&seal_with_public_key(&key, &test_public_key(&ctx)).unwrap());
+        let cipher = b64::encode(
+            &encrypt_secretbox_payload(
+                &key,
+                &serde_json::to_vec(&json!({"version":1,"kind":kind,"text":"Hello"})).unwrap(),
+            )
+            .unwrap(),
+        );
+        let status = server
+            .mock("GET", "/spaces/space_owner_main/unread")
+            .with_body(json!({"notificationsUnread":true}).to_string())
+            .create_async()
+            .await;
+        let activities = server
+            .mock("GET", "/spaces/space_owner_main/unread/activities")
+            .match_query(Matcher::UrlEncoded("cursor".into(), String::new()))
+            .with_body(json!({"items":[{"kind":kind,"messageCipher":cipher,"encryptedMessageKey":encrypted_key}],"nextCursor":"older"}).to_string())
+            .create_async()
+            .await;
+        let older = server
+            .mock("GET", "/spaces/space_owner_main/unread/activities")
+            .match_query(Matcher::UrlEncoded("cursor".into(), "older".into()))
+            .expect(0)
+            .create_async()
+            .await;
+        let conversations = server
+            .mock("GET", "/spaces/space_owner_main/conversations")
+            .with_status(500)
+            .expect(0)
+            .create_async()
+            .await;
+        assert!(
+            ctx.unread_status("space_owner_main")
+                .await
+                .unwrap()
+                .notifications_unread
+        );
+        status.assert_async().await;
+        activities.assert_async().await;
+        older.assert_async().await;
+        conversations.assert_async().await;
+    }
+}
+
+#[tokio::test]
 async fn unread_methods_use_read_marker_endpoints() {
     let mut server = Server::new_async().await;
     let ctx = test_account_ctx(&server.url());
@@ -2433,7 +2484,21 @@ async fn legacy_pokes_are_hidden_from_threads_previews_and_unread_status() {
         }
         let conversations = server.mock("GET", "/spaces/space_owner_main/conversations")
             .with_body(json!({"friends":[],"chatSummaries":{"space_friend":{"latestActivity":make_activity(&poke),"unreadActivities":unread}}}).to_string())
-            .expect(2).create_async().await;
+            .expect(1).create_async().await;
+        let unread_first = server
+            .mock("GET", "/spaces/space_owner_main/unread/activities")
+            .match_query(Matcher::UrlEncoded("cursor".into(), String::new()))
+            .with_body(json!({"items":[poke],"nextCursor":"older"}).to_string())
+            .create_async()
+            .await;
+        let unread_second = server
+            .mock("GET", "/spaces/space_owner_main/unread/activities")
+            .match_query(Matcher::UrlEncoded("cursor".into(), "older".into()))
+            .with_body(
+                json!({"items":if has_message {vec![message.clone()]} else {vec![]}}).to_string(),
+            )
+            .create_async()
+            .await;
         let first = server
             .mock(
                 "GET",
@@ -2441,7 +2506,7 @@ async fn legacy_pokes_are_hidden_from_threads_previews_and_unread_status() {
             )
             .match_query(Matcher::Exact("limit=100".into()))
             .with_body(json!({"items":[poke],"nextCursor":"older"}).to_string())
-            .expect(2)
+            .expect(1)
             .create_async()
             .await;
         let second = server
@@ -2454,7 +2519,7 @@ async fn legacy_pokes_are_hidden_from_threads_previews_and_unread_status() {
                 Matcher::UrlEncoded("limit".into(), "100".into()),
             ]))
             .with_body(json!({"items":if has_message {vec![message]} else {vec![]}}).to_string())
-            .expect(2)
+            .expect(1)
             .create_async()
             .await;
         let status = server
@@ -2490,6 +2555,8 @@ async fn legacy_pokes_are_hidden_from_threads_previews_and_unread_status() {
             has_message
         );
         conversations.assert_async().await;
+        unread_first.assert_async().await;
+        unread_second.assert_async().await;
         first.assert_async().await;
         second.assert_async().await;
         status.assert_async().await;

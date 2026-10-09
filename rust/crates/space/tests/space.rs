@@ -365,6 +365,28 @@ async fn space_bootstrap_posts_and_friend_share_suite(endpoint: &str) {
             .unwrap()
             .notifications_unread
     );
+    friend_ctx
+        .send_message(&friend_space.space_id, &owner_space.space_id, "Hello")
+        .await
+        .unwrap();
+    assert!(
+        owner_ctx
+            .unread_status(&owner_space.space_id)
+            .await
+            .unwrap()
+            .notifications_unread
+    );
+    owner_ctx
+        .mark_notifications_read(&owner_space.space_id, &friend_space.space_id)
+        .await
+        .unwrap();
+    assert!(
+        !owner_ctx
+            .unread_status(&owner_space.space_id)
+            .await
+            .unwrap()
+            .notifications_unread
+    );
     space::assert_http_status(
         outsider_ctx
             .send_poke(
