@@ -109,9 +109,11 @@ On mobile, yes. Open the **Albums** tab. Press and hold an Ente album, then sele
 
 You can select albums you own and albums shared with you.
 
+On desktop, slideshows play photos from one open album; combining multiple albums is currently supported only on mobile.
+
 ### What can I change during a slideshow? {#album-slideshow-settings}
 
-On mobile, tap the middle of the screen to show the controls. On desktop, move the pointer over the slideshow to show the controls. Then tap or click the settings button in the top-right corner. You can choose:
+On mobile, tap the middle of the screen to show the controls. On desktop, move the pointer over the slideshow or press a key to show the controls. Then tap or click the settings button in the top-right corner. You can choose:
 
 - **Time per photo:** 5, 10, 15, or 30 seconds; or 1, 5, or 10 minutes
 - **Photo order:** In order or Shuffle
@@ -123,7 +125,7 @@ Tap the left side of the screen to see the previous photo. Tap the right side to
 
 Tap pause to stop the slideshow or play to continue.
 
-On desktop, you can also use the left and right arrow keys to move between photos, and the space bar to pause or resume.
+On desktop, click the previous and next buttons or use the left and right arrow keys. Click pause or play, or press the Space bar, to pause or resume.
 
 ### Which items appear in an album slideshow? {#album-slideshow-supported-items}
 
