@@ -157,7 +157,7 @@ const Page: React.FC = () => {
                 username={profile.username}
                 onAcceptFriendRequest={async (requestID) => {
                     const actorSpaceId = profile.spaceId;
-                    if (!actorSpaceId) return;
+                    if (!actorSpaceId) return false;
                     try {
                         await confirmCurrentFriendRequest(
                             actorSpaceId,
@@ -171,7 +171,7 @@ const Page: React.FC = () => {
                             ),
                         );
                         setShowFriendRequestCanceledToast(true);
-                        return;
+                        return false;
                     }
                     const loadedFriends =
                         await loadCurrentSpaceFriends(actorSpaceId);
@@ -181,6 +181,7 @@ const Page: React.FC = () => {
                         ),
                     );
                     setFriends(loadedFriends);
+                    return true;
                 }}
                 onDeleteFriendRequest={async (requestID) => {
                     const actorSpaceId = profile.spaceId;
