@@ -48,6 +48,7 @@ import {
     spaceTextMuted,
 } from "styles/colors";
 import { groupSpaceActivities } from "utils/activity-sections";
+import { firstNameFrom } from "utils/display";
 import { isFriendRequestCanceledError } from "utils/friend-errors";
 import { spacePostDeletedEvent } from "utils/post-events";
 import { postQuoteErrorState } from "utils/post-quote";
@@ -87,7 +88,7 @@ const NotificationAvatar: React.FC<{
 };
 
 const actorName = (actor: SpaceNotification["actors"][number]) =>
-    actor.fullName.trim() || actor.username;
+    firstNameFrom(actor.fullName.trim() || actor.username);
 
 const NotificationRow: React.FC<{
     group: SpaceNotification;

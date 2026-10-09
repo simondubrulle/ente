@@ -266,7 +266,6 @@ export const FriendOrbit: React.FC<FriendOrbitProps> = ({
                         "& > button": {
                             cursor:
                                 heldFriendID == item.id ? "grabbing" : "grab",
-                            ...(heldFriendID == item.id && { scale: "1.06" }),
                         },
                         "& img": { pointerEvents: "none" },
                     }}

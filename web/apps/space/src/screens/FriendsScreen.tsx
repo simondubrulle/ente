@@ -1,19 +1,10 @@
-import {
-    Add01Icon,
-    ArrowLeft02Icon,
-    UserAdd02Icon,
-} from "@hugeicons/core-free-icons";
+import { ArrowLeft02Icon, UserAdd02Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Skeleton } from "@mui/material";
-import {
-    spaceActionDoneDurationMs,
-    type SpaceActionPhase,
-} from "components/ActionFeedback";
 import { SpaceAddFriendDialog } from "components/AddFriendDialog";
 import { SpaceAvatarImage } from "components/AvatarImage";
-import { ConfirmationActionSheet } from "components/ConfirmationActionSheet";
 import { FriendOrbit } from "components/FriendOrbit";
-import { FriendQuickActionsDialog } from "components/FriendQuickActionsDialog";
+import { FriendRequestSheet } from "components/FriendRequestSheet";
 import { FriendStarField } from "components/FriendStarField";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
 import { SpaceSkipLink } from "components/SkipLink";
@@ -21,12 +12,7 @@ import type { FriendProfile } from "data/friends";
 import log from "ente-base/log";
 import React, { useState } from "react";
 import type { SpaceFriendRequest } from "services/space";
-import {
-    spaceAppBackground,
-    spaceSurface,
-    spaceSurfaceHover,
-    spaceText,
-} from "styles/colors";
+import { spaceAppBackground, spaceSurface, spaceText } from "styles/colors";
 import { spaceTouchTargetSize } from "styles/touch-targets";
 
 const green = "#08C225";
@@ -52,19 +38,16 @@ interface FriendsScreenProps {
     onDeleteFriendRequest: (requestID: number) => Promise<void>;
     onLoadFriendAvatar?: (friend: FriendProfile) => Promise<string | null>;
     onAddFriend: (username: string) => Promise<"friend" | "requested">;
-    onMessage?: (friendID: string) => void;
-    onPoke?: (friendID: string, requestID: string) => Promise<void>;
-    onOpenFriend?: (friendID: string) => void;
+    onOpenFriend: (friendID: string) => void;
     profileLink?: string;
     username: string;
-    onUnfriend?: (friendID: string) => Promise<void> | void;
 }
 
 interface FriendIdentityProps {
     avatarUrl?: string | null;
     friend: FriendProfile;
     onLoadAvatar?: () => Promise<string | null | undefined>;
-    onOpen?: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    onOpen: () => void;
 }
 
 const FriendIdentity: React.FC<FriendIdentityProps> = ({
@@ -120,8 +103,7 @@ const FriendIdentity: React.FC<FriendIdentityProps> = ({
             component="button"
             type="button"
             onClick={onOpen}
-            aria-label={`Actions for ${displayName}`}
-            aria-haspopup="dialog"
+            aria-label={`Open ${displayName}'s profile`}
             sx={{
                 alignItems: "center",
                 bgcolor: "transparent",
@@ -136,11 +118,6 @@ const FriendIdentity: React.FC<FriendIdentityProps> = ({
                 textAlign: "center",
                 width: "100%",
                 position: "relative",
-                transition: "scale 180ms ease",
-                "&:hover": { scale: "1.06" },
-                "@media (prefers-reduced-motion: reduce)": {
-                    transition: "none",
-                },
                 "&:focus-visible": {
                     outline: `2px solid ${green}`,
                     outlineOffset: 2,
@@ -203,7 +180,7 @@ const orbitCircleSx = {
 } as const;
 
 interface FriendRequestCircleProps {
-    onOpen: (event: React.MouseEvent<HTMLButtonElement>) => void;
+    onOpen: () => void;
     request: SpaceFriendRequest;
 }
 
@@ -212,7 +189,6 @@ const FriendRequestCircle: React.FC<FriendRequestCircleProps> = ({
     request,
 }) => (
     <Box
-        className={request.direction == "received" ? "green-bg" : undefined}
         component="button"
         type="button"
         aria-label={`${request.direction == "received" ? "Friend request from" : "Pending friend request to"} @${request.friend.username}`}
@@ -220,29 +196,23 @@ const FriendRequestCircle: React.FC<FriendRequestCircleProps> = ({
         onClick={onOpen}
         sx={{
             ...orbitCircleSx,
-            bgcolor: request.direction == "received" ? green : "#444444",
-            borderColor:
-                request.direction == "received"
-                    ? "color(display-p3 0.32 0.88 0.4)"
-                    : "#737373",
-            boxShadow:
-                request.direction == "received"
-                    ? "0 0 18px rgba(8, 194, 37, 0.18)"
-                    : orbitCircleSx.boxShadow,
-            transition: "scale 180ms ease",
-            "&:hover": { scale: "1.06" },
-            "@media (prefers-reduced-motion: reduce)": { transition: "none" },
+            borderColor: request.direction == "received" ? green : "#737373",
         }}
     >
         <Box
             component="span"
             title={`@${request.friend.username}`}
             sx={{
-                fontSize: 14,
-                fontWeight: 600,
+                bgcolor: request.direction == "received" ? green : "#303030",
+                borderRadius: "999px",
+                color: "rgba(255, 255, 255, 0.9)",
+                fontSize: 12,
+                fontWeight: 500,
                 lineHeight: "18px",
                 maxWidth: "100%",
                 overflow: "hidden",
+                px: "8px",
+                py: "4px",
                 textOverflow: "ellipsis",
                 whiteSpace: "nowrap",
             }}
@@ -261,38 +231,19 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
     onBack,
     onDeleteFriendRequest,
     onLoadFriendAvatar,
-    onMessage,
-    onPoke,
     onOpenFriend,
     profileLink,
     username,
-    onUnfriend,
 }) => {
     const [isAddFriendOpen, setIsAddFriendOpen] = React.useState(false);
-    const [selectedFriend, setSelectedFriend] = React.useState<{
-        friend: FriendProfile;
-        anchorRect: DOMRect;
-    } | null>(null);
-    const [selectedRequest, setSelectedRequest] = React.useState<{
-        request: SpaceFriendRequest;
-        anchorRect: DOMRect;
-    } | null>(null);
-    const pokeRequestIDs = React.useRef(new Map<string, string>());
-    const [friendToUnfriend, setFriendToUnfriend] =
-        React.useState<FriendProfile | null>(null);
-    const [isUnfriendOpen, setIsUnfriendOpen] = React.useState(false);
-    const [unfriendActionPhase, setUnfriendActionPhase] =
-        React.useState<SpaceActionPhase | null>(null);
-    const [unfriendErrorMessage, setUnfriendErrorMessage] = React.useState<
-        string | null
-    >(null);
+    const [selectedRequest, setSelectedRequest] =
+        React.useState<SpaceFriendRequest | null>(null);
     const [loadedAvatarURLsByKey, setLoadedAvatarURLsByKey] = React.useState<
         Record<string, string>
     >({});
     const avatarLoadsInFlightRef = React.useRef<
         Map<string, Promise<string | null | undefined>>
     >(new Map());
-    const isUnfriendActionRunning = unfriendActionPhase != null;
     const loadedAvatarURLFor = React.useCallback(
         (friend: FriendProfile) =>
             friend.avatarUrl ??
@@ -335,44 +286,6 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
         },
         [loadedAvatarURLFor, onLoadFriendAvatar],
     );
-
-    const cancelUnfriend = () => {
-        if (isUnfriendActionRunning) return;
-        setUnfriendErrorMessage(null);
-        setIsUnfriendOpen(false);
-    };
-
-    const confirmUnfriend = () => {
-        if (!friendToUnfriend || isUnfriendActionRunning) return;
-        setUnfriendErrorMessage(null);
-        setUnfriendActionPhase("busy");
-        void (async () => {
-            try {
-                await Promise.resolve(onUnfriend?.(friendToUnfriend.id));
-                setUnfriendActionPhase("done");
-            } catch (error) {
-                log.error("Failed to unfriend space friend", error);
-                setUnfriendActionPhase(null);
-                setUnfriendErrorMessage("Couldn't unfriend. Please try again.");
-            }
-        })();
-    };
-
-    React.useEffect(() => {
-        if (unfriendActionPhase != "done") return;
-
-        const timeoutID = window.setTimeout(() => {
-            setIsUnfriendOpen(false);
-        }, spaceActionDoneDurationMs);
-
-        return () => window.clearTimeout(timeoutID);
-    }, [unfriendActionPhase]);
-
-    const handleUnfriendSheetExited = () => {
-        setFriendToUnfriend(null);
-        setUnfriendActionPhase(null);
-        setUnfriendErrorMessage(null);
-    };
 
     return (
         <Box
@@ -524,7 +437,6 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                         </Box>
                     ) : (
                         <FriendOrbit
-                            initialOuterID="add-friend"
                             items={[
                                 ...friends.map((friend) => ({
                                     id: friend.id,
@@ -537,12 +449,8 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                                             onLoadAvatar={() =>
                                                 loadFriendAvatar(friend)
                                             }
-                                            onOpen={(event) =>
-                                                setSelectedFriend({
-                                                    friend,
-                                                    anchorRect:
-                                                        event.currentTarget.getBoundingClientRect(),
-                                                })
+                                            onOpen={() =>
+                                                onOpenFriend(friend.id)
                                             }
                                         />
                                     ),
@@ -553,129 +461,25 @@ export const FriendsScreen: React.FC<FriendsScreenProps> = ({
                                     content: (
                                         <FriendRequestCircle
                                             request={request}
-                                            onOpen={(event) =>
-                                                setSelectedRequest({
-                                                    request,
-                                                    anchorRect:
-                                                        event.currentTarget.getBoundingClientRect(),
-                                                })
+                                            onOpen={() =>
+                                                setSelectedRequest(request)
                                             }
                                         />
                                     ),
                                 })),
-                                {
-                                    id: "add-friend",
-                                    fixedSize: 64,
-                                    content: (
-                                        <Box
-                                            component="button"
-                                            type="button"
-                                            aria-label="Add friend"
-                                            aria-haspopup="dialog"
-                                            aria-expanded={isAddFriendOpen}
-                                            onClick={() =>
-                                                setIsAddFriendOpen(true)
-                                            }
-                                            sx={{
-                                                ...orbitCircleSx,
-                                                transition: "scale 180ms ease",
-                                                "&:hover": {
-                                                    bgcolor: spaceSurfaceHover,
-                                                    scale: "1.06",
-                                                },
-                                                "@media (prefers-reduced-motion: reduce)":
-                                                    { transition: "none" },
-                                            }}
-                                        >
-                                            <HugeiconsIcon
-                                                icon={Add01Icon}
-                                                size={28}
-                                                strokeWidth={1.8}
-                                            />
-                                        </Box>
-                                    ),
-                                },
                             ]}
                         />
                     )}
                 </Box>
             </Box>
             {selectedRequest && (
-                <FriendQuickActionsDialog
-                    anchorRect={selectedRequest.anchorRect}
-                    friend={selectedRequest.request.friend}
+                <FriendRequestSheet
+                    request={selectedRequest}
+                    onAccept={onAcceptFriendRequest}
+                    onDelete={onDeleteFriendRequest}
                     onClose={() => setSelectedRequest(null)}
-                    requestActions={{
-                        onAccept:
-                            selectedRequest.request.direction == "received"
-                                ? () =>
-                                      onAcceptFriendRequest(
-                                          selectedRequest.request.requestId,
-                                      )
-                                : undefined,
-                        onCancel: () =>
-                            onDeleteFriendRequest(
-                                selectedRequest.request.requestId,
-                            ),
-                    }}
                 />
             )}
-            {selectedFriend && (
-                <FriendQuickActionsDialog
-                    anchorRect={selectedFriend.anchorRect}
-                    avatarUrl={loadedAvatarURLFor(selectedFriend.friend)}
-                    friend={selectedFriend.friend}
-                    onClose={() => setSelectedFriend(null)}
-                    onMessage={
-                        onMessage
-                            ? () => onMessage(selectedFriend.friend.id)
-                            : undefined
-                    }
-                    onPoke={
-                        onPoke
-                            ? async () => {
-                                  const friendID = selectedFriend.friend.id;
-                                  const requestID =
-                                      pokeRequestIDs.current.get(friendID) ??
-                                      crypto.randomUUID();
-                                  pokeRequestIDs.current.set(
-                                      friendID,
-                                      requestID,
-                                  );
-                                  await onPoke(friendID, requestID);
-                                  pokeRequestIDs.current.delete(friendID);
-                              }
-                            : undefined
-                    }
-                    onProfile={
-                        onOpenFriend
-                            ? () => onOpenFriend(selectedFriend.friend.id)
-                            : undefined
-                    }
-                    onUnfriend={
-                        onUnfriend
-                            ? () => {
-                                  setUnfriendErrorMessage(null);
-                                  setFriendToUnfriend(selectedFriend.friend);
-                                  setIsUnfriendOpen(true);
-                              }
-                            : undefined
-                    }
-                />
-            )}
-            <ConfirmationActionSheet
-                open={isUnfriendOpen}
-                title={`Unfriend ${friendToUnfriend?.fullName.trim().split(/\s+/)[0] || friendToUnfriend?.username}?`}
-                description="You’ll no longer see each other’s posts or message each other."
-                confirmLabel="Unfriend"
-                confirmActionPhase={unfriendActionPhase}
-                confirmDisabled={isUnfriendActionRunning}
-                errorMessage={unfriendErrorMessage}
-                cancelDisabled={isUnfriendActionRunning}
-                onCancel={cancelUnfriend}
-                onConfirm={confirmUnfriend}
-                onExited={handleUnfriendSheetExited}
-            />
         </Box>
     );
 };

@@ -3,15 +3,13 @@ import {
     ArrowLeft02Icon,
     BubbleChatIcon,
     HandPointingRightIcon,
-    MoreHorizontalIcon,
     Tick02Icon,
     UserRemove01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import { Box, Menu, MenuItem, Skeleton } from "@mui/material";
+import { Box, Skeleton } from "@mui/material";
 import {
     spaceActionDoneDurationMs,
-    SpaceActionFeedbackIcon,
     type SpaceActionPhase,
 } from "components/ActionFeedback";
 import {
@@ -54,7 +52,6 @@ import { spaceDefaultCoverImagePath } from "utils/post-image";
 import { viewerPhotosFromPost } from "utils/post-photos";
 
 const green = "#08C225";
-const dangerColor = "#F63A3A";
 const textBase = spaceText;
 const textSoft = spaceTextMuted;
 const coverForeground = "#FFFFFF";
@@ -282,8 +279,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     const [deletedPostIDs, setDeletedPostIDs] = useState<Set<string>>(
         () => new Set(),
     );
-    const [friendActionsAnchor, setFriendActionsAnchor] =
-        useState<HTMLElement | null>(null);
     const [pokePhase, setPokePhase] = useState<SpaceActionPhase>();
     const [pokeFailed, setPokeFailed] = useState(false);
     const pokeRequestID = React.useRef<string | undefined>(undefined);
@@ -312,9 +307,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     const isAnonymousPublicProfile = headerVariant == "public-anonymous";
     const isPublicProfile =
         headerVariant == "public" || isAnonymousPublicProfile;
-    const friendActionsButtonID = React.useId();
-    const friendActionsMenuID = React.useId();
-    const isFriendActionsOpen = Boolean(friendActionsAnchor);
     const isUnfriendActionRunning = unfriendActionPhase != null;
     const canManageFriend =
         isFriendProfile &&
@@ -359,7 +351,6 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     const postImageLoadRootMargin = isAnonymousPublicProfile
         ? publicProfilePostLoadRootMargin
         : profilePostLoadRootMargin;
-    const closeFriendActions = () => setFriendActionsAnchor(null);
 
     const poke = async () => {
         if (!onPokeFriend || pokePhase) return;
@@ -381,14 +372,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         if (pokePhase != "done") return;
 
         const timeoutID = window.setTimeout(() => {
-            setFriendActionsAnchor(null);
-        }, spaceActionDoneDurationMs);
+            setPokePhase(undefined);
+        }, 2100);
 
         return () => window.clearTimeout(timeoutID);
     }, [pokePhase]);
 
     const requestUnfriend = () => {
-        closeFriendActions();
         setUnfriendErrorMessage(null);
         setIsUnfriendSheetOpen(true);
     };
@@ -1002,7 +992,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                     profile.username
                                 )}
                             </Box>
-                            {isOwnerProfile ? (
+                            {isOwnerProfile && (
                                 <Box
                                     component="button"
                                     type="button"
@@ -1036,266 +1026,181 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                 >
                                     <SpaceShareIcon strokeWidth={2.2} />
                                 </Box>
-                            ) : (
-                                canManageFriend && (
-                                    <Box
-                                        component="button"
-                                        id={friendActionsButtonID}
-                                        type="button"
-                                        aria-label={`Actions for ${displayName}`}
-                                        aria-controls={
-                                            isFriendActionsOpen
-                                                ? friendActionsMenuID
-                                                : undefined
-                                        }
-                                        aria-expanded={
-                                            isFriendActionsOpen
-                                                ? "true"
-                                                : undefined
-                                        }
-                                        aria-haspopup="menu"
-                                        onClick={(event) => {
-                                            if (pokePhase == "done")
-                                                setPokePhase(undefined);
-                                            setFriendActionsAnchor(
-                                                event.currentTarget,
-                                            );
-                                        }}
-                                        sx={{
-                                            alignItems: "center",
-                                            bgcolor: "transparent",
-                                            border: 0,
-                                            color: profileIdentityColor,
-                                            cursor: "pointer",
-                                            display: "flex",
-                                            gridColumn: 3,
-                                            height: 24,
-                                            justifyContent: "flex-start",
-                                            justifySelf: "start",
-                                            ml: "8px",
-                                            p: 0,
-                                            width: 24,
-                                            "&:focus-visible": {
-                                                borderRadius: "50%",
-                                                outline: `2px solid ${green}`,
-                                                outlineOffset: 2,
-                                            },
-                                        }}
-                                    >
-                                        <HugeiconsIcon
-                                            icon={MoreHorizontalIcon}
-                                            size={24}
-                                            strokeWidth={2}
-                                        />
-                                    </Box>
-                                )
-                            )}
-                            {canManageFriend && (
-                                <Menu
-                                    id={friendActionsMenuID}
-                                    anchorEl={friendActionsAnchor}
-                                    open={isFriendActionsOpen}
-                                    onClose={closeFriendActions}
-                                    anchorOrigin={{
-                                        horizontal: "left",
-                                        vertical: "bottom",
-                                    }}
-                                    transformOrigin={{
-                                        horizontal: "left",
-                                        vertical: "top",
-                                    }}
-                                    slotProps={{
-                                        paper: {
-                                            sx: {
-                                                bgcolor: spaceDialogBackground,
-                                                borderRadius: "14px",
-                                                boxShadow:
-                                                    "0 14px 40px rgba(0, 0, 0, 0.16)",
-                                                mt: "6px",
-                                                minWidth: 0,
-                                                p: "4px",
-                                                width: "max-content",
-                                            },
-                                        },
-                                        list: {
-                                            "aria-labelledby":
-                                                friendActionsButtonID,
-                                            sx: { p: 0 },
-                                        },
-                                    }}
-                                >
-                                    {onMessageFriend && (
-                                        <MenuItem
-                                            dense
-                                            disableRipple
-                                            onClick={() => {
-                                                closeFriendActions();
-                                                onMessageFriend();
-                                            }}
-                                            sx={{
-                                                borderRadius: "10px",
-                                                color: textBase,
-                                                gap: "8px",
-                                                minHeight: 36,
-                                                px: "9px",
-                                                py: "4px",
-                                                whiteSpace: "nowrap",
-                                                "&.Mui-focusVisible": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                                "&:active": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                                "&:hover": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                            }}
-                                        >
-                                            <HugeiconsIcon
-                                                icon={BubbleChatIcon}
-                                                size={18}
-                                                strokeWidth={1.8}
-                                            />
-                                            <Box
-                                                sx={{
-                                                    fontFamily:
-                                                        '"Inter Variable", Inter, sans-serif',
-                                                    fontSize: 13,
-                                                    fontWeight: 650,
-                                                    lineHeight: "18px",
-                                                }}
-                                            >
-                                                Message
-                                            </Box>
-                                        </MenuItem>
-                                    )}
-                                    {onPokeFriend && (
-                                        <MenuItem
-                                            dense
-                                            disableRipple
-                                            onClick={() => void poke()}
-                                            disabled={pokePhase !== undefined}
-                                            sx={{
-                                                borderRadius: "10px",
-                                                color: textBase,
-                                                gap: "8px",
-                                                minHeight: 36,
-                                                px: "9px",
-                                                py: "4px",
-                                                whiteSpace: "nowrap",
-                                                "&.Mui-disabled": {
-                                                    color: textBase,
-                                                    opacity: 1,
-                                                },
-                                                "&.Mui-focusVisible": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                                "&:active": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                                "&:hover": {
-                                                    bgcolor:
-                                                        "rgba(255, 255, 255, 0.08)",
-                                                },
-                                            }}
-                                        >
-                                            <SpaceActionFeedbackIcon
-                                                phase={pokePhase ?? null}
-                                                size={18}
-                                                idleIcon={
-                                                    <HugeiconsIcon
-                                                        icon={
-                                                            HandPointingRightIcon
-                                                        }
-                                                        size={18}
-                                                        strokeWidth={1.8}
-                                                    />
-                                                }
-                                            />
-                                            <Box
-                                                sx={{
-                                                    fontFamily:
-                                                        '"Inter Variable", Inter, sans-serif',
-                                                    fontSize: 13,
-                                                    fontWeight: 650,
-                                                    lineHeight: "18px",
-                                                }}
-                                            >
-                                                {pokePhase == "done"
-                                                    ? "Poked"
-                                                    : "Poke"}
-                                            </Box>
-                                        </MenuItem>
-                                    )}
-                                    {pokeFailed && (
-                                        <Box
-                                            role="alert"
-                                            sx={{
-                                                color: textSoft,
-                                                fontSize: 12,
-                                                px: "9px",
-                                                py: "4px",
-                                            }}
-                                        >
-                                            Couldn&apos;t send poke. Try again.
-                                        </Box>
-                                    )}
-                                    {onUnfriend && (
-                                        <MenuItem
-                                            dense
-                                            disableRipple
-                                            onClick={requestUnfriend}
-                                            sx={{
-                                                alignItems: "center",
-                                                borderRadius: "10px",
-                                                color: dangerColor,
-                                                display: "flex",
-                                                gap: "8px",
-                                                minHeight: 36,
-                                                px: "9px",
-                                                py: "4px",
-                                                whiteSpace: "nowrap",
-                                                "&.Mui-focusVisible": {
-                                                    bgcolor:
-                                                        "rgba(246, 58, 58, 0.14)",
-                                                },
-                                                "&:active": {
-                                                    bgcolor:
-                                                        "rgba(246, 58, 58, 0.14)",
-                                                },
-                                                "&:hover": {
-                                                    bgcolor:
-                                                        "rgba(246, 58, 58, 0.14)",
-                                                },
-                                            }}
-                                        >
-                                            <HugeiconsIcon
-                                                icon={UserRemove01Icon}
-                                                size={18}
-                                                strokeWidth={1.8}
-                                                style={{ flexShrink: 0 }}
-                                            />
-                                            <Box
-                                                sx={{
-                                                    fontFamily:
-                                                        '"Inter Variable", Inter, sans-serif',
-                                                    fontSize: 13,
-                                                    fontWeight: 650,
-                                                    lineHeight: "18px",
-                                                }}
-                                            >
-                                                Unfriend
-                                            </Box>
-                                        </MenuItem>
-                                    )}
-                                </Menu>
                             )}
                         </Box>
+                        {canManageFriend && (
+                            <Box
+                                sx={{
+                                    mt: "20px",
+                                    mx: "auto",
+                                    width: "100%",
+                                    maxWidth: 320,
+                                }}
+                            >
+                                <Box
+                                    role="group"
+                                    aria-label="Friend actions"
+                                    sx={{
+                                        display: "grid",
+                                        gap: "8px",
+                                        gridAutoColumns: "minmax(0, 1fr)",
+                                        gridAutoFlow: "column",
+                                        position: "relative",
+                                        zIndex: 4,
+                                    }}
+                                >
+                                    {[
+                                        {
+                                            label: "Poke",
+                                            icon: HandPointingRightIcon,
+                                            onClick: onPokeFriend
+                                                ? () => void poke()
+                                                : undefined,
+                                        },
+                                        {
+                                            label: "Message",
+                                            icon: BubbleChatIcon,
+                                            onClick: onMessageFriend,
+                                        },
+                                        {
+                                            label: "Unfriend",
+                                            icon: UserRemove01Icon,
+                                            onClick: onUnfriend
+                                                ? requestUnfriend
+                                                : undefined,
+                                        },
+                                    ]
+                                        .filter((action) => action.onClick)
+                                        .map((action) => {
+                                            const isPoke =
+                                                action.label == "Poke";
+                                            const active =
+                                                isPoke &&
+                                                pokePhase !== undefined;
+                                            const done =
+                                                isPoke && pokePhase == "done";
+                                            return (
+                                                <Box
+                                                    key={action.label}
+                                                    component="button"
+                                                    type="button"
+                                                    aria-label={
+                                                        done
+                                                            ? "Poke sent"
+                                                            : action.label
+                                                    }
+                                                    aria-busy={
+                                                        isPoke &&
+                                                        pokePhase == "busy"
+                                                    }
+                                                    aria-live={
+                                                        isPoke
+                                                            ? "polite"
+                                                            : undefined
+                                                    }
+                                                    disabled={active}
+                                                    onClick={action.onClick}
+                                                    sx={{
+                                                        alignItems: "center",
+                                                        bgcolor:
+                                                            spaceDialogBackground,
+                                                        border: 0,
+                                                        borderRadius: "22px",
+                                                        color: active
+                                                            ? green
+                                                            : textBase,
+                                                        cursor: active
+                                                            ? "default"
+                                                            : "pointer",
+                                                        display: "flex",
+                                                        height: 40,
+                                                        justifyContent:
+                                                            "center",
+                                                        minWidth: 0,
+                                                        p: "0 8px",
+                                                        "&:hover:not(:disabled)":
+                                                            {
+                                                                bgcolor:
+                                                                    spaceSurfaceHover,
+                                                            },
+                                                        "&:focus-visible": {
+                                                            outline: `2px solid ${green}`,
+                                                            outlineOffset: 2,
+                                                        },
+                                                    }}
+                                                >
+                                                    <Box
+                                                        component="span"
+                                                        aria-hidden
+                                                        sx={{
+                                                            alignItems:
+                                                                "center",
+                                                            display: "flex",
+                                                            flexShrink: 0,
+                                                            height: 22,
+                                                            justifyContent:
+                                                                "center",
+                                                            width: 22,
+                                                            animation: active
+                                                                ? "spacePokeJab 2000ms ease-in-out"
+                                                                : "none",
+                                                            "@keyframes spacePokeJab":
+                                                                {
+                                                                    "0%, 100%":
+                                                                        {
+                                                                            transform:
+                                                                                "translate(0, 0) rotate(0deg) scale(1)",
+                                                                        },
+                                                                    "27.5%, 52%, 73.75%":
+                                                                        {
+                                                                            transform:
+                                                                                "translate(36px, -94px) rotate(-40deg) scale(3)",
+                                                                        },
+                                                                    "41%, 63%":
+                                                                        {
+                                                                            transform:
+                                                                                "translate(52px, -108px) rotate(-40deg) scale(3)",
+                                                                        },
+                                                                },
+                                                            "@media (prefers-reduced-motion: reduce)":
+                                                                {
+                                                                    animation:
+                                                                        "none",
+                                                                },
+                                                            ...(action.icon ==
+                                                                BubbleChatIcon && {
+                                                                "& svg path:last-of-type":
+                                                                    {
+                                                                        display:
+                                                                            "none",
+                                                                    },
+                                                            }),
+                                                        }}
+                                                    >
+                                                        <HugeiconsIcon
+                                                            icon={action.icon}
+                                                            size={22}
+                                                            strokeWidth={2.2}
+                                                        />
+                                                    </Box>
+                                                </Box>
+                                            );
+                                        })}
+                                </Box>
+                                {pokeFailed && (
+                                    <Box
+                                        role="alert"
+                                        sx={{
+                                            color: textSoft,
+                                            fontSize: 12,
+                                            mt: "8px",
+                                        }}
+                                    >
+                                        Couldn&apos;t send poke. Try again.
+                                    </Box>
+                                )}
+                            </Box>
+                        )}
                         {!isFriendProfile &&
                             (isStatsLoading ? (
                                 <ProfileStatsSkeleton />
