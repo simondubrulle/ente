@@ -7,6 +7,7 @@ import "package:ente_strings/ente_strings.dart";
 import "package:figma_squircle/figma_squircle.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
+import "package:flutter_secure_storage/flutter_secure_storage.dart";
 import "package:flutter_test/flutter_test.dart";
 import "package:package_info_plus/package_info_plus.dart";
 import "package:path_provider_platform_interface/path_provider_platform_interface.dart";
@@ -23,10 +24,13 @@ import "package:photos/models/collection/collection.dart";
 import "package:photos/models/collection/collection_items.dart";
 import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
+import "package:photos/models/gallery_type.dart";
 import "package:photos/models/ignored_file.dart";
 import "package:photos/models/metadata/collection_magic.dart";
+import "package:photos/models/selected_files.dart";
 import "package:photos/module/download/thumbnail.dart";
 import "package:photos/service_locator.dart";
+import "package:photos/services/app_navigation_service.dart";
 import "package:photos/services/collections_service.dart";
 import "package:photos/services/favorites_service.dart";
 import "package:photos/services/ignored_files_service.dart";
@@ -50,11 +54,20 @@ void main() {
     tempDir = await Directory.systemTemp.createTemp("collection_page_cover_");
     previousPathProvider = PathProviderPlatform.instance;
     PathProviderPlatform.instance = _FakePathProvider(tempDir.path);
-    SharedPreferences.setMockInitialValues({});
+    FlutterSecureStorage.setMockInitialValues({});
+    SharedPreferences.setMockInitialValues({"remote_flags": "{}"});
     final preferences = await SharedPreferences.getInstance();
+    final dio = Dio()
+      ..interceptors.add(
+        InterceptorsWrapper(
+          onRequest: (options, handler) => handler.resolve(
+            Response(requestOptions: options, data: <String, dynamic>{}),
+          ),
+        ),
+      );
     ServiceLocator.instance.init(
       preferences,
-      Dio(),
+      dio,
       Dio(),
       Dio(),
       PackageInfo(
@@ -68,6 +81,8 @@ void main() {
       await Configuration.instance.init(preferences);
     } catch (_) {}
     await Configuration.instance.setUserID(1);
+    await Configuration.instance.setKey(base64Encode(List.filled(32, 0)));
+    await Configuration.instance.setToken("test-token");
     await CollectionsService.instance.init(preferences);
     await FavoritesService.instance.initFav();
     expect(flagService.internalUser, isTrue);
@@ -257,6 +272,67 @@ void main() {
       Bus.instance.fire(CollectionUpdatedEvent(collection.id, [], "removed"));
       await _expectCover(tester, null);
       await _disposeAlbum(tester);
+    },
+  );
+
+  testWidgets(
+    "reuses capture dates across selection and refreshes date edits",
+    (tester) async {
+      final files = [_CountingFile(_file(1)), _CountingFile(_file(3))];
+      final selectedFiles = SelectedFiles();
+      final cover = _file(99);
+      late StateSetter refresh;
+      final galleryFiles = GalleryFilesState(
+        child: StatefulBuilder(
+          builder: (context, setState) {
+            refresh = setState;
+            final appBar = GalleryAppBarWidget.sliverConfig(
+              GalleryType.ownedCollection,
+              "Album",
+              selectedFiles,
+              collection: _collection(),
+              cover: cover,
+            );
+            return Scaffold(
+              body: CustomScrollView(slivers: [appBar.buildSliver(context)]),
+            );
+          },
+        ),
+      )..setGalleryFiles = files;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: lightThemeData,
+          localizationsDelegates: StringsLocalizations.localizationsDelegates,
+          supportedLocales: StringsLocalizations.supportedLocales,
+          navigatorObservers: [AppNavigationService.instance.routeObserver],
+          home: galleryFiles,
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.text("1–3 JAN 2026"), findsOneWidget);
+      final reads = files.map((file) => file.creationTimeReads).toList();
+      for (final file in [files.first, files.last, files.first, files.last]) {
+        selectedFiles.toggleSelection(file);
+        await tester.pumpAndSettle();
+        expect(files.map((file) => file.creationTimeReads), reads);
+      }
+      files.setAll(0, files.reversed.toList());
+      files.last.creationTime = DateTime(2026, 1, 5).microsecondsSinceEpoch;
+      galleryFiles.setGalleryFiles = files;
+      refresh(() {});
+      await tester.pumpAndSettle();
+      expect(find.text("3–5 JAN 2026"), findsOneWidget);
+      final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+      navigator
+          .push(MaterialPageRoute<void>(builder: (_) => const Scaffold()))
+          .ignore();
+      await tester.pumpAndSettle();
+      files.last.creationTime = DateTime(2026, 1, 7).microsecondsSinceEpoch;
+      navigator.pop();
+      await tester.pumpAndSettle();
+      expect(find.text("3–7 JAN 2026"), findsOneWidget);
+      await _disposeAlbum(tester);
+      selectedFiles.dispose();
     },
   );
 
@@ -484,6 +560,18 @@ Future<void> _expectCover(
 Future<void> _disposeAlbum(WidgetTester tester) async {
   await tester.pumpWidget(const SizedBox.shrink());
   await tester.pump(const Duration(seconds: 1));
+}
+
+class _CountingFile extends EnteFile {
+  _CountingFile(super.file) : super.from();
+
+  int creationTimeReads = 0;
+
+  @override
+  int? get creationTime {
+    creationTimeReads++;
+    return super.creationTime;
+  }
 }
 
 class _FakePathProvider extends PathProviderPlatform {

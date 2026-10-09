@@ -82,6 +82,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
 
   @override
   void didPopNext() {
+    GalleryFilesState.maybeOf(context)?.invalidateCaptureDateRange();
     setState(() => _isCovered = false);
   }
 
@@ -129,9 +130,7 @@ class _AlbumCoverAppBarState extends State<AlbumCoverAppBar> with RouteAware {
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            _CoverCaption(
-              GalleryFilesState.maybeOf(context)?.galleryFilesOrNull,
-            ),
+            _CoverCaption(GalleryFilesState.maybeOf(context)?.captureDateRange),
             Semantics(
               header: true,
               child: Text(
@@ -524,30 +523,18 @@ class _CoverDissolvePainter extends CustomPainter {
 }
 
 class _CoverCaption extends StatelessWidget {
-  const _CoverCaption(this.files);
+  const _CoverCaption(this.dateRange);
 
-  final List<EnteFile>? files;
+  final ({int oldest, int newest})? dateRange;
 
   @override
   Widget build(BuildContext context) {
-    final files = this.files;
-    if (files == null) {
+    final dateRange = this.dateRange;
+    if (dateRange == null) {
       return const SizedBox.shrink();
     }
-    int? oldestFileTime;
-    int? newestFileTime;
-    for (final file in files) {
-      final creationTime = file.creationTime;
-      if (creationTime != null && creationTime != 0) {
-        oldestFileTime = math.min(oldestFileTime ?? creationTime, creationTime);
-        newestFileTime = math.max(newestFileTime ?? creationTime, creationTime);
-      }
-    }
-    if (oldestFileTime == null || newestFileTime == null) {
-      return const SizedBox.shrink();
-    }
-    final start = DateTime.fromMicrosecondsSinceEpoch(oldestFileTime);
-    final end = DateTime.fromMicrosecondsSinceEpoch(newestFileTime);
+    final start = DateTime.fromMicrosecondsSinceEpoch(dateRange.oldest);
+    final end = DateTime.fromMicrosecondsSinceEpoch(dateRange.newest);
     final locale = Localizations.localeOf(context).toString();
     final dayPattern = locale == "en"
         ? "d MMM y"
