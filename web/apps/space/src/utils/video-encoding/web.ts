@@ -54,7 +54,7 @@ const loadFFmpeg = async (ffmpeg: FFmpeg) => {
         ffmpeg.terminate();
         if (_ffmpeg?.instance == ffmpeg) _ffmpeg = undefined;
         logToDisk(
-            `[error] Space video encoder load ${timeout.signal.aborted ? "timeout" : "failed"} elapsedMs=${Date.now() - startedAt}`,
+            `[error] Space video encoder load ${timeout.signal.aborted ? "timeout" : "failed"} elapsedMs=${Date.now() - startedAt} error=${JSON.stringify(error instanceof Error ? error.toString() : error)}`,
         );
         if (timeout.signal.aborted)
             throw new Error(
