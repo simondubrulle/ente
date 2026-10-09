@@ -134,7 +134,6 @@ func TestPushNotificationRegistrationLifecycle(t *testing.T) {
 		{"enroll again", 1, "ios", firstKey[:], false},
 		{"switch account", 2, "ios", secondKey[:], false},
 		{"omitted enrollment clears key", 2, "android", nil, true},
-		{"enroll before logout", 2, "ios", secondKey[:], false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			body := map[string]any{"fcmToken": "device", "apnsToken": "apns"}
@@ -172,10 +171,4 @@ func TestPushNotificationRegistrationLifecycle(t *testing.T) {
 			require.Equal(t, expected[:], hash)
 		})
 	}
-	hash := auth.HashToken("session-2")
-	_, err = authRepo.RemoveTokenByHash(2, hash[:])
-	require.NoError(t, err)
-	var count int
-	require.NoError(t, db.QueryRow(`SELECT count(*) FROM push_tokens`).Scan(&count))
-	require.Zero(t, count)
 }

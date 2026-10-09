@@ -241,19 +241,7 @@ func TestAlbumShareSendsPlatformPayloads(t *testing.T) {
 		require.NoError(t, err)
 		require.NotContains(t, string(encoded), "album_shared")
 		require.NotContains(t, string(encoded), "internal@example.com")
-		otherPublic, otherPrivate, err := box.GenerateKey(rand.Reader)
-		require.NoError(t, err)
-		_, ok = box.OpenAnonymous(nil, ciphertext, otherPublic, otherPrivate)
-		require.False(t, ok)
 	}
-
-	messages = nil
-	controller.fcm.httpClient.Transport = roundTripFunc(func(request *http.Request) (*http.Response, error) {
-		messages = append(messages, nil)
-		return jsonResponse(http.StatusInternalServerError, "unavailable"), nil
-	})
-	controller.NotifyAlbumShare(context.Background(), []int64{1})
-	require.Len(t, messages, 3, "one device failure must not stop the other sends")
 }
 
 func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {

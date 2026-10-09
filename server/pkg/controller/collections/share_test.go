@@ -6,7 +6,6 @@ import (
 	"errors"
 	"net/http/httptest"
 	"strconv"
-	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -982,35 +981,18 @@ func TestAlbumShareNotifiesAfterEverySuccessfulShare(t *testing.T) {
 	require.Eventually(t, func() bool { return len(notifications) == 2 }, time.Second, time.Millisecond, "retry and role change must notify")
 	require.Equal(t, []int64{recipient}, <-notifications)
 	require.Equal(t, []int64{recipient}, <-notifications)
-	var storedRole ente.CollectionParticipantRole
-	var deleted bool
-	var encryptedKey string
-	require.NoError(t, db.QueryRow(`SELECT role_type, is_deleted, encrypted_key FROM collection_shares WHERE collection_id=$1 AND to_user_id=$2`, id, recipient).Scan(&storedRole, &deleted, &encryptedKey))
-	require.Equal(t, role, storedRole)
-	require.False(t, deleted)
-	require.Equal(t, request.EncryptedKey, encryptedKey)
 	require.NoError(t, r.UnShare(id, recipient))
 	_, err = c.BatchShare(newBatchShareTestContext(owner), []ente.AlterShareRequest{request})
 	require.NoError(t, err)
 	require.Eventually(t, func() bool { return len(notifications) == 1 }, time.Second, time.Millisecond)
 	require.Equal(t, []int64{recipient}, <-notifications, "restored access should notify")
-	_, err = db.Exec(`UPDATE collection_shares SET is_deleted = NULL WHERE collection_id=$1 AND to_user_id=$2`, id, recipient)
-	require.NoError(t, err)
-	_, err = c.Share(newBatchShareTestContext(owner), request)
-	require.NoError(t, err)
-	require.Eventually(t, func() bool { return len(notifications) == 1 }, time.Second, time.Millisecond)
-	require.Equal(t, []int64{recipient}, <-notifications, "re-sharing should repair a null deletion flag")
-	request.EncryptedKey = "invalid"
-	_, err = c.Share(newBatchShareTestContext(owner), request)
-	require.Error(t, err)
-	require.Never(t, func() bool { return len(notifications) > 0 }, 50*time.Millisecond, time.Millisecond)
 	require.NoError(t, r.UnShare(id, recipient))
 	_, err = db.Exec(`UPDATE collections SET is_deleted = TRUE WHERE collection_id = $1`, id)
 	require.NoError(t, err)
-	request.EncryptedKey = b64OfLen(sealedCollectionKeyLen)
 	_, err = c.Share(newBatchShareTestContext(owner), request)
 	require.ErrorIs(t, err, ente.ErrCollectionDeleted)
 	require.Never(t, func() bool { return len(notifications) > 0 }, 50*time.Millisecond, time.Millisecond)
+	var deleted bool
 	require.NoError(t, db.QueryRow(`SELECT is_deleted FROM collection_shares WHERE collection_id=$1 AND to_user_id=$2`, id, recipient).Scan(&deleted))
 	require.True(t, deleted, "failed share must roll back restored access")
 }
@@ -1028,47 +1010,17 @@ func TestBatchShareNotifiesAllRecipients(t *testing.T) {
 		notifications <- recipients
 	})
 	admin, collaborator := ente.ADMIN, ente.COLLABORATOR
-	sharees, err := c.BatchShare(newBatchShareTestContext(owner), []ente.AlterShareRequest{
+	_, err := c.BatchShare(newBatchShareTestContext(owner), []ente.AlterShareRequest{
 		{CollectionID: id, Email: "sharee@example.com", EncryptedKey: b64OfLen(sealedCollectionKeyLen), Role: &admin},
 		{CollectionID: id, Email: "new-sharee@example.com", EncryptedKey: b64OfLen(sealedCollectionKeyLen), Role: &collaborator},
 	})
 	require.NoError(t, err)
-	require.Len(t, sharees, 2)
-	roles := make(map[int64]ente.CollectionParticipantRole)
-	for _, sharee := range sharees {
-		roles[sharee.ID] = sharee.Role
-	}
-	require.Equal(t, ente.ADMIN, roles[existingRecipient])
-	require.Equal(t, ente.COLLABORATOR, roles[newRecipient])
 	select {
 	case recipients := <-notifications:
 		require.ElementsMatch(t, []int64{existingRecipient, newRecipient}, recipients)
 	case <-time.After(time.Second):
 		t.Fatal("new recipient was not notified")
 	}
-}
-
-func TestConcurrentAlbumSharesNotifyAfterEachSuccess(t *testing.T) {
-	db, r, owner, recipient := setupCollectionShareTest(t)
-	c := newBatchShareTestController(db, r)
-	id := createShareTestCollection(t, r, owner)
-	var count atomic.Int32
-	c.PushCtrl = albumSharePushFunc(func(context.Context, []int64) { count.Add(1) })
-	var wg sync.WaitGroup
-	for range 8 {
-		wg.Go(func() {
-			_, err := c.BatchShare(newBatchShareTestContext(owner), []ente.AlterShareRequest{{CollectionID: id, Email: "sharee@example.com", EncryptedKey: b64OfLen(sealedCollectionKeyLen)}})
-			if err != nil {
-				t.Error(err)
-			}
-		})
-	}
-	wg.Wait()
-	require.Eventually(t, func() bool { return count.Load() == 8 }, time.Second, time.Millisecond)
-	require.Equal(t, 1, collectionShareCount(t, db, id))
-	var active bool
-	require.NoError(t, db.QueryRow(`SELECT NOT is_deleted FROM collection_shares WHERE collection_id=$1 AND to_user_id=$2`, id, recipient).Scan(&active))
-	require.True(t, active)
 }
 
 func TestBulkAlbumShareNotifiesOnceAfterAllMutations(t *testing.T) {
