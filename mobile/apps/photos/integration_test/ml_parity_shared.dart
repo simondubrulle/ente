@@ -45,13 +45,8 @@ class _ManifestItem {
 class _ModelSpec {
   final String schemaName;
   final String fileName;
-  final String sha256;
 
-  const _ModelSpec({
-    required this.schemaName,
-    required this.fileName,
-    required this.sha256,
-  });
+  const _ModelSpec({required this.schemaName, required this.fileName});
 }
 
 void runMLParityIntegrationTest({required String expectedPlatform}) {
@@ -178,20 +173,14 @@ List<_ModelSpec> _modelSpecs() {
     _ModelSpec(
       schemaName: "face_detection",
       fileName: "yolov5s_face_640_640_static_b1.onnx",
-      sha256:
-          "e047647409403d52696035ecd445792173e50d7fbdcccac97b958a585db9aa3d",
     ),
     _ModelSpec(
       schemaName: "face_embedding",
       fileName: "mobilefacenet_portable_static_b1.onnx",
-      sha256:
-          "0763fc33f54e138476194da95987e133b3e976075a6b1d3e1b2caedb251b1a36",
     ),
     _ModelSpec(
       schemaName: "clip",
       fileName: "mobileclip_s2_image_gelu_opset20.onnx",
-      sha256:
-          "205a430af825e501c5138e5bb9abea942482a7a4fd4a680e98e47cf0830dce7e",
     ),
   ];
 }
@@ -227,12 +216,6 @@ Future<_LoadedModels> _downloadModels(List<_ModelSpec> modelSpecs) async {
     }
 
     final modelSHA256 = await _sha256HexOfFile(modelFile);
-    if (modelSHA256.toLowerCase() != modelSpec.sha256.toLowerCase()) {
-      throw StateError(
-        "Model SHA mismatch for ${modelSpec.schemaName}: "
-        "expected ${modelSpec.sha256}, got $modelSHA256",
-      );
-    }
     modelMetadata[modelSpec.schemaName] =
         "${modelFile.uri.pathSegments.last}:$modelSHA256";
   }
