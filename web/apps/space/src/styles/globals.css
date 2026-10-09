@@ -8,7 +8,8 @@
 }
 
 .space-app-layout {
-    --space-bottom-nav-height: calc(60px + env(safe-area-inset-bottom));
+    --space-bottom-nav-padding: env(safe-area-inset-bottom);
+    --space-bottom-nav-height: calc(60px + var(--space-bottom-nav-padding));
     --space-page-height: calc(
         var(--space-viewport-height, 100svh) - var(--space-bottom-nav-height)
     );

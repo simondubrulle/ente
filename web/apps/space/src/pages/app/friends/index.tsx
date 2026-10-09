@@ -12,9 +12,7 @@ import {
     loadCurrentFriendAvatarURL,
     loadCurrentFriendRequests,
     loadCurrentSpaceFriends,
-    removeCurrentSpaceFriend,
     requestFriendByUsername,
-    sendCurrentPoke,
     type SpaceFriendRequest,
 } from "services/space";
 import { useSpaceAppState } from "state/app-state";
@@ -120,25 +118,6 @@ const Page: React.FC = () => {
                     }
                     return status;
                 }}
-                onPoke={async (friendID, requestID) => {
-                    const actorSpaceId = profile.spaceId;
-                    const friend = friends.find((item) => item.id == friendID);
-                    if (!actorSpaceId || !friend?.spaceId)
-                        throw new Error("Missing space.");
-                    await sendCurrentPoke(
-                        actorSpaceId,
-                        friend.spaceId,
-                        requestID,
-                    );
-                }}
-                onMessage={(friendID) => {
-                    const friend = friends.find(
-                        (candidate) => candidate.id == friendID,
-                    );
-                    if (friend?.spaceId) {
-                        void router.push(spaceRoutes.message(friend.spaceId));
-                    }
-                }}
                 onOpenFriend={(friendID) => {
                     const friend = friends.find(
                         (candidate) =>
@@ -218,21 +197,6 @@ const Page: React.FC = () => {
                             (request) => request.requestId != requestID,
                         ),
                     );
-                }}
-                onUnfriend={async (friendID) => {
-                    const actorSpaceId = profile.spaceId;
-                    if (!actorSpaceId) return;
-
-                    const friend = friends.find(
-                        (candidate) => candidate.id == friendID,
-                    );
-                    if (!friend?.spaceId) return;
-
-                    await removeCurrentSpaceFriend(
-                        actorSpaceId,
-                        friend.spaceId,
-                    );
-                    window.location.reload();
                 }}
             />
             {showFriendRequestCanceledToast && (

@@ -9,6 +9,7 @@ import { HugeiconsIcon } from "@hugeicons/react";
 import { Box } from "@mui/material";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
 import log from "ente-base/log";
+import { isSpaceIOS } from "hooks/use-pwa-install-prompt";
 import React from "react";
 import { loadCurrentUnreadStatus } from "services/space";
 import { useSpaceAppState } from "state/app-state";
@@ -80,24 +81,47 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
 
     React.useEffect(() => {
         if (!showNavigation) return;
+        if (isSpaceIOS())
+            layoutRef.current?.style.setProperty(
+                "--space-bottom-nav-padding",
+                "max(8px, env(safe-area-inset-bottom))",
+            );
         const viewport = window.visualViewport;
         if (!viewport) return;
         const updateViewport = () => {
+            const activeElement = document.activeElement;
+            const isEditing =
+                activeElement instanceof HTMLInputElement ||
+                activeElement instanceof HTMLTextAreaElement ||
+                (activeElement instanceof HTMLElement &&
+                    activeElement.isContentEditable);
+            const keyboardInset = isEditing
+                ? Math.max(
+                      0,
+                      window.innerHeight -
+                          viewport.height -
+                          Math.max(0, viewport.offsetTop),
+                  )
+                : 0;
             layoutRef.current?.style.setProperty(
                 "--space-viewport-height",
                 `${viewport.height}px`,
             );
             layoutRef.current?.style.setProperty(
                 "--space-keyboard-inset",
-                `${Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop)}px`,
+                `${keyboardInset}px`,
             );
         };
         updateViewport();
         viewport.addEventListener("resize", updateViewport);
         viewport.addEventListener("scroll", updateViewport);
+        document.addEventListener("focusin", updateViewport);
+        document.addEventListener("focusout", updateViewport);
         return () => {
             viewport.removeEventListener("resize", updateViewport);
             viewport.removeEventListener("scroll", updateViewport);
+            document.removeEventListener("focusin", updateViewport);
+            document.removeEventListener("focusout", updateViewport);
         };
     }, [showNavigation]);
 
@@ -146,16 +170,16 @@ export const SpaceAppLayout = ({ children }: { children: React.ReactNode }) => {
                                 bottom: "var(--space-keyboard-inset, 0px)",
                                 display: "flex",
                                 justifyContent: "space-between",
-                                height: "calc(60px + env(safe-area-inset-bottom))",
-                                pb: "env(safe-area-inset-bottom)",
+                                height: "var(--space-bottom-nav-height)",
+                                pb: "var(--space-bottom-nav-padding)",
                                 left: "50%",
-                                maxWidth: 390,
                                 px: "10px",
                                 position: "fixed",
                                 transform: "translateX(-50%)",
                                 viewTransitionName: "space-bottom-nav",
                                 width: "100%",
                                 zIndex: 20,
+                                "@media (min-width: 600px)": { maxWidth: 390 },
                             }}
                         >
                             {destinations.map(({ label, href, icon, size }) => {
