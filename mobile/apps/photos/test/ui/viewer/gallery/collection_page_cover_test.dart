@@ -2,6 +2,7 @@ import "dart:convert";
 import "dart:io";
 
 import "package:dio/dio.dart";
+import "package:ente_components/ente_components.dart";
 import "package:ente_pure_utils/ente_pure_utils.dart";
 import "package:ente_strings/ente_strings.dart";
 import "package:figma_squircle/figma_squircle.dart";
@@ -331,6 +332,66 @@ void main() {
       navigator.pop();
       await tester.pumpAndSettle();
       expect(find.text("3–7 JAN 2026"), findsOneWidget);
+      await _disposeAlbum(tester);
+      selectedFiles.dispose();
+    },
+  );
+
+  testWidgets(
+    "keeps custom-bottom header geometry and menu actions consistent",
+    (tester) async {
+      final selectedFiles = SelectedFiles();
+      final collection = _collection()
+        ..pubMagicMetadata = CollectionPubMagicMetadata(
+          description: "Description",
+        );
+      final appBar = GalleryAppBarWidget.sliverConfig(
+        GalleryType.ownedCollection,
+        "Album",
+        selectedFiles,
+        collection: collection,
+        cover: _file(1),
+        bottom: const PreferredSize(
+          preferredSize: Size.fromHeight(40),
+          child: SizedBox(height: 40, child: Text("Custom bottom")),
+        ),
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: lightThemeData,
+          localizationsDelegates: StringsLocalizations.localizationsDelegates,
+          supportedLocales: StringsLocalizations.supportedLocales,
+          home: Scaffold(
+            body: Builder(
+              builder: (context) =>
+                  CustomScrollView(slivers: [appBar.buildSliver(context)]),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(SliverAppBarComponent), findsOneWidget);
+      expect(find.text("Custom bottom"), findsOneWidget);
+      final geometry = appBar.resolveGeometry(
+        tester.element(find.byType(GalleryAppBarWidget)),
+      );
+      final header = tester.widget<SliverPersistentHeader>(
+        find.byType(SliverPersistentHeader),
+      );
+      expect(geometry.minExtent, header.delegate.minExtent);
+      expect(geometry.maxExtent, header.delegate.maxExtent);
+      final menu = tester.widget<EntePopupMenuButton<AlbumPopupAction>>(
+        find.byType(EntePopupMenuButton<AlbumPopupAction>),
+      );
+      final options = await menu.optionsBuilder();
+      expect(
+        options.map((option) => option.value),
+        containsAll([
+          AlbumPopupAction.map,
+          AlbumPopupAction.sort,
+          AlbumPopupAction.albumSlideshow,
+        ]),
+      );
       await _disposeAlbum(tester);
       selectedFiles.dispose();
     },

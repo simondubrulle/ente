@@ -123,26 +123,31 @@ class GalleryAppBarWidget extends StatefulWidget {
     );
     final isHierarchicalSearchable =
         inheritedSearchFilterData?.isHierarchicalSearchable ?? false;
+    final hasCustomBottom = bottomHeight != null;
     bottomHeight ??= isHierarchicalSearchable
         ? AppBarFilterChips.preferredHeight(context)
         : 0.0;
     final isSearching =
-        inheritedSearchFilterData
-            ?.searchFilterDataProvider
-            ?.isSearchingNotifier
-            .value ??
-        false;
-    if (hasCover && !isSearching) {
+        isHierarchicalSearchable &&
+        (inheritedSearchFilterData
+                ?.searchFilterDataProvider
+                ?.isSearchingNotifier
+                .value ??
+            false);
+    if (_usesCoverHeader(
+      hasCover: hasCover,
+      hasCustomBottom: hasCustomBottom,
+      isSearching: isSearching,
+    )) {
       return AlbumCoverAppBar.resolveGeometry(
         context,
         collapsedHeight: toolbarHeight,
         bottomHeight: bottomHeight,
       );
     }
-    final collapsibleBottomHeight = AlbumDescriptionHeader.preferredHeight(
-      context,
-      description,
-    );
+    final collapsibleBottomHeight = hasCustomBottom
+        ? 0.0
+        : AlbumDescriptionHeader.preferredHeight(context, description);
     return SliverAppBarComponent.resolveGeometry(
       context,
       subtitle: subtitle,
@@ -153,6 +158,12 @@ class GalleryAppBarWidget extends StatefulWidget {
       collapsibleBottomHeight: collapsibleBottomHeight,
     );
   }
+
+  static bool _usesCoverHeader({
+    required bool hasCover,
+    required bool hasCustomBottom,
+    required bool isSearching,
+  }) => hasCover && !hasCustomBottom && !isSearching;
 
   final GalleryType type;
   final String? title;
@@ -305,31 +316,8 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
       return const SliverToBoxAdapter(child: SizedBox.shrink());
     }
 
-    final descriptionHeader = AlbumDescriptionHeader.maybeOf(
-      context,
-      widget.collection?.displayDescription,
-    );
-
-    if (widget.bottom != null) {
-      return _GallerySliverAppBar(
-        title: _appBarTitle,
-        subtitle: widget.subtitle,
-        actions: _getDefaultActions(context),
-        bottom: widget.bottom,
-      );
-    }
-
-    if (!isHierarchicalSearchable) {
-      if (widget.cover != null) {
-        return _albumCoverAppBar();
-      }
-      return _GallerySliverAppBar(
-        title: _appBarTitle,
-        subtitle: widget.subtitle,
-        actions: _getDefaultActions(context),
-        collapsibleBottom: descriptionHeader,
-        bottom: widget.bottom,
-      );
+    if (widget.bottom != null || !isHierarchicalSearchable) {
+      return _buildHeader(bottom: widget.bottom);
     }
 
     return ValueListenableBuilder(
@@ -342,18 +330,34 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
         ),
         child: AppBarFilterChips(animateRecommendations: widget.cover != null),
       ),
-      builder: (context, isSearching, child) {
-        if (widget.cover != null && !isSearching) {
-          return _albumCoverAppBar(bottom: child as PreferredSizeWidget);
-        }
-        return _GallerySliverAppBar(
-          title: _appBarTitle,
-          subtitle: widget.subtitle,
-          actions: isSearching ? const [] : _getDefaultActions(context),
-          bottom: child as PreferredSizeWidget,
-          collapsibleBottom: descriptionHeader,
-        );
-      },
+      builder: (context, isSearching, child) => _buildHeader(
+        bottom: child as PreferredSizeWidget,
+        isSearching: isSearching,
+      ),
+    );
+  }
+
+  Widget _buildHeader({PreferredSizeWidget? bottom, bool isSearching = false}) {
+    if (GalleryAppBarWidget._usesCoverHeader(
+      hasCover: widget.cover != null,
+      hasCustomBottom: widget.bottom != null,
+      isSearching: isSearching,
+    )) {
+      return _albumCoverAppBar(bottom: bottom);
+    }
+    return _GallerySliverAppBar(
+      title: _appBarTitle,
+      subtitle: widget.subtitle,
+      actions: isSearching
+          ? const []
+          : _getDefaultActions(context, onCover: false),
+      bottom: bottom,
+      collapsibleBottom: widget.bottom == null
+          ? AlbumDescriptionHeader.maybeOf(
+              context,
+              widget.collection?.displayDescription,
+            )
+          : null,
     );
   }
 
@@ -368,8 +372,11 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
       backgroundColor: GalleryAppBarWidget.backgroundColor(context),
       collapsedHeight: GalleryAppBarWidget.toolbarHeight,
       bottom: bottom,
-      actionsBuilder: (foregroundColor) =>
-          _getDefaultActions(context, foregroundColor: foregroundColor),
+      actionsBuilder: (foregroundColor) => _getDefaultActions(
+        context,
+        onCover: true,
+        foregroundColor: foregroundColor,
+      ),
       coverActions: [
         if (widget.selectedFiles.files.isEmpty) ...[
           AlbumCoverActionButton(
@@ -565,10 +572,10 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
 
   List<Widget> _getDefaultActions(
     BuildContext context, {
+    required bool onCover,
     Color? foregroundColor,
   }) {
     final List<Widget> actions = <Widget>[];
-    final onCover = foregroundColor != null;
     final iconButtonVariant = onCover
         ? IconButtonComponentVariant.unfilled
         : IconButtonComponentVariant.primary;
@@ -690,6 +697,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
           userId: userId,
           isArchived: isArchived,
           isHidden: isHidden,
+          onCover: onCover,
         ),
         onSelected: (AlbumPopupAction value) async {
           if (value == AlbumPopupAction.editDetails) {
@@ -823,6 +831,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
     required int userId,
     required bool isArchived,
     required bool isHidden,
+    required bool onCover,
   }) async {
     final warningColor = context.componentColors.warning;
     final canAutoAdd =
@@ -853,7 +862,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             size: IconSizes.small,
           ),
         ),
-      if (galleryType.showMap() && widget.cover == null)
+      if (galleryType.showMap() && !onCover)
         _menuOption(
           AlbumPopupAction.map,
           strings.map,
@@ -862,7 +871,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             size: IconSizes.small,
           ),
         ),
-      if (galleryType.canSort() && widget.cover == null)
+      if (galleryType.canSort() && !onCover)
         _menuOption(
           AlbumPopupAction.sort,
           strings.sortAlbumsBy,
@@ -993,8 +1002,7 @@ class _GalleryAppBarWidgetState extends State<GalleryAppBarWidget> {
             size: IconSizes.small,
           ),
         ),
-      if (_isAlbumSlideshowAvailable && widget.cover == null)
-        _slideshowMenuOption(strings),
+      if (_isAlbumSlideshowAvailable && !onCover) _slideshowMenuOption(strings),
       if (canAutoAdd)
         _menuOption(
           AlbumPopupAction.autoAddPhotos,
