@@ -99,8 +99,8 @@ func newFCMClient() (*fcmClient, error) {
 	}, nil
 }
 
-func (c *PushController) AddToken(userID int64, token ente.PushTokenRequest) error {
-	return stacktrace.Propagate(c.PushRepo.AddToken(userID, token), "")
+func (c *PushController) AddToken(userID int64, sessionTokenHash []byte, token ente.PushTokenRequest) error {
+	return stacktrace.Propagate(c.PushRepo.AddToken(userID, sessionTokenHash, token), "")
 }
 
 func (c *PushController) RemoveTokensForUser(userID int64) error {

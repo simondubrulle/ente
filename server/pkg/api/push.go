@@ -22,7 +22,8 @@ func (h *PushHandler) AddToken(c *gin.Context) {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
 	}
-	err = h.PushController.AddToken(auth.GetUserID(c.Request.Header), req)
+	sessionHash := auth.HashToken(auth.GetToken(c))
+	err = h.PushController.AddToken(auth.GetUserID(c.Request.Header), sessionHash[:], req)
 	if err != nil {
 		handler.Error(c, stacktrace.Propagate(err, ""))
 		return
