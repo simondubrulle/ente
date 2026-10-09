@@ -187,6 +187,13 @@ fn import_mobile_model(
     staging: &Path,
     files: &[ModelAssetFile],
 ) -> Result<(), ente_assets::download::Error> {
+    for name in RETIRED_LEGACY_MODEL_FILES {
+        for path in legacy_mobile_paths(legacy_dir, name) {
+            remove_file_if_exists(&path)?;
+            remove_file_if_exists(&path.with_extension("temp"))?;
+            remove_file_if_exists(&path.with_extension("temp.resume.json"))?;
+        }
+    }
     for file in files {
         for source in legacy_mobile_paths(legacy_dir, file.name) {
             remove_file_if_exists(&source.with_extension("temp"))?;
@@ -495,7 +502,12 @@ mod tests {
             }
         }
         fs::write(root.path().join("unrelated.temp"), b"unrelated").unwrap();
+        let retired = root
+            .path()
+            .join("models_ente_io_mobilefacenet_opset15_onnx");
+        fs::write(&retired, b"retired").unwrap();
         acquire_mobile_test_pair(&store, root.path()).await.unwrap();
+        assert!(!retired.exists());
         for (index, file) in MOBILE_TEST_FILES.iter().enumerate() {
             let path = store.file_path(&mobile_test_asset(), file.name).unwrap();
             assert_eq!(fs::read(&path).unwrap(), bytes[index]);
@@ -533,6 +545,43 @@ mod tests {
             .unwrap(),
             b"trusted"
         );
+    }
+
+    #[tokio::test]
+    async fn mobile_cleanup_handles_retired_artifacts_without_current_legacy_models() {
+        let root = TempDir::new().unwrap();
+        let store = AssetStore::new(root.path());
+        let retired = RETIRED_LEGACY_MODEL_FILES
+            .iter()
+            .flat_map(|name| legacy_mobile_paths(root.path(), name))
+            .flat_map(|path| {
+                [
+                    path.with_extension("temp"),
+                    path.with_extension("temp.resume.json"),
+                    path,
+                ]
+            })
+            .collect::<Vec<_>>();
+        for path in &retired {
+            fs::write(path, b"retired").unwrap();
+        }
+        let preserved = [
+            root.path().join("models_ente_com_memory_music_mp3"),
+            legacy_mobile_paths(root.path(), "mobilefacenet_portable_static_b1.onnx")[0].clone(),
+            root.path().join("models/det_fixed_v1/det_fixed_v1.onnx"),
+        ];
+        fs::create_dir_all(preserved[2].parent().unwrap()).unwrap();
+        for path in &preserved {
+            fs::write(path, b"preserved").unwrap();
+        }
+
+        for _ in 0..2 {
+            assert!(acquire_mobile_test_pair(&store, root.path()).await.is_err());
+            assert!(retired.iter().all(|path| !path.exists()));
+            for path in &preserved {
+                assert_eq!(fs::read(path).unwrap(), b"preserved");
+            }
+        }
     }
 
     #[tokio::test]
@@ -599,6 +648,10 @@ mod tests {
     async fn mobile_ensure_returns_only_the_requested_published_paths() {
         let root = TempDir::new().unwrap();
         let store = AssetStore::new(root.path());
+        let retired = root
+            .path()
+            .join("models_ente_io_mobilefacenet_opset15_onnx");
+        fs::write(&retired, b"retired").unwrap();
         for model in models::selected_indexing_models(true, false, false) {
             fs::create_dir_all(store.asset_dir(&model_asset(model))).unwrap();
             fs::write(model_path(&store, model), b"trusted published bytes").unwrap();
@@ -617,6 +670,7 @@ mod tests {
         assert!(paths.clip_image.is_empty());
         assert!(paths.pet_face_detection.is_empty());
         assert!(!store.asset_dir(&clip_text_asset()).exists());
+        assert_eq!(fs::read(retired).unwrap(), b"retired");
     }
 
     #[test]

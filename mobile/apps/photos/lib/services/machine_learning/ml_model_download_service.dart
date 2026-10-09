@@ -6,7 +6,6 @@ import "package:path/path.dart" as p;
 import "package:path_provider/path_provider.dart";
 import "package:photos/service_locator.dart"
     show flagService, hasGrantedMLConsent, isLocalGalleryMode, localSettings;
-import "package:photos/services/remote_assets_service.dart";
 import "package:photos/src/rust/api/ml_indexing_api.dart" as rust_ml;
 import "package:photos/utils/network_util.dart";
 import "package:synchronized/synchronized.dart";
@@ -110,7 +109,6 @@ class MLModelDownloadService {
             : "Downloading all ML models",
       );
       try {
-        await RemoteAssetsService.instance.cleanupOldModelsIfNeeded();
         await for (final update in rust_ml.preloadMlModels(
           assetsDir: await getAssetsDirectory(),
           runFaces: downloadIndexing,
