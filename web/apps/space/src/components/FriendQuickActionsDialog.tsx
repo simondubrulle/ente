@@ -2,6 +2,7 @@ import {
     BubbleChatIcon,
     HandPointingRightIcon,
     UserIcon,
+    UserRemove01Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import { Box, Dialog, useMediaQuery } from "@mui/material";
@@ -28,9 +29,10 @@ interface FriendQuickActionsDialogProps {
     avatarUrl?: string | null;
     friend: FriendProfile;
     onClose: () => void;
-    onMessage: () => void;
-    onPoke: () => Promise<void>;
-    onProfile: () => void;
+    onMessage?: () => void;
+    onPoke?: () => Promise<void>;
+    onProfile?: () => void;
+    onUnfriend?: () => void;
 }
 
 export const FriendQuickActionsDialog: React.FC<
@@ -43,6 +45,7 @@ export const FriendQuickActionsDialog: React.FC<
     onMessage,
     onPoke,
     onProfile,
+    onUnfriend,
 }) => {
     const [open, setOpen] = React.useState(true);
     const [pokePhase, setPokePhase] = React.useState<"busy" | "done" | null>(
@@ -74,7 +77,7 @@ export const FriendQuickActionsDialog: React.FC<
     };
 
     const poke = async () => {
-        if (pokePhase) return;
+        if (!onPoke || pokePhase) return;
         setPokePhase("busy");
         setPokeFailed(false);
         try {
@@ -90,6 +93,7 @@ export const FriendQuickActionsDialog: React.FC<
     const actions = [
         {
             label: "Poke",
+            available: Boolean(onPoke),
             icon: HandPointingRightIcon,
             active: pokePhase !== null,
             done: pokePhase == "done",
@@ -99,15 +103,23 @@ export const FriendQuickActionsDialog: React.FC<
         },
         {
             label: "Message",
+            available: Boolean(onMessage),
             icon: BubbleChatIcon,
-            onClick: () => void navigate(onMessage),
+            onClick: () => onMessage && void navigate(onMessage),
         },
         {
             label: "Profile",
+            available: Boolean(onProfile),
             icon: UserIcon,
-            onClick: () => void navigate(onProfile),
+            onClick: () => onProfile && void navigate(onProfile),
         },
-    ];
+        {
+            label: "Unfriend",
+            available: Boolean(onUnfriend),
+            icon: UserRemove01Icon,
+            onClick: () => onUnfriend && void navigate(onUnfriend),
+        },
+    ].filter((action) => action.available);
 
     return (
         <Dialog
@@ -122,6 +134,7 @@ export const FriendQuickActionsDialog: React.FC<
                     ref: paperRef,
                     sx: {
                         bgcolor: spaceSurface,
+                        border: "1px solid #383838",
                         boxShadow: "0 24px 64px rgba(0, 0, 0, 0.48)",
                         borderRadius: `${dialogRadius}px`,
                         boxSizing: "border-box",
@@ -244,7 +257,7 @@ export const FriendQuickActionsDialog: React.FC<
                 sx={{
                     display: "grid",
                     gap: "6px",
-                    gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                    gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))`,
                     p: `${dialogPadding}px`,
                 }}
             >
@@ -256,6 +269,7 @@ export const FriendQuickActionsDialog: React.FC<
                         disabled={action.disabled}
                         aria-busy={action.busy}
                         aria-label={action.done ? "Poke sent" : action.label}
+                        title={action.done ? "Poke sent" : action.label}
                         aria-live={
                             action.done !== undefined ? "polite" : undefined
                         }
@@ -268,7 +282,7 @@ export const FriendQuickActionsDialog: React.FC<
                             borderRadius: `${innerRadius}px`,
                             color: action.active
                                 ? "color(display-p3 0.0314 0.7608 0.1451)"
-                                : spaceText,
+                                : "#D8D8D8",
                             cursor: action.disabled ? "default" : "pointer",
                             display: "grid",
                             justifyItems: "center",
