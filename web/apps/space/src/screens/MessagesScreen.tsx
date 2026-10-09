@@ -2331,8 +2331,7 @@ export const MessagesScreen: React.FC<MessagesScreenProps> = ({
                                     >
                                         {(() => {
                                             let lastTimeSeparatorMessage:
-                                                | SpaceMessage
-                                                | undefined;
+                                                SpaceMessage | undefined;
 
                                             return visibleMessages.map(
                                                 (message, index) => {

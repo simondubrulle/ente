@@ -1188,8 +1188,7 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         let closedByReact = false;
         let pswp: PhotoSwipe | undefined;
         let swipeStart:
-            | { x: number; y: number; photoIndex: number }
-            | undefined;
+            { x: number; y: number; photoIndex: number } | undefined;
         let postDragOffset = 0;
 
         const resetPostDrag = () => {
