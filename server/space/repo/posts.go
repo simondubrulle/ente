@@ -353,7 +353,7 @@ func (r *PostsRepository) SetLikeWithCreated(ctx context.Context, postID int64, 
 	if err := tx.QueryRowContext(ctx, `
 		SELECT space_id FROM space_posts
 		WHERE post_id = $1 AND space_id <> $2 AND is_deleted = FALSE
-		FOR UPDATE
+		FOR NO KEY UPDATE
 	`, postID, actorSpaceID).Scan(&recipientSpaceID); err != nil {
 		return false, stacktrace.Propagate(err, "")
 	}

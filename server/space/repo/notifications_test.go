@@ -1,11 +1,13 @@
 package repo
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"os"
 	"sync"
 	"testing"
+	"time"
 
 	"github.com/lib/pq"
 	"github.com/stretchr/testify/require"
@@ -104,6 +106,59 @@ func TestPostLikeNotificationLifecycle(t *testing.T) {
 	require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications`))
 	_, err = module.Posts.SetLikeWithCreated(ctx, postID, bob.SpaceID, true)
 	require.ErrorIs(t, err, sql.ErrNoRows)
+}
+
+func TestPostLikeAndReplyDoNotDeadlock(t *testing.T) {
+	module := newSpaceTestModule(t)
+	alice, bob := notificationTestSpaces(t, module)
+	ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
+	defer cancel()
+	postID, err := testCreatePost(ctx, module, alice.OwnerID, alice.SpaceID, "post-key", nil, 1, nil)
+	require.NoError(t, err)
+	tx, err := module.Messages.DB.BeginTx(ctx, nil)
+	require.NoError(t, err)
+	defer tx.Rollback()
+	var pid int
+	require.NoError(t, tx.QueryRowContext(ctx, `
+		SELECT pg_backend_pid() FROM spaces WHERE space_id = $1 FOR UPDATE
+	`, bob.SpaceID).Scan(&pid))
+	result := make(chan error, 1)
+	go func() {
+		defer close(result)
+		_, err := module.Posts.SetLikeWithCreated(ctx, postID, bob.SpaceID, true)
+		result <- err
+	}()
+	t.Cleanup(func() {
+		cancel()
+		for range result {
+		}
+	})
+	for {
+		var waiting bool
+		require.NoError(t, module.Messages.DB.QueryRowContext(ctx, `
+			SELECT EXISTS (
+				SELECT 1 FROM pg_stat_activity WHERE datname = current_database()
+				AND $1 = ANY(pg_blocking_pids(pid))
+			)
+		`, pid).Scan(&waiting))
+		if waiting {
+			break
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	_, err = tx.ExecContext(ctx, `
+		INSERT INTO space_messages (
+			message_id, sender_space_id, recipient_space_id, kind, reply_post_id,
+			message_cipher, sender_encrypted_message_key, recipient_encrypted_message_key
+		)
+		VALUES ('concurrent-reply', $1, $2, 'post_reply', $3, $4, $5, $6)
+	`, bob.SpaceID, alice.SpaceID, postID, testSpaceBytes("reply"), testSpaceBytes("sender-key"), testSpaceBytes("recipient-key"))
+	require.NoError(t, err)
+	require.NoError(t, tx.Commit())
+	require.NoError(t, <-result)
+	require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_messages WHERE kind = 'post_reply'`))
+	require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_post_likes`))
+	require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE kind = 'post_like'`))
 }
 
 func TestNotificationsPaginationAndReadIsolation(t *testing.T) {
