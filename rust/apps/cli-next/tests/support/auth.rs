@@ -271,6 +271,7 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
     let initial = page(&mut server, 0, vec![entity(1, 10, &json!(URI), &key)]);
     let plain = success(
         home.command(EXPORT)
+            .arg("--no-input")
             .env("ENTE_CLI_EXPORT_PASSWORD", "")
             .output()
             .unwrap(),
@@ -319,6 +320,7 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
             encrypted.to_str().unwrap(),
             "--json",
         ])
+        .arg("--no-input")
         .env("ENTE_CLI_EXPORT_PASSWORD", password)
         .output()
         .unwrap(),
@@ -343,6 +345,7 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
         let mut command =
             restore.command(&["auth", "decrypt", encrypted.to_str().unwrap(), "--json"]);
         command
+            .arg("--no-input")
             .env_remove("ENTE_CLI_VAULT_KEY")
             .env("ENTE_CLI_HOME", &absent_home)
             .env("ENTE_CLI_EXPORT_PASSWORD", password);
@@ -380,7 +383,7 @@ fn encrypted_export_and_independent_decrypt_keep_artifacts_separate_from_summari
         .env("ENTE_CLI_EXPORT_PASSWORD", "wrong")
         .output()
         .unwrap();
-    failure(&wrong);
+    assert!(failure(&wrong).contains(&format!("cannot decrypt {}: ", encrypted.display())));
     assert!(wrong.stdout.is_empty());
     let mut damaged: Value = serde_json::from_slice(&encoded).unwrap();
     let mut ciphertext = b64::decode(damaged["encryptedData"].as_str().unwrap()).unwrap();
@@ -400,6 +403,7 @@ fn password_and_destination_errors_are_resolved_before_account_access() {
     let path = directory.path().join("exact");
     for value in [None, Some("")] {
         let mut command = home.command(&["auth", "export", "--output", path.to_str().unwrap()]);
+        command.arg("--no-input");
         if let Some(value) = value {
             command.env("ENTE_CLI_EXPORT_PASSWORD", value);
         }

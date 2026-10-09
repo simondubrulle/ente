@@ -197,15 +197,20 @@ async fn file(
                 .parent()
                 .filter(|p| !p.as_os_str().is_empty())
                 .unwrap_or(Path::new("."));
-            let mut temporary = tempfile::NamedTempFile::new_in(parent)?;
+            let mut temporary = tempfile::NamedTempFile::new_in(parent)
+                .with_context(|| format!("cannot prepare download to {}", output.display()))?;
             files::download(session, file.id, &file.key, &file.header, || {
                 let file = temporary.as_file_mut();
                 file.set_len(0)?;
                 file.rewind()?;
                 file.try_clone()
             })
-            .await?;
-            temporary.as_file().sync_all()?;
+            .await
+            .with_context(|| format!("cannot download file {}", file.id))?;
+            temporary
+                .as_file()
+                .sync_all()
+                .with_context(|| format!("cannot sync download to {}", output.display()))?;
             let bytes = temporary.as_file().metadata()?.len();
             temporary
                 .persist_noclobber(&output)
