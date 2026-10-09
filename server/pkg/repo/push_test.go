@@ -163,7 +163,7 @@ func TestPushPlatformRegistrationMigration(t *testing.T) {
 	_, err = tx.Exec(`CREATE TEMP TABLE push_tokens (fcm_token TEXT) ON COMMIT DROP;
 		INSERT INTO push_tokens VALUES ('legacy')`)
 	require.NoError(t, err)
-	up, err := os.ReadFile("migrations/150_push_notification_registration.up.sql")
+	up, err := os.ReadFile("migrations/151_push_notification_registration.up.sql")
 	require.NoError(t, err)
 	_, err = tx.Exec(string(up))
 	require.NoError(t, err)
@@ -172,7 +172,7 @@ func TestPushPlatformRegistrationMigration(t *testing.T) {
 	var count int
 	require.NoError(t, tx.QueryRow(`SELECT count(*) FROM push_tokens WHERE platform='ios'`).Scan(&count))
 	require.Equal(t, 2, count)
-	down, err := os.ReadFile("migrations/150_push_notification_registration.down.sql")
+	down, err := os.ReadFile("migrations/151_push_notification_registration.down.sql")
 	require.NoError(t, err)
 	_, err = tx.Exec(string(down))
 	require.NoError(t, err)
