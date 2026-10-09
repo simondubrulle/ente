@@ -2,10 +2,10 @@ use std::fs;
 use std::path::{Path, PathBuf};
 
 use ente_assets::{
-    Asset, AssetDownloadProgress, AssetFile, AssetStore, download::CancellationToken,
+    Asset, AssetDownloadProgress, AssetFile, AssetStore,
+    download::{CancellationToken, Error as DownloadError},
 };
 
-use super::error::{MlError, MlResult};
 use super::models::{self, Model, ModelPaths};
 
 const MODELS: &str = "models";
@@ -101,7 +101,7 @@ pub async fn ensure_indexing_models(
     run_faces: bool,
     run_clip: bool,
     run_pets: bool,
-) -> MlResult<ModelPaths> {
+) -> Result<ModelPaths, DownloadError> {
     ensure_mobile_models(
         store,
         legacy_dir,
@@ -112,7 +112,10 @@ pub async fn ensure_indexing_models(
     Ok(indexing_model_paths(store, run_faces, run_clip, run_pets))
 }
 
-pub async fn ensure_clip_text(store: &AssetStore, legacy_dir: &Path) -> MlResult<ClipTextPaths> {
+pub async fn ensure_clip_text(
+    store: &AssetStore,
+    legacy_dir: &Path,
+) -> Result<ClipTextPaths, DownloadError> {
     ensure_mobile_models(store, legacy_dir, &[clip_text_asset()], |_| {}).await?;
     Ok(clip_text_paths(store))
 }
@@ -122,7 +125,7 @@ pub async fn ensure_mobile_models(
     legacy_dir: &Path,
     assets: &[Asset],
     on_progress: impl FnMut(AssetDownloadProgress) + Send,
-) -> MlResult<()> {
+) -> Result<(), DownloadError> {
     store
         .download_with_staged_import(
             assets,
@@ -139,7 +142,6 @@ pub async fn ensure_mobile_models(
             },
         )
         .await
-        .map_err(|error| MlError::Runtime(format!("model download failed: {error}")))
 }
 
 pub fn is_clip_text_available(store: &AssetStore, legacy_dir: &Path, include_vocab: bool) -> bool {

@@ -3,6 +3,7 @@ import "package:logging/logging.dart";
 import "package:photos/models/ml/ml_versions.dart"
     show mlIndexFlagCoreML, mlIndexFlagRuntimeRust, mlIndexFlagWebGPU;
 import "package:photos/service_locator.dart" show flagService, localSettings;
+import "package:photos/services/machine_learning/ml_exceptions.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
 import "package:photos/services/machine_learning/ml_result.dart";
 import "package:photos/services/machine_learning/webgpu_execution_policy.dart";
@@ -68,6 +69,9 @@ class MLIndexingIsolate extends SuperIsolate {
         shouldPauseIndexingAndClustering = true;
         throw isolateResult;
       }
+      if (isolateResult is ModelDownloadNetworkException) {
+        throw isolateResult;
+      }
       final resultJsonString = isolateResult as String?;
       if (resultJsonString == null) {
         if (!shouldPauseIndexingAndClustering) {
@@ -103,10 +107,13 @@ class MLIndexingIsolate extends SuperIsolate {
       final frozenRuntimeArgs = Map<String, dynamic>.unmodifiable(
         rustRuntimeArgs,
       );
-      await runInIsolate(
+      final result = await runInIsolate(
         IsolateOperation.prepareRustMlRuntime,
         frozenRuntimeArgs,
       );
+      if (result is ModelDownloadNetworkException) {
+        throw result;
+      }
       _cachedRustRuntimeArgs = frozenRuntimeArgs;
     });
   }

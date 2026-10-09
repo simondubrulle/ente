@@ -822,6 +822,8 @@ Future<MLResult> analyzeImageRust(Map args) async {
     rust_ml.AnalyzeImageResult rustResult;
     try {
       rustResult = await runRustAnalyzeForPath(imagePath);
+    } on rust_ml.RustMlError_ModelDownloadNetwork catch (e) {
+      throw ModelDownloadNetworkException(e.message);
     } catch (e, s) {
       if (!_isRustImageIssue(e)) {
         if (_isRustCorruptModelIssue(e)) {
@@ -950,7 +952,7 @@ Future<MLResult> analyzeImageRust(Map args) async {
 
     return result;
   } catch (e, s) {
-    if (isExpectedMlSkipError(e)) {
+    if (e is ModelDownloadNetworkException || isExpectedMlSkipError(e)) {
       rethrow;
     }
     _logger.severe("Could not analyze image with Rust pipeline", e, s);

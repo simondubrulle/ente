@@ -6,6 +6,7 @@ import "package:path/path.dart" as p;
 import "package:path_provider/path_provider.dart";
 import "package:photos/service_locator.dart"
     show flagService, hasGrantedMLConsent, isLocalGalleryMode, localSettings;
+import "package:photos/services/machine_learning/ml_exceptions.dart";
 import "package:photos/src/rust/api/ml_indexing_api.dart" as rust_ml;
 import "package:photos/utils/network_util.dart";
 import "package:synchronized/synchronized.dart";
@@ -116,11 +117,20 @@ class MLModelDownloadService {
           runPets: downloadIndexing && _shouldDownloadPetModels,
           includeClipText: downloadText,
         )) {
-          _progressController.add((
-            update.model,
-            update.downloadedBytes.toInt(),
-            update.totalBytes?.toInt() ?? 0,
-          ));
+          switch (update) {
+            case rust_ml.ModelDownloadEvent_Progress():
+              _progressController.add((
+                update.model,
+                update.downloadedBytes.toInt(),
+                update.totalBytes?.toInt() ?? 0,
+              ));
+            case rust_ml.ModelDownloadEvent_Failed():
+              final error = update.error;
+              if (error is rust_ml.RustMlError_ModelDownloadNetwork) {
+                throw ModelDownloadNetworkException(error.message);
+              }
+              throw error;
+          }
         }
       } catch (e, s) {
         _logger.warning(

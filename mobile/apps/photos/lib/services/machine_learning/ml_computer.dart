@@ -9,6 +9,7 @@ import "package:photos/db/ml/db.dart";
 import "package:photos/models/ml/vector.dart";
 import "package:photos/service_locator.dart" show isLocalGalleryMode;
 import "package:photos/services/machine_learning/ml_constants.dart";
+import "package:photos/services/machine_learning/ml_exceptions.dart";
 import "package:photos/services/machine_learning/ml_model_download_service.dart";
 import "package:photos/services/machine_learning/semantic_search/query_result.dart";
 import "package:photos/services/machine_learning/webgpu_execution_policy.dart";
@@ -92,6 +93,9 @@ class MLComputer extends SuperIsolate {
         "enableWebGpu": enableWebGpu,
       });
       if (isolateResult is RustCorruptModelException) {
+        throw isolateResult;
+      }
+      if (isolateResult is ModelDownloadNetworkException) {
         throw isolateResult;
       }
       final textEmbedding = isolateResult as List<double>;

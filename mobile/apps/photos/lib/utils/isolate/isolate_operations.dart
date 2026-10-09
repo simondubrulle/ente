@@ -10,6 +10,7 @@ import "package:photos/models/ml/face/box.dart";
 import "package:photos/models/ml/vector.dart";
 import "package:photos/services/machine_learning/face_ml/face_clustering/face_clustering_service.dart";
 import "package:photos/services/machine_learning/ml_constants.dart";
+import "package:photos/services/machine_learning/ml_exceptions.dart";
 import "package:photos/services/machine_learning/ml_result.dart";
 import "package:photos/services/machine_learning/semantic_search/query_result.dart";
 import "package:photos/src/rust/api/image_processing_api.dart"
@@ -100,12 +101,18 @@ Future<dynamic> isolateFunction(
         result = await analyzeImageRust(args);
       } on rust_ml.RustMlError_CorruptModel catch (e) {
         return RustCorruptModelException(e.message);
+      } on ModelDownloadNetworkException catch (e) {
+        return e;
       }
       return result.toJsonString();
 
     case IsolateOperation.prepareRustMlRuntime:
       await _ensureRustLoaded();
-      await _ensureRustRuntimePrepared(args);
+      try {
+        await _ensureRustRuntimePrepared(args);
+      } on rust_ml.RustMlError_ModelDownloadNetwork catch (e) {
+        return ModelDownloadNetworkException(e.message);
+      }
       return true;
 
     case IsolateOperation.releaseRustMlRuntime:
@@ -153,6 +160,8 @@ Future<dynamic> isolateFunction(
         );
       } on rust_ml.RustMlError_CorruptModel catch (e) {
         return RustCorruptModelException(e.message);
+      } on rust_ml.RustMlError_ModelDownloadNetwork catch (e) {
+        return ModelDownloadNetworkException(e.message);
       }
       return List<double>.from(result.embedding, growable: false);
 

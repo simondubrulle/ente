@@ -1,6 +1,6 @@
 use std::path::Path;
 
-use ente_assets::AssetStore;
+use ente_assets::{AssetStore, download::Error as DownloadError};
 use ente_ml::{assets, error::MlError, indexing, types};
 use flutter_rust_bridge::spawn_blocking_with;
 
@@ -21,6 +21,7 @@ pub struct AnalyzeImageRequest {
 pub enum RustMlError {
     InvalidImage { message: String },
     CorruptModel { message: String },
+    ModelDownloadNetwork { message: String },
     Other { message: String },
 }
 
@@ -113,10 +114,15 @@ pub struct RunClipTextRequest {
 }
 
 #[derive(Clone, Debug)]
-pub struct ModelDownloadProgress {
-    pub model: String,
-    pub downloaded_bytes: u64,
-    pub total_bytes: Option<u64>,
+pub enum ModelDownloadEvent {
+    Progress {
+        model: String,
+        downloaded_bytes: u64,
+        total_bytes: Option<u64>,
+    },
+    Failed {
+        error: RustMlError,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -216,7 +222,7 @@ pub async fn preload_ml_models(
     run_clip: bool,
     run_pets: bool,
     include_clip_text: bool,
-    progress: StreamSink<ModelDownloadProgress>,
+    progress: StreamSink<ModelDownloadEvent>,
 ) {
     let store = AssetStore::new(&assets_dir);
     let mut selected = assets::indexing_assets(run_faces, run_clip, run_pets);
@@ -243,7 +249,7 @@ pub async fn preload_ml_models(
     }
     if let Err(error) =
         assets::ensure_mobile_models(&store, Path::new(&assets_dir), &selected, |update| {
-            let _ = progress.add(ModelDownloadProgress {
+            let _ = progress.add(ModelDownloadEvent::Progress {
                 model: labels[update.asset_index].to_string(),
                 downloaded_bytes: update.asset_progress.downloaded_bytes,
                 total_bytes: update.asset_progress.total_bytes,
@@ -251,7 +257,9 @@ pub async fn preload_ml_models(
         })
         .await
     {
-        let _ = progress.add_error(error.to_string());
+        let _ = progress.add(ModelDownloadEvent::Failed {
+            error: error.into(),
+        });
     }
 }
 
@@ -280,6 +288,28 @@ impl From<MlError> for RustMlError {
             | MlError::Postprocess(message)
             | MlError::Runtime(message) => Self::Other { message },
         }
+    }
+}
+
+impl From<DownloadError> for RustMlError {
+    fn from(error: DownloadError) -> Self {
+        let message = format!("model download failed: {error}");
+        if is_expected_download_error(&error) {
+            Self::ModelDownloadNetwork { message }
+        } else {
+            Self::Other { message }
+        }
+    }
+}
+
+fn is_expected_download_error(error: &DownloadError) -> bool {
+    match error {
+        DownloadError::Network(_) | DownloadError::Http(_) => true,
+        DownloadError::Target { source, .. } => is_expected_download_error(source),
+        DownloadError::Fallback { single, ranged } => {
+            is_expected_download_error(single) && is_expected_download_error(ranged)
+        }
+        _ => false,
     }
 }
 
@@ -389,5 +419,96 @@ fn to_api_pet_body_result(result: types::PetBodyResult) -> RustPetBodyResult {
             .into_iter()
             .map(|v| v as f64)
             .collect(),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn network_and_http_download_failures_keep_their_classification() {
+        for error in [
+            DownloadError::Network("timed out".into()),
+            DownloadError::Http(503),
+            DownloadError::Target {
+                label: "CLIP".into(),
+                source: Box::new(DownloadError::Fallback {
+                    single: Box::new(DownloadError::Network("connection closed".into())),
+                    ranged: Box::new(DownloadError::Http(503)),
+                }),
+            },
+        ] {
+            let expected_message = format!("model download failed: {error}");
+            let RustMlError::ModelDownloadNetwork { message } = RustMlError::from(error) else {
+                panic!("expected a network download failure");
+            };
+            assert_eq!(message, expected_message);
+        }
+    }
+
+    #[test]
+    fn non_network_download_failures_remain_reportable() {
+        for error in [
+            DownloadError::Validation("checksum mismatch".into()),
+            DownloadError::StorageFull,
+            DownloadError::Io(std::io::Error::other("cannot import model")),
+            DownloadError::Protocol("invalid range".into()),
+            DownloadError::SizeMismatch {
+                expected: 10,
+                actual: 5,
+            },
+            DownloadError::InvalidTarget("invalid asset".into()),
+            DownloadError::Cancelled,
+        ] {
+            let error = DownloadError::Target {
+                label: "CLIP".into(),
+                source: Box::new(error),
+            };
+            assert!(matches!(
+                RustMlError::from(error),
+                RustMlError::Other { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn mixed_fallback_failures_remain_reportable() {
+        for (single, ranged) in [
+            (
+                DownloadError::Validation("checksum mismatch".into()),
+                DownloadError::Network("timed out".into()),
+            ),
+            (
+                DownloadError::Network("timed out".into()),
+                DownloadError::Protocol("invalid range".into()),
+            ),
+        ] {
+            let error = DownloadError::Fallback {
+                single: Box::new(single),
+                ranged: Box::new(ranged),
+            };
+            assert!(matches!(
+                RustMlError::from(error),
+                RustMlError::Other { .. }
+            ));
+        }
+    }
+
+    #[test]
+    fn native_runtime_and_inference_errors_remain_reportable() {
+        for error in [
+            MlError::Runtime("worker failed".into()),
+            MlError::Ort("inference failed".into()),
+        ] {
+            assert!(matches!(
+                RustMlError::from(error),
+                RustMlError::Other { .. }
+            ));
+        }
+        assert!(matches!(
+            task_error("worker panicked"),
+            RustMlError::Other { .. }
+        ));
     }
 }

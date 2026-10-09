@@ -752,6 +752,7 @@ mod tests {
                             }
                             Err(error) => panic!("test server: {error}"),
                         };
+                        stream.set_nonblocking(false).unwrap();
                         stream
                             .set_read_timeout(Some(Duration::from_secs(5)))
                             .unwrap();
