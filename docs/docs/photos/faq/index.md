@@ -538,6 +538,7 @@ Jump to a category:
 - [Who can create collaborative albums or public links?](/photos/faq/sharing-and-collaboration#who-can-share)
 - [Can I change permissions for collaborators after sharing?](/photos/faq/sharing-and-collaboration#change-permissions)
 - [What happens to shared albums if I cancel my subscription?](/photos/faq/sharing-and-collaboration#cancel-subscription-impact)
+- [Why can't I create a public link after my subscription expires?](/photos/faq/sharing-and-collaboration#expired-subscription-public-links)
 
 ### Security and Privacy
 
