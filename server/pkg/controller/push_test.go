@@ -2,17 +2,13 @@ package controller
 
 import (
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"io"
 	"net/http"
-	"strconv"
 	"strings"
 	"sync/atomic"
 	"testing"
-	"time"
 
 	"github.com/ente/museum/ente"
 	"github.com/ente/museum/internal/testutil"
@@ -22,7 +18,6 @@ import (
 	logtest "github.com/sirupsen/logrus/hooks/test"
 	"github.com/spf13/viper"
 	"github.com/stretchr/testify/require"
-	"golang.org/x/crypto/nacl/box"
 )
 
 type roundTripFunc func(*http.Request) (*http.Response, error)
@@ -168,7 +163,7 @@ func TestFCMSendDoesNotClassifyInvalidArgumentAsUnregistered(t *testing.T) {
 	require.False(t, errors.Is(err, errUnregisteredToken))
 }
 
-func TestAlbumShareSendsPlatformPayloads(t *testing.T) {
+func TestAlbumShareSendsOnlyAndroidSync(t *testing.T) {
 	testutil.WithServerRoot(t)
 	db := testutil.RequireTestDB(t)
 	testutil.ResetTables(t, db)
@@ -178,20 +173,12 @@ func TestAlbumShareSendsPlatformPayloads(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, (&repo.UserAuthRepository{DB: db}).AddToken(1, ente.Photos, "session", "", ""))
 	hash := auth.HashToken("session")
-	platform := "ios"
 	controller := &PushController{PushRepo: &repo.PushTokenRepository{DB: db}}
-	keys := make(map[string][2]*[32]byte)
-	for _, device := range []string{"first-device", "second-device"} {
-		publicKey, privateKey, err := box.GenerateKey(rand.Reader)
-		require.NoError(t, err)
-		keys[device] = [2]*[32]byte{publicKey, privateKey}
+	for _, platform := range []string{"ios", "android"} {
 		require.NoError(t, controller.AddToken(1, hash[:], ente.PushTokenRequest{
-			FCMToken: device, APNSToken: "apns", Platform: &platform,
-			Notification: &ente.PushNotificationRegistration{Version: 1, PublicKey: publicKey[:]},
+			FCMToken: platform + "-device", Platform: &platform,
 		}))
 	}
-	platform = "android"
-	require.NoError(t, controller.AddToken(1, hash[:], ente.PushTokenRequest{FCMToken: "android-device", Platform: &platform}))
 	var messages []map[string]any
 	controller.fcm = &fcmClient{projectID: "test-project", httpClient: &http.Client{Transport: roundTripFunc(func(request *http.Request) (*http.Response, error) {
 		require.NoError(t, request.Context().Err())
@@ -204,44 +191,12 @@ func TestAlbumShareSendsPlatformPayloads(t *testing.T) {
 	})}}
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	before := time.Now().Add(24 * time.Hour).Unix()
 	controller.NotifyAlbumShare(ctx, []int64{1})
-	require.Len(t, messages, 3)
-	for _, message := range messages {
-		if message["token"] == "android-device" {
-			require.Equal(t, map[string]any{
-				"token":   "android-device",
-				"data":    map[string]any{"action": "sync"},
-				"android": map[string]any{"priority": "high", "ttl": "86400s"},
-			}, message)
-			continue
-		}
-		require.Len(t, message, 2)
-		device := message["token"].(string)
-		apns := message["apns"].(map[string]any)
-		headers := apns["headers"].(map[string]any)
-		require.Equal(t, "alert", headers["apns-push-type"])
-		require.Equal(t, "10", headers["apns-priority"])
-		expires, err := strconv.ParseInt(headers["apns-expiration"].(string), 10, 64)
-		require.NoError(t, err)
-		require.GreaterOrEqual(t, expires, before)
-		require.LessOrEqual(t, expires, time.Now().Add(24*time.Hour).Unix())
-		payload := apns["payload"].(map[string]any)
-		require.Len(t, payload, 3)
-		require.EqualValues(t, 1, payload["notificationVersion"])
-		aps := payload["aps"].(map[string]any)
-		require.EqualValues(t, 1, aps["mutable-content"])
-		require.Equal(t, map[string]any{"title": "Ente Photos", "body": "New activity"}, aps["alert"])
-		ciphertext, err := base64.StdEncoding.DecodeString(payload["notificationCiphertext"].(string))
-		require.NoError(t, err)
-		plaintext, ok := box.OpenAnonymous(nil, ciphertext, keys[device][0], keys[device][1])
-		require.True(t, ok)
-		require.JSONEq(t, `{"version":1,"eventType":"album_shared"}`, string(plaintext))
-		encoded, err := json.Marshal(message)
-		require.NoError(t, err)
-		require.NotContains(t, string(encoded), "album_shared")
-		require.NotContains(t, string(encoded), "internal@example.com")
-	}
+	require.Equal(t, []map[string]any{{
+		"token":   "android-device",
+		"data":    map[string]any{"action": "sync"},
+		"android": map[string]any{"priority": "high", "ttl": "86400s"},
+	}}, messages)
 }
 
 func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {
@@ -254,9 +209,7 @@ func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {
 	require.NoError(t, err)
 	require.NoError(t, (&repo.UserAuthRepository{DB: db}).AddToken(1, ente.Photos, "session", "", ""))
 	hash := auth.HashToken("session")
-	platform := "ios"
-	publicKey, _, err := box.GenerateKey(rand.Reader)
-	require.NoError(t, err)
+	platform := "android"
 	controller := &PushController{PushRepo: &repo.PushTokenRepository{DB: db}}
 	responses := map[string]struct {
 		status int
@@ -271,7 +224,6 @@ func TestAlbumSharePrunesOnlyUnregisteredTokens(t *testing.T) {
 	for token := range responses {
 		require.NoError(t, controller.AddToken(1, hash[:], ente.PushTokenRequest{
 			FCMToken: token, Platform: &platform,
-			Notification: &ente.PushNotificationRegistration{Version: 1, PublicKey: publicKey[:]},
 		}))
 	}
 	var attempted []string

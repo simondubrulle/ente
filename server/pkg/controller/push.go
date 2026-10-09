@@ -3,8 +3,6 @@ package controller
 import (
 	"bytes"
 	"context"
-	"crypto/rand"
-	"encoding/base64"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -19,12 +17,10 @@ import (
 	"github.com/ente/museum/ente"
 	"github.com/ente/museum/pkg/repo"
 	"github.com/ente/museum/pkg/utils/config"
-	"github.com/ente/museum/pkg/utils/crypto"
 	"github.com/ente/museum/pkg/utils/time"
 	"github.com/ente/stacktrace"
 	log "github.com/sirupsen/logrus"
 	"github.com/spf13/viper"
-	"golang.org/x/crypto/nacl/box"
 	"golang.org/x/oauth2"
 	"golang.org/x/oauth2/google"
 )
@@ -104,14 +100,6 @@ func newFCMClient() (*fcmClient, error) {
 }
 
 func (c *PushController) AddToken(userID int64, sessionTokenHash []byte, token ente.PushTokenRequest) error {
-	if token.Notification != nil {
-		if *token.Platform != "ios" {
-			return ente.NewBadRequestWithMessage("notification enrollment is only supported on iOS")
-		}
-		if err := crypto.ValidateSealedBoxPublicKey(base64.StdEncoding.EncodeToString(token.Notification.PublicKey)); err != nil {
-			return ente.NewBadRequestWithMessage("invalid notification public key")
-		}
-	}
 	return stacktrace.Propagate(c.PushRepo.AddToken(userID, sessionTokenHash, token), "")
 }
 
@@ -129,34 +117,11 @@ func (c *PushController) NotifyAlbumShare(ctx context.Context, recipients []int6
 	}
 	var unregisteredTokens []string
 	for _, token := range tokens {
-		message := map[string]any{"token": token.FCMToken}
-		if token.Platform == "android" {
-			message["data"] = map[string]string{"action": "sync"}
-			message["android"] = map[string]string{"priority": "high", "ttl": "86400s"}
-		} else {
-			ciphertext, err := box.SealAnonymous(nil, []byte(`{"version":1,"eventType":"album_shared"}`), (*[32]byte)(token.NotificationPublicKey), rand.Reader)
-			if err != nil {
-				log.WithError(err).Warn("album share notification encryption failed")
-				continue
-			}
-			message["apns"] = map[string]any{
-				"headers": map[string]string{
-					"apns-push-type":  "alert",
-					"apns-priority":   "10",
-					"apns-expiration": strconv.FormatInt(gotime.Now().Add(24*gotime.Hour).Unix(), 10),
-				},
-				"payload": map[string]any{
-					"aps": map[string]any{
-						"alert":           map[string]string{"title": "Ente Photos", "body": "New activity"},
-						"mutable-content": 1,
-						"sound":           "default",
-					},
-					"notificationVersion":    1,
-					"notificationCiphertext": base64.StdEncoding.EncodeToString(ciphertext),
-				},
-			}
-		}
-		err = c.fcm.sendMessage(ctx, message)
+		err = c.fcm.sendMessage(ctx, map[string]any{
+			"token":   token.FCMToken,
+			"data":    map[string]string{"action": "sync"},
+			"android": map[string]string{"priority": "high", "ttl": "86400s"},
+		})
 		if err != nil {
 			log.WithError(err).Warn("album share push failed; album remains shared")
 			if errors.Is(err, errUnregisteredToken) {

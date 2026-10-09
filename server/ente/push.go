@@ -6,25 +6,17 @@ import (
 )
 
 type PushTokenRequest struct {
-	FCMToken             string                        `json:"fcmToken" binding:"required"`
-	APNSToken            string                        `json:"apnsToken"`
-	Platform             *string                       `json:"platform" binding:"required,oneof=ios android"`
-	Notification         *PushNotificationRegistration `json:"notification"`
+	FCMToken             string  `json:"fcmToken" binding:"required"`
+	APNSToken            string  `json:"apnsToken"`
+	Platform             *string `json:"platform" binding:"required,oneof=ios android"`
 	LastNotificationTime int64
 }
 
-type PushNotificationRegistration struct {
-	Version   int    `json:"version" binding:"required,eq=1"`
-	PublicKey []byte `json:"publicKey" binding:"required,len=32"`
-}
-
 type PushToken struct {
-	Platform              string `json:"-"`
-	UserID                int64  `json:"userID"`
-	FCMToken              string `json:"fcmToken"`
-	CreatedAt             int64  `json:"createdAt"`
-	LastNotifiedAt        int64  `json:"lastNotifiedAt"`
-	NotificationPublicKey []byte `json:"-"`
+	UserID         int64  `json:"userID"`
+	FCMToken       string `json:"fcmToken"`
+	CreatedAt      int64  `json:"createdAt"`
+	LastNotifiedAt int64  `json:"lastNotifiedAt"`
 }
 
 func (pt *PushToken) MarshalJSON() ([]byte, error) {

@@ -15,17 +15,13 @@ type PushTokenRepository struct {
 }
 
 func (repo *PushTokenRepository) AddToken(userID int64, sessionTokenHash []byte, token ente.PushTokenRequest) error {
-	var publicKey any
-	if token.Notification != nil {
-		publicKey = token.Notification.PublicKey
-	}
-	result, err := repo.DB.Exec(`INSERT INTO push_tokens(user_id, fcm_token, apns_token, session_token_hash, platform, notification_public_key)
-			SELECT user_id, $2, $3, token_hash, $5, $6 FROM tokens
+	result, err := repo.DB.Exec(`INSERT INTO push_tokens(user_id, fcm_token, apns_token, session_token_hash, platform)
+			SELECT user_id, $2, $3, token_hash, $5 FROM tokens
 			WHERE user_id = $1 AND token_hash = $4 AND is_deleted = false FOR SHARE
 			ON CONFLICT (fcm_token) DO UPDATE
 			SET user_id = EXCLUDED.user_id, apns_token = EXCLUDED.apns_token, session_token_hash = EXCLUDED.session_token_hash,
-				platform = EXCLUDED.platform, notification_public_key = EXCLUDED.notification_public_key`,
-		userID, token.FCMToken, token.APNSToken, sessionTokenHash, token.Platform, publicKey)
+				platform = EXCLUDED.platform`,
+		userID, token.FCMToken, token.APNSToken, sessionTokenHash, token.Platform)
 	if err != nil {
 		return stacktrace.Propagate(err, "")
 	}
@@ -63,11 +59,10 @@ func (repo *PushTokenRepository) GetTokensToBeNotified(lastNotificationTime int6
 }
 
 func (repo *PushTokenRepository) GetTokensForAlbumShare(ctx context.Context, userIDs []int64) ([]ente.PushToken, error) {
-	rows, err := repo.DB.QueryContext(ctx, `SELECT p.fcm_token, p.platform, p.notification_public_key FROM push_tokens p
+	rows, err := repo.DB.QueryContext(ctx, `SELECT p.fcm_token FROM push_tokens p
 		JOIN tokens t ON t.token_hash = p.session_token_hash AND t.user_id = p.user_id AND t.is_deleted = false AND t.app = $3
 		JOIN remote_store r ON r.user_id = p.user_id AND r.key_name = $2 AND r.key_value = 'true'
-		WHERE p.user_id = ANY($1)
-		AND (p.platform = 'android' OR (p.platform = 'ios' AND p.notification_public_key IS NOT NULL))`,
+		WHERE p.user_id = ANY($1) AND p.platform = 'android'`,
 		pq.Array(userIDs), string(ente.IsInternalUser), string(ente.Photos))
 	if err != nil {
 		return nil, stacktrace.Propagate(err, "")
@@ -76,7 +71,7 @@ func (repo *PushTokenRepository) GetTokensForAlbumShare(ctx context.Context, use
 	var tokens []ente.PushToken
 	for rows.Next() {
 		var token ente.PushToken
-		if err := rows.Scan(&token.FCMToken, &token.Platform, &token.NotificationPublicKey); err != nil {
+		if err := rows.Scan(&token.FCMToken); err != nil {
 			return nil, stacktrace.Propagate(err, "")
 		}
 		tokens = append(tokens, token)
