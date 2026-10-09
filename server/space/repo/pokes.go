@@ -18,19 +18,19 @@ func (r *PokesRepository) Create(ctx context.Context, senderSpaceID, recipientSp
 		return false, stacktrace.Propagate(err, "")
 	}
 	defer tx.Rollback()
-	for _, spaceID := range []string{senderSpaceID, recipientSpaceID} {
-		var lockedSpaceID string
-		if err := tx.QueryRowContext(ctx, `
-            SELECT space_id FROM spaces WHERE space_id = $1 FOR KEY SHARE
-        `, spaceID).Scan(&lockedSpaceID); err != nil {
-			return false, stacktrace.Propagate(err, "")
-		}
-	}
 	var friendSpaceID string
 	if err := tx.QueryRowContext(ctx, `
+        WITH locked_spaces AS MATERIALIZED (
+            SELECT space_id FROM spaces
+            WHERE space_id IN ($1, $2)
+            ORDER BY CASE WHEN space_id = $1 THEN 0 ELSE 1 END
+            FOR KEY SHARE
+        )
         SELECT friend_space_id FROM space_friend_shares
-        WHERE space_id = $1 AND friend_space_id = $2 FOR SHARE
-    `, recipientSpaceID, senderSpaceID).Scan(&friendSpaceID); err != nil {
+        WHERE space_id = $2 AND friend_space_id = $1
+          AND (SELECT COUNT(*) FROM locked_spaces) = 2
+        FOR SHARE
+    `, senderSpaceID, recipientSpaceID).Scan(&friendSpaceID); err != nil {
 		return false, stacktrace.Propagate(err, "")
 	}
 	pokeID := base.MustNewID("wpk")
