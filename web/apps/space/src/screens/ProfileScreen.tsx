@@ -24,7 +24,6 @@ import {
     type SpaceViewerPhoto,
     type SpaceViewerPostActionMode,
 } from "components/FileViewer";
-import { SpacePostGrid } from "components/PostGrid";
 import { SpacePostPhotoInput } from "components/PostPhotoInput";
 import { SpacePostTile, type SpacePostTileItem } from "components/PostTile";
 import { SpaceLoadingSpinner } from "components/RouteFallback";
@@ -86,6 +85,13 @@ interface SelectedProfilePost {
 
 const profilePostImageCacheKey = (item: ProfilePostItem) =>
     [item.id, item.imageAsset?.objectKey ?? item.imageUrl ?? ""].join(":");
+
+const profilePostPhoto = (item: ProfilePostItem, index: number) => {
+    const photo = item.photos?.[index];
+    return index > 0 && photo
+        ? { ...item, ...photo, imageUrl: photo.imageUrl }
+        : item;
+};
 
 const ProfileStatsSkeleton: React.FC = () => (
     <Box
@@ -275,6 +281,9 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
 }) => {
     const [selectedPost, setSelectedPost] =
         useState<SelectedProfilePost | null>(null);
+    const [tilePhotoIndices, setTilePhotoIndices] = useState<
+        Record<string, number>
+    >({});
     const [isInviteLinkCopied, setIsInviteLinkCopied] = useState(false);
     const [deletedPostIDs, setDeletedPostIDs] = useState<Set<string>>(
         () => new Set(),
@@ -516,7 +525,13 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
             avatarUrl: profile.avatarUrl,
             imageUrl: loadedPostImageURLFor(item),
             name: displayName,
-        }).map((photo) => ({ ...photo, id: item.id })),
+        }).map((photo, index) => ({
+            ...photo,
+            id: item.id,
+            imageUrl:
+                photo.imageUrl ||
+                (loadedPostImageURLFor(profilePostPhoto(item, index)) ?? ""),
+        })),
     );
     const selectedPhotoIndex = selectedPost
         ? profileViewerPhotos.findIndex(
@@ -527,12 +542,16 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
         : 0;
     const handleSelectedPostIndexChange = (photoIndex: number) => {
         const photo = profileViewerPhotos[photoIndex];
-        if (photo)
-            setSelectedPost({
-                id: photo.id,
-                photo,
-                photoIndex: photo.postPhotoIndex!,
-            });
+        if (!photo) return;
+        setSelectedPost({
+            id: photo.id,
+            photo,
+            photoIndex: photo.postPhotoIndex!,
+        });
+        setTilePhotoIndices((current) => ({
+            ...current,
+            [photo.id]: photo.postPhotoIndex ?? 0,
+        }));
     };
 
     const shareInvite = async () => {
@@ -568,7 +587,19 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
     };
 
     const renderPostTile = (item: ProfilePostItem, index: number) => {
-        const imageUrl = loadedPostImageURLFor(item);
+        const remembered = Math.min(
+            tilePhotoIndices[item.id] ?? 0,
+            (item.photos?.length || 1) - 1,
+        );
+        const photoIndex =
+            remembered > 0 &&
+            unavailablePostsByKey[
+                profilePostImageCacheKey(profilePostPhoto(item, remembered))
+            ]
+                ? 0
+                : remembered;
+        const shown = profilePostPhoto(item, photoIndex);
+        const imageUrl = loadedPostImageURLFor(shown);
         const isUnavailable = !viewerPostIDs.has(item.id);
         return (
             <SpacePostTile
@@ -577,23 +608,26 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 imageUrl={imageUrl}
                 index={index}
                 isUnavailable={isUnavailable}
-                item={item}
+                item={{ ...item, ...dimensionsForPost(item) }}
+                photoIndex={photoIndex}
                 loadRootMargin={postImageLoadRootMargin}
-                onLoadImage={() => loadPostImage(item)}
+                onLoadImage={() => loadPostImage(shown)}
                 onImageDecodeError={() =>
                     setUnavailablePostsByKey((current) => ({
                         ...current,
-                        [profilePostImageCacheKey(item)]: true,
+                        [profilePostImageCacheKey(shown)]: true,
                     }))
                 }
                 onOpen={(openedImageUrl) => {
                     const photo = profileViewerPhotos.find(
-                        (photo) => photo.id == item.id,
+                        (photo) =>
+                            photo.id == item.id &&
+                            (photo.postPhotoIndex ?? 0) == photoIndex,
                     );
                     if (!photo) return;
                     setSelectedPost({
                         id: item.id,
-                        photoIndex: 0,
+                        photoIndex,
                         photo: { ...photo, imageUrl: openedImageUrl },
                     });
                 }}
@@ -1318,11 +1352,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                                 width: "calc(100% - 16px)",
                             }}
                         >
-                            <SpacePostGrid
-                                items={visiblePostItems}
-                                postCount={displayedPostsCount}
-                                renderTile={renderPostTile}
-                            />
+                            {visiblePostItems.map(renderPostTile)}
                         </Box>
                     ) : shouldShowPostLoadingIndicator ? (
                         <ProfilePostLoadingIndicator />
