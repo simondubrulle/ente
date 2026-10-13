@@ -108,37 +108,36 @@ export const SearchBar: React.FC<SearchBarProps> = (props) => {
         return () => document.removeEventListener("keydown", handleKeyDown);
     }, []);
 
+    const closeButton = isSmallWidth && props.isInSearchMode && (
+        <Tooltip title={t("close")}>
+            <IconButton aria-label={t("close")} onClick={clearSearch}>
+                <CloseIcon />
+            </IconButton>
+        </Tooltip>
+    );
+
     return (
         <>
-            {props.isInSearchMode && (
-                <Tooltip title={t("close")}>
-                    <IconButton
-                        aria-label={t("close")}
-                        onClick={clearSearch}
-                        sx={{ mr: "8px" }}
+            <Stack sx={{ alignItems: "center", gap: "12px" }}>
+                {closeButton}
+                <Tooltip title={`Search (${shortcut})`}>
+                    <FocusVisibleButton
+                        color="secondary"
+                        aria-label={t("search")}
+                        aria-haspopup="dialog"
+                        onClick={showSearch}
+                        sx={{
+                            minWidth: 0,
+                            width: 38,
+                            height: 38,
+                            p: 0,
+                            borderRadius: "12px",
+                        }}
                     >
-                        <CloseIcon />
-                    </IconButton>
+                        <HugeiconsIcon icon={Search01Icon} size={20} />
+                    </FocusVisibleButton>
                 </Tooltip>
-            )}
-            <Tooltip title={`Search (${shortcut})`}>
-                <FocusVisibleButton
-                    color="secondary"
-                    aria-label={t("search")}
-                    aria-haspopup="dialog"
-                    onClick={showSearch}
-                    sx={{
-                        minWidth: 0,
-                        width: isSmallWidth ? 40 : 48,
-                        height: isSmallWidth ? 40 : 48,
-                        p: 0,
-                        mr: "8px",
-                        borderRadius: "16px",
-                    }}
-                >
-                    <HugeiconsIcon icon={Search01Icon} size={20} />
-                </FocusVisibleButton>
-            </Tooltip>
+            </Stack>
             <ThemeProvider theme={sidebarTheme}>
                 <Dialog
                     open={open}
