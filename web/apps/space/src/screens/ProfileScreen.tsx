@@ -545,15 +545,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                 (loadedPostImageURLFor(profilePostPhoto(item, index)) ?? ""),
         })),
     );
-    const selectedPhotoIndex = selectedPost
-        ? profileViewerPhotos.findIndex(
-              (photo) =>
-                  photo.id == selectedPost.id &&
-                  photo.postPhotoIndex == selectedPost.photoIndex,
-          )
-        : 0;
+    const selectedPostPhotos = profileViewerPhotos.filter(
+        (photo) => photo.id == selectedPost?.id,
+    );
     const handleSelectedPostIndexChange = (photoIndex: number) => {
-        const photo = profileViewerPhotos[photoIndex];
+        const photo = selectedPostPhotos[photoIndex];
         if (!photo) return;
         setSelectedPost({
             id: photo.id,
@@ -860,11 +856,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                             : profileCoverBackground,
                         borderBottomLeftRadius: profileCoverRadius,
                         borderBottomRightRadius: profileCoverRadius,
-                        height: `calc(${profileCoverHeight}px + var(--space-profile-safe-area-top))`,
+                        height: profileCoverHeight,
                         insetInline: 0,
                         overflow: "hidden",
                         position: "absolute",
-                        top: 0,
+                        top: "var(--space-profile-safe-area-top)",
                         width: "100%",
                         zIndex: 0,
                     }}
@@ -905,7 +901,7 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         aria-hidden
                         sx={{
                             background: profileCoverTopShadow,
-                            height: `calc(${profileHeaderHeight + 8}px + var(--space-profile-safe-area-top))`,
+                            height: profileHeaderHeight + 8,
                             insetInline: 0,
                             pointerEvents: "none",
                             position: "absolute",
@@ -923,11 +919,11 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                             bgcolor: "transparent",
                             border: 0,
                             cursor: "pointer",
-                            height: `calc(${profileCoverHeight}px + var(--space-profile-safe-area-top))`,
+                            height: profileCoverHeight,
                             insetInline: 0,
                             p: 0,
                             position: "absolute",
-                            top: 0,
+                            top: "var(--space-profile-safe-area-top)",
                             width: "100%",
                             zIndex: 2,
                             "&:focus-visible": {
@@ -1517,8 +1513,8 @@ export const ProfileScreen: React.FC<ProfileScreenProps> = ({
                         closeOnSwipePastEnd
                         headerHeight={profileHeaderHeight}
                         photo={selectedPost.photo}
-                        photos={profileViewerPhotos}
-                        photoIndex={selectedPhotoIndex}
+                        photos={selectedPostPhotos}
+                        photoIndex={selectedPost.photoIndex}
                         onPhotoIndexChange={handleSelectedPostIndexChange}
                         onLoadPhoto={onLoadPostImage}
                         postActionMode={selectedPostActionMode}
