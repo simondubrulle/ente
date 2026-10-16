@@ -270,9 +270,28 @@ async fn exercise(origin: String) -> TestResult {
     )
     .await;
     let original = b"original photo bytes from Museum";
-    let file_id = upload_file(&origin, &alice, album, &key, original, Some(0))
-        .await
-        .to_string();
+    let (file_id, file_key) = upload_fixture(
+        &origin,
+        &alice,
+        album,
+        &key,
+        original,
+        json!({"title":"original.jpg","fileType":0,"creationTime":1_700_000_000_000_000i64,"modificationTime":1_700_000_000_000_000i64}),
+    )
+    .await;
+    let private = blob::encrypt_json(&json!({"visibility": 0}), &file_key)?;
+    reqwest::Client::new()
+        .put(format!("{origin}/files/magic-metadata"))
+        .header("x-auth-token", b64::encode_url_safe(&alice.secrets.token))
+        .header("x-client-package", "io.ente.photos")
+        .json(&json!({"metadataList":[{"id":file_id,"magicMetadata":{
+            "version":1,"count":1,"data":b64::encode(&private.encrypted_data),
+            "header":b64::encode(private.decryption_header.as_bytes())
+        }}]}))
+        .send()
+        .await?
+        .error_for_status()?;
+    let file_id = file_id.to_string();
 
     let home = TestHome::new();
     login(&home, "photos", &alice_email, &["--host", &origin]);
@@ -387,16 +406,21 @@ async fn exercise(origin: String) -> TestResult {
         &home,
         "photos",
         &alice_email,
-        &["other-server", "--host", &alias_origin],
+        &["--account", "other-server", "--host", &alias_origin],
     );
     success(home.run(&["account", "rename", &alice_email, "work"]));
     assert_eq!(home.read_vault()["accounts"][0]["storage_id"], first_id);
 
-    login(&home, "auth", &bob_email, &[&bob_email, "--host", &origin]);
+    login(
+        &home,
+        "auth",
+        &bob_email,
+        &["--account", &bob_email, "--host", &origin],
+    );
     assert!(
         failure(&home.run(&["photos", "album", "list"])).contains("is not logged into Ente Photos")
     );
-    login(&home, "locker", &alice_email, &["work"]);
+    login(&home, "locker", &alice_email, &["--account", "work"]);
     let accounts = home.json(&["account", "list"]);
     assert!(
         accounts
@@ -479,13 +503,23 @@ async fn exercise(origin: String) -> TestResult {
         "--album",
         "Monsoon 🌧",
     ]);
+    let owned_record: Value = serde_json::from_slice(&fs::read(
+        owned_export.join("Monsoon 🌧/metadata/original.jpg.json"),
+    )?)?;
+    assert_eq!(
+        owned_record["ente"]["magicMetadata"],
+        json!({"visibility": 0})
+    );
     let album_record: Value =
         serde_json::from_slice(&fs::read(shared_export.join("Monsoon 🌧/metadata.json")).unwrap())
             .unwrap();
-    assert_eq!(album_record["ente"]["visibility"], "hidden");
+    assert_eq!(
+        album_record["ente"]["sharedMagicMetadata"],
+        json!({"visibility": 2})
+    );
     let shared_sidecar = shared_export.join("Monsoon 🌧/metadata/original.jpg.json");
     let file_record: Value = serde_json::from_slice(&fs::read(&shared_sidecar).unwrap()).unwrap();
-    assert!(file_record["ente"].get("visibility").is_none());
+    assert!(file_record["ente"].get("magicMetadata").is_none());
     let adopted = TestHome::new();
     adopted.write_vault(&home.read_vault());
     let shared_original = shared_export.join("Monsoon 🌧/original.jpg");
@@ -579,7 +613,7 @@ async fn exercise(origin: String) -> TestResult {
         0
     );
 
-    login(&home, "photos", &alice_email, &["work"]);
+    login(&home, "photos", &alice_email, &["--account", "work"]);
     success(home.run(&["account", "switch", "work"]));
     let added_original = b"added after the first sync";
     let added_file = upload_file(&origin, &alice, album, &key, added_original, None)
@@ -648,7 +682,9 @@ async fn exercise(origin: String) -> TestResult {
     let before = fs::read(home.dir.path().join("vault.json")).unwrap();
     for name in [Some("work"), None] {
         let mut args = vec!["account", "login", "--app", "photos", "--input", "-"];
-        args.extend(name);
+        if let Some(name) = name {
+            args.extend(["--account", name]);
+        }
         assert!(
             failure(&home.with_input(&args, &credentials(&bob_email)))
                 .contains("identity does not match")
@@ -676,7 +712,7 @@ async fn exercise(origin: String) -> TestResult {
     assert_eq!(response.status(), reqwest::StatusCode::UNAUTHORIZED);
     failure(&home.run(&["photos", "album", "list"]));
     assert_eq!(
-        home.json(&["account", "view", "work"])["apps"],
+        home.json(&["account", "view", "--account", "work"])["apps"],
         json!(["locker"])
     );
     let account_dir = home
@@ -685,7 +721,7 @@ async fn exercise(origin: String) -> TestResult {
         .join("accounts")
         .join(first_id.as_str().unwrap());
     assert!(account_dir.join("data.db").is_file());
-    success(home.run(&["account", "logout", "work", "--local"]));
+    success(home.run(&["account", "logout", "--account", "work", "--local"]));
     assert!(!account_dir.exists());
     assert!(!account_dir.with_extension("lock").exists());
 
@@ -725,6 +761,7 @@ pub(super) fn login(home: &TestHome, app: &str, email: &str, options: &[&str]) {
         home.json(&[
             "account",
             "view",
+            "--account",
             result["account"]["name"].as_str().unwrap()
         ])
     );

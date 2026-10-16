@@ -146,7 +146,7 @@ fn admin_user_lifecycle() -> TestResult {
             );
 
             for command in ["delete", "disable-totp", "remove-passkeys"] {
-                let output = home.run(&["admin", "user", command, &id, "--no-input"]);
+                let output = home.run(&["admin", "user", command, &email, "--no-input"]);
                 assert!(failure(&output).contains("supply --yes"));
                 assert!(output.stdout.is_empty());
             }
@@ -223,7 +223,7 @@ fn admin_user_lifecycle() -> TestResult {
             ))?;
             for args in [
                 vec!["list"],
-                vec!["delete", &id, "--yes"],
+                vec!["delete", &email, "--yes"],
                 vec!["disable-totp", &id, "--yes"],
             ] {
                 let output =
@@ -240,7 +240,9 @@ fn admin_user_lifecycle() -> TestResult {
                 admin.user_id.to_string()
             );
             login(&home, "photos", &admin_email, &["--host", origin, "--no-input"]);
-            let deleted = home.json(&["admin", "user", "delete", &id, "--yes", "--no-input"]);
+            let deleted = home.json(&["admin", "user", "delete", &email, "--yes", "--no-input"]);
+            assert_eq!(deleted["user"]["id"], id);
+            assert_eq!(deleted["user"]["email"], email);
             assert_eq!(deleted["deleted"], true);
             assert_eq!(deleted["cleanupScheduled"], true);
             assert_eq!(deleted["subscriptionCancelled"], true);
@@ -278,7 +280,7 @@ fn admin_interactive_subscription() -> TestResult {
             let output = Command::new("python3")
                 .env_clear()
                 .args([
-                    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/admin_prompt.py"),
+                    concat!(env!("CARGO_MANIFEST_DIR"), "/tests/cli/admin_prompt.py"),
                     env!("CARGO_BIN_EXE_ente-cli-next"),
                     &email,
                     mode,

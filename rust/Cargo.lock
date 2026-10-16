@@ -2421,7 +2421,7 @@ checksum = "66b7e2430c6dff6a955451e2cfc438f09cea1965a9d6f87f7e3b90decc014099"
 
 [[package]]
 name = "ensu-desktop"
-version = "0.1.22-beta"
+version = "0.1.23-beta"
 dependencies = [
  "ente-assets",
  "ente-core",
@@ -2492,6 +2492,7 @@ dependencies = [
  "serde_json",
  "thiserror 2.0.21",
  "url",
+ "urlencoding",
  "uuid",
  "zeroize",
 ]
@@ -2611,6 +2612,7 @@ dependencies = [
  "futures-core",
  "getrandom 0.4.3",
  "gloo-timers",
+ "hmac 0.13.0",
  "hpke",
  "log",
  "md-5 0.11.0",
@@ -2620,6 +2622,8 @@ dependencies = [
  "salsa20",
  "serde",
  "serde_json",
+ "sha1 0.11.0",
+ "sha2 0.11.0",
  "subtle",
  "thiserror 2.0.21",
  "tokio",
@@ -3040,9 +3044,7 @@ dependencies = [
  "dirs",
  "ente-accounts",
  "ente-core",
- "hmac 0.13.0",
  "postgresql_embedded",
- "sha1 0.11.0",
  "tokio",
  "uuid",
 ]
