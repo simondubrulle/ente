@@ -44,6 +44,7 @@ import {
     CollectionHeader,
     type CollectionHeaderProps,
 } from "./CollectionHeader";
+import { CreateAlbumDialog } from "./CreateAlbumDialog";
 
 export type GalleryBarAndListHeaderProps = Omit<
     GalleryBarImplProps,
@@ -52,6 +53,7 @@ export type GalleryBarAndListHeaderProps = Omit<
     | "onSelectCollectionID"
     | "collectionsSortBy"
     | "onChangeCollectionsSortBy"
+    | "onCreateAlbum"
     | "onShowAllAlbums"
     | "onShowAllPeople"
 > & {
@@ -123,6 +125,14 @@ export const GalleryBarAndListHeader: React.FC<
 }) => {
     const { show: showAllAlbums, props: allAlbumsVisibilityProps } =
         useModalVisibility();
+    const { show: showAlbumNameInput, props: albumNameInputVisibilityProps } =
+        useModalVisibility();
+    const [createInHiddenSection, setCreateInHiddenSection] = useState(false);
+    const openAlbumCreation = () => {
+        setCreateInHiddenSection(mode == "hidden-albums");
+        showAlbumNameInput();
+    };
+
     const { show: showAllPeople, props: allPeopleVisibilityProps } =
         useModalVisibility();
     const { show: showCollectionShare, props: collectionShareVisibilityProps } =
@@ -186,7 +196,11 @@ export const GalleryBarAndListHeader: React.FC<
                       albumFilter,
                       albumSearchQuery,
                   )
-                : eligibleCollectionSummaries,
+                : eligibleCollectionSummaries.filter((album) =>
+                      album.name
+                          .toLowerCase()
+                          .includes(albumSearchQuery.trim().toLowerCase()),
+                  ),
         [eligibleCollectionSummaries, mode, albumFilter, albumSearchQuery],
     );
 
@@ -339,6 +353,7 @@ export const GalleryBarAndListHeader: React.FC<
                 onSelectPerson={selectPerson}
                 onChangeCollectionsSortBy={setCollectionsSortBy}
                 onChangePeopleSortBy={onChangePeopleSortBy}
+                onCreateAlbum={openAlbumCreation}
                 onShowAllAlbums={showAllAlbums}
                 onShowAllPeople={showAllPeople}
                 collectionSummaries={visibleCollectionSummaries}
@@ -356,7 +371,15 @@ export const GalleryBarAndListHeader: React.FC<
                 isInHiddenSection={mode == "hidden-albums"}
                 isInArchiveSection={mode == "archive-albums"}
                 canCreateAlbum={canCreateAlbum}
+                onCreateAlbum={openAlbumCreation}
                 onRemotePull={onRemotePull}
+            />
+            <CreateAlbumDialog
+                {...albumNameInputVisibilityProps}
+                isHidden={createInHiddenSection}
+                onSubmit={allAlbumsVisibilityProps.onClose}
+                onRemotePull={onRemotePull}
+                onSelectCollectionID={selectCollection}
             />
             <AllPeople
                 {...allPeopleVisibilityProps}

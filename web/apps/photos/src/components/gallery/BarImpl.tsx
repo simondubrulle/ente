@@ -12,6 +12,7 @@ import {
     ViewOffSlashIcon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
+import AddIcon from "@mui/icons-material/Add";
 import ArchiveIcon from "@mui/icons-material/Archive";
 import CloseIcon from "@mui/icons-material/Close";
 import ExpandMoreIcon from "@mui/icons-material/ExpandMore";
@@ -82,6 +83,7 @@ export interface GalleryBarImplProps extends GalleryBarPresentationProps {
     activeCollectionID: number | undefined;
     onSelectCollectionID: (collectionID: number) => void;
     onShowAllAlbums: () => void;
+    onCreateAlbum: () => void;
     onShowAllPeople: () => void;
     collectionsSortBy: CollectionsSortBy;
     onChangeCollectionsSortBy: (by: CollectionsSortBy) => void;
@@ -106,6 +108,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     activeCollectionID,
     onSelectCollectionID,
     onShowAllAlbums,
+    onCreateAlbum,
     onShowAllPeople,
     collectionsSortBy,
     onChangeCollectionsSortBy,
@@ -122,12 +125,11 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     const listRef = useRef<FixedSizeList | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
     const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
-    const searchQuery = mode == "albums" ? albumSearchQuery : peopleSearchQuery;
+    const searchQuery = mode == "people" ? peopleSearchQuery : albumSearchQuery;
     const setSearchQuery =
-        mode == "albums" ? onAlbumSearchQueryChange : setPeopleSearchQuery;
-    const canSearch = mode == "albums" || mode == "people";
+        mode == "people" ? setPeopleSearchQuery : onAlbumSearchQueryChange;
     const normalizedSearchQuery = searchQuery.trim().toLowerCase();
-    const isSearching = canSearch && !!normalizedSearchQuery;
+    const isSearching = !!normalizedSearchQuery;
     const matchingPeople = useMemo(
         () =>
             mode == "people" && isSearching
@@ -303,7 +305,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
             component="nav"
             aria-labelledby={titleID}
             onKeyDown={(event) => {
-                if (event.key == "Escape" && canSearch && searchQuery) {
+                if (event.key == "Escape" && searchQuery) {
                     event.stopPropagation();
                     setSearchQuery("");
                 }
@@ -391,6 +393,20 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                         <ExpandMoreIcon sx={{ fontSize: 20 }} />
                     </IconButton>
                 </Tooltip>
+                {(mode == "albums" || mode == "hidden-albums") && (
+                    <Tooltip title={t("new_album")}>
+                        <IconButton
+                            aria-label={t("new_album")}
+                            aria-haspopup="dialog"
+                            onClick={() => {
+                                mobileDrawerProps.onClose();
+                                onCreateAlbum();
+                            }}
+                        >
+                            <AddIcon sx={{ fontSize: 20 }} />
+                        </IconButton>
+                    </Tooltip>
+                )}
                 {mobile && (
                     <IconButton
                         aria-label={t("close")}
@@ -400,69 +416,67 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                     </IconButton>
                 )}
             </Stack>
-            {canSearch && (
-                <Stack
-                    direction="row"
-                    sx={{
-                        alignItems: "center",
-                        flexShrink: 0,
-                        height: 52,
-                        gap: "10px",
-                        px: "16px",
-                        borderRadius: "12px",
-                        bgcolor: "var(--gallery-navigation-surface)",
-                        border: "1px solid",
-                        borderColor: "stroke.faint",
-                        "&:focus-within": {
-                            outline: "1px solid",
-                            outlineColor: "stroke.muted",
-                            outlineOffset: -1,
-                        },
-                    }}
-                >
-                    <SearchIcon sx={{ fontSize: 18, color: "text.muted" }} />
-                    <InputBase
-                        inputRef={searchInputRef}
-                        fullWidth
-                        placeholder={t(
+            <Stack
+                direction="row"
+                sx={{
+                    alignItems: "center",
+                    flexShrink: 0,
+                    height: 52,
+                    gap: "10px",
+                    px: "16px",
+                    borderRadius: "12px",
+                    bgcolor: "var(--gallery-navigation-surface)",
+                    border: "1px solid",
+                    borderColor: "stroke.faint",
+                    "&:focus-within": {
+                        outline: "1px solid",
+                        outlineColor: "stroke.muted",
+                        outlineOffset: -1,
+                    },
+                }}
+            >
+                <SearchIcon sx={{ fontSize: 18, color: "text.muted" }} />
+                <InputBase
+                    inputRef={searchInputRef}
+                    fullWidth
+                    placeholder={t(
+                        mode == "people"
+                            ? "people_search_hint"
+                            : "search_in_albums",
+                    )}
+                    inputProps={{
+                        "aria-label": t(
                             mode == "people"
                                 ? "people_search_hint"
                                 : "search_in_albums",
-                        )}
-                        inputProps={{
-                            "aria-label": t(
-                                mode == "people"
-                                    ? "people_search_hint"
-                                    : "search_in_albums",
-                            ),
+                        ),
+                    }}
+                    value={searchQuery}
+                    onChange={(event) => setSearchQuery(event.target.value)}
+                    sx={{
+                        fontSize: mobile ? 13 : 14,
+                        fontWeight: 500,
+                        color: "text.base",
+                        "& input::placeholder": {
+                            color: "text.muted",
+                            opacity: 1,
+                        },
+                    }}
+                />
+                {searchQuery && (
+                    <IconButton
+                        aria-label={t("clear_search")}
+                        onClick={() => {
+                            setSearchQuery("");
+                            searchInputRef.current?.focus();
                         }}
-                        value={searchQuery}
-                        onChange={(event) => setSearchQuery(event.target.value)}
-                        sx={{
-                            fontSize: mobile ? 13 : 14,
-                            fontWeight: 500,
-                            color: "text.base",
-                            "& input::placeholder": {
-                                color: "text.muted",
-                                opacity: 1,
-                            },
-                        }}
-                    />
-                    {searchQuery && (
-                        <IconButton
-                            aria-label={t("clear_search")}
-                            onClick={() => {
-                                setSearchQuery("");
-                                searchInputRef.current?.focus();
-                            }}
-                            size="small"
-                        >
-                            <CloseIcon sx={{ fontSize: 18 }} />
-                        </IconButton>
-                    )}
-                </Stack>
-            )}
-            {mode == "people" && isSearching && !matchingPeople.length ? (
+                        size="small"
+                    >
+                        <CloseIcon sx={{ fontSize: 18 }} />
+                    </IconButton>
+                )}
+            </Stack>
+            {mode != "albums" && isSearching && !getItemCount(itemData) ? (
                 <Typography
                     role="status"
                     sx={{ px: "16px", color: "text.muted" }}
@@ -594,9 +608,9 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                     "aria-labelledby": titleID,
                     inert: !mobileDrawerProps.open,
                     sx: (theme) => ({
-                        width: "min(328px, 94vw)",
-                        borderRadius: "0 20px 20px 0",
-                        boxShadow: "0 24px 60px rgba(0,0,0,0.3)",
+                        width: "100%",
+                        borderRadius: 0,
+                        boxShadow: "none",
                         bgcolor: "#F4F4F4",
                         ...theme.applyStyles("dark", { bgcolor: "#161616" }),
                     }),
@@ -861,16 +875,5 @@ const PersonCard: React.FC<PersonCardProps> = ({
                 <HugeiconsIcon icon={PinIcon} size={14} />
             </CollectionBarCardIcon_>
         )}
-        <Typography
-            component="span"
-            sx={{
-                flexShrink: 0,
-                fontSize: 12,
-                lineHeight: "20px",
-                color: "text.muted",
-            }}
-        >
-            {person.fileIDs.length.toLocaleString()}
-        </Typography>
     </BarCard>
 );
