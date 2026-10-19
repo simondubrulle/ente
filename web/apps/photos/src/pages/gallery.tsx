@@ -39,6 +39,7 @@ import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import { PhotosNavigationShell } from "@/components/gallery/PhotosNavigationShell";
+import { PublicLinkDetails } from "@/components/gallery/PublicLinkDetails";
 import {
     albumShortcutCollectionID,
     findCollectionCreatingIfNeeded,
@@ -65,6 +66,7 @@ import {
     type AlbumFilter,
 } from "@/utils/album-filters";
 import type { PeopleSortBy } from "@/utils/people-sort";
+import { visibleQuickLinks } from "@/utils/quick-links";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { Link, Typography } from "@mui/material";
 import { sessionExpiredDialogAttributes } from "ente-accounts/components/utils/dialog";
@@ -447,17 +449,68 @@ const Page: React.FC = () => {
             ? ItemVisibility.hidden
             : ItemVisibility.visible;
     const activeCollectionID =
-        state.view?.type == "people" || state.view?.type == "album-overview"
+        state.view?.type == "people" ||
+        state.view?.type == "album-overview" ||
+        state.view?.type == "links"
             ? undefined
             : state.view?.activeCollectionSummaryID;
     const activeCollection =
-        state.view?.type == "people" || state.view?.type == "album-overview"
+        state.view?.type == "people" ||
+        state.view?.type == "album-overview" ||
+        state.view?.type == "links"
             ? undefined
             : state.view?.activeCollection;
     const activeCollectionSummary =
-        state.view?.type == "people" || state.view?.type == "album-overview"
+        state.view?.type == "people" ||
+        state.view?.type == "album-overview" ||
+        state.view?.type == "links"
             ? undefined
             : state.view?.activeCollectionSummary;
+    const selectedLinkID =
+        state.view?.type == "links" ? state.view.selectedLinkID : undefined;
+    const quickLinks = useMemo(
+        () =>
+            visibleQuickLinks(
+                state.collections,
+                user?.id ?? 0,
+                state.hiddenCollectionIDs,
+            ),
+        [state.collections, user?.id, state.hiddenCollectionIDs],
+    );
+    const linkSummaries = useMemo(
+        () =>
+            new Map(
+                quickLinks.flatMap((collection) => {
+                    const summary = normalCollectionSummaries.get(
+                        collection.id,
+                    );
+                    return summary ? [[collection.id, summary] as const] : [];
+                }),
+            ),
+        [quickLinks, normalCollectionSummaries],
+    );
+    const selectedLink = quickLinks.find(({ id }) => id === selectedLinkID);
+    const selectedLinkSummary =
+        selectedLink && linkSummaries.get(selectedLink.id);
+    const selectedLinkFiles = useMemo(
+        () =>
+            selectedLinkID === undefined
+                ? []
+                : state.collectionFiles.filter(
+                      ({ id, collectionID }) =>
+                          collectionID === selectedLinkID &&
+                          !hiddenFileIDs.has(id) &&
+                          !tempDeletedFileIDs.has(id) &&
+                          !tempHiddenFileIDs.has(id),
+                  ),
+        [
+            selectedLinkID,
+            state.collectionFiles,
+            hiddenFileIDs,
+            tempDeletedFileIDs,
+            tempHiddenFileIDs,
+        ],
+    );
     const activePerson =
         state.view?.type == "people" ? state.view.activePerson : undefined;
     const activePersonID = activePerson?.id;
@@ -562,14 +615,14 @@ const Page: React.FC = () => {
         filteredFiles.length > 0 &&
         selectedFilesInView.length === filteredFiles.length;
 
-    const isInArchiveSection = barMode == "archive-albums";
-
     const barCollectionSummaries =
-        barMode == "hidden-albums"
-            ? state.hiddenCollectionSummaries
-            : barMode == "archive-albums"
-              ? state.archivedCollectionSummaries
-              : state.normalCollectionSummaries;
+        barMode == "links"
+            ? linkSummaries
+            : barMode == "hidden-albums"
+              ? state.hiddenCollectionSummaries
+              : barMode == "archive-albums"
+                ? state.archivedCollectionSummaries
+                : state.normalCollectionSummaries;
 
     useEffect(() => {
         setAlbumSearchQuery("");
@@ -1576,6 +1629,12 @@ const Page: React.FC = () => {
     };
 
     const handleChangeBarMode = (mode: GalleryBarMode) => {
+        if (mode == "links") {
+            setCleanupView(undefined);
+            clearSelection();
+            dispatch({ type: "showLinks" });
+            return true;
+        }
         if (mode == "people") {
             return handleShowPeople();
         }
@@ -2108,19 +2167,21 @@ const Page: React.FC = () => {
                               // TODO: These are incorrect assertions, the types of the
                               // component need to be updated.
                               activeCollection: activeCollection!,
-                              activeCollectionID: activeCollectionID!,
+                              activeCollectionID: (barMode == "links"
+                                  ? selectedLinkID
+                                  : activeCollectionID)!,
                               activePerson,
                               albumFilter,
                               albumSearchQuery,
                               onAlbumSearchQueryChange: setAlbumSearchQuery,
                               onShowAlbumOverview: handleShowAlbumOverview,
+                              onShowPeopleOverview: handleShowPeople,
                               onAlbumSummariesChange:
                                   handleAlbumSummariesChange,
                               peopleSortBy,
                               onChangePeopleSortBy: setPeopleSortBy,
                               setFileListHeader,
                               saveGroups,
-                              canCreateAlbum: !isInArchiveSection,
                               onAddSaveGroup,
                               onEditAlbumDetails: showEditAlbumDetails,
                               onShowMap: handleShowCollectionMap,
@@ -2139,13 +2200,15 @@ const Page: React.FC = () => {
                                   (state.view?.type == "people"
                                       ? state.view.visiblePeople
                                       : undefined) ?? [],
-                              allPeople:
-                                  (state.view?.type == "people"
-                                      ? state.view.people
-                                      : undefined) ?? [],
                               setBlockingLoad,
                               setActiveCollectionID:
-                                  handleShowCollectionSummaryWithID,
+                                  barMode == "links"
+                                      ? (collectionID) =>
+                                            dispatch({
+                                                type: "selectLink",
+                                                collectionID,
+                                            })
+                                      : handleShowCollectionSummaryWithID,
                               hasActiveFileSelection,
                               onRemotePull: remotePull,
                               onSelectPerson: handleSelectPerson,
@@ -2200,6 +2263,22 @@ const Page: React.FC = () => {
                     <DuplicatesView onRemoteFilesPull={remoteFilesPull} />
                 ) : cleanupView === "large-files" ? (
                     <LargeFilesView onRemoteFilesPull={remoteFilesPull} />
+                ) : !isInSearchMode && barMode == "links" ? (
+                    selectedLink ? (
+                        <PublicLinkDetails
+                            key={selectedLink.id}
+                            collection={selectedLink}
+                            fileCount={
+                                selectedLinkSummary?.fileCount ??
+                                selectedLinkFiles.length
+                            }
+                            files={selectedLinkFiles}
+                            user={user}
+                            setBlockingLoad={setBlockingLoad}
+                            onRemotePull={remotePull}
+                            coverFile={selectedLinkSummary?.coverFile}
+                        />
+                    ) : null
                 ) : !isInSearchMode &&
                   !isFirstLoad &&
                   !state.collectionFiles.length &&
@@ -2233,6 +2312,7 @@ const Page: React.FC = () => {
                   !state.view.activePerson ? (
                     <PeopleOverview
                         people={state.view.visiblePeople}
+                        allPeople={state.view.people}
                         peopleSortBy={peopleSortBy}
                         onSelectPerson={handleSelectPerson}
                     />
