@@ -5,28 +5,26 @@ import { beforeEach, describe, expect, test, vi } from "vitest";
 import {
     GalleryBarAndListHeader,
     type GalleryBarAndListHeaderProps,
-} from "../src/components/Collections/GalleryBarAndListHeader";
+} from "../src/components/collections/GalleryBarAndListHeader";
 import type { GalleryBarImplProps } from "../src/components/gallery/BarImpl";
+import { useAlbumNavigationData } from "../src/components/gallery/use-album-navigation-data";
 
 const { renderBar } = vi.hoisted(() => ({
     renderBar: vi.fn<(props: GalleryBarImplProps) => null>(() => null),
 }));
 
 vi.mock("@/components/gallery/BarImpl", () => ({ GalleryBarImpl: renderBar }));
-vi.mock("@/components/Collections/CollectionShare", () => ({
+vi.mock("@/components/collections/CollectionShare", () => ({
     CollectionShare: () => null,
 }));
 vi.mock("@/components/gallery/PeopleHeader", () => ({
     PeopleHeader: () => null,
 }));
-vi.mock("../src/components/Collections/AlbumCastDialog", () => ({
+vi.mock("../src/components/collections/AlbumCastDialog", () => ({
     AlbumCastDialog: () => null,
 }));
-vi.mock("../src/components/Collections/CollectionHeader", () => ({
+vi.mock("../src/components/collections/CollectionHeader", () => ({
     CollectionHeader: () => null,
-}));
-vi.mock("../src/components/Collections/CreateAlbumDialog", () => ({
-    CreateAlbumDialog: () => null,
 }));
 vi.mock("@/utils/album-filters", () => import("../src/utils/album-filters"));
 vi.mock("@/utils/people-sort", () => import("../src/utils/people-sort"));
@@ -67,12 +65,30 @@ const renderSidebar = (
         barCollectionSummaries: new Map(summaries.map((cs) => [cs.id, cs])),
         uncategorizedCollectionSummaryID: 99,
         people: [],
+        sortedPeople: [],
         peopleSortBy: "name-asc",
-        saveGroups: [],
+        isActiveCollectionDownloadInProgress: vi.fn(() => false),
         setActiveCollectionID: vi.fn(),
+        onSelectCollectionID: vi.fn(),
+        onSelectPerson: vi.fn(),
+        onSelectPersonInHeader: vi.fn(),
+        onCreateAlbum: vi.fn(),
         mobileDrawerProps: { open: true, onClose: vi.fn() },
     } as unknown as GalleryBarAndListHeaderProps;
-    renderToStaticMarkup(<GalleryBarAndListHeader {...props} />);
+    const Sidebar = () => {
+        const data = useAlbumNavigationData({
+            ...props,
+            collectionSummaries: props.barCollectionSummaries,
+        });
+        return (
+            <GalleryBarAndListHeader
+                {...props}
+                {...data}
+                collectionSummaries={data.sidebarCollectionSummaries}
+            />
+        );
+    };
+    renderToStaticMarkup(<Sidebar />);
     return { props, bar: renderBar.mock.lastCall![0] };
 };
 
@@ -85,8 +101,7 @@ describe.each(["hidden-albums", "archive-albums"] as const)(
             const { bar, props } = renderSidebar(mode);
             expect(bar.collectionSummaries.map(({ id }) => id)).toEqual([1, 2]);
             bar.onSelectCollectionID(1);
-            expect(props.setActiveCollectionID).toHaveBeenCalledWith(1);
-            expect(props.mobileDrawerProps.onClose).toHaveBeenCalledOnce();
+            expect(props.onSelectCollectionID).toHaveBeenCalledWith(1);
         });
 
         test("finds quick links using the sidebar search", () => {

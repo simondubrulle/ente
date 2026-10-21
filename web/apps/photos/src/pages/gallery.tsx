@@ -8,13 +8,6 @@ import {
     CollectionSelector,
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
-import { AlbumSlideshow } from "@/components/Collections/AlbumSlideshow";
-import { CollectionMapDialog } from "@/components/Collections/CollectionMapDialog";
-import {
-    EditAlbumDetailsDialog,
-    type AlbumDetails,
-} from "@/components/Collections/EditAlbumDetailsDialog";
-import { slideshowFiles } from "@/components/Collections/album-slideshow";
 import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
 import { FileListWithViewer } from "@/components/FileListWithViewer";
@@ -28,6 +21,13 @@ import {
 } from "@/components/SelectedFileOptions";
 import { Upload } from "@/components/Upload";
 import { WhatsNew } from "@/components/WhatsNew";
+import { AlbumSlideshow } from "@/components/collections/AlbumSlideshow";
+import { CollectionMapDialog } from "@/components/collections/CollectionMapDialog";
+import {
+    EditAlbumDetailsDialog,
+    type AlbumDetails,
+} from "@/components/collections/EditAlbumDetailsDialog";
+import { slideshowFiles } from "@/components/collections/album-slideshow";
 import {
     GalleryEmptyState,
     PeopleConsentDialog,
@@ -50,6 +50,7 @@ import {
     useGalleryReducer,
     type GalleryBarMode,
 } from "@/components/gallery/reducer";
+import { useAlbumNavigationData } from "@/components/gallery/use-album-navigation-data";
 import { Sidebar } from "@/components/sidebar/Sidebar";
 import {
     notifyOthersFilesDialogAttributes,
@@ -65,7 +66,7 @@ import {
     visibleAlbumFilters,
     type AlbumFilter,
 } from "@/utils/album-filters";
-import type { PeopleSortBy } from "@/utils/people-sort";
+import { sortPeople, type PeopleSortBy } from "@/utils/people-sort";
 import { visibleQuickLinks } from "@/utils/quick-links";
 import CheckCircleIcon from "@mui/icons-material/CheckCircle";
 import { Link, Typography } from "@mui/material";
@@ -100,7 +101,11 @@ import { initContacts, pullContacts } from "ente-contacts";
 import { DownloadStatusNotifications } from "ente-gallery/components/DownloadStatusNotifications";
 import { FullScreenDropZone } from "ente-gallery/components/FullScreenDropZone";
 import type { UploadTypeSelectorIntent } from "ente-gallery/components/Upload";
-import { useSaveGroups } from "ente-gallery/components/utils/save-groups";
+import {
+    isSaveCancelled,
+    isSaveComplete,
+    useSaveGroups,
+} from "ente-gallery/components/utils/save-groups";
 import type { FileViewerInitialSidebar } from "ente-gallery/components/viewer/FileViewer";
 import type { Collection } from "ente-media/collection";
 import type { EnteFile } from "ente-media/file";
@@ -131,8 +136,6 @@ import {
 import {
     haveOnlySystemCollections,
     PseudoCollectionID,
-    type CollectionsSortBy,
-    type CollectionSummary,
 } from "ente-new/photos/services/collection-summary";
 import {
     updateFilesLocation,
@@ -217,18 +220,6 @@ const Page: React.FC = () => {
     });
     const [albumFilter, setAlbumFilter] = useState<AlbumFilter>("ente");
     const [albumSearchQuery, setAlbumSearchQuery] = useState("");
-    const [overviewAlbums, setOverviewAlbums] = useState<CollectionSummary[]>(
-        [],
-    );
-    const [overviewSortBy, setOverviewSortBy] =
-        useState<CollectionsSortBy>("updation-time-desc");
-    const handleAlbumSummariesChange = useCallback(
-        (albums: CollectionSummary[], sortBy: CollectionsSortBy) => {
-            setOverviewAlbums(albums);
-            setOverviewSortBy(sortBy);
-        },
-        [],
-    );
     const [blockingLoad, setBlockingLoad] = useState(false);
     const [peopleSortBy, setPeopleSortBy] =
         useState<PeopleSortBy>("count-desc");
@@ -468,6 +459,14 @@ const Page: React.FC = () => {
             : state.view?.activeCollectionSummary;
     const selectedLinkID =
         state.view?.type == "links" ? state.view.selectedLinkID : undefined;
+    const galleryBarActiveCollectionID =
+        barMode == "links" ? selectedLinkID : activeCollectionID;
+    const isActiveCollectionDownloadInProgress = useCallback(() => {
+        const group = saveGroups.find(
+            (g) => g.collectionSummaryID === galleryBarActiveCollectionID,
+        );
+        return !!group && !isSaveComplete(group) && !isSaveCancelled(group);
+    }, [saveGroups, galleryBarActiveCollectionID]);
     const quickLinks = useMemo(
         () =>
             visibleQuickLinks(
@@ -513,6 +512,13 @@ const Page: React.FC = () => {
     );
     const activePerson =
         state.view?.type == "people" ? state.view.activePerson : undefined;
+    const people =
+        (state.view?.type == "people" ? state.view.visiblePeople : undefined) ??
+        [];
+    const sortedPeople = useMemo(
+        () => sortPeople(people, peopleSortBy),
+        [people, peopleSortBy],
+    );
     const activePersonID = activePerson?.id;
     const fileCollectionIDs = useMemo(
         () =>
@@ -623,6 +629,21 @@ const Page: React.FC = () => {
               : barMode == "archive-albums"
                 ? state.archivedCollectionSummaries
                 : state.normalCollectionSummaries;
+
+    const {
+        sidebarCollectionSummaries,
+        overviewAlbums,
+        visibleAlbumFilters: sidebarAlbumFilters,
+        collectionsSortBy,
+        onChangeCollectionsSortBy,
+    } = useAlbumNavigationData({
+        mode: barMode,
+        collectionSummaries: barCollectionSummaries,
+        uncategorizedCollectionSummaryID:
+            state.uncategorizedCollectionSummaryID,
+        albumFilter,
+        albumSearchQuery,
+    });
 
     useEffect(() => {
         setAlbumSearchQuery("");
@@ -2167,21 +2188,21 @@ const Page: React.FC = () => {
                               // TODO: These are incorrect assertions, the types of the
                               // component need to be updated.
                               activeCollection: activeCollection!,
-                              activeCollectionID: (barMode == "links"
-                                  ? selectedLinkID
-                                  : activeCollectionID)!,
+                              activeCollectionID: galleryBarActiveCollectionID!,
                               activePerson,
                               albumFilter,
                               albumSearchQuery,
                               onAlbumSearchQueryChange: setAlbumSearchQuery,
                               onShowAlbumOverview: handleShowAlbumOverview,
                               onShowPeopleOverview: handleShowPeople,
-                              onAlbumSummariesChange:
-                                  handleAlbumSummariesChange,
+                              collectionSummaries: sidebarCollectionSummaries,
+                              visibleAlbumFilters: sidebarAlbumFilters,
+                              collectionsSortBy,
+                              onChangeCollectionsSortBy,
                               peopleSortBy,
                               onChangePeopleSortBy: setPeopleSortBy,
                               setFileListHeader,
-                              saveGroups,
+                              isActiveCollectionDownloadInProgress,
                               onAddSaveGroup,
                               onEditAlbumDetails: showEditAlbumDetails,
                               onShowMap: handleShowCollectionMap,
@@ -2196,10 +2217,8 @@ const Page: React.FC = () => {
                               emailByUserID: state.emailByUserID,
                               shareSuggestionEmails:
                                   state.shareSuggestionEmails,
-                              people:
-                                  (state.view?.type == "people"
-                                      ? state.view.visiblePeople
-                                      : undefined) ?? [],
+                              people,
+                              sortedPeople,
                               setBlockingLoad,
                               setActiveCollectionID:
                                   barMode == "links"
@@ -2298,7 +2317,7 @@ const Page: React.FC = () => {
                         ).title()}
                         filter={overviewFilter!}
                         searchQuery={albumSearchQuery}
-                        sortBy={overviewSortBy}
+                        sortBy={collectionsSortBy}
                         onSelectAlbum={handleShowCollectionSummaryWithID}
                         onCreateAlbum={() => {
                             setPostCreateAlbumOp(undefined);
