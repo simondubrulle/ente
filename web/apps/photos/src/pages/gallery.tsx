@@ -27,6 +27,7 @@ import {
     EditAlbumDetailsDialog,
     type AlbumDetails,
 } from "@/components/collections/EditAlbumDetailsDialog";
+import { GalleryBarAndListHeader } from "@/components/collections/GalleryBarAndListHeader";
 import { slideshowFiles } from "@/components/collections/album-slideshow";
 import {
     GalleryEmptyState,
@@ -629,6 +630,10 @@ const Page: React.FC = () => {
               : barMode == "archive-albums"
                 ? state.archivedCollectionSummaries
                 : state.normalCollectionSummaries;
+
+    const collectionSummary = barCollectionSummaries.get(
+        galleryBarActiveCollectionID!,
+    );
 
     const {
         sidebarCollectionSummaries,
@@ -2128,7 +2133,11 @@ const Page: React.FC = () => {
         </>
     );
 
-    const showNormalNavigation = !showSelectionBar;
+    const selectGalleryCollection =
+        barMode == "links"
+            ? (collectionID: number) =>
+                  dispatch({ type: "selectLink", collectionID })
+            : handleShowCollectionSummaryWithID;
 
     return (
         <FullScreenDropZone
@@ -2166,8 +2175,6 @@ const Page: React.FC = () => {
                 onRemotePull={remotePull}
             />
             <PhotosNavigationShell
-                showRail
-                showNormalNavigation={showNormalNavigation}
                 isInSearchMode={isInSearchMode}
                 isSettingsOpen={sidebarVisibilityProps.open}
                 mode={barMode}
@@ -2180,15 +2187,13 @@ const Page: React.FC = () => {
                 onSelectSearchOption={handleSelectSearchOption}
                 onSelectPeople={handleShowPeople}
                 onSelectPerson={handleSelectPerson}
-                galleryBarProps={
+                galleryNavigation={
                     isCleanupViewOpen
                         ? undefined
                         : {
-                              user,
-                              // TODO: These are incorrect assertions, the types of the
-                              // component need to be updated.
-                              activeCollection: activeCollection!,
-                              activeCollectionID: galleryBarActiveCollectionID!,
+                              activeCollectionID: galleryBarActiveCollectionID,
+                              onSelectCollectionID: selectGalleryCollection,
+                              onRemotePull: remotePull,
                               activePerson,
                               albumFilter,
                               albumSearchQuery,
@@ -2197,40 +2202,15 @@ const Page: React.FC = () => {
                               onShowPeopleOverview: handleShowPeople,
                               collectionSummaries: sidebarCollectionSummaries,
                               visibleAlbumFilters: sidebarAlbumFilters,
-                              collectionsSortBy,
-                              onChangeCollectionsSortBy,
-                              peopleSortBy,
-                              onChangePeopleSortBy: setPeopleSortBy,
-                              setFileListHeader,
-                              isActiveCollectionDownloadInProgress,
-                              onAddSaveGroup,
-                              onEditAlbumDetails: showEditAlbumDetails,
-                              onShowMap: handleShowCollectionMap,
-                              onCollectionSlideshow: startSlideshow,
-                              mode: barMode,
-                              shouldHide: isInSearchMode,
-                              barCollectionSummaries,
                               normalCollectionSummaries,
                               uncategorizedCollectionSummaryID:
                                   state.uncategorizedCollectionSummaryID,
                               onShowCollectionSummary: showCollectionSummary,
-                              emailByUserID: state.emailByUserID,
-                              shareSuggestionEmails:
-                                  state.shareSuggestionEmails,
-                              people,
-                              sortedPeople,
-                              setBlockingLoad,
-                              setActiveCollectionID:
-                                  barMode == "links"
-                                      ? (collectionID) =>
-                                            dispatch({
-                                                type: "selectLink",
-                                                collectionID,
-                                            })
-                                      : handleShowCollectionSummaryWithID,
-                              hasActiveFileSelection,
-                              onRemotePull: remotePull,
-                              onSelectPerson: handleSelectPerson,
+                              collectionsSortBy,
+                              onChangeCollectionsSortBy,
+                              peopleSortBy,
+                              onChangePeopleSortBy: setPeopleSortBy,
+                              people: sortedPeople,
                           }
                 }
                 alternateHeader={
@@ -2274,6 +2254,30 @@ const Page: React.FC = () => {
             >
                 {!isCleanupViewOpen && (
                     <>
+                        <GalleryBarAndListHeader
+                            {...{
+                                user,
+                                activeCollection,
+                                activePerson,
+                                collectionSummary,
+                                people,
+                                setBlockingLoad,
+                                setFileListHeader,
+                                hasActiveFileSelection,
+                                isActiveCollectionDownloadInProgress,
+                                onAddSaveGroup,
+                            }}
+                            mode={barMode}
+                            shouldHide={isInSearchMode}
+                            setActiveCollectionID={selectGalleryCollection}
+                            onSelectPerson={handleSelectPerson}
+                            onEditAlbumDetails={showEditAlbumDetails}
+                            onShowMap={handleShowCollectionMap}
+                            onCollectionSlideshow={startSlideshow}
+                            emailByUserID={state.emailByUserID}
+                            shareSuggestionEmails={state.shareSuggestionEmails}
+                            onRemotePull={remotePull}
+                        />
                         {isFirstLoad && <FirstLoadMessage />}
                         {isOffline && <OfflineMessage />}
                     </>

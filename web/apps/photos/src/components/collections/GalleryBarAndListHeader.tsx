@@ -5,11 +5,8 @@ import {
     type CollectionShareProps,
 } from "@/components/collections/CollectionShare";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
-import {
-    GalleryBarImpl,
-    type GalleryBarImplProps,
-} from "@/components/gallery/BarImpl";
 import { PeopleHeader } from "@/components/gallery/PeopleHeader";
+import type { GalleryBarMode } from "@/components/gallery/reducer";
 import { useModalVisibility } from "ente-base/components/utils/modal";
 import type { Collection } from "ente-media/collection";
 import {
@@ -18,8 +15,9 @@ import {
 } from "ente-new/photos/components/gallery/ListHeader";
 import {
     PseudoCollectionID,
-    type CollectionSummaries,
+    type CollectionSummary,
 } from "ente-new/photos/services/collection-summary";
+import type { Person } from "ente-new/photos/services/ml/people";
 import React, { useCallback, useEffect, useState } from "react";
 import { AlbumCastDialog } from "./AlbumCastDialog";
 import {
@@ -27,61 +25,43 @@ import {
     type CollectionHeaderProps,
 } from "./CollectionHeader";
 
-export type GalleryBarAndListHeaderProps = GalleryBarImplProps & {
-    sortedPeople: GalleryBarImplProps["people"];
+type GalleryBarAndListHeaderProps = {
+    mode: GalleryBarMode;
     shouldHide: boolean;
-    barCollectionSummaries: CollectionSummaries;
+    collectionSummary: CollectionSummary | undefined;
     activeCollection: Collection | undefined;
+    activePerson: Person | undefined;
+    people: Person[];
     setActiveCollectionID: (collectionID: number) => void;
-    onSelectPersonInHeader: GalleryBarImplProps["onSelectPerson"];
+    onSelectPerson: (personID: string) => void;
     setFileListHeader: (header: FileListHeaderOrFooter) => void;
     hasActiveFileSelection: boolean;
 } & Pick<
-        CollectionHeaderProps,
-        | "isActiveCollectionDownloadInProgress"
-        | "onRemotePull"
-        | "onAddSaveGroup"
-        | "onEditAlbumDetails"
-        | "onShowMap"
-        | "onCollectionSlideshow"
-    > &
+    CollectionHeaderProps,
+    | "isActiveCollectionDownloadInProgress"
+    | "onRemotePull"
+    | "onAddSaveGroup"
+    | "onEditAlbumDetails"
+    | "onShowMap"
+    | "onCollectionSlideshow"
+> &
     Pick<
         CollectionShareProps,
         "user" | "emailByUserID" | "shareSuggestionEmails" | "setBlockingLoad"
     >;
 
-// TODO: Move this back into the gallery once its responsibilities are split.
 export const GalleryBarAndListHeader: React.FC<
     GalleryBarAndListHeaderProps
 > = ({
     shouldHide,
     mode,
     user,
-    barCollectionSummaries: toShowCollectionSummaries,
-    collectionSummaries,
-    visibleAlbumFilters,
-    collectionsSortBy,
-    onChangeCollectionsSortBy,
-    normalCollectionSummaries,
-    uncategorizedCollectionSummaryID,
-    onShowCollectionSummary,
+    collectionSummary,
     activeCollection,
-    activeCollectionID,
     setActiveCollectionID,
-    onSelectCollectionID,
     setBlockingLoad,
     people,
-    sortedPeople,
-    peopleSortBy,
-    onChangePeopleSortBy,
-    albumFilter,
-    albumSearchQuery,
-    onAlbumSearchQueryChange,
-    onShowAlbumOverview,
-    onShowPeopleOverview,
-    onCreateAlbum,
     onSelectPerson,
-    onSelectPersonInHeader,
     isActiveCollectionDownloadInProgress,
     hasActiveFileSelection,
     activePerson,
@@ -93,8 +73,6 @@ export const GalleryBarAndListHeader: React.FC<
     onShowMap,
     onCollectionSlideshow,
     setFileListHeader,
-    collapsed,
-    mobileDrawerProps,
 }) => {
     const { show: showCollectionShare, props: collectionShareVisibilityProps } =
         useModalVisibility();
@@ -125,9 +103,6 @@ export const GalleryBarAndListHeader: React.FC<
     useEffect(() => {
         if (shouldHide || mode == "links") return;
 
-        const collectionSummary = toShowCollectionSummaries.get(
-            activeCollectionID!,
-        );
         // Pseudo-collections need header actions despite having no Collection.
         const shouldRenderCollectionHeader =
             mode != "people" &&
@@ -166,7 +141,7 @@ export const GalleryBarAndListHeader: React.FC<
                 <PeopleHeader
                     person={activePerson}
                     people={people}
-                    onSelectPerson={onSelectPersonInHeader}
+                    onSelectPerson={onSelectPerson}
                 />
             ) : (
                 <></>
@@ -177,9 +152,8 @@ export const GalleryBarAndListHeader: React.FC<
     }, [
         shouldHide,
         mode,
-        toShowCollectionSummaries,
+        collectionSummary,
         activeCollection,
-        activeCollectionID,
         isActiveCollectionDownloadInProgress,
         activePerson,
         showCollectionShare,
@@ -205,42 +179,12 @@ export const GalleryBarAndListHeader: React.FC<
 
     return (
         <>
-            <GalleryBarImpl
-                {...{
-                    mode,
-                    albumFilter,
-                    albumSearchQuery,
-                    onAlbumSearchQueryChange,
-                    onShowAlbumOverview,
-                    onShowPeopleOverview,
-                    onCreateAlbum,
-                    onSelectCollectionID,
-                    onSelectPerson,
-                    activeCollectionID,
-                    people: sortedPeople,
-                    activePerson,
-                    collectionsSortBy,
-                    onChangeCollectionsSortBy,
-                    collectionSummaries,
-                    visibleAlbumFilters,
-                    peopleSortBy,
-                    collapsed,
-                    mobileDrawerProps,
-                    normalCollectionSummaries,
-                    uncategorizedCollectionSummaryID,
-                    onShowCollectionSummary,
-                }}
-                onChangePeopleSortBy={onChangePeopleSortBy}
-            />
-
             {activeCollection && (
                 <>
                     <CollectionShare
                         {...collectionShareVisibilityProps}
                         onClose={closeCollectionShare}
-                        collectionSummary={toShowCollectionSummaries.get(
-                            activeCollectionID!,
-                        )!}
+                        collectionSummary={collectionSummary!}
                         collection={activeCollection}
                         intent={collectionShareIntent}
                         {...{
