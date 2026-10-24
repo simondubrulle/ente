@@ -2,6 +2,7 @@ import "dart:math" as math;
 
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
+import "package:ente_ui/components/subscription/plan_card.dart";
 import "package:flutter/material.dart";
 import "package:hugeicons/hugeicons.dart";
 import "package:photos/ui/account/onboarding_page_scaffold.dart";
@@ -28,34 +29,69 @@ class SubscriptionPageScaffold extends StatefulWidget {
 }
 
 class _SubscriptionPageScaffoldState extends State<SubscriptionPageScaffold> {
-  final _footerKey = GlobalKey();
-  double _footerHeight = 164;
+  static const double _headerHeight = 145;
+  static const double _fadeHeight = 80;
+  static const double _minimumActionHeight = 60;
+  static const double _minimumPlanViewportHeight =
+      SubscriptionPlanCard.height + Spacing.xxl * 2;
+
+  final _actionsKey = GlobalKey();
+  double _actionsHeight = _minimumActionHeight;
   bool _measurementScheduled = false;
 
-  void _measureFooter() {
+  void _measureActions() {
     if (_measurementScheduled) return;
     _measurementScheduled = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _measurementScheduled = false;
       if (!mounted) return;
-      final height = _footerKey.currentContext?.size?.height;
-      if (height != null && (height - _footerHeight).abs() > 0.1) {
-        setState(() => _footerHeight = height);
+      final height = _actionsKey.currentContext?.size?.height;
+      if (height != null && (height - _actionsHeight).abs() > 0.1) {
+        setState(() => _actionsHeight = height);
       }
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    _measureFooter();
-    final colors = context.componentColors;
-    final bottomInset = math.max(
-      Spacing.xxl,
-      MediaQuery.paddingOf(context).bottom,
+    return LayoutBuilder(
+      builder: (context, constraints) => _buildLayout(context, constraints),
     );
+  }
+
+  Widget _buildLayout(BuildContext context, BoxConstraints constraints) {
+    _measureActions();
+    final colors = context.componentColors;
+    final mediaQuery = MediaQuery.of(context);
+    final bottomInset = math.max(Spacing.xxl, mediaQuery.padding.bottom);
+    final footerHeight = _fadeHeight + _actionsHeight + bottomInset;
+    final actions = SizeChangedLayoutNotifier(
+      child: Column(
+        key: _actionsKey,
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          for (final action in widget.actions)
+            ConstrainedBox(
+              constraints: const BoxConstraints(
+                minHeight: _minimumActionHeight,
+              ),
+              child: action,
+            ),
+        ],
+      ),
+    );
+    final hasFloatingActions =
+        widget.actions.isNotEmpty &&
+        constraints.maxHeight -
+                mediaQuery.padding.top -
+                mediaQuery.viewInsets.bottom -
+                _headerHeight -
+                footerHeight >=
+            _minimumPlanViewportHeight;
     return NotificationListener<SizeChangedLayoutNotification>(
       onNotification: (_) {
-        _measureFooter();
+        _measureActions();
         return false;
       },
       child: Stack(
@@ -64,9 +100,9 @@ class _SubscriptionPageScaffoldState extends State<SubscriptionPageScaffold> {
             key: widget.scaffoldKey,
             title: context.strings.chooseYourPlan,
             illustration: OnboardingIllustration.pricing,
-            headerHeight: 145,
+            headerHeight: _headerHeight,
             titleTopPadding: 35,
-            bodyHorizontalPadding: Spacing.xxl - 1,
+            bodyHorizontalPadding: Spacing.lg - 1,
             titleBarStyle: OnboardingTitleBarStyle.header,
             headerTrailing: IconButtonComponent(
               variant: IconButtonComponentVariant.unfilled,
@@ -81,14 +117,20 @@ class _SubscriptionPageScaffoldState extends State<SubscriptionPageScaffold> {
             ),
             manageInputFocus: false,
             isBodyCentered: widget.isBodyCentered,
+            actions: widget.actions.isNotEmpty && !hasFloatingActions
+                ? [actions]
+                : const [],
             body: Padding(
-              padding: EdgeInsets.only(
-                bottom: widget.actions.isEmpty ? Spacing.xxl : _footerHeight,
+              padding: EdgeInsets.fromLTRB(
+                Spacing.sm,
+                0,
+                Spacing.sm,
+                hasFloatingActions ? footerHeight : Spacing.xxl,
               ),
               child: widget.body,
             ),
           ),
-          if (widget.actions.isNotEmpty)
+          if (hasFloatingActions)
             Positioned(
               left: 0,
               right: 0,
@@ -112,27 +154,14 @@ class _SubscriptionPageScaffoldState extends State<SubscriptionPageScaffold> {
                       ),
                     ),
                   ),
-                  SizeChangedLayoutNotifier(
-                    child: Padding(
-                      key: _footerKey,
-                      padding: EdgeInsets.fromLTRB(
-                        Spacing.lg + MediaQuery.paddingOf(context).left,
-                        80,
-                        Spacing.lg + MediaQuery.paddingOf(context).right,
-                        bottomInset,
-                      ),
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.stretch,
-                        children: [
-                          for (final action in widget.actions)
-                            ConstrainedBox(
-                              constraints: const BoxConstraints(minHeight: 60),
-                              child: action,
-                            ),
-                        ],
-                      ),
+                  Padding(
+                    padding: EdgeInsets.fromLTRB(
+                      Spacing.lg + mediaQuery.padding.left,
+                      _fadeHeight,
+                      Spacing.lg + mediaQuery.padding.right,
+                      bottomInset,
                     ),
+                    child: actions,
                   ),
                 ],
               ),
