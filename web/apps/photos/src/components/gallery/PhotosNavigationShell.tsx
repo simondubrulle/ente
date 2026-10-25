@@ -6,6 +6,7 @@ import {
     DashboardSquare01Icon,
     Home01Icon,
     Link04Icon,
+    Location01Icon,
     Settings01Icon,
     Upload01Icon,
     User02Icon,
@@ -57,6 +58,9 @@ type PhotosNavigationShellProps = SearchBarProps & {
     onSidebar: () => void;
     onUpload: () => void;
     onHome: () => void;
+    onShowMap: () => void;
+    isMapView: boolean;
+    isMapSelected: boolean;
     mode: GalleryBarMode;
     onChangeMode: (mode: GalleryBarMode) => boolean;
 };
@@ -237,6 +241,7 @@ export const PhotosNavigationShell: React.FC<
                             <NormalNavigationRail
                                 {...props}
                                 isHome={
+                                    !props.isMapSelected &&
                                     props.mode == "albums" &&
                                     !props.isInSearchMode &&
                                     galleryNavigation?.activeCollectionID ==
@@ -245,6 +250,7 @@ export const PhotosNavigationShell: React.FC<
                                 onChangeMode={handleChangeMode}
                                 opensDialog={mobile}
                                 navigationOpen={
+                                    !props.isMapSelected &&
                                     !!galleryNavigation &&
                                     (mobile
                                         ? mobileDrawerProps.open
@@ -289,11 +295,13 @@ export const PhotosNavigationShell: React.FC<
                                 flex: 1,
                                 minWidth: 0,
                                 minHeight: 0,
-                                pt: {
-                                    xs: `${thumbnailGridPadding}px`,
-                                    md: "36px",
-                                },
-                                px: { xs: 0, md: "12px" },
+                                pt: props.isMapView
+                                    ? 0
+                                    : {
+                                          xs: `${thumbnailGridPadding}px`,
+                                          md: "36px",
+                                      },
+                                px: props.isMapView ? 0 : { xs: 0, md: "12px" },
                                 "--mui-palette-background-default": "#FFFFFF",
                                 bgcolor: "background.default",
                                 borderRadius: "20px",
@@ -382,7 +390,10 @@ const NormalHeaderContents: React.FC<
 };
 
 const NormalNavigationRail: React.FC<
-    Omit<PhotosNavigationShellProps, "onUpload" | "onChangeMode"> & {
+    Omit<
+        PhotosNavigationShellProps,
+        "onUpload" | "onChangeMode" | "isMapView"
+    > & {
         onChangeMode: (mode: GalleryBarMode) => void;
         isHome: boolean;
         opensDialog: boolean;
@@ -391,6 +402,8 @@ const NormalNavigationRail: React.FC<
 > = ({
     onSidebar,
     onHome,
+    onShowMap,
+    isMapSelected,
     mode,
     onChangeMode,
     isHome,
@@ -459,6 +472,34 @@ const NormalNavigationRail: React.FC<
                 </Tooltip>
             ),
         )}
+        <Tooltip title={t("map")}>
+            <FocusVisibleButton
+                color="secondary"
+                aria-label={t("map")}
+                aria-pressed={isMapSelected}
+                onClick={onShowMap}
+                sx={{
+                    minWidth: 0,
+                    width: 38,
+                    height: 38,
+                    flexShrink: 0,
+                    p: 0,
+                    borderRadius: "12px",
+                    color: "text.base",
+                    '&[aria-pressed="true"]': {
+                        color: "#FFFFFF",
+                        bgcolor: "accent.main",
+                        "&:hover": { bgcolor: "accent.main" },
+                    },
+                }}
+            >
+                <HugeiconsIcon
+                    icon={Location01Icon}
+                    size={20}
+                    strokeWidth={1.8}
+                />
+            </FocusVisibleButton>
+        </Tooltip>
         <Box sx={{ flex: 1 }} />
         <Tooltip title={t("settings")}>
             <FocusVisibleButton

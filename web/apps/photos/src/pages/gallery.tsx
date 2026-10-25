@@ -20,7 +20,7 @@ import {
 import { Upload } from "@/components/Upload";
 import { WhatsNew } from "@/components/WhatsNew";
 import { AlbumSlideshow } from "@/components/collections/AlbumSlideshow";
-import { CollectionMapDialog } from "@/components/collections/CollectionMapDialog";
+import { CollectionMap } from "@/components/collections/CollectionMap";
 import {
     EditAlbumDetailsDialog,
     type AlbumDetails,
@@ -323,9 +323,8 @@ const Page: React.FC = () => {
         show: showEditAlbumDetails,
         props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
-    const { show: showCollectionMap, props: collectionMapVisibilityProps } =
-        useModalVisibility();
-    const closeCollectionMap = collectionMapVisibilityProps.onClose;
+    const [isMapView, setIsMapView] = useState(false);
+    const closeCollectionMap = useCallback(() => setIsMapView(false), []);
 
     const handleShowCollectionMap = useCallback(() => {
         void (async () => {
@@ -337,9 +336,9 @@ const Page: React.FC = () => {
                     return;
                 }
             }
-            showCollectionMap();
+            setIsMapView(true);
         })();
-    }, [mapEnabled, onGenericError, showCollectionMap]);
+    }, [mapEnabled, onGenericError]);
 
     const [albumAddedNotification, setAlbumAddedNotification] = useState<{
         open: boolean;
@@ -1501,6 +1500,7 @@ const Page: React.FC = () => {
         searchOption: SearchOption | undefined,
         options?: { shouldExitSearchMode?: boolean },
     ) => {
+        setIsMapView(false);
         if (searchOption) {
             const type = searchOption.suggestion.type;
             if (type == "sidebarAction") {
@@ -1557,6 +1557,7 @@ const Page: React.FC = () => {
 
     const handleShowCollectionSummaryWithID = useCallback(
         (collectionSummaryID: number | undefined) => {
+            setIsMapView(false);
             setCleanupView(undefined);
             // Museum deletes collection contents asynchronously; pull on entry.
             if (collectionSummaryID == PseudoCollectionID.trash) {
@@ -1591,6 +1592,7 @@ const Page: React.FC = () => {
 
     const handleShowCleanupView = useCallback(
         (view: "large-files" | "duplicates") => {
+            setIsMapView(false);
             setSelected({
                 ownCount: 0,
                 count: 0,
@@ -1634,6 +1636,7 @@ const Page: React.FC = () => {
             return false;
         }
         onNavigate?.();
+        setIsMapView(false);
         setCleanupView(undefined);
         dispatch({ type: "showPeople" });
         return true;
@@ -1782,6 +1785,7 @@ const Page: React.FC = () => {
 
     const handleSelectCollection = useCallback(
         (collectionID: number) => {
+            setIsMapView(false);
             closeCollectionMap();
             dispatch({
                 type: "showCollectionSummary",
@@ -1794,6 +1798,7 @@ const Page: React.FC = () => {
     const handleSelectPerson = useCallback(
         (personID: string) => {
             setCleanupView(undefined);
+            setIsMapView(false);
             closeCollectionMap();
             dispatch({ type: "showPerson", personID });
         },
@@ -2154,6 +2159,25 @@ const Page: React.FC = () => {
                   dispatch({ type: "selectLink", collectionID })
             : handleShowCollectionSummaryWithID;
 
+    const collectionMap = activeCollectionSummary && (
+        <CollectionMap
+            collectionSummary={activeCollectionSummary}
+            files={activeCollection ? activeCollectionFiles : filteredFiles}
+            mapFileSource={mapFileSource}
+            onRemotePull={remotePull}
+            onAddSaveGroup={onAddSaveGroup}
+            onMarkTempDeleted={handleMarkTempDeleted}
+            onAddFileToCollection={handleAddSingleFileToCollection}
+            onRemoteFilesPull={remoteFilesPull}
+            onVisualFeedback={handleVisualFeedback}
+            fileNormalCollectionIDs={fileNormalCollectionIDs}
+            collectionNameByID={collectionNameByID}
+            emailByUserID={state.emailByUserID}
+            onSelectCollection={handleSelectCollection}
+            onSelectPerson={handleSelectPerson}
+        />
+    );
+
     return (
         <>
             <FullScreenDropZone
@@ -2199,19 +2223,37 @@ const Page: React.FC = () => {
                     isInSearchMode={isInSearchMode}
                     isSettingsOpen={sidebarVisibilityProps.open}
                     mode={barMode}
-                    onChangeMode={handleChangeBarMode}
+                    isMapView={isMapView}
+                    isMapSelected={
+                        isMapView &&
+                        activeCollectionID === PseudoCollectionID.all
+                    }
+                    onChangeMode={(mode) => {
+                        const changed = handleChangeBarMode(mode);
+                        if (changed) setIsMapView(false);
+                        return changed;
+                    }}
                     onSidebar={showSidebar}
                     onUpload={openUploader}
-                    onHome={() =>
+                    onShowMap={() => {
                         handleShowCollectionSummaryWithID(
                             PseudoCollectionID.all,
-                        )
-                    }
+                        );
+                        handleShowCollectionMap();
+                    }}
+                    onHome={() => {
+                        setIsMapView(false);
+                        handleShowCollectionSummaryWithID(
+                            PseudoCollectionID.all,
+                        );
+                    }}
                     onSelectSearchOption={handleSelectSearchOption}
                     onSelectPeople={handleShowPeople}
                     onSelectPerson={handleSelectPerson}
                     galleryNavigation={
-                        isCleanupViewOpen
+                        isCleanupViewOpen ||
+                        (isMapView &&
+                            activeCollectionID === PseudoCollectionID.all)
                             ? undefined
                             : {
                                   activeCollectionID:
@@ -2282,7 +2324,7 @@ const Page: React.FC = () => {
                         ) : null
                     }
                 >
-                    {!isCleanupViewOpen && (
+                    {!isMapView && !isCleanupViewOpen && (
                         <>
                             <GalleryBarAndListHeader
                                 albums={sidebarCollectionSummaries}
@@ -2315,7 +2357,9 @@ const Page: React.FC = () => {
                             />
                         </>
                     )}
-                    {cleanupView === "duplicates" ? (
+                    {isMapView ? (
+                        collectionMap
+                    ) : cleanupView === "duplicates" ? (
                         <DuplicatesView onRemoteFilesPull={remoteFilesPull} />
                     ) : cleanupView === "large-files" ? (
                         <LargeFilesView onRemoteFilesPull={remoteFilesPull} />
@@ -2391,7 +2435,6 @@ const Page: React.FC = () => {
                             footer={fileListFooter}
                             user={user}
                             files={filteredFiles}
-                            onShowMap={handleShowCollectionMap}
                             enableDownload={true}
                             disableGrouping={
                                 state.searchSuggestion?.type == "clip" ||
@@ -2524,29 +2567,6 @@ const Page: React.FC = () => {
                             onClose={closeSlideshow}
                         />
                     )}
-                {activeCollectionSummary && (
-                    <CollectionMapDialog
-                        {...collectionMapVisibilityProps}
-                        collectionSummary={activeCollectionSummary}
-                        files={
-                            activeCollection
-                                ? activeCollectionFiles
-                                : filteredFiles
-                        }
-                        mapFileSource={mapFileSource}
-                        onRemotePull={remotePull}
-                        onAddSaveGroup={onAddSaveGroup}
-                        onMarkTempDeleted={handleMarkTempDeleted}
-                        onAddFileToCollection={handleAddSingleFileToCollection}
-                        onRemoteFilesPull={remoteFilesPull}
-                        onVisualFeedback={handleVisualFeedback}
-                        fileNormalCollectionIDs={fileNormalCollectionIDs}
-                        collectionNameByID={collectionNameByID}
-                        emailByUserID={state.emailByUserID}
-                        onSelectCollection={handleSelectCollection}
-                        onSelectPerson={handleSelectPerson}
-                    />
-                )}
                 {activeCollection && editAlbumDetailsVisibilityProps.open && (
                     <EditAlbumDetailsDialog
                         key={activeCollection.id}
