@@ -1,6 +1,7 @@
 import { useWrapAsyncOperation } from "@/components/utils/use-wrap-async";
+import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import { HugeiconsIcon } from "@hugeicons/react";
 import AddIcon from "@mui/icons-material/Add";
-import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckIcon from "@mui/icons-material/Check";
 import ClearIcon from "@mui/icons-material/Clear";
 import EditIcon from "@mui/icons-material/Edit";
@@ -106,7 +107,7 @@ export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
                     onClick={onBack}
                     sx={{ width: 32, height: 32, flexShrink: 0 }}
                 >
-                    <ArrowBackIcon sx={{ fontSize: 20 }} />
+                    <HugeiconsIcon icon={ArrowLeft02Icon} size={20} />
                 </IconButton>
             </Tooltip>
             <SpacedRow sx={{ gap: 2, flex: 1, minWidth: 0 }}>
