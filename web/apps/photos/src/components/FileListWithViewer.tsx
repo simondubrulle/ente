@@ -60,6 +60,7 @@ export type FileListWithViewerProps = {
     | "favoriteFileIDs"
     | "emailByUserID"
     | "listBorderRadius"
+    | "gridLayout"
     | "onContextMenuAction"
     | "onContextMenuOpenChange"
     | "showAddPersonAction"
@@ -106,6 +107,7 @@ export const FileListWithViewer: React.FC<FileListWithViewerProps> = ({
     favoriteFileIDs,
     emailByUserID,
     listBorderRadius,
+    gridLayout,
     onContextMenuAction,
     onContextMenuOpenChange,
     showAddPersonAction,
@@ -259,6 +261,7 @@ export const FileListWithViewer: React.FC<FileListWithViewerProps> = ({
                             favoriteFileIDs,
                             emailByUserID,
                             listBorderRadius,
+                            gridLayout,
                             onScroll,
                             onVisibleDateChange,
                             collectionSummary: activeCollectionSummary,
