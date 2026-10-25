@@ -80,6 +80,7 @@ interface CollectionMapDialogProps
             | "onSelectPerson"
             | "emailByUserID"
         > {
+    embedded?: boolean;
     collectionSummary: CollectionSummary;
     files: EnteFile[];
     mapFileSource: MapFileSource;
@@ -1002,6 +1003,7 @@ function createMarkerIcon(
 export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
     open,
     onClose,
+    embedded = false,
     collectionSummary,
     files,
     onRemotePull,
@@ -1149,7 +1151,10 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         );
     } else if (!mapPoints.length || !mapCenter || !mapIndex) {
         body = (
-            <CenteredBox onClose={onClose} closeLabel={t("close")}>
+            <CenteredBox
+                onClose={embedded ? undefined : onClose}
+                closeLabel={t("close")}
+            >
                 <Typography variant="body" sx={{ color: "text.secondary" }}>
                     {t("no_geotagged_photos")}
                 </Typography>
@@ -1159,6 +1164,7 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         body = (
             <Box sx={{ position: "relative", height: "100%", width: "100%" }}>
                 <CollectionSidebar
+                    showCloseButton={!embedded}
                     collectionSummary={collectionSummary}
                     visibleFiles={visibleFiles}
                     isVisiblePhotosUpdating={isVisiblePhotosUpdating}
@@ -1203,6 +1209,21 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         );
     }
 
+    if (embedded) {
+        return (
+            <Box
+                sx={{
+                    position: "relative",
+                    flex: 1,
+                    minHeight: 0,
+                    width: "100%",
+                }}
+            >
+                {body}
+            </Box>
+        );
+    }
+
     return (
         <Dialog
             fullScreen
@@ -1234,6 +1255,7 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
 };
 
 interface CollectionSidebarProps {
+    showCloseButton: boolean;
     collectionSummary: CollectionSummary;
     visibleFiles: EnteFile[];
     isVisiblePhotosUpdating: boolean;
@@ -1268,6 +1290,7 @@ const MOBILE_SIDEBAR_HEIGHT = "50%";
 const COVER_HEADER_HEIGHT = COVER_IMAGE_HEIGHT + 34;
 
 function CollectionSidebar({
+    showCloseButton,
     collectionSummary,
     visibleFiles,
     isVisiblePhotosUpdating,
@@ -1381,17 +1404,19 @@ function CollectionSidebar({
                                 {visibleDate && ` · ${visibleDate}`}
                             </Typography>
                         </Box>
-                        <IconButton
-                            onClick={onClose}
-                            size="small"
-                            sx={{
-                                color: "text.secondary",
-                                bgcolor: "fill.faint",
-                                "&:hover": { bgcolor: "fill.muted" },
-                            }}
-                        >
-                            <CloseIcon />
-                        </IconButton>
+                        {showCloseButton && (
+                            <IconButton
+                                onClick={onClose}
+                                size="small"
+                                sx={{
+                                    color: "text.secondary",
+                                    bgcolor: "fill.faint",
+                                    "&:hover": { bgcolor: "fill.muted" },
+                                }}
+                            >
+                                <CloseIcon />
+                            </IconButton>
+                        )}
                     </Box>
                 </StickyDateHeader>
                 <FileListContainer>
