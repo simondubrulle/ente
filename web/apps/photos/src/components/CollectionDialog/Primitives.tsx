@@ -1,7 +1,8 @@
 import { Search01Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import CloseIcon from "@mui/icons-material/Close";
-import { InputBase, Stack, type Theme } from "@mui/material";
+import { InputBase, Stack, styled, type Theme } from "@mui/material";
+import { UnstyledButton } from "ente-new/photos/components/UnstyledButton";
 import { t } from "i18next";
 import React, { useRef } from "react";
 
@@ -31,6 +32,7 @@ export const CollectionDialogSearchField: React.FC<{
                 fullWidth
                 autoFocus
                 placeholder={placeholder}
+                inputProps={{ "aria-label": placeholder }}
                 value={value}
                 onChange={(e) => onChange(e.target.value)}
                 sx={searchInputSx}
@@ -77,3 +79,41 @@ const clearIconSx = {
     cursor: "pointer",
     "&:hover": { color: "text.base" },
 };
+
+export const CollectionDialogTileButton = styled(UnstyledButton)(
+    ({ theme }) => ({
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "flex-start",
+        gap: 8,
+        minWidth: 0,
+        width: "100%",
+        textAlign: "left",
+        color: theme.vars.palette.text.base,
+        borderRadius: 20,
+        "&:hover": { opacity: 0.86 },
+        "&:focus-visible": {
+            outline: `2px solid ${theme.vars.palette.stroke.base}`,
+            outlineOffset: 4,
+        },
+    }),
+);
+
+export const CollectionDialogTileCover = styled("div")(({ theme }) => ({
+    backgroundColor: theme.vars.palette.background.paper,
+    ...theme.applyStyles("dark", {
+        backgroundColor: theme.vars.palette.fill.faint,
+    }),
+    width: "100%",
+    aspectRatio: "1",
+    flexShrink: 0,
+    borderRadius: 20,
+    overflow: "hidden",
+    position: "relative",
+    "& > img": {
+        width: "100%",
+        height: "100%",
+        objectFit: "cover",
+        display: "block",
+    },
+}));
