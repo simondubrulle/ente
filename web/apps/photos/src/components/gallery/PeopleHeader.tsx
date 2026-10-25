@@ -1,5 +1,6 @@
 import { useWrapAsyncOperation } from "@/components/utils/use-wrap-async";
 import AddIcon from "@mui/icons-material/Add";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import CheckIcon from "@mui/icons-material/Check";
 import ClearIcon from "@mui/icons-material/Clear";
 import EditIcon from "@mui/icons-material/Edit";
@@ -87,16 +88,28 @@ import type { GalleryBarImplProps } from "./BarImpl";
 type PeopleHeaderProps = Pick<
     GalleryBarImplProps,
     "people" | "onSelectPerson"
-> & { person: Person };
+> & { person: Person; onBack: () => void };
 
 export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
     people,
     onSelectPerson,
     person,
+    onBack,
 }) => {
     return (
-        <GalleryItemsHeaderAdapter>
-            <SpacedRow sx={{ gap: 2 }}>
+        <GalleryItemsHeaderAdapter
+            sx={{ display: "flex", alignItems: "center", gap: 1 }}
+        >
+            <Tooltip title={t("go_back")}>
+                <IconButton
+                    aria-label={t("go_back")}
+                    onClick={onBack}
+                    sx={{ width: 32, height: 32, flexShrink: 0 }}
+                >
+                    <ArrowBackIcon sx={{ fontSize: 20 }} />
+                </IconButton>
+            </Tooltip>
+            <SpacedRow sx={{ gap: 2, flex: 1, minWidth: 0 }}>
                 {person.type == "cgroup" ? (
                     person.isHidden ? (
                         <IgnoredPersonHeader person={person} />

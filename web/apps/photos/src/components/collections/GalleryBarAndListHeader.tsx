@@ -41,6 +41,7 @@ type GalleryBarAndListHeaderProps = {
     people: Person[];
     setActiveCollectionID: (collectionID: number) => void;
     onSelectPerson: (personID: string) => void;
+    onBackToPeople: () => void;
     setFileListHeader: (header: FileListHeaderOrFooter) => void;
     hasActiveFileSelection: boolean;
 } & Pick<
@@ -83,6 +84,7 @@ export const GalleryBarAndListHeader: React.FC<
     onCollectionSlideshow,
     setFileListHeader,
     onBackToAlbums,
+    onBackToPeople,
 }) => {
     const { show: showCollectionShare, props: collectionShareVisibilityProps } =
         useModalVisibility();
@@ -168,6 +170,7 @@ export const GalleryBarAndListHeader: React.FC<
                 </GalleryItemsHeaderAdapter>
             ) : activePerson ? (
                 <PeopleHeader
+                    onBack={onBackToPeople}
                     person={activePerson}
                     people={people}
                     onSelectPerson={onSelectPerson}
@@ -199,6 +202,7 @@ export const GalleryBarAndListHeader: React.FC<
         onShowMap,
         onCollectionSlideshow,
         onBackToAlbums,
+        onBackToPeople,
         onEditAlbumDetails,
         albumDescription,
         descriptionHeight,
