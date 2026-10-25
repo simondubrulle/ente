@@ -146,7 +146,6 @@ import {
 } from "ente-new/photos/services/ml";
 import { contactsGetDiff, contactsGetProfilePicture } from "ente-photos-wasm";
 
-import { useMapNavigation } from "@/components/gallery/use-map-navigation";
 import { ensureAuthenticatedSession } from "@/services/authenticated-session";
 import { postPullFiles, prePullFiles, pullFiles } from "@/services/pull";
 import { uploadManager } from "@/services/upload-manager";
@@ -329,26 +328,22 @@ const Page: React.FC = () => {
     const closeCollectionMap = collectionMapVisibilityProps.onClose;
     const [isMapView, setIsMapView] = useState(false);
 
-    const { open: openMap, cancel: cancelPendingMap } = useMapNavigation({
-        mapEnabled,
-        enableMap: () => updateMapEnabled(true),
-        onError: onGenericError,
-    });
-
     const handleShowCollectionMap = useCallback(
         (embedded = false) => {
-            void openMap(() => {
-                if (embedded) {
-                    setCleanupView(undefined);
-                    dispatch({
-                        type: "showCollectionSummary",
-                        collectionSummaryID: PseudoCollectionID.all,
-                    });
-                    setIsMapView(true);
-                } else showCollectionMap();
-            });
+            void (async () => {
+                if (!mapEnabled) {
+                    try {
+                        await updateMapEnabled(true);
+                    } catch (e) {
+                        onGenericError(e);
+                        return;
+                    }
+                }
+                if (embedded) setIsMapView(true);
+                else showCollectionMap();
+            })();
         },
-        [openMap, dispatch, showCollectionMap],
+        [mapEnabled, onGenericError, showCollectionMap],
     );
 
     const [albumAddedNotification, setAlbumAddedNotification] = useState<{
@@ -1511,7 +1506,6 @@ const Page: React.FC = () => {
         searchOption: SearchOption | undefined,
         options?: { shouldExitSearchMode?: boolean },
     ) => {
-        cancelPendingMap();
         setIsMapView(false);
         if (searchOption) {
             const type = searchOption.suggestion.type;
@@ -1569,7 +1563,6 @@ const Page: React.FC = () => {
 
     const handleShowCollectionSummaryWithID = useCallback(
         (collectionSummaryID: number | undefined) => {
-            cancelPendingMap();
             setIsMapView(false);
             setCleanupView(undefined);
             // Museum deletes collection contents asynchronously; pull on entry.
@@ -1579,7 +1572,7 @@ const Page: React.FC = () => {
 
             dispatch({ type: "showCollectionSummary", collectionSummaryID });
         },
-        [cancelPendingMap],
+        [],
     );
 
     useEffect(() => {
@@ -1605,7 +1598,6 @@ const Page: React.FC = () => {
 
     const handleShowCleanupView = useCallback(
         (view: "large-files" | "duplicates") => {
-            cancelPendingMap();
             setIsMapView(false);
             setSelected({
                 ownCount: 0,
@@ -1618,7 +1610,7 @@ const Page: React.FC = () => {
             dispatch({ type: "exitSearch", shouldExitSearchMode: true });
             setCleanupView(view);
         },
-        [cancelPendingMap, closeCollectionMap, closeSlideshow],
+        [closeCollectionMap, closeSlideshow],
     );
 
     const handleShowLargeFiles = useCallback(
@@ -1644,7 +1636,6 @@ const Page: React.FC = () => {
     );
 
     const handleShowPeople = (onNavigate?: () => void) => {
-        cancelPendingMap();
         if (!isMLEnabled()) {
             pendingPeopleSearchReset.current = onNavigate;
             showPeopleConsent();
@@ -1658,7 +1649,6 @@ const Page: React.FC = () => {
     };
 
     const handleShowAlbumOverview = (filter: AlbumFilter) => {
-        cancelPendingMap();
         setCleanupView(undefined);
         clearSelection();
         setAlbumFilter(filter);
@@ -1666,7 +1656,6 @@ const Page: React.FC = () => {
     };
 
     const handleBackToAlbums = useCallback(() => {
-        cancelPendingMap();
         setCleanupView(undefined);
         setAlbumSearchQuery("");
         setSelected({
@@ -1677,10 +1666,9 @@ const Page: React.FC = () => {
         });
         setAlbumFilter("ente");
         dispatch({ type: "showAlbumOverview", albumFilter: "ente" });
-    }, [cancelPendingMap]);
+    }, []);
 
     const handleChangeBarMode = (mode: GalleryBarMode) => {
-        cancelPendingMap();
         if (mode == "links") {
             setCleanupView(undefined);
             clearSelection();
@@ -1792,7 +1780,6 @@ const Page: React.FC = () => {
 
     const handleSelectCollection = useCallback(
         (collectionID: number) => {
-            cancelPendingMap();
             setIsMapView(false);
             closeCollectionMap();
             dispatch({
@@ -1800,18 +1787,17 @@ const Page: React.FC = () => {
                 collectionSummaryID: collectionID,
             });
         },
-        [cancelPendingMap, closeCollectionMap],
+        [closeCollectionMap],
     );
 
     const handleSelectPerson = useCallback(
         (personID: string) => {
-            cancelPendingMap();
             setCleanupView(undefined);
             setIsMapView(false);
             closeCollectionMap();
             dispatch({ type: "showPerson", personID });
         },
-        [cancelPendingMap, closeCollectionMap],
+        [closeCollectionMap],
     );
 
     const handleOpenCollectionSelector = useCallback(
@@ -2244,7 +2230,12 @@ const Page: React.FC = () => {
                     }}
                     onSidebar={showSidebar}
                     onUpload={openUploader}
-                    onShowMap={() => handleShowCollectionMap(true)}
+                    onShowMap={() => {
+                        handleShowCollectionSummaryWithID(
+                            PseudoCollectionID.all,
+                        );
+                        handleShowCollectionMap(true);
+                    }}
                     onHome={() => {
                         setIsMapView(false);
                         handleShowCollectionSummaryWithID(
