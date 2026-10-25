@@ -1,5 +1,22 @@
+import {
+    CollectionDialogSearchField,
+    CollectionDialogTileButton,
+    CollectionDialogTileCover,
+} from "@/components/CollectionDialog/Primitives";
+import {
+    collectionDialogFullScreenQuery,
+    collectionDialogHeaderRowSx,
+    collectionDialogHeaderSx,
+    collectionDialogIconButtonSx,
+    collectionDialogPaperSx,
+    collectionDialogTitleSx,
+} from "@/components/CollectionDialog/styles";
 import { useWrapAsyncOperation } from "@/components/utils/use-wrap-async";
-import { ArrowLeft02Icon } from "@hugeicons/core-free-icons";
+import {
+    Add01Icon,
+    ArrowLeft02Icon,
+    Cancel01Icon,
+} from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import AddIcon from "@mui/icons-material/Add";
 import CheckIcon from "@mui/icons-material/Check";
@@ -10,7 +27,6 @@ import ListAltOutlinedIcon from "@mui/icons-material/ListAltOutlined";
 import PushPinIcon from "@mui/icons-material/PushPin";
 import PushPinOutlinedIcon from "@mui/icons-material/PushPinOutlined";
 import RestoreIcon from "@mui/icons-material/Restore";
-import SearchIcon from "@mui/icons-material/Search";
 import VisibilityOutlinedIcon from "@mui/icons-material/VisibilityOutlined";
 import {
     Box,
@@ -19,12 +35,9 @@ import {
     DialogContent,
     DialogTitle,
     IconButton,
-    InputAdornment,
     List,
     ListItem,
     Stack,
-    styled,
-    TextField,
     ToggleButton,
     ToggleButtonGroup,
     Tooltip,
@@ -35,7 +48,6 @@ import {
 import { CenteredFill, SpacedRow } from "ente-base/components/containers";
 import { ActivityErrorIndicator } from "ente-base/components/ErrorIndicator";
 import { ActivityIndicator } from "ente-base/components/mui/ActivityIndicator";
-import { DialogCloseIconButton } from "ente-base/components/mui/DialogCloseIconButton";
 import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
 import { LoadingButton } from "ente-base/components/mui/LoadingButton";
 import {
@@ -48,6 +60,7 @@ import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
+import { isSxArray } from "ente-base/components/utils/sx";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
 import {
@@ -56,12 +69,7 @@ import {
     GalleryItemsSummary,
 } from "ente-new/photos/components/gallery/ListHeader";
 import { SuggestionFaceList } from "ente-new/photos/components/PeopleList";
-import {
-    ItemCard,
-    LargeTileButton,
-    LargeTileCreateNewButton,
-    LargeTileTextOverlay,
-} from "ente-new/photos/components/Tiles";
+import { ItemCard } from "ente-new/photos/components/Tiles";
 import {
     addCGroup,
     addClusterToCGroup,
@@ -370,7 +378,7 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
     onSelectPerson,
     cluster,
 }) => {
-    const isFullScreen = useMediaQuery("(max-width: 490px)");
+    const isFullScreen = useMediaQuery(collectionDialogFullScreenQuery);
 
     const [openNameInput, setOpenNameInput] = useState(false);
     const [searchTerm, setSearchTerm] = useState("");
@@ -417,44 +425,117 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
             <Dialog
                 open={open}
                 onClose={handleClose}
-                fullWidth
                 fullScreen={isFullScreen}
-                slotProps={{ paper: { sx: { maxWidth: "490px" } } }}
+                maxWidth={false}
+                aria-labelledby="add-person-title"
+                slotProps={{
+                    paper: {
+                        sx: [
+                            ...(isSxArray(collectionDialogPaperSx)
+                                ? collectionDialogPaperSx
+                                : [collectionDialogPaperSx]),
+                            {
+                                width: isFullScreen
+                                    ? "100%"
+                                    : "min(600px, calc(100svw - 64px))",
+                                maxWidth: isFullScreen ? "100%" : 600,
+                                maxHeight: isFullScreen
+                                    ? "100%"
+                                    : "min(600px, calc(100svh - 64px))",
+                                boxSizing: "border-box",
+                            },
+                        ],
+                    },
+                }}
             >
-                <Stack sx={{ gap: 1.5, padding: "10px 8px 6px 24px" }}>
-                    <SpacedRow>
-                        <DialogTitle variant="h3" sx={{ p: 0 }}>
+                <Stack
+                    sx={{
+                        ...collectionDialogHeaderSx,
+                        gap: "24px",
+                        pb: 0,
+                        flexShrink: 0,
+                    }}
+                >
+                    <Stack
+                        direction="row"
+                        sx={{
+                            ...collectionDialogHeaderRowSx,
+                            alignItems: "center",
+                        }}
+                    >
+                        <Typography
+                            id="add-person-title"
+                            component="h2"
+                            sx={{
+                                ...collectionDialogTitleSx,
+                                fontFamily:
+                                    '"Outfit Variable", Outfit, sans-serif',
+                            }}
+                        >
                             {t("add_name")}
-                        </DialogTitle>
-                        <DialogCloseIconButton onClose={handleClose} />
-                    </SpacedRow>
-                    <TextField
-                        fullWidth
-                        type="search"
-                        size="small"
+                        </Typography>
+                        <IconButton
+                            aria-label={t("close")}
+                            onClick={handleClose}
+                            sx={collectionDialogIconButtonSx}
+                        >
+                            <HugeiconsIcon icon={Cancel01Icon} size={18} />
+                        </IconButton>
+                    </Stack>
+                    <CollectionDialogSearchField
+                        size="medium"
                         placeholder={`${t("people_search_hint")}...`}
                         value={searchTerm}
-                        onChange={(event) => setSearchTerm(event.target.value)}
-                        autoFocus
-                        slotProps={{
-                            htmlInput: {
-                                "aria-label": t("people_search_hint"),
-                            },
-                            input: {
-                                startAdornment: (
-                                    <InputAdornment position="start">
-                                        <SearchIcon />
-                                    </InputAdornment>
-                                ),
-                            },
-                        }}
-                        sx={searchFieldSx}
+                        onChange={setSearchTerm}
                     />
                 </Stack>
-                <DialogContent_>
-                    <LargeTileCreateNewButton onClick={handleAddPerson}>
-                        {t("new_person")}
-                    </LargeTileCreateNewButton>
+                <Box
+                    sx={{
+                        display: "grid",
+                        gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+                        "@media (width < 600px)": {
+                            gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+                        },
+                        "@media (width < 360px)": {
+                            gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+                        },
+                        columnGap: "22px",
+                        rowGap: "24px",
+                        alignContent: "start",
+                        overflowY: "auto",
+                        p: "24px 20px 20px",
+                        minHeight: 0,
+                    }}
+                >
+                    <CollectionDialogTileButton onClick={handleAddPerson}>
+                        <CollectionDialogTileCover>
+                            <CenteredFill
+                                sx={{
+                                    position: "absolute",
+                                    inset: 0,
+                                    color: "text.muted",
+                                }}
+                            >
+                                <HugeiconsIcon
+                                    icon={Add01Icon}
+                                    size={24}
+                                    strokeWidth={1.5}
+                                />
+                            </CenteredFill>
+                        </CollectionDialogTileCover>
+                        <Typography
+                            component="span"
+                            noWrap
+                            sx={{
+                                fontSize: 14,
+                                lineHeight: "20px",
+                                fontWeight: 500,
+                                maxWidth: "100%",
+                            }}
+                        >
+                            {t("add_person")}
+                        </Typography>
+                    </CollectionDialogTileButton>
                     {filteredPeople.map((person) => (
                         <PersonButton
                             key={person.id}
@@ -462,7 +543,7 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
                             onPersonClick={handleAddPersonBySelect}
                         />
                     ))}
-                </DialogContent_>
+                </Box>
             </Dialog>
 
             <SingleInputDialog
@@ -479,34 +560,6 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
     );
 };
 
-const DialogContent_ = styled(DialogContent)`
-    display: flex;
-    flex-wrap: wrap;
-    gap: 4px;
-`;
-
-const searchFieldSx = {
-    marginLeft: "-8px",
-    "& .MuiOutlinedInput-root": {
-        backgroundColor: "background.searchInput",
-        borderColor: "transparent",
-        "&:hover": { borderColor: "accent.light" },
-        "&.Mui-focused": { borderColor: "accent.main", boxShadow: "none" },
-    },
-    "& .MuiInputBase-input": {
-        color: "text.base",
-        paddingTop: "8.5px !important",
-        paddingBottom: "8.5px !important",
-    },
-    "& .MuiInputAdornment-root": {
-        color: "stroke.muted",
-        marginTop: "0 !important",
-        marginRight: "8px",
-    },
-    "& .MuiOutlinedInput-notchedOutline": { borderColor: "transparent" },
-    "& .MuiInputBase-input::placeholder": { color: "text.muted", opacity: 1 },
-};
-
 interface PersonButtonProps {
     person: Person;
     onPersonClick: (personID: string) => void;
@@ -516,16 +569,37 @@ const PersonButton: React.FC<PersonButtonProps> = ({
     person,
     onPersonClick,
 }) => (
-    <ItemCard
-        TileComponent={LargeTileButton}
-        coverFile={person.displayFaceFile}
-        coverFaceID={person.displayFaceID}
+    <CollectionDialogTileButton
+        title={person.name}
         onClick={() => onPersonClick(person.id)}
     >
-        <LargeTileTextOverlay>
-            <Typography>{person.name ?? ""}</Typography>
-        </LargeTileTextOverlay>
-    </ItemCard>
+        <ItemCard
+            TileComponent={CollectionDialogTileCover}
+            coverFile={person.displayFaceFile}
+            coverFaceID={person.displayFaceID}
+        />
+        <Stack component="span" sx={{ width: "100%", minWidth: 0, gap: "4px" }}>
+            <Typography
+                component="span"
+                noWrap
+                sx={{ fontSize: 14, lineHeight: "20px", fontWeight: 500 }}
+            >
+                {person.name ?? ""}
+            </Typography>
+            <Typography
+                component="span"
+                noWrap
+                sx={{
+                    fontSize: 12,
+                    lineHeight: "16px",
+                    fontWeight: 500,
+                    color: "text.muted",
+                }}
+            >
+                {t("album_items_count", { count: person.fileIDs.length })}
+            </Typography>
+        </Stack>
+    </CollectionDialogTileButton>
 );
 
 type SuggestionsDialogProps = ModalVisibilityProps & { person: CGroupPerson };
