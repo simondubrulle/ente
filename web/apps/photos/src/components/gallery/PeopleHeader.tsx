@@ -483,7 +483,6 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
                         </IconButton>
                     </Stack>
                     <CollectionDialogSearchField
-                        size="medium"
                         placeholder={`${t("people_search_hint")}...`}
                         value={searchTerm}
                         onChange={setSearchTerm}

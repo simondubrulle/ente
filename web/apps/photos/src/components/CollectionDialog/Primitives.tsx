@@ -8,15 +8,9 @@ import React, { useRef } from "react";
 
 export const CollectionDialogSearchField: React.FC<{
     placeholder?: string;
-    size?: "small" | "medium";
     value: string;
     onChange: (value: string) => void;
-}> = ({
-    value,
-    onChange,
-    placeholder = t("albums_search_hint"),
-    size = "small",
-}) => {
+}> = ({ value, onChange, placeholder = t("albums_search_hint") }) => {
     const inputRef = useRef<HTMLInputElement>(null);
 
     const handleClear = () => {
@@ -25,11 +19,8 @@ export const CollectionDialogSearchField: React.FC<{
     };
 
     return (
-        <Stack
-            direction="row"
-            sx={[searchFieldSx, size == "medium" ? { height: 52, gap: 1 } : {}]}
-        >
-            <Stack sx={[searchIconSx, size == "medium" ? { p: 1 } : {}]}>
+        <Stack direction="row" sx={searchFieldSx}>
+            <Stack sx={searchIconSx}>
                 <HugeiconsIcon
                     icon={Search01Icon}
                     size={18}
