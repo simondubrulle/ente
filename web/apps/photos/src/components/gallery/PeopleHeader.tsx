@@ -533,7 +533,7 @@ const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
                                 maxWidth: "100%",
                             }}
                         >
-                            {t("add_person")}
+                            {t("new_person")}
                         </Typography>
                     </CollectionDialogTileButton>
                     {filteredPeople.map((person) => (
