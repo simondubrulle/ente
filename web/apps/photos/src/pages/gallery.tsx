@@ -346,6 +346,11 @@ const Page: React.FC = () => {
         [mapEnabled, onGenericError, showCollectionMap],
     );
 
+    const handleShowAlbumMap = useCallback(
+        () => handleShowCollectionMap(),
+        [handleShowCollectionMap],
+    );
+
     const [albumAddedNotification, setAlbumAddedNotification] = useState<{
         open: boolean;
         albumName?: string;
@@ -2339,7 +2344,7 @@ const Page: React.FC = () => {
                                 setActiveCollectionID={selectGalleryCollection}
                                 onSelectPerson={handleSelectPerson}
                                 onEditAlbumDetails={showEditAlbumDetails}
-                                onShowMap={() => handleShowCollectionMap()}
+                                onShowMap={handleShowAlbumMap}
                                 onCollectionSlideshow={startSlideshow}
                                 emailByUserID={state.emailByUserID}
                                 shareSuggestionEmails={
