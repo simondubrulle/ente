@@ -1642,6 +1642,17 @@ const Page: React.FC = () => {
         return true;
     };
 
+    const handleBackToPeople = useCallback(() => {
+        setCleanupView(undefined);
+        setSelected({
+            ownCount: 0,
+            count: 0,
+            collectionID: 0,
+            context: undefined,
+        });
+        dispatch({ type: "showPeople" });
+    }, []);
+
     const handleShowAlbumOverview = (filter: AlbumFilter) => {
         setCleanupView(undefined);
         clearSelection();
@@ -2330,6 +2341,7 @@ const Page: React.FC = () => {
                                     onAddSaveGroup,
                                 }}
                                 onBackToAlbums={handleBackToAlbums}
+                                onBackToPeople={handleBackToPeople}
                                 mode={barMode}
                                 shouldHide={isInSearchMode}
                                 setActiveCollectionID={selectGalleryCollection}
