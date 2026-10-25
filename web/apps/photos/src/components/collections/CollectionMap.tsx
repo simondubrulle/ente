@@ -1,13 +1,10 @@
 import type { RemotePullOpts } from "@/components/gallery";
 import type { SelectedState } from "@/utils/file";
 import AddIcon from "@mui/icons-material/Add";
-import CloseIcon from "@mui/icons-material/Close";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
 import RemoveIcon from "@mui/icons-material/Remove";
 import {
     Box,
-    Dialog,
-    DialogContent,
     IconButton,
     Stack,
     styled,
@@ -18,7 +15,6 @@ import {
 import { useTheme } from "@mui/material/styles";
 import { ensureLocalUser } from "ente-accounts/services/user";
 import { ActivityIndicator } from "ente-base/components/mui/ActivityIndicator";
-import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
 import { isSxArray } from "ente-base/components/utils/sx";
 import { useBaseContext } from "ente-base/context";
 import { downloadManager } from "ente-gallery/services/download";
@@ -64,23 +60,19 @@ interface MapFileSource {
     tempHiddenFileIDs: Set<number>;
 }
 
-interface CollectionMapDialogProps
-    extends
-        ModalVisibilityProps,
-        Pick<
-            FileListWithViewerProps,
-            | "onAddSaveGroup"
-            | "onMarkTempDeleted"
-            | "onAddFileToCollection"
-            | "onRemoteFilesPull"
-            | "onVisualFeedback"
-            | "fileNormalCollectionIDs"
-            | "collectionNameByID"
-            | "onSelectCollection"
-            | "onSelectPerson"
-            | "emailByUserID"
-        > {
-    embedded?: boolean;
+interface CollectionMapProps extends Pick<
+    FileListWithViewerProps,
+    | "onAddSaveGroup"
+    | "onMarkTempDeleted"
+    | "onAddFileToCollection"
+    | "onRemoteFilesPull"
+    | "onVisualFeedback"
+    | "fileNormalCollectionIDs"
+    | "collectionNameByID"
+    | "onSelectCollection"
+    | "onSelectPerson"
+    | "emailByUserID"
+> {
     collectionSummary: CollectionSummary;
     files: EnteFile[];
     mapFileSource: MapFileSource;
@@ -1000,10 +992,7 @@ function createMarkerIcon(
     });
 }
 
-export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
-    open,
-    onClose,
-    embedded = false,
+export const CollectionMap: React.FC<CollectionMapProps> = ({
     collectionSummary,
     files,
     onRemotePull,
@@ -1022,7 +1011,6 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
     const { onGenericError } = useBaseContext();
     const mapComponents = useMapComponents();
     const user = useCurrentUser();
-    const [isFileViewerOpen, setIsFileViewerOpen] = useState(false);
     const {
         collectionFiles: mapSourceCollectionFiles,
         favoriteFileIDs: syncedFavoriteFileIDs,
@@ -1039,7 +1027,7 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         handleToggleFavorite,
         handleFileVisibilityUpdate,
     } = useFavorites(
-        open,
+        true,
         user,
         mapSourceCollectionFiles,
         syncedFavoriteFileIDs,
@@ -1083,17 +1071,11 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         removeFiles: removeFilesFromMap,
         updateFileVisibility,
         queueThumbnailFetch,
-    } = useMapData(open, collectionSummary, mapFiles, onGenericError);
+    } = useMapData(true, collectionSummary, mapFiles, onGenericError);
 
     const [visibleFileIDs, setVisibleFileIDs] = useState<number[]>([]);
     const [isVisiblePhotosUpdating, setIsVisiblePhotosUpdating] =
         useState(false);
-
-    useEffect(() => {
-        if (!open) {
-            setIsVisiblePhotosUpdating(false);
-        }
-    }, [open]);
 
     const visibleFiles = useMemo(() => {
         return visibleFileIDs
@@ -1102,7 +1084,7 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
     }, [visibleFileIDs, filesByID]);
 
     const handleRemotePull = useCallback(
-        () => onRemotePull({ silent: true, source: "map-dialog" }),
+        () => onRemotePull({ silent: true, source: "map-view" }),
         [onRemotePull],
     );
 
@@ -1151,10 +1133,7 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         );
     } else if (!mapPoints.length || !mapCenter || !mapIndex) {
         body = (
-            <CenteredBox
-                onClose={embedded ? undefined : onClose}
-                closeLabel={t("close")}
-            >
+            <CenteredBox>
                 <Typography variant="body" sx={{ color: "text.secondary" }}>
                     {t("no_geotagged_photos")}
                 </Typography>
@@ -1164,13 +1143,11 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         body = (
             <Box sx={{ position: "relative", height: "100%", width: "100%" }}>
                 <CollectionSidebar
-                    showCloseButton={!embedded}
                     collectionSummary={collectionSummary}
                     visibleFiles={visibleFiles}
                     isVisiblePhotosUpdating={isVisiblePhotosUpdating}
                     latestFileId={latestFileId}
                     thumbByFileID={thumbByFileID}
-                    onClose={onClose}
                     user={user}
                     favoriteFileIDs={favoriteFileIDs}
                     pendingFavoriteUpdates={pendingFavoriteUpdates}
@@ -1190,7 +1167,6 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
                     onSelectCollection={onSelectCollection}
                     onSelectPerson={onSelectPerson}
                     emailByUserID={emailByUserID}
-                    onSetOpenFileViewer={setIsFileViewerOpen}
                 />
                 <Box sx={{ width: "100%", height: "100%" }}>
                     <MapCanvas
@@ -1209,59 +1185,21 @@ export const CollectionMapDialog: React.FC<CollectionMapDialogProps> = ({
         );
     }
 
-    if (embedded) {
-        return (
-            <Box
-                sx={{
-                    position: "relative",
-                    flex: 1,
-                    minHeight: 0,
-                    width: "100%",
-                }}
-            >
-                {body}
-            </Box>
-        );
-    }
-
     return (
-        <Dialog
-            fullScreen
-            keepMounted
-            open={open}
-            onClose={onClose}
-            sx={{
-                // Keep PhotoSwipe above the mounted dialog during transitions.
-                ...(isFileViewerOpen && {
-                    zIndex: (theme) =>
-                        `calc(${theme.zIndex.drawer} - 2) !important`,
-                }),
-            }}
+        <Box
+            sx={{ position: "relative", flex: 1, minHeight: 0, width: "100%" }}
         >
-            <Box
-                sx={{
-                    position: "relative",
-                    width: "100vw",
-                    height: "100vh",
-                    bgcolor: "background.default",
-                }}
-            >
-                <DialogContent sx={{ padding: "0 !important", height: "100%" }}>
-                    {body}
-                </DialogContent>
-            </Box>
-        </Dialog>
+            {body}
+        </Box>
     );
 };
 
 interface CollectionSidebarProps {
-    showCloseButton: boolean;
     collectionSummary: CollectionSummary;
     visibleFiles: EnteFile[];
     isVisiblePhotosUpdating: boolean;
     latestFileId: number | undefined;
     thumbByFileID: Map<number, string>;
-    onClose: () => void;
     user: ReturnType<typeof useCurrentUser>;
     favoriteFileIDs: Set<number>;
     pendingFavoriteUpdates: Set<number>;
@@ -1282,7 +1220,6 @@ interface CollectionSidebarProps {
     onSelectCollection?: FileListWithViewerProps["onSelectCollection"];
     onSelectPerson?: FileListWithViewerProps["onSelectPerson"];
     emailByUserID: FileListWithViewerProps["emailByUserID"];
-    onSetOpenFileViewer?: (open: boolean) => void;
 }
 
 const COVER_IMAGE_HEIGHT = 320;
@@ -1290,13 +1227,11 @@ const MOBILE_SIDEBAR_HEIGHT = "50%";
 const COVER_HEADER_HEIGHT = COVER_IMAGE_HEIGHT + 34;
 
 function CollectionSidebar({
-    showCloseButton,
     collectionSummary,
     visibleFiles,
     isVisiblePhotosUpdating,
     latestFileId,
     thumbByFileID,
-    onClose,
     user,
     favoriteFileIDs,
     pendingFavoriteUpdates,
@@ -1314,7 +1249,6 @@ function CollectionSidebar({
     onSelectCollection,
     onSelectPerson,
     emailByUserID,
-    onSetOpenFileViewer,
 }: CollectionSidebarProps) {
     const [currentDate, setCurrentDate] = useState<string | undefined>(
         undefined,
@@ -1349,7 +1283,6 @@ function CollectionSidebar({
                               name={collectionSummary.name}
                               coverImageUrl={coverImageUrl}
                               totalCount={collectionSummary.fileCount}
-                              onClose={onClose}
                           />
                       ),
                       height: COVER_HEADER_HEIGHT,
@@ -1361,7 +1294,6 @@ function CollectionSidebar({
             collectionSummary.name,
             collectionSummary.fileCount,
             coverImageUrl,
-            onClose,
         ],
     );
 
@@ -1404,19 +1336,6 @@ function CollectionSidebar({
                                 {visibleDate && ` · ${visibleDate}`}
                             </Typography>
                         </Box>
-                        {showCloseButton && (
-                            <IconButton
-                                onClick={onClose}
-                                size="small"
-                                sx={{
-                                    color: "text.secondary",
-                                    bgcolor: "fill.faint",
-                                    "&:hover": { bgcolor: "fill.muted" },
-                                }}
-                            >
-                                <CloseIcon />
-                            </IconButton>
-                        )}
                     </Box>
                 </StickyDateHeader>
                 <FileListContainer>
@@ -1445,7 +1364,6 @@ function CollectionSidebar({
                             activeCollectionID={collectionSummary.id}
                             selected={emptySelected}
                             setSelected={noOpSetSelected}
-                            onSetOpenFileViewer={onSetOpenFileViewer}
                             listBorderRadius={isMobile ? "0" : "0 0 32px 32px"}
                             header={coverHeader}
                             onScroll={setScrollOffset}
@@ -1458,7 +1376,6 @@ function CollectionSidebar({
                                     name={collectionSummary.name}
                                     coverImageUrl={coverImageUrl}
                                     totalCount={collectionSummary.fileCount}
-                                    onClose={onClose}
                                 />
                             )}
                             <EmptyStateMessage>
@@ -1881,40 +1798,20 @@ const FloatingIconButton: React.FC<IconButtonProps> = ({ sx, ...props }) => {
     return <IconButton {...props} sx={mergedSx} />;
 };
 
-interface CenteredBoxProps extends React.PropsWithChildren {
-    onClose?: () => void;
-    closeLabel?: string;
-}
-
-function CenteredBox({ children, onClose, closeLabel }: CenteredBoxProps) {
-    return (
-        <CenteredBoxContainer>
-            {onClose && (
-                <IconButton
-                    aria-label={closeLabel ?? "Close"}
-                    onClick={onClose}
-                    sx={{ position: "absolute", top: 16, right: 16 }}
-                >
-                    <CloseIcon />
-                </IconButton>
-            )}
-            {children}
-        </CenteredBoxContainer>
-    );
+function CenteredBox({ children }: React.PropsWithChildren) {
+    return <CenteredBoxContainer>{children}</CenteredBoxContainer>;
 }
 
 interface MapCoverProps {
     name: string;
     coverImageUrl: string | undefined;
     totalCount: number;
-    onClose: () => void;
 }
 
 const MapCover = React.memo(function MapCover({
     name,
     coverImageUrl,
     totalCount,
-    onClose,
 }: MapCoverProps) {
     return (
         <CoverContainer>
@@ -1932,10 +1829,6 @@ const MapCover = React.memo(function MapCover({
                     }}
                 />
                 <CoverGradientOverlay />
-
-                <CoverCloseButton aria-label="Close" onClick={onClose}>
-                    <CloseIcon sx={{ fontSize: 20 }} />
-                </CoverCloseButton>
 
                 <CoverContentContainer>
                     <CoverTitle>{name}</CoverTitle>
@@ -1983,15 +1876,6 @@ const CoverGradientOverlay = styled(Box)({
     inset: 0,
     background:
         "linear-gradient(to bottom, rgba(0,0,0,0.4), transparent 35%, transparent 60%, rgba(0,0,0,0.75))",
-});
-
-const CoverCloseButton = styled(IconButton)({
-    position: "absolute",
-    top: "12px",
-    right: "12px",
-    color: "white",
-    backgroundColor: "rgba(0, 0, 0, 0.3)",
-    "&:hover": { backgroundColor: "rgba(0, 0, 0, 0.5)" },
 });
 
 const CoverContentContainer = styled(Box)({

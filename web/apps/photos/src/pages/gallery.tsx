@@ -20,7 +20,7 @@ import {
 import { Upload } from "@/components/Upload";
 import { WhatsNew } from "@/components/WhatsNew";
 import { AlbumSlideshow } from "@/components/collections/AlbumSlideshow";
-import { CollectionMapDialog } from "@/components/collections/CollectionMapDialog";
+import { CollectionMap } from "@/components/collections/CollectionMap";
 import {
     EditAlbumDetailsDialog,
     type AlbumDetails,
@@ -323,33 +323,22 @@ const Page: React.FC = () => {
         show: showEditAlbumDetails,
         props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
-    const { show: showCollectionMap, props: collectionMapVisibilityProps } =
-        useModalVisibility();
-    const closeCollectionMap = collectionMapVisibilityProps.onClose;
     const [isMapView, setIsMapView] = useState(false);
+    const closeCollectionMap = useCallback(() => setIsMapView(false), []);
 
-    const handleShowCollectionMap = useCallback(
-        (embedded = false) => {
-            void (async () => {
-                if (!mapEnabled) {
-                    try {
-                        await updateMapEnabled(true);
-                    } catch (e) {
-                        onGenericError(e);
-                        return;
-                    }
+    const handleShowCollectionMap = useCallback(() => {
+        void (async () => {
+            if (!mapEnabled) {
+                try {
+                    await updateMapEnabled(true);
+                } catch (e) {
+                    onGenericError(e);
+                    return;
                 }
-                if (embedded) setIsMapView(true);
-                else showCollectionMap();
-            })();
-        },
-        [mapEnabled, onGenericError, showCollectionMap],
-    );
-
-    const handleShowAlbumMap = useCallback(
-        () => handleShowCollectionMap(),
-        [handleShowCollectionMap],
-    );
+            }
+            setIsMapView(true);
+        })();
+    }, [mapEnabled, onGenericError]);
 
     const [albumAddedNotification, setAlbumAddedNotification] = useState<{
         open: boolean;
@@ -2160,11 +2149,7 @@ const Page: React.FC = () => {
             : handleShowCollectionSummaryWithID;
 
     const collectionMap = activeCollectionSummary && (
-        <CollectionMapDialog
-            {...collectionMapVisibilityProps}
-            embedded={isMapView}
-            open={isMapView || collectionMapVisibilityProps.open}
-            onClose={isMapView ? () => setIsMapView(false) : closeCollectionMap}
+        <CollectionMap
             collectionSummary={activeCollectionSummary}
             files={activeCollection ? activeCollectionFiles : filteredFiles}
             mapFileSource={mapFileSource}
@@ -2228,6 +2213,10 @@ const Page: React.FC = () => {
                     isSettingsOpen={sidebarVisibilityProps.open}
                     mode={barMode}
                     isMapView={isMapView}
+                    isMapSelected={
+                        isMapView &&
+                        activeCollectionID === PseudoCollectionID.all
+                    }
                     onChangeMode={(mode) => {
                         const changed = handleChangeBarMode(mode);
                         if (changed) setIsMapView(false);
@@ -2239,7 +2228,7 @@ const Page: React.FC = () => {
                         handleShowCollectionSummaryWithID(
                             PseudoCollectionID.all,
                         );
-                        handleShowCollectionMap(true);
+                        handleShowCollectionMap();
                     }}
                     onHome={() => {
                         setIsMapView(false);
@@ -2251,7 +2240,9 @@ const Page: React.FC = () => {
                     onSelectPeople={handleShowPeople}
                     onSelectPerson={handleSelectPerson}
                     galleryNavigation={
-                        isCleanupViewOpen || isMapView
+                        isCleanupViewOpen ||
+                        (isMapView &&
+                            activeCollectionID === PseudoCollectionID.all)
                             ? undefined
                             : {
                                   activeCollectionID:
@@ -2344,7 +2335,7 @@ const Page: React.FC = () => {
                                 setActiveCollectionID={selectGalleryCollection}
                                 onSelectPerson={handleSelectPerson}
                                 onEditAlbumDetails={showEditAlbumDetails}
-                                onShowMap={handleShowAlbumMap}
+                                onShowMap={handleShowCollectionMap}
                                 onCollectionSlideshow={startSlideshow}
                                 emailByUserID={state.emailByUserID}
                                 shareSuggestionEmails={
@@ -2564,7 +2555,6 @@ const Page: React.FC = () => {
                             onClose={closeSlideshow}
                         />
                     )}
-                {!isMapView && collectionMap}
                 {activeCollection && editAlbumDetailsVisibilityProps.open && (
                     <EditAlbumDetailsDialog
                         key={activeCollection.id}

@@ -60,6 +60,7 @@ type PhotosNavigationShellProps = SearchBarProps & {
     onHome: () => void;
     onShowMap: () => void;
     isMapView: boolean;
+    isMapSelected: boolean;
     mode: GalleryBarMode;
     onChangeMode: (mode: GalleryBarMode) => boolean;
 };
@@ -241,7 +242,7 @@ export const PhotosNavigationShell: React.FC<
                             <NormalNavigationRail
                                 {...props}
                                 isHome={
-                                    !props.isMapView &&
+                                    !props.isMapSelected &&
                                     props.mode == "albums" &&
                                     !props.isInSearchMode &&
                                     galleryNavigation?.activeCollectionID ==
@@ -250,7 +251,7 @@ export const PhotosNavigationShell: React.FC<
                                 onChangeMode={handleChangeMode}
                                 opensDialog={mobile}
                                 navigationOpen={
-                                    !props.isMapView &&
+                                    !props.isMapSelected &&
                                     !!galleryNavigation &&
                                     (mobile
                                         ? mobileDrawerProps.open
@@ -390,7 +391,10 @@ const NormalHeaderContents: React.FC<
 };
 
 const NormalNavigationRail: React.FC<
-    Omit<PhotosNavigationShellProps, "onUpload" | "onChangeMode"> & {
+    Omit<
+        PhotosNavigationShellProps,
+        "onUpload" | "onChangeMode" | "isMapView"
+    > & {
         onChangeMode: (mode: GalleryBarMode) => void;
         isHome: boolean;
         opensDialog: boolean;
@@ -400,7 +404,7 @@ const NormalNavigationRail: React.FC<
     onSidebar,
     onHome,
     onShowMap,
-    isMapView,
+    isMapSelected,
     mode,
     onChangeMode,
     isHome,
@@ -473,7 +477,7 @@ const NormalNavigationRail: React.FC<
             <FocusVisibleButton
                 color="secondary"
                 aria-label={t("map")}
-                aria-pressed={isMapView}
+                aria-pressed={isMapSelected}
                 onClick={onShowMap}
                 sx={{
                     minWidth: 0,
