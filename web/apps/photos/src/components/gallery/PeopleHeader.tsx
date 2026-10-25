@@ -105,7 +105,12 @@ export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
                 <IconButton
                     aria-label={t("go_back")}
                     onClick={onBack}
-                    sx={{ width: 32, height: 32, flexShrink: 0 }}
+                    sx={{
+                        display: { xs: "none", sm: "inline-flex" },
+                        width: 32,
+                        height: 32,
+                        flexShrink: 0,
+                    }}
                 >
                     <HugeiconsIcon icon={ArrowLeft02Icon} size={20} />
                 </IconButton>
