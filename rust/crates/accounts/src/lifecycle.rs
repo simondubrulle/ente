@@ -334,7 +334,7 @@ fn encrypt_two_factor_secret(
     let recovery_key =
         hex::decode(recovery_key_hex).map_err(|e| Error::Decode(format!("recovery_key: {e}")))?;
     let encrypted = secretbox::encrypt(
-        secret_code.as_bytes(),
+        &b64::decode(secret_code)?,
         &crypto::Key::try_from_slice(&recovery_key)?,
     );
 
