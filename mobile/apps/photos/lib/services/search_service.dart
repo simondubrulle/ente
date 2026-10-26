@@ -1870,6 +1870,7 @@ class SearchService {
                   matchedUploadedIDs: filesToUploadedFileIDs(files),
                 ),
               ),
+              useFadeTransition: true,
             );
           },
           hierarchicalSearchFilter: MagicFilter(

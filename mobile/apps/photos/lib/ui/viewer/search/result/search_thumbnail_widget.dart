@@ -41,6 +41,8 @@ class _SearchThumbnailWidgetState extends State<SearchThumbnailWidget> {
     final result = widget.searchResult;
     final isPerson =
         result is GenericSearchResult && result.type() == ResultType.faces;
+    final hasCover =
+        isLocation || isPerson || result?.type() == ResultType.magic;
     return Hero(
       tag: isPerson
           ? PersonFaceWidget.coverHeroTag(
@@ -51,10 +53,10 @@ class _SearchThumbnailWidgetState extends State<SearchThumbnailWidget> {
           : isLocation
           ? widget.tagPrefix
           : widget.tagPrefix + (widget.file?.tag ?? ""),
-      createRectTween: isLocation || isPerson
+      createRectTween: hasCover
           ? (begin, end) => RectTween(begin: begin, end: end)
           : null,
-      transitionOnUserGestures: isLocation || isPerson,
+      transitionOnUserGestures: hasCover,
       placeholderBuilder: isPerson ? imageHeroPlaceholderBuilder : null,
       child: SizedBox(
         key: isPerson ? _heroChildKey : null,
