@@ -2514,6 +2514,12 @@
       ]
     },
     {
+      "title": "Tello",
+      "altNames": [
+        "Tello Mobile"
+      ]
+    },
+    {
       "title": "Temu",
       "slug": "temu"
     },
@@ -2752,6 +2758,10 @@
         "Universiteit Utrecht",
         "uu"
       ]
+    },
+    {
+      "title": "UptimeRobot",
+      "slug": "uptimerobot"
     },
     {
       "title": "Venice AI",
