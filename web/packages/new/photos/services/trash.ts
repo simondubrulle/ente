@@ -8,8 +8,7 @@ import {
 } from "ente-media/file";
 import { fileCreationTime } from "ente-media/file-metadata";
 import { z } from "zod";
-import { getCollectionByID } from "./collection";
-import { collectionDecryptionError } from "./collection-decryption-error";
+import { collectionDecryptionError, getCollectionByID } from "./collection";
 import {
     savedTrashItemCollectionKeys,
     savedTrashItems,

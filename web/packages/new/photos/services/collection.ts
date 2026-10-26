@@ -35,7 +35,6 @@ import {
 import { ensureMasterKeyFromSession } from "ente-new/photos/services/account-keys";
 import { batch, splitByPredicate } from "ente-utils/array";
 import { z } from "zod";
-import { collectionDecryptionError } from "./collection-decryption-error";
 import { batched, type UpdateMagicMetadataRequest } from "./file";
 import {
     removeCollectionIDLastSyncTime,
@@ -126,6 +125,15 @@ const decryptRemoteKeyAndCollection = async (collection: RemoteCollection) => {
         throw collectionDecryptionError(collection.id, e);
     }
 };
+
+export const collectionDecryptionError = (
+    collectionID: number,
+    cause: unknown,
+) =>
+    new Error(
+        `${cause instanceof Error ? cause.message : String(cause)} (collectionID: ${collectionID})`,
+        { cause },
+    );
 
 const decryptCollectionKey = async (
     collection: RemoteCollection,
