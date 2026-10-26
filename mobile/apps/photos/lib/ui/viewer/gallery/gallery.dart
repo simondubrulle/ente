@@ -37,7 +37,6 @@ import "package:photos/ui/viewer/gallery/state/boundary_reporter_mixin.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_boundaries_provider.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_context_state.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
-import "package:photos/ui/viewer/gallery/state/gallery_visibility_scope.dart";
 import "package:photos/ui/viewer/gallery/state/inherited_search_filter_data.dart";
 import "package:photos/ui/viewer/gallery/swipe_selection_wrapper.dart";
 import "package:photos/ui/viewer/gallery/swipe_to_select_helper.dart";
@@ -169,7 +168,6 @@ class GalleryState extends State<Gallery> {
   int _layoutChangeGeneration = 0;
   bool _committingGridZoom = false;
   bool _isGalleryVisible = false;
-  bool _isGalleryTabVisible = true;
   ModalRoute<dynamic>? _layoutPreviewRoute;
   bool _needsLayoutRefresh = false;
   int _activeFileLoads = 0;
@@ -369,10 +367,8 @@ class GalleryState extends State<Gallery> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    final isRouteCurrent = ModalRoute.isCurrentOf(context) ?? true;
-    _isGalleryTabVisible = GalleryVisibilityScope.isVisibleOf(context);
     final wasVisible = _isGalleryVisible;
-    _isGalleryVisible = isRouteCurrent && _isGalleryTabVisible;
+    _isGalleryVisible = ModalRoute.isCurrentOf(context) ?? true;
     if (wasVisible && !_isGalleryVisible) {
       ++_layoutChangeGeneration;
       if (groupHeaderExtent == null) _needsLayoutRefresh = true;
@@ -395,8 +391,7 @@ class GalleryState extends State<Gallery> {
   }
 
   bool get _canRefreshGalleryLayout =>
-      _isGalleryVisible ||
-      (_isGalleryTabVisible && (_layoutPreviewRoute?.isCurrent ?? false));
+      _isGalleryVisible || (_layoutPreviewRoute?.isCurrent ?? false);
 
   void setLayoutPreviewVisibility(ModalRoute<dynamic> route, bool visible) {
     if (!mounted) return;

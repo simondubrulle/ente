@@ -29,7 +29,6 @@ import "package:photos/ui/viewer/gallery/gallery_grid_zoom.dart";
 import "package:photos/ui/viewer/gallery/layout_settings.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_boundaries_provider.dart";
 import "package:photos/ui/viewer/gallery/state/gallery_files_inherited_widget.dart";
-import "package:photos/ui/viewer/gallery/state/gallery_visibility_scope.dart";
 import "package:shared_preferences/shared_preferences.dart";
 
 void main() {
@@ -812,80 +811,6 @@ void main() {
     expect(previewKey.currentState!.galleryGroups!.allFiles.last, addedFile);
     expect(loads, [1, 2]);
     expect(coveredKey.currentState!.galleryGroups, same(coveredGroups));
-    await tester.pumpWidget(const SizedBox.shrink());
-    await tester.pump(const Duration(milliseconds: 100));
-  });
-
-  testWidgets("inactive tabs load files without building their grids", (
-    tester,
-  ) async {
-    await localSettings.setPhotoGridSize(4);
-    final visible = ValueNotifier(false);
-    addTearDown(visible.dispose);
-    final galleryKey = GlobalKey<GalleryState>();
-    final files = List<EnteFile>.generate(100, _justifiedTestFile);
-    final initialLoad = Completer<FileLoadResult>();
-    final loadedLimits = <int?>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: lightThemeData,
-        home: ValueListenableBuilder(
-          valueListenable: visible,
-          builder: (_, isVisible, child) =>
-              GalleryVisibilityScope(visible: isVisible, child: child!),
-          child: _galleryHost(
-            Gallery(
-              key: galleryKey,
-              asyncLoader: (start, end, {limit, asc}) async {
-                loadedLimits.add(limit);
-                return loadedLimits.length == 1
-                    ? initialLoad.future
-                    : FileLoadResult(files, false);
-              },
-              tagPrefix: "inactive_tab_",
-              enableFileGrouping: false,
-              showSelectAll: false,
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(galleryKey.currentState!.galleryGroups, isNull);
-    expect(loadedLimits, [GalleryState.kInitialLoadLimit]);
-    await localSettings.setPhotoGridSize(6);
-    Bus.instance.fire(GalleryLayoutChangedEvent());
-    await tester.pumpAndSettle();
-    expect(galleryKey.currentState!.galleryGroups, isNull);
-    expect(loadedLimits, [GalleryState.kInitialLoadLimit]);
-
-    initialLoad.complete(FileLoadResult(files.take(10).toList(), true));
-    await tester.pumpAndSettle();
-    expect(galleryKey.currentState!.galleryGroups, isNull);
-    expect(loadedLimits, [GalleryState.kInitialLoadLimit, null]);
-    await localSettings.setGalleryLayoutType(GalleryLayoutType.justified);
-    Bus.instance.fire(GalleryLayoutChangedEvent());
-    await tester.pumpAndSettle();
-    expect(galleryKey.currentState!.galleryGroups, isNull);
-
-    visible.value = true;
-    await tester.pumpAndSettle();
-    expect(loadedLimits, [GalleryState.kInitialLoadLimit, null]);
-    expect(galleryKey.currentState!.galleryGroups!.allFiles, files);
-    expect(
-      galleryKey.currentState!.galleryGroups!.layoutType,
-      GalleryLayoutType.justified,
-    );
-
-    visible.value = false;
-    await tester.pump();
-    await localSettings.setGalleryLayoutType(GalleryLayoutType.grid);
-    Bus.instance.fire(GalleryLayoutChangedEvent());
-    await tester.pump();
-    visible.value = true;
-    await tester.pumpAndSettle();
-    expect(galleryKey.currentState!.galleryGroups!.crossAxisCount, 6);
-    expect(loadedLimits, [GalleryState.kInitialLoadLimit, null]);
     await tester.pumpWidget(const SizedBox.shrink());
     await tester.pump(const Duration(milliseconds: 100));
   });
