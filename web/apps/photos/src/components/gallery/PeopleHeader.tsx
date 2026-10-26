@@ -16,10 +16,10 @@ import {
     Add01Icon,
     ArrowLeft02Icon,
     Cancel01Icon,
+    Tick02Icon,
 } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
 import AddIcon from "@mui/icons-material/Add";
-import CheckIcon from "@mui/icons-material/Check";
 import ClearIcon from "@mui/icons-material/Clear";
 import EditIcon from "@mui/icons-material/Edit";
 import HideImageOutlinedIcon from "@mui/icons-material/HideImageOutlined";
@@ -44,6 +44,7 @@ import {
     Typography,
     useMediaQuery,
     useTheme,
+    type Theme,
 } from "@mui/material";
 import { CenteredFill, SpacedRow } from "ente-base/components/containers";
 import { ActivityErrorIndicator } from "ente-base/components/ErrorIndicator";
@@ -54,6 +55,10 @@ import {
     OverflowMenu,
     OverflowMenuOption,
 } from "ente-base/components/OverflowMenu";
+import {
+    v2CancelButtonSx,
+    v2SubmitButtonSx,
+} from "ente-base/components/SingleInput.styles";
 import { SingleInputDialog } from "ente-base/components/SingleInputDialog";
 import { useIsSmallWidth } from "ente-base/components/utils/hooks";
 import {
@@ -778,60 +783,109 @@ const SuggestionsDialog: React.FC<SuggestionsDialogProps> = ({
         <Dialog
             open={open}
             onClose={handleClose}
-            maxWidth="sm"
-            fullWidth
+            maxWidth={false}
             fullScreen={isSmallWidth}
-            slotProps={{ paper: { sx: { minHeight: "80svh" } } }}
+            aria-labelledby="person-suggestions-title"
+            slotProps={{
+                paper: {
+                    sx: [
+                        ...(isSxArray(collectionDialogPaperSx)
+                            ? collectionDialogPaperSx
+                            : [collectionDialogPaperSx]),
+                        {
+                            "&.MuiPaper-root": {
+                                width: "min(520px, calc(100svw - 64px))",
+                                maxWidth: 520,
+                                height: "auto",
+                                boxSizing: "border-box",
+                            },
+                            "&.MuiDialog-paperFullScreen": {
+                                width: "100%",
+                                maxWidth: "100%",
+                                height: "100%",
+                                border: "none",
+                                borderRadius: 0,
+                            },
+                        },
+                    ],
+                },
+            }}
         >
             <SpacedRow
-                sx={[
-                    { padding: "20px 16px 16px 16px" },
-                    state.showChoices
-                        ? { backgroundColor: "fill.faint" }
-                        : { backgroundColor: "transparent" },
-                ]}
+                sx={{
+                    p: "20px 20px 10px",
+                    alignItems: "flex-start",
+                    gap: "12px",
+                    flexShrink: 0,
+                }}
             >
-                <Stack sx={{ gap: "8px" }}>
-                    <DialogTitle sx={{ "&&&": { p: 0 } }}>
+                <Stack sx={{ gap: "2px", pt: "3px", minWidth: 0 }}>
+                    <DialogTitle
+                        id="person-suggestions-title"
+                        sx={{
+                            ...collectionDialogTitleSx,
+                            fontFamily: '"Outfit Variable", Outfit, sans-serif',
+                            whiteSpace: "normal",
+                            overflowWrap: "anywhere",
+                            "&&&": { p: 0 },
+                        }}
+                    >
                         {state.showChoices
                             ? t("saved_choices")
                             : t("review_suggestions")}
                     </DialogTitle>
-                    <Typography sx={{ color: "text.muted" }}>
+                    <Typography
+                        sx={{
+                            fontSize: 12,
+                            lineHeight: "15px",
+                            color: "text.muted",
+                            overflowWrap: "anywhere",
+                        }}
+                    >
                         {person.name ?? " "}
                     </Typography>
                 </Stack>
-                {state.choices.length > 1 && (
+                <Stack direction="row" sx={{ gap: "8px", flexShrink: 0 }}>
+                    {state.choices.length > 1 && (
+                        <IconButton
+                            disableTouchRipple
+                            onClick={() => dispatch({ type: "toggleHistory" })}
+                            aria-label={
+                                !state.showChoices
+                                    ? t("saved_choices")
+                                    : t("review_suggestions")
+                            }
+                            sx={collectionDialogIconButtonSx}
+                        >
+                            <RestoreIcon sx={{ fontSize: 18 }} />
+                        </IconButton>
+                    )}
                     <IconButton
-                        disableTouchRipple
-                        onClick={() => dispatch({ type: "toggleHistory" })}
-                        aria-label={
-                            !state.showChoices
-                                ? t("saved_choices")
-                                : t("review_suggestions")
-                        }
-                        sx={[
-                            state.showChoices
-                                ? { backgroundColor: "fill.muted" }
-                                : { backgroundColor: "transparent" },
-                        ]}
+                        aria-label={t("close")}
+                        onClick={handleClose}
+                        sx={collectionDialogIconButtonSx}
                     >
-                        <RestoreIcon />
+                        <HugeiconsIcon icon={Cancel01Icon} size={18} />
                     </IconButton>
-                )}
+                </Stack>
             </SpacedRow>
             <DialogContent
                 key={`${state.showChoices}`}
-                sx={{ display: "flex", "&&&": { pt: 0 } }}
+                sx={{
+                    display: "flex",
+                    flex: isSmallWidth ? "1 1 auto" : "0 1 auto",
+                    minHeight: 0,
+                    "&&&": { p: "0 20px" },
+                }}
             >
                 {state.activity == "fetching" ? (
-                    <CenteredFill>
+                    <CenteredFill sx={{ minHeight: 200 }}>
                         <ActivityIndicator>
                             {t("people_suggestions_finding")}
                         </ActivityIndicator>
                     </CenteredFill>
                 ) : state.fetchFailed ? (
-                    <CenteredFill>
+                    <CenteredFill sx={{ minHeight: 200 }}>
                         <ActivityErrorIndicator />
                     </CenteredFill>
                 ) : state.showChoices ? (
@@ -841,7 +895,7 @@ const SuggestionsDialog: React.FC<SuggestionsDialogProps> = ({
                         onUpdateItem={handleUpdateItem}
                     />
                 ) : state.suggestions.length == 0 ? (
-                    <CenteredFill>
+                    <CenteredFill sx={{ minHeight: 200 }}>
                         <Typography
                             sx={{ color: "text.muted", textAlign: "center" }}
                         >
@@ -856,11 +910,15 @@ const SuggestionsDialog: React.FC<SuggestionsDialogProps> = ({
                     />
                 )}
             </DialogContent>
-            <DialogActions sx={{ "&&": { pt: "12px" } }}>
+            <DialogActions
+                disableSpacing
+                sx={{ "&&": { p: "40px 20px 20px", gap: "12px" } }}
+            >
                 <FocusVisibleButton
                     fullWidth
                     color="secondary"
                     onClick={handleClose}
+                    sx={[v2CancelButtonSx, suggestionsDialogButtonSx]}
                 >
                     {t("close")}
                 </FocusVisibleButton>
@@ -870,6 +928,12 @@ const SuggestionsDialog: React.FC<SuggestionsDialogProps> = ({
                     loading={state.activity == "saving"}
                     color="accent"
                     onClick={handleSave}
+                    sx={[
+                        v2SubmitButtonSx,
+                        suggestionsDialogButtonSx,
+                        state.activity != "saving" &&
+                            suggestionsDialogDisabledButtonSx,
+                    ]}
                 >
                     {t("save")}
                 </LoadingButton>
@@ -877,6 +941,28 @@ const SuggestionsDialog: React.FC<SuggestionsDialogProps> = ({
         </Dialog>
     );
 };
+
+const suggestionsDialogButtonSx = {
+    height: 52,
+    minWidth: 0,
+    p: "14px 24px",
+    borderRadius: "20px",
+    fontSize: 14,
+    fontWeight: 500,
+    lineHeight: "20px",
+};
+
+const suggestionsDialogDisabledButtonSx = (theme: Theme) => ({
+    "&.Mui-disabled": {
+        opacity: 1,
+        backgroundColor: "#eaeaea",
+        color: "#d6d6d6",
+        ...theme.applyStyles("dark", {
+            backgroundColor: "rgba(255 255 255 / 0.12)",
+            color: "rgba(255 255 255 / 0.3)",
+        }),
+    },
+});
 
 interface SuggestionOrChoiceListProps {
     items: SCItem[];
@@ -889,14 +975,30 @@ const SuggestionOrChoiceList: React.FC<SuggestionOrChoiceListProps> = ({
     updates,
     onUpdateItem,
 }) => (
-    <List dense sx={{ width: "100%" }}>
+    <List disablePadding sx={{ width: "100%", minWidth: 0 }}>
         {items.map((item) => (
             <ListItem
                 key={item.id}
-                sx={{ px: 0, pb: "24px", justifyContent: "space-between" }}
+                sx={(theme) => ({
+                    px: 0,
+                    py: "14px",
+                    gap: "16px",
+                    justifyContent: "space-between",
+                    "&:not(:last-child)": { borderBottom: "1px solid #ebebeb" },
+                    ...theme.applyStyles("dark", {
+                        "&:not(:last-child)": { borderColor: "stroke.faint" },
+                    }),
+                })}
             >
-                <Stack sx={{ gap: "10px" }}>
-                    <Typography variant="small" sx={{ color: "text.muted" }}>
+                <Stack sx={{ gap: "8px", minWidth: 0 }}>
+                    <Typography
+                        sx={{
+                            fontSize: 11.5,
+                            lineHeight: "14px",
+                            fontWeight: 500,
+                            color: "text.muted",
+                        }}
+                    >
                         {/* Face count stands in for photo count here. */}
                         {t("photos_count", { count: item.faces.length })}
                     </Typography>
@@ -907,12 +1009,21 @@ const SuggestionOrChoiceList: React.FC<SuggestionOrChoiceListProps> = ({
                         value={itemValueFromUpdate(item, updates)}
                         exclusive
                         onChange={(_, v) => onUpdateItem(item, toItemValue(v))}
+                        sx={{ gap: "8px", flexShrink: 0 }}
                     >
-                        <ToggleButton value="no" aria-label={t("no")}>
-                            <ClearIcon />
+                        <ToggleButton
+                            value="no"
+                            aria-label={t("no")}
+                            sx={suggestionToggleButtonSx}
+                        >
+                            <HugeiconsIcon icon={Cancel01Icon} size={22} />
                         </ToggleButton>
-                        <ToggleButton value="yes" aria-label={t("yes")}>
-                            <CheckIcon />
+                        <ToggleButton
+                            value="yes"
+                            aria-label={t("yes")}
+                            sx={suggestionToggleButtonSx}
+                        >
+                            <HugeiconsIcon icon={Tick02Icon} size={22} />
                         </ToggleButton>
                     </ToggleButtonGroup>
                 )}
@@ -920,6 +1031,20 @@ const SuggestionOrChoiceList: React.FC<SuggestionOrChoiceListProps> = ({
         ))}
     </List>
 );
+
+const suggestionToggleButtonSx = (theme: Theme) => ({
+    ...collectionDialogIconButtonSx(theme),
+    "&&": { border: 0, borderRadius: "50%", m: 0 },
+    "&.Mui-selected, &.Mui-selected:hover": {
+        backgroundColor: "primary.main",
+        color: "primary.contrastText",
+    },
+    "&.Mui-focusVisible": {
+        outline: "2px solid",
+        outlineColor: "stroke.base",
+        outlineOffset: 2,
+    },
+});
 
 const itemValueFromUpdate = (
     item: SCItem,
