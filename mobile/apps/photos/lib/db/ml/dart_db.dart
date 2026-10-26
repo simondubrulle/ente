@@ -183,6 +183,7 @@ class DartMLDataDB
         INSERT INTO $faceClustersTable ($faceIDColumn, $clusterIDColumn)
         VALUES (?, ?)
         ON CONFLICT($faceIDColumn) DO UPDATE SET $clusterIDColumn = excluded.$clusterIDColumn
+        WHERE $faceClustersTable.$clusterIDColumn IS NOT excluded.$clusterIDColumn
       ''';
       final parameterSets = batch.map((e) => [e.key, e.value]).toList();
 
