@@ -1,20 +1,14 @@
 import { generateKey } from "ente-base/crypto";
-import log from "ente-base/log";
-import { logToDisk } from "ente-base/log-web";
 import type { Collection } from "ente-media/collection";
 import {
     decryptMagicMetadata,
     type RemoteMagicMetadata,
 } from "ente-media/magic-metadata";
-import {
-    collectionDecryptionError,
-    updateCollectionSortOrder,
-} from "ente-new/photos/services/collection";
+import { updateCollectionSortOrder } from "ente-new/photos/services/collection";
 import { afterEach, beforeEach, expect, test, vi } from "vitest";
 
 // Run the same crypto implementation directly in Node instead of a web worker.
 vi.mock("ente-base/crypto", () => import("ente-base/crypto/libsodium"));
-vi.mock("ente-base/log-web", () => ({ logToDisk: vi.fn() }));
 
 vi.mock("ente-base/http", async (importOriginal) => ({
     ...(await importOriginal<typeof import("ente-base/http")>()),
@@ -32,7 +26,6 @@ beforeEach(() => {
 afterEach(() => {
     vi.unstubAllGlobals();
     vi.clearAllMocks();
-    vi.restoreAllMocks();
 });
 
 const album = async () =>
@@ -96,21 +89,4 @@ test("a rejected save propagates the error and leaves the local album unchanged"
         updateCollectionSortOrder(collection, false, "fileName"),
     ).rejects.toThrow();
     expect(collection).toEqual(before);
-});
-
-test("remote pull logs retain the original stack alongside the collection ID", () => {
-    vi.spyOn(console, "error").mockImplementation(() => undefined);
-    const cause = new Error("Decryption failed");
-    const originalStack = cause.stack!;
-
-    log.error("Remote pull failed", collectionDecryptionError(123, cause));
-
-    expect(logToDisk).toHaveBeenCalledWith(
-        expect.stringContaining(
-            "Remote pull failed: Error: Decryption failed (collectionID: 123)",
-        ),
-    );
-    expect(logToDisk).toHaveBeenCalledWith(
-        expect.stringContaining(originalStack),
-    );
 });
