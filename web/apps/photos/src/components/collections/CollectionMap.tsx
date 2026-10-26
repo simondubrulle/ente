@@ -1251,7 +1251,18 @@ function CollectionSidebar({
     const noOpSetSelected = useCallback(() => undefined, []);
 
     return (
-        <SidebarWrapper>
+        <SidebarWrapper
+            sx={
+                collectionSummary.type === "all"
+                    ? {
+                          left: { md: 24 },
+                          top: { md: 24 },
+                          bottom: { md: 24 },
+                          width: { md: 420 },
+                      }
+                    : undefined
+            }
+        >
             <SidebarContainer>
                 <Stack sx={{ px: "20px", pt: "20px", pb: "20px", gap: "2px" }}>
                     <Typography
@@ -1265,7 +1276,7 @@ function CollectionSidebar({
                         }}
                     >
                         {collectionSummary.type === "all"
-                            ? t("map")
+                            ? t("your_map")
                             : collectionSummary.name}
                     </Typography>
                     <Typography

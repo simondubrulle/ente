@@ -2251,11 +2251,15 @@ const Page: React.FC = () => {
                     onSelectPeople={handleShowPeople}
                     onSelectPerson={handleSelectPerson}
                     galleryNavigation={
-                        isCleanupViewOpen ||
-                        (isMapView &&
-                            activeCollectionID === PseudoCollectionID.all)
+                        isCleanupViewOpen
                             ? undefined
                             : {
+                                  placesFiles:
+                                      isMapView &&
+                                      activeCollectionID ===
+                                          PseudoCollectionID.all
+                                          ? filteredFiles
+                                          : undefined,
                                   activeCollectionID:
                                       galleryBarActiveCollectionID,
                                   onSelectCollectionID: selectGalleryCollection,
