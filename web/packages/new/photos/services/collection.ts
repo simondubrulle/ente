@@ -129,11 +129,17 @@ const decryptRemoteKeyAndCollection = async (collection: RemoteCollection) => {
 export const collectionDecryptionError = (
     collectionID: number,
     cause: unknown,
-) =>
-    new Error(
+) => {
+    const error = new Error(
         `${cause instanceof Error ? cause.message : String(cause)} (collectionID: ${collectionID})`,
         { cause },
     );
+    // The logger prints only the top-level stack, without following the cause.
+    if (cause instanceof Error && cause.stack) {
+        error.stack = `${error.name}: ${error.message}\nCaused by: ${cause.stack}`;
+    }
+    return error;
+};
 
 const decryptCollectionKey = async (
     collection: RemoteCollection,
