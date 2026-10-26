@@ -9,6 +9,7 @@ import {
 import { fileCreationTime } from "ente-media/file-metadata";
 import { z } from "zod";
 import { getCollectionByID } from "./collection";
+import { collectionDecryptionError } from "./collection-decryption-error";
 import {
     savedTrashItemCollectionKeys,
     savedTrashItems,
@@ -78,7 +79,12 @@ export const pullTrash = async (
                 }
                 trashItemsByID.set(fileID, {
                     ...change,
-                    file: await decryptRemoteFile(change.file, collectionKey),
+                    file: await decryptRemoteFile(
+                        change.file,
+                        collectionKey,
+                    ).catch((e: unknown) => {
+                        throw collectionDecryptionError(collectionID, e);
+                    }),
                 });
             }
         }
