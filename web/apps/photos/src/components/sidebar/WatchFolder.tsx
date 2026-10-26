@@ -166,26 +166,20 @@ export const WatchFolder: React.FC<NestedSidebarDrawerVisibilityProps> = ({
                             <WatchList
                                 {...{ watches, removeWatch, refreshWatches }}
                             />
-                            {!!watches?.length && (
-                                <>
-                                    <Divider sx={{ opacity: 0.4 }} />
-                                    <RowCard
-                                        title={
-                                            <Box
-                                                component="span"
-                                                sx={{ color: "accent.main" }}
-                                            >
-                                                {t("add_folder")}
-                                            </Box>
-                                        }
-                                        subtitle={ut(
-                                            "Choose a folder to watch",
-                                        )}
-                                        onClick={addNewWatch}
-                                    />
-                                    <Divider sx={{ opacity: 0.4 }} />
-                                </>
-                            )}
+                            <Divider sx={{ opacity: 0.4 }} />
+                            <RowCard
+                                title={
+                                    <Box
+                                        component="span"
+                                        sx={{ color: "accent.main" }}
+                                    >
+                                        {t("add_folder")}
+                                    </Box>
+                                }
+                                subtitle={ut("Choose a folder to watch")}
+                                onClick={addNewWatch}
+                            />
+                            <Divider sx={{ opacity: 0.4 }} />
                         </Stack>
                     )}
                 </Stack>
