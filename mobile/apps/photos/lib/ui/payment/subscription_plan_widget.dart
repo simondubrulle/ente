@@ -96,24 +96,35 @@ class _LockerAllowanceState extends State<_LockerAllowance> {
     final label = context.strings
         .subscriptionLockerItems(count: widget.count, appName: "\uFFFC")
         .split("\uFFFC");
-    return Text.rich(
-      TextSpan(
-        children: [
-          TextSpan(text: label[0]),
-          TextSpan(
-            text: "Locker",
-            recognizer: widget.isActive ? _lockerTap : null,
-            style: TextStyle(
-              decoration: widget.isActive
-                  ? TextDecoration.underline
-                  : TextDecoration.none,
-              decorationColor: widget.color,
-            ),
-          ),
-          TextSpan(text: label[1]),
-        ],
+    return AnimatedDefaultTextStyle(
+      duration: MediaQuery.disableAnimationsOf(context)
+          ? Duration.zero
+          : Motion.slow,
+      curve: Curves.easeOutCubic,
+      style: DefaultTextStyle.of(context).style.merge(
+        TextStyles.mini.copyWith(
+          color: widget.color,
+          decorationColor: widget.color,
+          height: 18 / 12,
+        ),
       ),
-      style: TextStyles.mini.copyWith(color: widget.color, height: 18 / 12),
+      child: Text.rich(
+        TextSpan(
+          children: [
+            TextSpan(text: label[0]),
+            TextSpan(
+              text: "Locker",
+              recognizer: widget.isActive ? _lockerTap : null,
+              style: TextStyle(
+                decoration: widget.isActive
+                    ? TextDecoration.underline
+                    : TextDecoration.none,
+              ),
+            ),
+            TextSpan(text: label[1]),
+          ],
+        ),
+      ),
     );
   }
 }
