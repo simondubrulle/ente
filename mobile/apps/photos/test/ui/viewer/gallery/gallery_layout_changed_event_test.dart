@@ -10,6 +10,7 @@ import "package:photos/core/configuration.dart";
 import "package:photos/core/event_bus.dart";
 import "package:photos/ente_theme_data.dart";
 import "package:photos/events/event.dart";
+import "package:photos/events/files_updated_event.dart";
 import "package:photos/events/gallery_layout_changed_event.dart";
 import "package:photos/models/file/dummy_file.dart";
 import "package:photos/models/file/file.dart";
@@ -536,7 +537,7 @@ void main() {
   );
 
   testWidgets(
-    "layout changes rebuild every mounted gallery without loading files",
+    "layout changes rebuild every visible gallery without loading files",
     (tester) async {
       await localSettings.setPhotoGridSize(4);
       final firstKey = GlobalKey<GalleryState>();
@@ -624,6 +625,195 @@ void main() {
       await tester.pump();
     },
   );
+
+  testWidgets(
+    "covered galleries defer grid rebuilds while file loading continues",
+    (tester) async {
+      await localSettings.setPhotoGridSize(4);
+      final navigation = GlobalKey<NavigatorState>();
+      final coveredKey = GlobalKey<GalleryState>();
+      final visibleKey = GlobalKey<GalleryState>();
+      final files = List<EnteFile>.generate(1000, _justifiedTestFile);
+      var loadedFiles = files;
+      final reloads = StreamController<FilesUpdatedEvent>.broadcast();
+      addTearDown(reloads.close);
+      var coveredLoads = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          navigatorKey: navigation,
+          theme: lightThemeData,
+          home: _galleryHost(
+            Gallery(
+              key: coveredKey,
+              asyncLoader: (start, end, {limit, asc}) async {
+                coveredLoads++;
+                return FileLoadResult(loadedFiles, false);
+              },
+              reloadEvent: reloads.stream,
+              tagPrefix: "covered_",
+              enableFileGrouping: false,
+              showSelectAll: false,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final oldGroups = coveredKey.currentState!.galleryGroups!;
+      final anchor = files[804];
+      final oldGeometry = oldGroups.getGeometryOfFile(anchor)!;
+      const progress = 0.5;
+      final position = tester
+          .state<ScrollableState>(find.byType(Scrollable))
+          .position;
+      position.jumpTo(oldGeometry.rowOffset + oldGeometry.rowExtent * progress);
+      await tester.pump();
+      final oldOffset = position.pixels;
+      unawaited(
+        navigation.currentState!.push<void>(
+          MaterialPageRoute(
+            builder: (_) => _galleryHost(
+              Gallery(
+                key: visibleKey,
+                asyncLoader: (start, end, {limit, asc}) async =>
+                    FileLoadResult(files, false),
+                tagPrefix: "visible_",
+                enableFileGrouping: false,
+                showSelectAll: false,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final columns in [6, 3]) {
+        await localSettings.setPhotoGridSize(columns);
+        Bus.instance.fire(GalleryLayoutChangedEvent());
+        await tester.pumpAndSettle();
+        expect(visibleKey.currentState!.galleryGroups!.crossAxisCount, columns);
+        expect(coveredKey.currentState!.galleryGroups, same(oldGroups));
+        expect(position.pixels, oldOffset);
+        expect(coveredLoads, 1);
+      }
+
+      final addedFile = _justifiedTestFile(1000);
+      loadedFiles = [...files, addedFile];
+      reloads.add(FilesUpdatedEvent([addedFile]));
+      await tester.pump(const Duration(seconds: 2));
+      await tester.pumpAndSettle();
+      expect(coveredLoads, 2);
+      expect(coveredKey.currentState!.galleryGroups, same(oldGroups));
+      expect(position.pixels, oldOffset);
+
+      navigation.currentState!.pop();
+      await tester.pumpAndSettle();
+      final newGroups = coveredKey.currentState!.galleryGroups!;
+      expect(newGroups.crossAxisCount, 3);
+      expect(newGroups.allFiles.last, same(addedFile));
+      final newGeometry = newGroups.getGeometryOfFile(anchor)!;
+      expect(
+        position.pixels,
+        closeTo(
+          newGeometry.rowOffset + newGeometry.rowExtent * progress,
+          0.001,
+        ),
+      );
+      expect(coveredLoads, 2);
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    },
+  );
+
+  testWidgets("the layout sheet previews only its own gallery", (tester) async {
+    await localSettings.setPhotoGridSize(4);
+    await localSettings.setGalleryGroupType(GroupType.day);
+    final navigation = GlobalKey<NavigatorState>();
+    final coveredKey = GlobalKey<GalleryState>();
+    final previewKey = GlobalKey<GalleryState>();
+    final files = List<EnteFile>.generate(100, _justifiedTestFile);
+    var latestFiles = files;
+    final reloads = StreamController<FilesUpdatedEvent>.broadcast();
+    addTearDown(reloads.close);
+    final loads = [0, 0];
+    await tester.pumpWidget(
+      MaterialApp(
+        navigatorKey: navigation,
+        theme: lightThemeData.copyWith(platform: TargetPlatform.iOS),
+        localizationsDelegates: StringsLocalizations.localizationsDelegates,
+        supportedLocales: StringsLocalizations.supportedLocales,
+        home: _galleryHost(
+          Gallery(
+            key: coveredKey,
+            asyncLoader: (start, end, {limit, asc}) async {
+              loads[0]++;
+              return FileLoadResult(files, false);
+            },
+            tagPrefix: "behind_preview_",
+            enableFileGrouping: false,
+            showSelectAll: false,
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    final coveredGroups = coveredKey.currentState!.galleryGroups;
+    unawaited(
+      navigation.currentState!.push<void>(
+        MaterialPageRoute(
+          builder: (_) => _galleryHost(
+            Gallery(
+              key: previewKey,
+              asyncLoader: (start, end, {limit, asc}) async {
+                loads[1]++;
+                return FileLoadResult(latestFiles, false);
+              },
+              reloadEvent: reloads.stream,
+              tagPrefix: "preview_",
+              showGallerySettingsCTA: true,
+              showSelectAll: false,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.byIcon(Icons.more_vert_outlined).hitTestable().first);
+    await tester.pumpAndSettle();
+    expect(find.byType(GalleryLayoutSettings), findsOneWidget);
+
+    final addedFile = _justifiedTestFile(100);
+    latestFiles = [...files, addedFile];
+    reloads.add(FilesUpdatedEvent([addedFile]));
+    await tester.pump(const Duration(seconds: 2));
+    await tester.tap(find.byKey(const ValueKey("more-photos-per-row")));
+    await tester.pumpAndSettle();
+    expect(previewKey.currentState!.galleryGroups!.crossAxisCount, 5);
+    expect(previewKey.currentState!.galleryGroups!.allFiles.last, addedFile);
+    expect(coveredKey.currentState!.galleryGroups, same(coveredGroups));
+    expect(loads, [1, 2]);
+
+    await tester.tap(find.text("Group by"));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text("Month"));
+    await tester.pumpAndSettle();
+    expect(find.byType(GalleryLayoutSettings), findsOneWidget);
+    expect(previewKey.currentState!.galleryGroups!.groupType, GroupType.month);
+    await tester.tap(find.byKey(const ValueKey(GalleryLayoutType.justified)));
+    await tester.pumpAndSettle();
+    final previewGroups = previewKey.currentState!.galleryGroups!;
+    expect(previewGroups.layoutType, GalleryLayoutType.justified);
+    expect(coveredKey.currentState!.galleryGroups, same(coveredGroups));
+    expect(loads, [1, 2]);
+
+    navigation.currentState!.pop();
+    await tester.pumpAndSettle();
+    expect(find.byType(GalleryLayoutSettings), findsNothing);
+    expect(previewKey.currentState!.galleryGroups!.allFiles.last, addedFile);
+    expect(loads, [1, 2]);
+    expect(coveredKey.currentState!.galleryGroups, same(coveredGroups));
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pump(const Duration(milliseconds: 100));
+  });
 
   testWidgets("a deep layout change preserves partial-row progress", (
     tester,

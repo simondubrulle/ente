@@ -1225,8 +1225,8 @@ func setupDatabase() *sql.DB {
 		panic(err)
 	}
 
-	db.SetMaxIdleConns(30)
-	db.SetMaxOpenConns(60)
+	db.SetMaxIdleConns(50)
+	db.SetMaxOpenConns(80)
 	db.SetConnMaxLifetime(30 * time.Minute)
 	db.SetConnMaxIdleTime(10 * time.Minute)
 
