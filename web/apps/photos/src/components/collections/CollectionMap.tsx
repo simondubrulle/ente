@@ -1,4 +1,5 @@
 import type { RemotePullOpts } from "@/components/gallery";
+import type { PlaceSelection } from "@/components/gallery/PlacesList";
 import type { SelectedState } from "@/utils/file";
 import AddIcon from "@mui/icons-material/Add";
 import LocationOnIcon from "@mui/icons-material/LocationOn";
@@ -71,6 +72,7 @@ interface CollectionMapProps extends Pick<
     | "onSelectPerson"
     | "emailByUserID"
 > {
+    selectedPlace?: PlaceSelection;
     collectionSummary: CollectionSummary;
     files: EnteFile[];
     mapFileSource: MapFileSource;
@@ -991,6 +993,7 @@ function createMarkerIcon(
 }
 
 export const CollectionMap: React.FC<CollectionMapProps> = ({
+    selectedPlace,
     collectionSummary,
     files,
     onRemotePull,
@@ -1166,6 +1169,7 @@ export const CollectionMap: React.FC<CollectionMapProps> = ({
                 <Box sx={{ width: "100%", height: "100%" }}>
                     <MapCanvas
                         mapComponents={mapComponents}
+                        selectedPlace={selectedPlace}
                         mapCenter={mapCenter}
                         mapIndex={mapIndex}
                         thumbByFileID={thumbByFileID}
@@ -1346,6 +1350,7 @@ function CollectionSidebar({
 }
 
 interface MapCanvasProps {
+    selectedPlace?: PlaceSelection;
     mapComponents: MapComponents;
     mapCenter: [number, number];
     mapIndex: MapIndex;
@@ -1362,6 +1367,7 @@ const leafletAttributionPrefix =
     '<a href="https://leafletjs.com" target="_blank" rel="noopener noreferrer">Leaflet</a>';
 
 const MapCanvas = React.memo(function MapCanvas({
+    selectedPlace,
     mapComponents,
     mapCenter,
     mapIndex,
@@ -1388,6 +1394,11 @@ const MapCanvas = React.memo(function MapCanvas({
                     updateWhenZooming
                     referrerPolicy="strict-origin-when-cross-origin"
                 />
+                <PlaceFocus
+                    useMap={useMap}
+                    selectedPlace={selectedPlace}
+                    mapCenter={mapCenter}
+                />
                 <MapControls useMap={useMap} />
                 <MapClusters
                     useMap={useMap}
@@ -1402,6 +1413,27 @@ const MapCanvas = React.memo(function MapCanvas({
         </MapCanvasContainer>
     );
 });
+
+const PlaceFocus = ({
+    useMap,
+    selectedPlace,
+    mapCenter,
+}: {
+    useMap: MapComponents["useMap"];
+    selectedPlace?: PlaceSelection;
+    mapCenter: [number, number];
+}) => {
+    const map = useMap();
+    useEffect(() => {
+        map.setView(
+            selectedPlace
+                ? [selectedPlace.latitude, selectedPlace.longitude]
+                : mapCenter,
+            DEFAULT_MAP_ZOOM,
+        );
+    }, [map, selectedPlace, mapCenter]);
+    return null;
+};
 
 interface MapControlsProps {
     useMap: typeof import("react-leaflet").useMap;

@@ -167,6 +167,10 @@ export const PhotosNavigationShell: React.FC<
             mobileDrawerProps={mobileDrawerProps}
             onCreateAlbum={openAlbumCreation}
             onSelectCollectionID={selectCollection}
+            onSelectPlace={(place) => {
+                galleryNavigation.onSelectPlace(place);
+                closeMobileNavigation();
+            }}
             onSelectPerson={selectPerson}
         />
     );

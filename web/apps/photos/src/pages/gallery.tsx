@@ -38,6 +38,7 @@ import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import { PhotosNavigationShell } from "@/components/gallery/PhotosNavigationShell";
+import type { PlaceSelection } from "@/components/gallery/PlacesList";
 import { PublicLinkDetails } from "@/components/gallery/PublicLinkDetails";
 import {
     albumShortcutCollectionID,
@@ -323,6 +324,7 @@ const Page: React.FC = () => {
         show: showEditAlbumDetails,
         props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
+    const [selectedPlace, setSelectedPlace] = useState<PlaceSelection>();
     const [isMapView, setIsMapView] = useState(false);
     const closeCollectionMap = useCallback(() => setIsMapView(false), []);
 
@@ -2163,6 +2165,11 @@ const Page: React.FC = () => {
         <CollectionMap
             collectionSummary={activeCollectionSummary}
             files={activeCollection ? activeCollectionFiles : filteredFiles}
+            selectedPlace={
+                activeCollectionID === PseudoCollectionID.all
+                    ? selectedPlace
+                    : undefined
+            }
             mapFileSource={mapFileSource}
             onRemotePull={remotePull}
             onAddSaveGroup={onAddSaveGroup}
@@ -2236,6 +2243,7 @@ const Page: React.FC = () => {
                     onSidebar={showSidebar}
                     onUpload={openUploader}
                     onShowMap={() => {
+                        setSelectedPlace(undefined);
                         handleShowCollectionSummaryWithID(
                             PseudoCollectionID.all,
                         );
@@ -2254,6 +2262,8 @@ const Page: React.FC = () => {
                         isCleanupViewOpen
                             ? undefined
                             : {
+                                  selectedPlace,
+                                  onSelectPlace: setSelectedPlace,
                                   placesFiles:
                                       isMapView &&
                                       activeCollectionID ===
