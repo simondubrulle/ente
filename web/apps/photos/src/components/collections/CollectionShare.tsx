@@ -2,7 +2,6 @@
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
 import Avatar from "@/components/Avatar";
 import type { RemotePullOpts } from "@/components/gallery";
-import { PublicLinkCreated } from "@/components/share/PublicLinkCreated";
 import { PublicLinkField } from "@/components/share/PublicLinkField";
 import { sidebarStyles, sidebarTheme } from "@/components/sidebar/theme";
 import { usePublicLinkURL } from "@/components/utils/use-public-link-url";
@@ -1678,13 +1677,7 @@ const PublicShare: React.FC<PublicShareProps> = ({
     canManage,
     openManageLink,
 }) => {
-    const inPanel = !!useContext(SidebarPanelContext);
     const { customDomain } = useSettingsSnapshot();
-
-    const {
-        show: showPublicLinkCreated,
-        props: publicLinkCreatedVisibilityProps,
-    } = useModalVisibility();
 
     const [shareState, setShareState] = useState({
         collection,
@@ -1702,63 +1695,42 @@ const PublicShare: React.FC<PublicShareProps> = ({
         canManage ? customDomain : undefined,
     );
 
-    const handleCopyLink = () => {
-        if (resolvedURL) void navigator.clipboard.writeText(resolvedURL);
-    };
-
-    return (
-        <>
-            {publicURL && resolvedURL ? (
-                canManage ? (
-                    <ManagePublicShare
-                        openOnMount={openManageLink}
-                        {...{
-                            onRootClose,
-                            collection,
-                            publicURL,
-                            setPublicURL,
-                            resolvedURL,
-                            setBlockingLoad,
-                            onRemotePull,
-                        }}
-                    />
-                ) : (
-                    <ReadOnlyPublicShare resolvedURL={resolvedURL} />
-                )
-            ) : publicURL ? (
-                <Typography role="status" color="text.muted">
-                    {error
-                        ? t("generic_error")
-                        : isLoading
-                          ? t("loading")
-                          : null}
-                </Typography>
-            ) : canManage ? (
-                <EnablePublicShareOptions
-                    {...{ collection, onRemotePull, setPublicURL }}
-                    onLinkCreated={() => {
-                        if (inPanel) showPublicLinkCreated();
-                    }}
-                />
-            ) : null}
-            <PublicLinkCreated
-                {...publicLinkCreatedVisibilityProps}
-                onCopyLink={handleCopyLink}
+    return publicURL && resolvedURL ? (
+        canManage ? (
+            <ManagePublicShare
+                openOnMount={openManageLink}
+                {...{
+                    onRootClose,
+                    collection,
+                    publicURL,
+                    setPublicURL,
+                    resolvedURL,
+                    setBlockingLoad,
+                    onRemotePull,
+                }}
             />
-        </>
-    );
+        ) : (
+            <ReadOnlyPublicShare resolvedURL={resolvedURL} />
+        )
+    ) : publicURL ? (
+        <Typography role="status" color="text.muted">
+            {error ? t("generic_error") : isLoading ? t("loading") : null}
+        </Typography>
+    ) : canManage ? (
+        <EnablePublicShareOptions
+            {...{ collection, onRemotePull, setPublicURL }}
+        />
+    ) : null;
 };
 
 type EnablePublicShareOptionsProps = {
     setPublicURL: (value: PublicURL) => void;
-    onLinkCreated: () => void;
 } & Pick<CollectionShareProps, "collection" | "onRemotePull">;
 
 const EnablePublicShareOptions: React.FC<EnablePublicShareOptionsProps> = ({
     collection,
     onRemotePull,
     setPublicURL,
-    onLinkCreated,
 }) => {
     const [pending, setPending] = useState("");
     const [errorMessage, setErrorMessage] = useState("");
@@ -1775,7 +1747,6 @@ const EnablePublicShareOptions: React.FC<EnablePublicShareOptionsProps> = ({
                 });
                 setPending("");
                 setPublicURL(publicURL);
-                onLinkCreated();
                 void onRemotePull({ silent: true });
             } catch (e: unknown) {
                 log.error("Could not create public link", e);
