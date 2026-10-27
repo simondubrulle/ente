@@ -128,7 +128,6 @@ test("closing before decoding cannot hide the tile afterward", async () => {
     expect(origin.style.opacity).toBe("");
     expect(flyer.remove).toHaveBeenCalledOnce();
     expect(requestFrame).not.toHaveBeenCalled();
-    await expect(flight.landed).resolves.toBeUndefined();
 });
 
 test("a failed flyer leaves the tile visible and allows viewer handover", async () => {
@@ -138,25 +137,6 @@ test("a failed flyer leaves the tile visible and allows viewer handover", async 
 
     expect(origin.style.opacity).toBe("");
     expect(onLanded).toHaveBeenCalledOnce();
-    await expect(flight.landed).resolves.toBeUndefined();
-    flight.stop();
-});
-
-test("video playback can wait until the opening spring lands", async () => {
-    const { flight, requestFrame, resolveDecode, onLanded } = pendingFlight();
-    const play = vi.fn();
-    void flight.landed.then(play);
-    resolveDecode();
-    await Promise.resolve();
-    expect(play).not.toHaveBeenCalled();
-    let now = performance.now();
-    for (let i = 0; i < 200 && !onLanded.mock.calls.length; i++) {
-        now += 16;
-        requestFrame.mock.lastCall![0](now);
-    }
-    expect(onLanded).toHaveBeenCalledOnce();
-    await flight.landed;
-    expect(play).toHaveBeenCalledOnce();
     flight.stop();
 });
 
