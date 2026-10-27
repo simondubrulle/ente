@@ -18,6 +18,12 @@ func TestPokesCreateDuringShareChanges(t *testing.T) {
 			alice, bob := notificationTestSpaces(t, module)
 			ctx, cancel := context.WithTimeout(t.Context(), 10*time.Second)
 			defer cancel()
+			for _, requestID := range []string{"first", "second"} {
+				_, err := module.Pokes.Create(ctx, bob.SpaceID, alice.SpaceID, requestID)
+				require.NoError(t, err)
+				_, err = module.Pokes.Create(ctx, alice.SpaceID, bob.SpaceID, requestID)
+				require.NoError(t, err)
+			}
 			space := alice
 			if operation == "reset-sender-access" {
 				space = bob
@@ -66,8 +72,8 @@ func TestPokesCreateDuringShareChanges(t *testing.T) {
 			err = <-result
 			if operation == "update-recipient-shares" {
 				require.NoError(t, err)
-				require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_pokes`))
-				require.Equal(t, int64(1), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE kind = 'poke'`))
+				require.Equal(t, int64(5), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_pokes`))
+				require.Equal(t, int64(2), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_notifications WHERE kind = 'poke'`))
 			} else {
 				require.ErrorIs(t, err, sql.ErrNoRows)
 				require.Equal(t, int64(0), countSpaceRows(t, module, `SELECT COUNT(*) FROM space_pokes`))
