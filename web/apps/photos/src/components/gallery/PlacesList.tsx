@@ -55,6 +55,7 @@ export const PlacesList = ({
         <Stack sx={{ flex: 1, minHeight: 0, gap: "8px" }}>
             <ListItemButton
                 selected={!selectedPlace}
+                aria-current={!selectedPlace ? "true" : undefined}
                 onClick={() => onSelectPlace(undefined)}
                 sx={{
                     ...placeRowSx,
@@ -110,6 +111,12 @@ export const PlacesList = ({
                                 selected={
                                     selectedPlace?.latitude === city.latitude &&
                                     selectedPlace.longitude === city.longitude
+                                }
+                                aria-current={
+                                    selectedPlace?.latitude === city.latitude &&
+                                    selectedPlace.longitude === city.longitude
+                                        ? "true"
+                                        : undefined
                                 }
                                 onClick={() =>
                                     onSelectPlace({
