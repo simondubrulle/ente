@@ -325,6 +325,7 @@ const Page: React.FC = () => {
         props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
     const [selectedPlace, setSelectedPlace] = useState<PlaceSelection>();
+    const [placeSelectionRevision, setPlaceSelectionRevision] = useState(0);
     const [isMapView, setIsMapView] = useState(false);
     const closeCollectionMap = useCallback(() => setIsMapView(false), []);
 
@@ -2170,6 +2171,7 @@ const Page: React.FC = () => {
                     ? selectedPlace
                     : undefined
             }
+            placeSelectionRevision={placeSelectionRevision}
             mapFileSource={mapFileSource}
             onRemotePull={remotePull}
             onAddSaveGroup={onAddSaveGroup}
@@ -2263,7 +2265,12 @@ const Page: React.FC = () => {
                             ? undefined
                             : {
                                   selectedPlace,
-                                  onSelectPlace: setSelectedPlace,
+                                  onSelectPlace: (place) => {
+                                      setSelectedPlace(place);
+                                      setPlaceSelectionRevision(
+                                          (revision) => revision + 1,
+                                      );
+                                  },
                                   placesFiles:
                                       isMapView &&
                                       activeCollectionID ===

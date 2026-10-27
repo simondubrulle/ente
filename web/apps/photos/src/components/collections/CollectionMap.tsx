@@ -74,6 +74,7 @@ interface CollectionMapProps extends Pick<
     | "emailByUserID"
 > {
     selectedPlace?: PlaceSelection;
+    placeSelectionRevision: number;
     collectionSummary: CollectionSummary;
     files: EnteFile[];
     mapFileSource: MapFileSource;
@@ -995,6 +996,7 @@ function createMarkerIcon(
 
 export const CollectionMap: React.FC<CollectionMapProps> = ({
     selectedPlace,
+    placeSelectionRevision,
     collectionSummary,
     files,
     onRemotePull,
@@ -1171,6 +1173,7 @@ export const CollectionMap: React.FC<CollectionMapProps> = ({
                     <MapCanvas
                         mapComponents={mapComponents}
                         selectedPlace={selectedPlace}
+                        placeSelectionRevision={placeSelectionRevision}
                         mapCenter={mapCenter}
                         mapIndex={mapIndex}
                         thumbByFileID={thumbByFileID}
@@ -1352,6 +1355,7 @@ function CollectionSidebar({
 
 interface MapCanvasProps {
     selectedPlace?: PlaceSelection;
+    placeSelectionRevision: number;
     mapComponents: MapComponents;
     mapCenter: [number, number];
     mapIndex: MapIndex;
@@ -1369,6 +1373,7 @@ const leafletAttributionPrefix =
 
 const MapCanvas = React.memo(function MapCanvas({
     selectedPlace,
+    placeSelectionRevision,
     mapComponents,
     mapCenter,
     mapIndex,
@@ -1396,6 +1401,7 @@ const MapCanvas = React.memo(function MapCanvas({
                     referrerPolicy="strict-origin-when-cross-origin"
                 />
                 <PlaceFocus
+                    placeSelectionRevision={placeSelectionRevision}
                     useMap={useMap}
                     selectedPlace={selectedPlace}
                     mapCenter={mapCenter}
@@ -1418,10 +1424,12 @@ const MapCanvas = React.memo(function MapCanvas({
 const PlaceFocus = ({
     useMap,
     selectedPlace,
+    placeSelectionRevision,
     mapCenter,
 }: {
     useMap: MapComponents["useMap"];
     selectedPlace?: PlaceSelection;
+    placeSelectionRevision: number;
     mapCenter: [number, number];
 }) => {
     const map = useMap();
@@ -1434,7 +1442,7 @@ const PlaceFocus = ({
     });
     useEffect(() => {
         focusPlace(selectedPlace);
-    }, [map, selectedPlace]);
+    }, [map, selectedPlace, placeSelectionRevision]);
     return null;
 };
 
