@@ -1,4 +1,8 @@
-import { CollectionDialogSearchField as SearchField } from "@/components/CollectionDialog/Primitives";
+import {
+    CollectionDialogTileButton as AlbumButton,
+    CollectionDialogTileCover as AlbumCover,
+    CollectionDialogSearchField as SearchField,
+} from "@/components/CollectionDialog/Primitives";
 import {
     collectionDialogFullScreenQuery,
     collectionDialogHeaderActionsSx as headerActionsSx,
@@ -24,7 +28,6 @@ import {
     Dialog,
     IconButton,
     Stack,
-    styled,
     Tab,
     Tabs,
     Typography,
@@ -36,7 +39,6 @@ import type { ModalVisibilityProps } from "ente-base/components/utils/modal";
 import { isSxArray } from "ente-base/components/utils/sx";
 import type { Collection } from "ente-media/collection";
 import { ItemCard } from "ente-new/photos/components/Tiles";
-import { UnstyledButton } from "ente-new/photos/components/UnstyledButton";
 import {
     canAddToCollection,
     canMoveToCollection,
@@ -491,39 +493,3 @@ const AlbumTile: React.FC<{
 };
 
 const albumNameSx = { fontSize: 14, lineHeight: "20px", fontWeight: 500 };
-
-const AlbumButton = styled(UnstyledButton)(({ theme }) => ({
-    display: "flex",
-    flexDirection: "column",
-    alignItems: "flex-start",
-    gap: 8,
-    minWidth: 0,
-    width: "100%",
-    textAlign: "left",
-    color: theme.vars.palette.text.base,
-    borderRadius: 20,
-    "&:hover": { opacity: 0.86 },
-    "&:focus-visible": {
-        outline: `2px solid ${theme.vars.palette.stroke.base}`,
-        outlineOffset: 4,
-    },
-}));
-
-const AlbumCover = styled("div")(({ theme }) => ({
-    backgroundColor: theme.vars.palette.background.paper,
-    ...theme.applyStyles("dark", {
-        backgroundColor: theme.vars.palette.fill.faint,
-    }),
-    width: "100%",
-    aspectRatio: "1",
-    flexShrink: 0,
-    borderRadius: 20,
-    overflow: "hidden",
-    position: "relative",
-    "& > img": {
-        width: "100%",
-        height: "100%",
-        objectFit: "cover",
-        display: "block",
-    },
-}));
