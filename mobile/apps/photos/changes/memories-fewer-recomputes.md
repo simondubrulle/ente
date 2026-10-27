@@ -1,0 +1,1 @@
+- Memories no longer reshuffle after photos are added, uploaded, deleted or hidden, or after a person is hidden or unhidden from memories.
