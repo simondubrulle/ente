@@ -123,7 +123,7 @@ export const PhotosNavigationShell: React.FC<
     };
     useEffect(() => {
         setNavigationCollapsed(false);
-    }, [props.mode, props.isInSearchMode]);
+    }, [props.mode, props.isInSearchMode, props.isMapSelected]);
     useEffect(() => {
         if (!mobile) closeMobileNavigation();
     }, [mobile, closeMobileNavigation]);
@@ -167,6 +167,10 @@ export const PhotosNavigationShell: React.FC<
             mobileDrawerProps={mobileDrawerProps}
             onCreateAlbum={openAlbumCreation}
             onSelectCollectionID={selectCollection}
+            onSelectPlace={(place) => {
+                galleryNavigation.onSelectPlace(place);
+                closeMobileNavigation();
+            }}
             onSelectPerson={selectPerson}
         />
     );
@@ -240,6 +244,11 @@ export const PhotosNavigationShell: React.FC<
                         {alternateHeader == null && (
                             <NormalNavigationRail
                                 {...props}
+                                onShowMap={() => {
+                                    props.onShowMap();
+                                    setNavigationCollapsed(false);
+                                    if (mobile) showMobileNavigation();
+                                }}
                                 isHome={
                                     !props.isMapSelected &&
                                     props.mode == "albums" &&

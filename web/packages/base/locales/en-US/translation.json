@@ -575,6 +575,7 @@
     "location": "Location",
     "view_on_map": "View on OpenStreetMap",
     "map": "Map",
+    "your_map": "Your map",
     "enable_map": "Enable map",
     "disable_map": "Disable map",
     "details": "Details",
