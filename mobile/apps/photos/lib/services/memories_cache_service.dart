@@ -318,12 +318,9 @@ class MemoriesCacheService {
         cacheChanged = true;
       }
 
-      if (!cacheChanged) {
-        return;
+      if (cacheChanged) {
+        Bus.instance.fire(MemoriesChangedEvent());
       }
-
-      queueUpdateCache();
-      Bus.instance.fire(MemoriesChangedEvent());
     });
   }
 
