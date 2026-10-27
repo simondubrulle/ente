@@ -53,6 +53,10 @@ class MemoriesCacheService {
   static const _showAnyMemoryKey = "memories.enabled";
   static const _shouldUpdateCacheKey = "memories.shouldUpdateCache";
   static const _tripMemoryCarryForwardLimit = kTripSurfaceSlots;
+  static const _peopleMemoryTypesWithCurrentUser = {
+    PeopleMemoryType.youAndThem,
+    PeopleMemoryType.doingSomethingTogether,
+  };
 
   // Avoid competing with other startup work.
   static const _kCacheUpdateDelay = Duration(seconds: 20);
@@ -555,7 +559,16 @@ class MemoriesCacheService {
     });
   }
 
-  Future<void> purgePersonFromMemoriesCache(String personID) async {
+  Future<void> purgePersonFromMemoriesCache(
+    String personID, {
+    required bool isCurrentUser,
+  }) async {
+    bool shouldPurge(String? memoryPersonID, PeopleMemoryType? memoryType) {
+      return memoryPersonID == personID ||
+          (isCurrentUser &&
+              _peopleMemoryTypesWithCurrentUser.contains(memoryType));
+    }
+
     await _memoriesUpdateLock.synchronized(() async {
       final removedMemoryIDs = <String>{};
       bool cacheChanged = false;
@@ -563,7 +576,8 @@ class MemoriesCacheService {
       if (_cachedMemories != null && _cachedMemories!.isNotEmpty) {
         final filtered = <SmartMemory>[];
         for (final memory in _cachedMemories!) {
-          if (memory is PeopleMemory && memory.personID == personID) {
+          if (memory is PeopleMemory &&
+              shouldPurge(memory.personID, memory.peopleMemoryType)) {
             removedMemoryIDs.add(memory.id);
             continue;
           }
@@ -579,15 +593,17 @@ class MemoriesCacheService {
       if (cache != null) {
         final originalToShowLength = cache.toShowMemories.length;
         final originalLogLength = cache.peopleShownLogs.length;
+        bool shouldPurgeCacheMemory(ToShowMemory memory) {
+          return memory.type == MemoryType.people &&
+              shouldPurge(memory.personID, memory.peopleMemoryType);
+        }
+
         for (final memory in cache.toShowMemories) {
-          if (memory.type == MemoryType.people && memory.personID == personID) {
+          if (shouldPurgeCacheMemory(memory)) {
             removedMemoryIDs.add(memory.id);
           }
         }
-        cache.toShowMemories.removeWhere(
-          (memory) =>
-              memory.type == MemoryType.people && memory.personID == personID,
-        );
+        cache.toShowMemories.removeWhere(shouldPurgeCacheMemory);
         cache.peopleShownLogs.removeWhere((log) => log.personID == personID);
         final shouldWriteCache =
             cache.toShowMemories.length != originalToShowLength ||

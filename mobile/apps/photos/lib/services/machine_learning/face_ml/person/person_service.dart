@@ -835,7 +835,14 @@ class PersonService {
     await updatePerson(updatedPerson);
     await refreshPersonCache();
     if (hideFromMemories == true && !person.data.hideFromMemories) {
-      unawaited(memoriesCacheService.purgePersonFromMemoriesCache(id));
+      final currentUserEmail = Configuration.instance.getEmail();
+      unawaited(
+        memoriesCacheService.purgePersonFromMemoriesCache(
+          id,
+          isCurrentUser:
+              currentUserEmail != null && person.data.email == currentUserEmail,
+        ),
+      );
     }
     return updatedPerson;
   }
