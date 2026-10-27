@@ -1,4 +1,12 @@
-import { Box, List, ListItem, Stack, Typography, styled } from "@mui/material";
+import {
+    Box,
+    List,
+    ListItem,
+    ListItemButton,
+    Stack,
+    Typography,
+    styled,
+} from "@mui/material";
 import { ActivityIndicator } from "ente-base/components/mui/ActivityIndicator";
 import log from "ente-base/log";
 import type { EnteFile } from "ente-media/file";
@@ -7,7 +15,20 @@ import { t } from "i18next";
 import { useEffect, useState } from "react";
 import { listPlaces } from "../../services/places";
 
-export const PlacesList = ({ files }: { files: EnteFile[] }) => {
+export interface PlaceSelection {
+    latitude: number;
+    longitude: number;
+}
+
+export const PlacesList = ({
+    files,
+    selectedPlace,
+    onSelectPlace,
+}: {
+    files: EnteFile[];
+    selectedPlace?: PlaceSelection;
+    onSelectPlace: (place: PlaceSelection | undefined) => void;
+}) => {
     const [result, setResult] = useState<{
         files: EnteFile[];
         groups?: Awaited<ReturnType<typeof listPlaces>>;
@@ -32,13 +53,17 @@ export const PlacesList = ({ files }: { files: EnteFile[] }) => {
 
     return (
         <Stack sx={{ flex: 1, minHeight: 0, gap: "8px" }}>
-            <Stack
-                direction="row"
-                aria-current="page"
+            <ListItemButton
+                selected={!selectedPlace}
+                aria-current={!selectedPlace ? "true" : undefined}
+                onClick={() => onSelectPlace(undefined)}
                 sx={{
                     ...placeRowSx,
                     flexShrink: 0,
-                    bgcolor: "var(--gallery-navigation-surface)",
+                    flexGrow: 0,
+                    "&.Mui-selected": {
+                        bgcolor: "var(--gallery-navigation-surface)",
+                    },
                 }}
             >
                 <Box
@@ -53,7 +78,7 @@ export const PlacesList = ({ files }: { files: EnteFile[] }) => {
                     }}
                 />
                 <Typography sx={placeNameSx}>{t("your_map")}</Typography>
-            </Stack>
+            </ListItemButton>
             {!currentResult ? (
                 <Stack role="status" aria-label={t("loading")} sx={{ p: 2 }}>
                     <ActivityIndicator />
@@ -80,17 +105,37 @@ export const PlacesList = ({ files }: { files: EnteFile[] }) => {
                             key={`${city.name}-${city.country}-${city.latitude}-${city.longitude}`}
                             disableGutters
                             title={`${city.name}, ${city.country}`}
-                            sx={placeRowSx}
+                            disablePadding
                         >
-                            <Box aria-hidden sx={{ flexShrink: 0 }}>
-                                <ItemCard
-                                    coverFile={coverFile}
-                                    TileComponent={PlaceCover}
-                                />
-                            </Box>
-                            <Typography noWrap sx={placeNameSx}>
-                                {city.name}
-                            </Typography>
+                            <ListItemButton
+                                selected={
+                                    selectedPlace?.latitude === city.latitude &&
+                                    selectedPlace.longitude === city.longitude
+                                }
+                                aria-current={
+                                    selectedPlace?.latitude === city.latitude &&
+                                    selectedPlace.longitude === city.longitude
+                                        ? "true"
+                                        : undefined
+                                }
+                                onClick={() =>
+                                    onSelectPlace({
+                                        latitude: city.latitude,
+                                        longitude: city.longitude,
+                                    })
+                                }
+                                sx={placeRowSx}
+                            >
+                                <Box aria-hidden sx={{ flexShrink: 0 }}>
+                                    <ItemCard
+                                        coverFile={coverFile}
+                                        TileComponent={PlaceCover}
+                                    />
+                                </Box>
+                                <Typography noWrap sx={placeNameSx}>
+                                    {city.name}
+                                </Typography>
+                            </ListItemButton>
                         </ListItem>
                     ))}
                 </List>
@@ -122,5 +167,5 @@ const PlaceCover = styled(PreviewItemTile)({
     width: 36,
     height: 36,
     borderRadius: "12px",
-    cursor: "default",
+    cursor: "inherit",
 });

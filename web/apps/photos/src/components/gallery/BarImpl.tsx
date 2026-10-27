@@ -59,7 +59,7 @@ import {
     areEqual,
     type ListChildComponentProps,
 } from "react-window";
-import { PlacesList } from "./PlacesList";
+import { PlacesList, type PlaceSelection } from "./PlacesList";
 import type { GalleryBarMode } from "./reducer";
 
 export interface GalleryBarPresentationProps {
@@ -70,6 +70,8 @@ export interface GalleryBarPresentationProps {
 export interface GalleryBarImplProps extends GalleryBarPresentationProps {
     mode: GalleryBarMode;
     placesFiles?: EnteFile[];
+    selectedPlace?: PlaceSelection;
+    onSelectPlace: (place: PlaceSelection | undefined) => void;
     albumFilter: AlbumFilter;
     albumSearchQuery: string;
     onAlbumSearchQueryChange: (query: string) => void;
@@ -98,6 +100,8 @@ export interface GalleryBarImplProps extends GalleryBarPresentationProps {
 export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     mode,
     placesFiles,
+    selectedPlace,
+    onSelectPlace,
     albumFilter,
     albumSearchQuery,
     onAlbumSearchQueryChange,
@@ -675,7 +679,11 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                 )}
             </Stack>
             {placesFiles ? (
-                <PlacesList files={placesFiles} />
+                <PlacesList
+                    files={placesFiles}
+                    selectedPlace={selectedPlace}
+                    onSelectPlace={onSelectPlace}
+                />
             ) : isSearching &&
               (mode == "albums"
                   ? !visibleAlbumFilters.length && !albumShortcuts.length

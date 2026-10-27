@@ -125,6 +125,7 @@ const renderSearch = (
         onChangeCollectionsSortBy: vi.fn(),
         onChangePeopleSortBy: vi.fn(),
         onSelectPerson: vi.fn(),
+        onSelectPlace: vi.fn(),
     };
     const Sidebar = () => {
         const data = useAlbumNavigationData({
