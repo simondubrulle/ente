@@ -16,6 +16,7 @@ import "package:photos/models/file/dummy_file.dart";
 import "package:photos/models/file/file.dart";
 import "package:photos/models/file/file_type.dart";
 import "package:photos/models/file_load_result.dart";
+import "package:photos/models/gallery/fixed_extent_grid_row.dart";
 import "package:photos/models/metadata/file_magic.dart";
 import "package:photos/models/selected_files.dart";
 import "package:photos/service_locator.dart";
@@ -62,6 +63,134 @@ void main() {
   });
 
   testWidgets(
+    "zero-size startup recovers date headers without remounting or reloading",
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = Size.zero;
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await localSettings.setPhotoGridSize(4);
+      final galleryKey = GlobalKey<GalleryState>();
+      final files = List<EnteFile>.generate(
+        8,
+        (index) => _justifiedTestFile(index)
+          ..creationTime = DateTime(
+            2026,
+            8,
+            19 - index ~/ 4,
+          ).microsecondsSinceEpoch,
+      );
+      final load = Completer<FileLoadResult>();
+      var loads = 0;
+      await tester.pumpWidget(
+        _viewSizedGalleryHost(
+          Gallery(
+            key: galleryKey,
+            tagPrefix: "zero_size_header",
+            groupType: GroupType.day,
+            initialFiles: [files.first],
+            loadingWidget: const SizedBox.shrink(),
+            asyncLoader: (start, end, {limit, asc}) {
+              loads++;
+              return load.future;
+            },
+          ),
+        ),
+      );
+      final originalState = galleryKey.currentState!;
+      load.complete(FileLoadResult(files, false));
+      await tester.pumpAndSettle();
+      expect(originalState.groupHeaderExtent, isNull);
+      expect(originalState.galleryGroups, isNull);
+      expect(loads, 1);
+      expect(tester.takeException(), isNull);
+
+      tester.view.physicalSize = const Size(400, 600);
+      await tester.pump();
+      await tester.pumpAndSettle();
+
+      expect(galleryKey.currentState, same(originalState));
+      final groups = originalState.galleryGroups!;
+      expect(groups.allFiles, orderedEquals(files));
+      expect(groups.groupIDs, hasLength(2));
+      expect(groups.groupHeaderExtent, greaterThan(0));
+      expect(loads, 1);
+      final header = find.byWidgetPredicate(
+        (widget) =>
+            widget is GroupHeaderWidget &&
+            !widget.isPinnedHeader &&
+            widget.filesInGroup.contains(files.first),
+      );
+      expect(header, findsOneWidget);
+      final headerRect = tester.getRect(header);
+      final firstRowRect = tester.getRect(
+        find.byType(FixedExtentGridRow).first,
+      );
+      expect(headerRect.height, closeTo(groups.groupHeaderExtent, 0.001));
+      expect(firstRowRect.top, greaterThanOrEqualTo(headerRect.bottom - 0.001));
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    },
+  );
+
+  testWidgets(
+    "a layout change with a zero-size overlay retains a valid header cache",
+    (tester) async {
+      tester.view.devicePixelRatio = 1;
+      tester.view.physicalSize = const Size(400, 600);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      addTearDown(tester.view.resetPhysicalSize);
+      await localSettings.setPhotoGridSize(4);
+      final galleryKey = GlobalKey<GalleryState>();
+      final files = List<EnteFile>.generate(4, _justifiedTestFile);
+      var loads = 0;
+      await tester.pumpWidget(
+        _viewSizedGalleryHost(
+          Gallery(
+            key: galleryKey,
+            tagPrefix: "retain_header_cache",
+            groupType: GroupType.day,
+            asyncLoader: (start, end, {limit, asc}) async {
+              loads++;
+              return FileLoadResult(files, false);
+            },
+          ),
+          keepGallerySize: true,
+        ),
+      );
+      await tester.pumpAndSettle();
+      final originalState = galleryKey.currentState!;
+      final headerExtent = originalState.groupHeaderExtent!;
+      expect(headerExtent, greaterThan(0));
+
+      tester.view.physicalSize = Size.zero;
+      await tester.pump();
+      final overlay =
+          Overlay.of(galleryKey.currentContext!).context.findRenderObject()!
+              as RenderBox;
+      expect(overlay.size, Size.zero);
+      Bus.instance.fire(GalleryLayoutChangedEvent());
+      await tester.pumpAndSettle();
+      expect(originalState.groupHeaderExtent, headerExtent);
+      expect(originalState.galleryGroups!.groupHeaderExtent, headerExtent);
+      expect(tester.takeException(), isNull);
+
+      tester.view.physicalSize = const Size(400, 600);
+      await tester.pumpAndSettle();
+      expect(galleryKey.currentState, same(originalState));
+      expect(originalState.groupHeaderExtent, headerExtent);
+      expect(originalState.galleryGroups!.allFiles, orderedEquals(files));
+      expect(loads, 1);
+      expect(tester.takeException(), isNull);
+
+      await tester.pumpWidget(const SizedBox.shrink());
+      await tester.pump(const Duration(milliseconds: 100));
+    },
+  );
+
+  testWidgets(
     "zero-width startup keeps loading and lays out all files on recovery",
     (tester) async {
       for (final layout in [
@@ -102,6 +231,7 @@ void main() {
         expect(find.byType(GalleryGridZoom), findsNothing);
 
         width.value = 400;
+        await tester.pump();
         await tester.pumpAndSettle();
         final groups = galleryKey.currentState!.galleryGroups!;
         expect(groups.widthAvailable, 400);
@@ -1033,6 +1163,32 @@ void main() {
 
 Widget _galleryHost(Gallery gallery) {
   return GalleryBoundariesProvider(child: GalleryFilesState(child: gallery));
+}
+
+Widget _viewSizedGalleryHost(Gallery gallery, {bool keepGallerySize = false}) {
+  return MaterialApp(
+    theme: lightThemeData,
+    localizationsDelegates: StringsLocalizations.localizationsDelegates,
+    supportedLocales: StringsLocalizations.supportedLocales,
+    home: Builder(
+      builder: (context) {
+        final child = _galleryHost(gallery);
+        if (!keepGallerySize) return child;
+        // Keep gallery layout usable while the measurement overlay becomes zero.
+        return OverflowBox(
+          alignment: Alignment.topLeft,
+          minWidth: 400,
+          maxWidth: 400,
+          minHeight: 600,
+          maxHeight: 600,
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(size: const Size(400, 600)),
+            child: child,
+          ),
+        );
+      },
+    ),
+  );
 }
 
 Widget _resizableGalleryHost(ValueNotifier<double> width, Gallery gallery) {
