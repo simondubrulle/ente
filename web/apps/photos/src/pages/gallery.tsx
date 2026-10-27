@@ -219,6 +219,8 @@ const Page: React.FC = () => {
     });
     const [albumFilter, setAlbumFilter] = useState<AlbumFilter>("ente");
     const [albumSearchQuery, setAlbumSearchQuery] = useState("");
+    const [albumOpenedFromOverview, setAlbumOpenedFromOverview] =
+        useState<number>();
     const [blockingLoad, setBlockingLoad] = useState(false);
     const [peopleSortBy, setPeopleSortBy] =
         useState<PeopleSortBy>("count-desc");
@@ -1560,6 +1562,7 @@ const Page: React.FC = () => {
 
     const handleShowCollectionSummaryWithID = useCallback(
         (collectionSummaryID: number | undefined) => {
+            setAlbumOpenedFromOverview(undefined);
             setIsMapView(false);
             setCleanupView(undefined);
             // Museum deletes collection contents asynchronously; pull on entry.
@@ -2362,6 +2365,11 @@ const Page: React.FC = () => {
                                     onAddSaveGroup,
                                 }}
                                 onBackToAlbums={handleBackToAlbums}
+                                showBackToAlbums={
+                                    albumOpenedFromOverview !== undefined &&
+                                    albumOpenedFromOverview ===
+                                        collectionSummary?.id
+                                }
                                 onBackToPeople={handleBackToPeople}
                                 mode={barMode}
                                 shouldHide={isInSearchMode}
@@ -2431,7 +2439,10 @@ const Page: React.FC = () => {
                             filter={overviewFilter!}
                             searchQuery={albumSearchQuery}
                             sortBy={collectionsSortBy}
-                            onSelectAlbum={handleShowCollectionSummaryWithID}
+                            onSelectAlbum={(collectionID) => {
+                                handleShowCollectionSummaryWithID(collectionID);
+                                setAlbumOpenedFromOverview(collectionID);
+                            }}
                             onCreateAlbum={() => {
                                 setPostCreateAlbumOp(undefined);
                                 postCreateAlbumHidden.current = false;
