@@ -52,9 +52,9 @@ export const PlacesList = ({
     }, [files]);
 
     const currentResult = result?.files === files ? result : undefined;
-    const query = searchQuery.trim().toLocaleLowerCase();
+    const query = searchQuery.trim().toLowerCase();
     const matchingGroups = currentResult?.groups?.filter(({ city }) =>
-        `${city.name}, ${city.country}`.toLocaleLowerCase().includes(query),
+        `${city.name}, ${city.country}`.toLowerCase().includes(query),
     );
 
     return (
