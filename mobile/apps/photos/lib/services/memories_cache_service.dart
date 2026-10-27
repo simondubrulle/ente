@@ -384,6 +384,7 @@ class MemoriesCacheService {
 
     bool cacheChanged = false;
     final filteredToShowMemories = <ToShowMemory>[];
+    final emptiedMemoryIDs = <String>[];
     for (final memory in cache.toShowMemories) {
       final memoryChanged = _removeDeletedFilesFromCacheMemory(
         memory,
@@ -391,6 +392,8 @@ class MemoriesCacheService {
       );
       if (_cacheMemoryHasFiles(memory)) {
         filteredToShowMemories.add(memory);
+      } else {
+        emptiedMemoryIDs.add(memory.id);
       }
       cacheChanged = cacheChanged || memoryChanged;
     }
@@ -410,6 +413,12 @@ class MemoriesCacheService {
       cache,
       MemoriesCache.encodeToJsonString,
     );
+    for (final memoryID in emptiedMemoryIDs) {
+      await NotificationService.instance.clearAllScheduledNotifications(
+        containingPayload: memoryID,
+        logLines: false,
+      );
+    }
     return true;
   }
 
