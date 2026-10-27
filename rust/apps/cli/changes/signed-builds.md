@@ -1,0 +1,2 @@
+- The macOS and Windows downloads are now signed, and macOS downloads are notarized.
+- macOS archive names now use `macos` instead of `darwin`.
