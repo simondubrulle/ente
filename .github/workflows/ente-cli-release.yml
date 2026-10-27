@@ -3,7 +3,8 @@ name: Release Ente CLI
 on:
     workflow_dispatch:
     schedule:
-        - cron: "0 9 * * 3"
+        # Wednesdays at ~2:45 PM IST
+        - cron: "15 9 * * 3"
 
 permissions:
     contents: read
@@ -115,12 +116,12 @@ jobs:
               if: runner.os == 'macOS'
               env:
                   BINARY: ${{ steps.build.outputs.binary }}
-                  SIGNING_IDENTITY: ${{ fromJSON(steps.certificate.outputs.identities)[0].hash }}
+                  SIGNING_IDENTITY: ${{ steps.certificate.outputs.identities && fromJSON(steps.certificate.outputs.identities)[0].hash }}
                   APPLE_ID: ${{ secrets.APPLE_ID }}
                   APPLE_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
                   APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
               run: |
-                  codesign --force --timestamp --options runtime --sign "$SIGNING_IDENTITY" "$BINARY"
+                  codesign --force --timestamp --options runtime --identifier io.ente.cli --sign "$SIGNING_IDENTITY" "$BINARY"
                   codesign --verify --strict --verbose=2 "$BINARY"
                   ditto -c -k "$BINARY" "$RUNNER_TEMP/notarization.zip"
                   xcrun notarytool submit "$RUNNER_TEMP/notarization.zip" \
