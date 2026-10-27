@@ -112,7 +112,6 @@ import React, {
 import { Trans } from "react-i18next";
 import { z } from "zod";
 
-// Keep the compact share dialog styling out of embedded sidebar panels.
 const RowButtonGroup: React.FC<React.PropsWithChildren> = ({ children }) => {
     const inPanel = !!useContext(SidebarPanelContext);
     return (
