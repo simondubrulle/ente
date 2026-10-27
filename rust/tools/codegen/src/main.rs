@@ -219,6 +219,16 @@ fn generate_frb(target: FrbTarget) -> Result<(), DynError> {
             shared_types.insert(name, types);
         }
     }
+    if apps.contains(&"photos") {
+        let notifications = UniffiCrate {
+            crate_name: "ente_notification_uniffi",
+            crate_dir: rust_root.join("bindings/uniffi/notifications"),
+        };
+        generate_swift(
+            &notifications,
+            "mobile/apps/photos/ios/NotificationServiceExtension/Generated",
+        )?;
+    }
     format_frb_bindings(target)
 }
 
