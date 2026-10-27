@@ -1,9 +1,16 @@
+use std::sync::OnceLock;
+
 use moxcms::{
     Chromaticity, ColorProfile, DataColorSpace, LutDataType, LutStore, LutType, LutWarehouse,
     Matrix3d, ProfileClass,
 };
 
 pub(crate) fn key_only_profile() -> Vec<u8> {
+    static PROFILE: OnceLock<Vec<u8>> = OnceLock::new();
+    PROFILE.get_or_init(encode_key_only_profile).clone()
+}
+
+fn encode_key_only_profile() -> Vec<u8> {
     let black_below_white = (0..8)
         .flat_map(|index| [0, 0, 0, if index < 4 { u16::MAX } else { 0 }])
         .collect();
