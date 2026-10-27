@@ -130,11 +130,19 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     const listRef = useRef<FixedSizeList | null>(null);
     const albumListRef = useRef<VariableSizeList | null>(null);
     const searchInputRef = useRef<HTMLInputElement>(null);
+    const [placesSearchQuery, setPlacesSearchQuery] = useState("");
     const [peopleSearchQuery, setPeopleSearchQuery] = useState("");
     const [groupExpanded, setGroupExpanded] = useState(true);
-    const searchQuery = mode == "people" ? peopleSearchQuery : albumSearchQuery;
-    const setSearchQuery =
-        mode == "people" ? setPeopleSearchQuery : onAlbumSearchQueryChange;
+    const searchQuery = placesFiles
+        ? placesSearchQuery
+        : mode == "people"
+          ? peopleSearchQuery
+          : albumSearchQuery;
+    const setSearchQuery = placesFiles
+        ? setPlacesSearchQuery
+        : mode == "people"
+          ? setPeopleSearchQuery
+          : onAlbumSearchQueryChange;
     const normalizedSearchQuery = searchQuery.trim().toLowerCase();
     const isSearching = !!normalizedSearchQuery;
     const matchingPeople = useMemo(
@@ -618,7 +626,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                 sx={{
                     alignItems: "center",
                     flexShrink: 0,
-                    display: placesFiles ? "none" : "flex",
+                    display: "flex",
                     height: 52,
                     gap: "10px",
                     px: "16px",
@@ -638,19 +646,23 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                     inputRef={searchInputRef}
                     fullWidth
                     placeholder={t(
-                        mode == "people"
-                            ? "people_search_hint"
-                            : mode == "links"
-                              ? "search_links"
-                              : "search_in_albums",
+                        placesFiles
+                            ? "search_in_places"
+                            : mode == "people"
+                              ? "people_search_hint"
+                              : mode == "links"
+                                ? "search_links"
+                                : "search_in_albums",
                     )}
                     inputProps={{
                         "aria-label": t(
-                            mode == "people"
-                                ? "people_search_hint"
-                                : mode == "links"
-                                  ? "search_links"
-                                  : "search_in_albums",
+                            placesFiles
+                                ? "search_in_places"
+                                : mode == "people"
+                                  ? "people_search_hint"
+                                  : mode == "links"
+                                    ? "search_links"
+                                    : "search_in_albums",
                         ),
                     }}
                     value={searchQuery}
@@ -681,6 +693,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
             {placesFiles ? (
                 <PlacesList
                     files={placesFiles}
+                    searchQuery={placesSearchQuery}
                     selectedPlace={selectedPlace}
                     onSelectPlace={onSelectPlace}
                 />

@@ -22,10 +22,12 @@ export interface PlaceSelection {
 
 export const PlacesList = ({
     files,
+    searchQuery,
     selectedPlace,
     onSelectPlace,
 }: {
     files: EnteFile[];
+    searchQuery: string;
     selectedPlace?: PlaceSelection;
     onSelectPlace: (place: PlaceSelection | undefined) => void;
 }) => {
@@ -50,6 +52,10 @@ export const PlacesList = ({
     }, [files]);
 
     const currentResult = result?.files === files ? result : undefined;
+    const query = searchQuery.trim().toLocaleLowerCase();
+    const matchingGroups = currentResult?.groups?.filter(({ city }) =>
+        `${city.name}, ${city.country}`.toLocaleLowerCase().includes(query),
+    );
 
     return (
         <Stack sx={{ flex: 1, minHeight: 0, gap: "8px" }}>
@@ -85,7 +91,7 @@ export const PlacesList = ({
                 </Stack>
             ) : !currentResult.groups ? (
                 <Typography role="alert">{t("generic_error_retry")}</Typography>
-            ) : !currentResult.groups.length ? (
+            ) : !matchingGroups?.length ? (
                 <Typography role="status">{t("no_results")}</Typography>
             ) : (
                 <List
@@ -100,7 +106,7 @@ export const PlacesList = ({
                         gap: "8px",
                     }}
                 >
-                    {currentResult.groups.map(({ city, coverFile }) => (
+                    {matchingGroups.map(({ city, coverFile }) => (
                         <ListItem
                             key={`${city.name}-${city.country}-${city.latitude}-${city.longitude}`}
                             disableGutters
