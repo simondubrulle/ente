@@ -38,6 +38,7 @@ import React, {
     startTransition,
     useCallback,
     useEffect,
+    useEffectEvent,
     useMemo,
     useRef,
     useState,
@@ -1424,14 +1425,16 @@ const PlaceFocus = ({
     mapCenter: [number, number];
 }) => {
     const map = useMap();
-    useEffect(() => {
+    // Read the latest default center without refocusing on background pulls.
+    const focusPlace = useEffectEvent((place: PlaceSelection | undefined) => {
         map.setView(
-            selectedPlace
-                ? [selectedPlace.latitude, selectedPlace.longitude]
-                : mapCenter,
+            place ? [place.latitude, place.longitude] : mapCenter,
             DEFAULT_MAP_ZOOM,
         );
-    }, [map, selectedPlace, mapCenter]);
+    });
+    useEffect(() => {
+        focusPlace(selectedPlace);
+    }, [map, selectedPlace]);
     return null;
 };
 
