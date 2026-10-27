@@ -13,6 +13,7 @@ const OUTPUT_PROFILE: usize = 3;
 const OUTPUT_INTENT: usize = 4;
 const INFO: usize = 5;
 const METADATA: usize = 6;
+const MAX_XREF_OFFSET: u64 = 9_999_999_999;
 
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PageSize {
@@ -26,8 +27,8 @@ pub struct PdfX4Writer {
     page_height: String,
     created_at: i64,
     buffer: Vec<u8>,
-    written: usize,
-    offsets: Vec<usize>,
+    written: u64,
+    offsets: Vec<u64>,
     pages: Vec<usize>,
     content_hash: DefaultHasher,
 }
@@ -176,7 +177,10 @@ impl PdfX4Writer {
             ),
         );
 
-        let xref = self.written + self.buffer.len();
+        let xref = self.position();
+        if xref > MAX_XREF_OFFSET {
+            return Err(Error::TooLarge);
+        }
         let size = self.offsets.len();
         let mut table = format!("xref\n0 {size}\n0000000000 65535 f \n");
         for offset in &self.offsets[1..] {
@@ -208,14 +212,18 @@ impl PdfX4Writer {
         if self.offsets.len() <= id {
             self.offsets.resize(id + 1, 0);
         }
-        self.offsets[id] = self.written + self.buffer.len();
+        self.offsets[id] = self.position();
         self.buffer
             .extend_from_slice(format!("{id} 0 obj\n").as_bytes());
     }
 
+    fn position(&self) -> u64 {
+        self.written + self.buffer.len() as u64
+    }
+
     fn flush(&mut self) -> Vec<u8> {
         let chunk = std::mem::take(&mut self.buffer);
-        self.written += chunk.len();
+        self.written += chunk.len() as u64;
         chunk
     }
 
@@ -421,6 +429,32 @@ mod tests {
         assert!(second.starts_with(b"10 0 obj\n"));
         assert!(find(&second, b"/DestOutputProfile").is_none());
         assert!(last.starts_with(b"2 0 obj\n"));
+    }
+
+    #[test]
+    fn keeps_offsets_exact_past_four_gibibytes() {
+        let mut writer = writer();
+        writer.add_page(vec![0; 16], 2, 2).unwrap();
+        writer.written += 1 << 32;
+        let page_start = writer.written;
+        let page = writer.add_page(vec![0; 16], 2, 2).unwrap();
+        assert_eq!(writer.offsets[10], page_start);
+
+        let last = writer.finish().unwrap();
+        let table_start = find(&last, b"xref\n").unwrap();
+        let table = std::str::from_utf8(&last[table_start..]).unwrap();
+        let xref = page_start + page.len() as u64 + table_start as u64;
+        assert!(xref > u64::from(u32::MAX));
+        assert!(table.contains(&format!("{page_start:010} 00000 n \n")));
+        assert!(table.ends_with(&format!("startxref\n{xref}\n%%EOF\n")));
+    }
+
+    #[test]
+    fn rejects_files_too_large_for_the_xref_table() {
+        let mut writer = writer();
+        writer.add_page(vec![0; 16], 2, 2).unwrap();
+        writer.written = MAX_XREF_OFFSET;
+        assert!(matches!(writer.finish(), Err(Error::TooLarge)));
     }
 
     #[test]

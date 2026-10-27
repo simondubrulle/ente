@@ -34,8 +34,8 @@ impl CmykJpegEncoder {
         width: u16,
         height: u16,
     ) -> Result<Vec<u8>, Error> {
-        let row_len = usize::from(width) * 4;
-        if row_len == 0 || height == 0 || srgb_rgba.len() != row_len * usize::from(height) {
+        let expected_len = u64::from(width) * u64::from(height) * 4;
+        if expected_len == 0 || srgb_rgba.len() as u64 != expected_len {
             return Err(Error::InvalidDimensions {
                 width,
                 height,
@@ -48,7 +48,6 @@ impl CmykJpegEncoder {
         let mut jpeg = Vec::new();
         let mut encoder = Encoder::new(&mut jpeg, JPEG_QUALITY);
         encoder.set_sampling_factor(SamplingFactor::F_1_1);
-        encoder.set_optimized_huffman_tables(true);
         encoder
             .encode(&cmyk, width, height, ColorType::Cmyk)
             .map_err(Error::Encode)?;
@@ -102,10 +101,14 @@ mod tests {
         assert_eq!(jpeg[..2], [0xFF, 0xD8]);
         let mut segments = Vec::new();
         let mut at = 2;
-        while jpeg[at + 1] != 0xDA {
+        loop {
             assert_eq!(jpeg[at], 0xFF);
+            let marker = jpeg[at + 1];
             let len = usize::from(u16::from_be_bytes([jpeg[at + 2], jpeg[at + 3]]));
-            segments.push((jpeg[at + 1], &jpeg[at + 4..at + 2 + len]));
+            segments.push((marker, &jpeg[at + 4..at + 2 + len]));
+            if marker == 0xDA {
+                break;
+            }
             at += 2 + len;
         }
         assert_eq!(jpeg[jpeg.len() - 2..], [0xFF, 0xD9]);
@@ -140,9 +143,17 @@ mod tests {
     }
 
     #[test]
-    fn writes_unsubsampled_adobe_cmyk_jpeg() {
+    fn writes_one_unsubsampled_adobe_cmyk_scan() {
         let jpeg = encoder().encode(vec![128; 3 * 2 * 4], 3, 2).unwrap();
         let segments = segments(&jpeg);
+        assert_eq!(jpeg.windows(2).filter(|w| *w == [0xFF, 0xDA]).count(), 1);
+
+        let scan = segments
+            .iter()
+            .find(|(marker, _)| *marker == 0xDA)
+            .map(|(_, data)| data)
+            .unwrap();
+        assert_eq!(scan[0], 4);
 
         let adobe = segments
             .iter()
@@ -174,6 +185,21 @@ mod tests {
         for (len, width, height) in [(16, 2, 1), (0, 0, 0), (8, 0, 2)] {
             assert!(matches!(
                 encoder.encode(vec![0; len], width, height),
+                Err(Error::InvalidDimensions { .. })
+            ));
+        }
+    }
+
+    #[test]
+    fn rejects_lengths_that_match_only_after_32_bit_wraparound() {
+        let encoder = encoder();
+        for (len, width, height) in [(0_u32, 32_768_u16, 32_768_u16), (131_072, 32_768, 32_769)] {
+            let wrapped = u32::from(width)
+                .wrapping_mul(u32::from(height))
+                .wrapping_mul(4);
+            assert_eq!(len, wrapped);
+            assert!(matches!(
+                encoder.encode(vec![0; len as usize], width, height),
                 Err(Error::InvalidDimensions { .. })
             ));
         }

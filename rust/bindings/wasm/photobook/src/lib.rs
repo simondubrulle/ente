@@ -16,6 +16,7 @@ impl From<Error> for JsValue {
             E::InvalidPageSize => Some("invalid_page_size"),
             E::InvalidDimensions { .. } => Some("invalid_dimensions"),
             E::NoPages => Some("no_pages"),
+            E::TooLarge => Some("too_large"),
             E::Convert(_) | E::Encode(_) => None,
         };
         ente_wasm_lib::js_error(&error, name)

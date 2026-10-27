@@ -17,6 +17,7 @@ pub enum Error {
     InvalidPageSize,
     InvalidDimensions { width: u16, height: u16, len: usize },
     NoPages,
+    TooLarge,
     Convert(CmsError),
     Encode(EncodingError),
 }
@@ -31,6 +32,7 @@ impl fmt::Display for Error {
                 write!(f, "{len} bytes is not a {width}x{height} RGBA image")
             }
             Self::NoPages => f.write_str("a PDF needs at least one page"),
+            Self::TooLarge => f.write_str("PDF is too large for its cross-reference table"),
             Self::Convert(_) => f.write_str("CMYK conversion failed"),
             Self::Encode(_) => f.write_str("JPEG encoding failed"),
         }
@@ -45,7 +47,8 @@ impl std::error::Error for Error {
             Self::NotCmykProfile
             | Self::InvalidPageSize
             | Self::InvalidDimensions { .. }
-            | Self::NoPages => None,
+            | Self::NoPages
+            | Self::TooLarge => None,
         }
     }
 }
