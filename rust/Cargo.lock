@@ -2483,6 +2483,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ente-auth-frb"
+version = "0.0.0"
+dependencies = [
+ "ente-frb-lib",
+ "flutter_rust_bridge",
+]
+
+[[package]]
 name = "ente-auth-wasm"
 version = "0.0.0"
 dependencies = [
