@@ -415,7 +415,7 @@ class MemoriesCacheService {
 
     bool cacheChanged = false;
     final filteredToShowMemories = <ToShowMemory>[];
-    final emptiedMemoryIDs = <String>[];
+    final emptiedMemories = <ToShowMemory>[];
     for (final memory in cache.toShowMemories) {
       final memoryChanged = _removeDeletedFilesFromCacheMemory(
         memory,
@@ -424,7 +424,7 @@ class MemoriesCacheService {
       if (_cacheMemoryHasFiles(memory)) {
         filteredToShowMemories.add(memory);
       } else {
-        emptiedMemoryIDs.add(memory.id);
+        emptiedMemories.add(memory);
       }
       cacheChanged = cacheChanged || memoryChanged;
     }
@@ -444,9 +444,25 @@ class MemoriesCacheService {
       cache,
       MemoriesCache.encodeToJsonString,
     );
-    for (final memoryID in emptiedMemoryIDs) {
+    for (final memory in emptiedMemories) {
       await NotificationService.instance.clearAllScheduledNotifications(
-        containingPayload: memoryID,
+        containingPayload: memory.id,
+        logLines: false,
+      );
+    }
+    final remainingBirthdayPersonIDs = filteredToShowMemories
+        .where((memory) => memory.isBirthday ?? false)
+        .map((memory) => memory.personID)
+        .toSet();
+    final emptiedBirthdayPersonIDs = emptiedMemories
+        .where((memory) => memory.isBirthday ?? false)
+        .map((memory) => memory.personID)
+        .whereType<String>()
+        .toSet()
+        .difference(remainingBirthdayPersonIDs);
+    for (final personID in emptiedBirthdayPersonIDs) {
+      await NotificationService.instance.clearAllScheduledNotifications(
+        containingPayload: "birthday_$personID",
         logLines: false,
       );
     }
