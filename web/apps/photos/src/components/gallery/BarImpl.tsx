@@ -506,11 +506,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                 minHeight: 0,
                 px: mobile ? "12px" : "16px",
                 py: mobile ? "14px" : 0,
-                borderLeft: mobile
-                    ? 0
-                    : placesFiles
-                      ? "1px solid"
-                      : "2px solid",
+                borderLeft: mobile ? 0 : "2px solid",
                 borderColor: "rgba(224, 224, 224, 0.5)",
                 gap: "16px",
                 letterSpacing: 0,
@@ -525,7 +521,7 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
                 sx={{
                     alignItems: "center",
                     flexShrink: 0,
-                    height: placesFiles ? 32 : 38,
+                    height: 38,
                     gap: 0.5,
                     "& .MuiIconButton-root": {
                         width: 38,
