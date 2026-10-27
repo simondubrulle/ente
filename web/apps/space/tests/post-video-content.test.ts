@@ -17,7 +17,7 @@ vi.mock("../src/services/media-cache", () => ({
 const loadCached = vi.mocked(cachedSpaceMediaBlobURLIfPresent);
 
 class Element extends EventTarget {
-    style: Record<string, string> = {};
+    style = {};
     attributes = new Map<string, string>();
     children: Element[] = [];
     disabled = false;
@@ -38,7 +38,6 @@ class Element extends EventTarget {
     append(...children: Element[]) {
         this.children.push(...children);
     }
-    remove = vi.fn();
 }
 
 class Video extends Element {
@@ -49,24 +48,8 @@ class Video extends Element {
     onpause?: () => void;
     onplaying?: () => void;
     onloadeddata?: () => void;
-    onloadedmetadata?: () => void;
     onended?: () => void;
     ontimeupdate?: () => void;
-    frameCallbacks = new Map<number, () => void>();
-    nextFrame = 0;
-    requestVideoFrameCallback = vi.fn((callback: () => void) => {
-        const id = ++this.nextFrame;
-        this.frameCallbacks.set(id, callback);
-        return id;
-    });
-    cancelVideoFrameCallback = vi.fn((id: number) => {
-        this.frameCallbacks.delete(id);
-    });
-    presentFrame() {
-        const callbacks = [...this.frameCallbacks.values()];
-        this.frameCallbacks.clear();
-        callbacks.forEach((callback) => callback());
-    }
     get poster() {
         return this.getAttribute("poster") ?? "";
     }
@@ -86,9 +69,7 @@ class Video extends Element {
         this.paused = true;
         this.onpause?.();
     }
-    load = vi.fn(() => {
-        this.currentTime = 0;
-    });
+    load = vi.fn();
 }
 
 let contents: ReturnType<typeof createSpaceVideoContent>[];
@@ -111,7 +92,6 @@ beforeEach(() => {
                 tag == "video" ? new Video() : new Element(tag),
         }),
     );
-    vi.stubGlobal("window", { matchMedia: vi.fn(() => ({ matches: false })) });
 });
 
 afterEach(() => {
@@ -147,7 +127,7 @@ const create = (
     const children = (content.element as unknown as Element).children;
     const [video] = children;
     const [button, loading, error] = children.slice(-3);
-    const cover = children.length == 5 ? children[1] : undefined;
+    const cover = children.find((child) => child.tagName == "img");
     return {
         ...content,
         video: video as Video,
@@ -181,7 +161,7 @@ test("a video can download and play before its cover image is available", async 
     expect(content.video.getAttribute("poster")).toBeNull();
 });
 
-test("a preloaded viewer video dissolves its cover only after playback presents a frame", async () => {
+test("a preloaded viewer video shows its decoded frame before activation", async () => {
     loadCached.mockResolvedValue("blob:cached-video");
     const content = create(false);
     await content.preload({ cachedOnly: true });
@@ -192,132 +172,20 @@ test("a preloaded viewer video dissolves its cover only after playback presents 
     );
     expect(content.video.getAttribute("src")).toBe("blob:cached-video");
     expect(content.video.poster).toBe("blob:poster");
-    expect(content.cover?.style.opacity).toBe("1");
+    expect(content.cover?.hidden).toBe(false);
     content.video.onloadeddata?.();
     expect(content.video.getAttribute("poster")).toBeNull();
-    expect(content.cover?.style.opacity).toBe("1");
+    expect(content.cover?.hidden).toBe(true);
     expect(content.video.play).not.toHaveBeenCalled();
     content.play();
     await vi.advanceTimersByTimeAsync(0);
-    expect(content.cover?.style.opacity).toBe("1");
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("0");
-    expect(content.cover?.style.transition).toBe("opacity 150ms ease-out");
     content.deactivate();
     expect(content.video.getAttribute("poster")).toBeNull();
-    expect(content.cover?.style.opacity).toBe("0");
+    expect(content.cover?.hidden).toBe(true);
     content.play();
     await vi.advanceTimersByTimeAsync(0);
     expect(content.video.getAttribute("poster")).toBeNull();
     expect(load).not.toHaveBeenCalled();
-});
-
-test("viewer playback dissolves its cover without video-frame callback APIs", async () => {
-    const content = create(false);
-    Reflect.deleteProperty(content.video, "requestVideoFrameCallback");
-    Reflect.deleteProperty(content.video, "cancelVideoFrameCallback");
-    await content.preload();
-    content.video.onloadeddata?.();
-    expect(content.cover?.style.opacity).toBe("1");
-    content.play();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(content.video.paused).toBe(false);
-    expect(content.video.getAttribute("src")).toBe("blob:video");
-    expect(content.error.hidden).toBe(true);
-    expect(content.cover?.style.opacity).toBe("0");
-    expect(content.cover?.style.transition).toBe("opacity 150ms ease-out");
-    content.pause();
-    expect(content.video.paused).toBe(true);
-    content.play(true);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(content.video.paused).toBe(false);
-    expect(content.error.hidden).toBe(true);
-    expect(load).toHaveBeenCalledOnce();
-});
-
-test("viewer playback loads during the opening animation and waits for it to land", async () => {
-    const opening = Promise.withResolvers<undefined>();
-    const content = create(false, "blob:poster", {
-        onPlay: () => opening.promise,
-    });
-    content.play();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(load).toHaveBeenCalledOnce();
-    content.video.onloadeddata?.();
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("1");
-    expect(content.video.play).not.toHaveBeenCalled();
-    opening.resolve(undefined);
-    await vi.advanceTimersByTimeAsync(0);
-    expect(content.video.play).toHaveBeenCalledOnce();
-    expect(content.cover?.style.opacity).toBe("1");
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("0");
-});
-
-test("a viewer opened from the feed resumes at the captured time and replays from the start", async () => {
-    const frame = new Element("canvas");
-    const content = create(false, "blob:poster", {
-        initialTime: 0.4,
-        initialFrame: frame as unknown as HTMLCanvasElement,
-    });
-    expect(content.cover?.children).toContain(frame);
-    await content.preload();
-    content.video.onloadedmetadata?.();
-    expect(content.video.currentTime).toBe(0.4);
-    content.play();
-    await vi.advanceTimersByTimeAsync(0);
-    expect(content.video.currentTime).toBe(0.4);
-    content.video.presentFrame();
-    content.video.onended?.();
-    expect(frame.remove).toHaveBeenCalledOnce();
-    expect(content.cover?.style.opacity).toBe("1");
-    content.play(true);
-    await vi.advanceTimersByTimeAsync(0);
-    content.video.onloadedmetadata?.();
-    expect(content.video.currentTime).toBe(0);
-});
-
-test("blocked viewer autoplay keeps the cover until manual playback presents a frame", async () => {
-    const content = create(false);
-    content.video.play.mockRejectedValueOnce(
-        new DOMException("Blocked", "NotAllowedError"),
-    );
-    content.play();
-    await vi.advanceTimersByTimeAsync(0);
-    content.video.onloadeddata?.();
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("1");
-    expect(content.button.getAttribute("aria-hidden")).toBe("false");
-    content.play(true);
-    await vi.advanceTimersByTimeAsync(0);
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("0");
-});
-
-test.each(["deactivate", "destroy"] as const)(
-    "%s cancels a pending cover reveal",
-    async (action) => {
-        const content = create(false);
-        content.play();
-        await vi.advanceTimersByTimeAsync(0);
-        content[action]();
-        expect(content.video.cancelVideoFrameCallback).toHaveBeenCalledOnce();
-        content.video.presentFrame();
-        expect(content.cover?.style.opacity).toBe("1");
-    },
-);
-
-test("reduced motion reveals the playing video without a dissolve", async () => {
-    vi.mocked(window.matchMedia).mockReturnValue({
-        matches: true,
-    } as MediaQueryList);
-    const content = create(false);
-    content.play();
-    await vi.advanceTimersByTimeAsync(0);
-    content.video.presentFrame();
-    expect(content.cover?.style.opacity).toBe("0");
-    expect(content.cover?.style.transition).toBe("none");
 });
 
 test("preparing an uncached viewer slide does not start a download", async () => {
@@ -391,23 +259,21 @@ test.each([undefined, 0.5])(
         content.play();
         await vi.advanceTimersByTimeAsync(0);
         content.video.onloadeddata?.();
-        content.video.presentFrame();
-        expect(content.cover?.style.opacity).toBe("0");
+        expect(content.cover?.hidden).toBe(true);
         if (end == undefined) content.video.onended?.();
         else {
             content.video.currentTime = end;
             content.video.ontimeupdate?.();
         }
-        expect(content.cover?.style.opacity).toBe("1");
+        expect(content.cover?.hidden).toBe(false);
         expect(content.video.poster).toBe("blob:poster");
         expect(content.video.getAttribute("src")).toBeNull();
         expect(content.button.getAttribute("aria-hidden")).toBe("false");
         content.play(true);
-        expect(content.cover?.style.opacity).toBe("1");
+        expect(content.cover?.hidden).toBe(false);
         await vi.advanceTimersByTimeAsync(0);
         content.video.onloadeddata?.();
-        content.video.presentFrame();
-        expect(content.cover?.style.opacity).toBe("0");
+        expect(content.cover?.hidden).toBe(true);
         expect(content.video.getAttribute("poster")).toBeNull();
         expect(content.video.paused).toBe(false);
         expect(load).toHaveBeenCalledTimes(1);

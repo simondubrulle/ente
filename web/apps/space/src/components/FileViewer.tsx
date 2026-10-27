@@ -605,10 +605,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         closing: false,
         landed: false,
     });
-    const initialVideoRef = React.useRef<{
-        initialTime: number;
-        initialFrame?: HTMLCanvasElement;
-    }>(undefined);
     const isSyncingPhotosRef = React.useRef(false);
     const videoContentsRef = React.useRef(
         new Map<object, ReturnType<typeof createSpaceVideoContent>>(),
@@ -1460,13 +1456,6 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
         );
         if (!origin) return stopMotion;
 
-        const video = origin.querySelector("video");
-        if (item.video && video && !video.paused && !video.ended)
-            initialVideoRef.current = {
-                initialTime: video.currentTime,
-                initialFrame: viewerVideoFrame(video),
-            };
-
         const width = item.width ?? defaultPhotoWidth;
         const height = item.height ?? defaultPhotoHeight;
         const flight = playViewerOpen(
@@ -1552,19 +1541,10 @@ export const SpaceFileViewer: React.FC<SpaceFileViewerProps> = ({
                 event.preventDefault();
                 videos.get(event.content)?.destroy();
                 const item = viewerPhotosRef.current[event.content.index]!;
-                const initialVideo =
-                    event.content.index == initialPhotoIndexRef.current
-                        ? initialVideoRef.current
-                        : undefined;
-                if (initialVideo) initialVideoRef.current = undefined;
                 const video = createSpaceVideoContent(
                     item,
                     (asset) => videoLoaderRef.current!(asset),
-                    {
-                        ...initialVideo,
-                        showDuration: isDraftPost,
-                        onPlay: () => motionRef.current.flight?.landed,
-                    },
+                    { showDuration: isDraftPost },
                 );
                 event.content.element = video.element;
                 event.content.onLoaded();
