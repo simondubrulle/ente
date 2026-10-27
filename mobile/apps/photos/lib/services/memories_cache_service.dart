@@ -112,9 +112,8 @@ class MemoriesCacheService {
         );
       }
 
-      final shouldQueueUpdate =
-          _cachedMemories == null || _cachedMemories!.isEmpty;
-      if (!shouldQueueUpdate) {
+      final hasLoadedEmptyMemories = _cachedMemories?.isEmpty ?? false;
+      if (!hasLoadedEmptyMemories) {
         return;
       }
       queueUpdateCache();
