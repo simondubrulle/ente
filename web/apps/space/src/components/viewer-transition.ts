@@ -316,6 +316,14 @@ export const playViewerOpen = (
     let rider: ReturnType<typeof createRider>;
     let started = false;
     let disposed = false;
+    let resolveLanded!: () => void;
+    const landed = new Promise<void>((resolve) => {
+        resolveLanded = resolve;
+    });
+    const land = () => {
+        resolveLanded();
+        onLanded();
+    };
     let stopSpring: () => void = () => undefined;
     const drawAt = (value: number) => {
         const state = mixPhotoState(from, end, value);
@@ -329,6 +337,7 @@ export const playViewerOpen = (
 
     const release = () => {
         disposed = true;
+        resolveLanded();
         flyer.remove();
         rider?.remove();
     };
@@ -357,15 +366,16 @@ export const playViewerOpen = (
                     drawAt(t);
                     setProgress(t);
                 },
-                onDone: onLanded,
+                onDone: land,
             });
         },
         () => {
-            if (!disposed) onLanded();
+            if (!disposed) land();
         },
     );
     return {
         src: flightSrc,
+        landed,
         current: () => (started ? mixPhotoState(from, end, t) : undefined),
         release,
         reveal,
