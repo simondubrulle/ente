@@ -1,9 +1,9 @@
 import { ManagePublicShareOptions } from "@/components/collections/CollectionShare";
 import { CoverPickerDialog } from "@/components/collections/CoverPickerDialog";
+import { PublicLinkField } from "@/components/share/PublicLinkField";
 import { usePublicLinkURL } from "@/components/utils/use-public-link-url";
-import { Copy01Icon, Edit03Icon } from "@hugeicons/core-free-icons";
+import { Edit03Icon } from "@hugeicons/core-free-icons";
 import { HugeiconsIcon } from "@hugeicons/react";
-import DoneIcon from "@mui/icons-material/Done";
 import {
     Box,
     IconButton,
@@ -14,7 +14,6 @@ import {
 } from "@mui/material";
 import type { LocalUser } from "ente-accounts/services/user";
 import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
-import { useClipboardCopy } from "ente-base/components/utils/hooks";
 import { useModalVisibility } from "ente-base/components/utils/modal";
 import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
@@ -200,48 +199,11 @@ export const PublicLinkDetails = ({
                             </Tooltip>
                         )}
                     </Box>
-                    <Stack
-                        direction="row"
-                        sx={(theme) => ({
-                            alignItems: "center",
-                            gap: "8px",
-                            height: 52,
-                            px: "16px",
-                            borderRadius: "16px",
-                            bgcolor: "fill.faint",
-                            ...theme.applyStyles("light", {
-                                bgcolor: "#F4F4F4",
-                            }),
-                        })}
-                    >
-                        <Typography
-                            component="span"
-                            title={resolvedURL}
-                            aria-live="polite"
-                            sx={{
-                                flex: 1,
-                                minWidth: 0,
-                                fontSize: 14,
-                                fontWeight: 500,
-                                lineHeight: "20px",
-                                letterSpacing: 0,
-                                overflow: "hidden",
-                                textOverflow: "ellipsis",
-                                whiteSpace: "nowrap",
-                            }}
-                        >
-                            {resolvedURL?.replace(/^https?:\/\//, "") ??
-                                (error
-                                    ? t("generic_error")
-                                    : isLoading
-                                      ? t("loading")
-                                      : null)}
-                        </Typography>
-                        <CopyLinkButton
-                            key={resolvedURL ?? "pending"}
-                            url={resolvedURL}
-                        />
-                    </Stack>
+                    <PublicLinkField
+                        url={resolvedURL}
+                        isLoading={isLoading}
+                        error={!!error}
+                    />
                     <Typography
                         sx={{
                             color: "text.muted",
@@ -338,39 +300,6 @@ export const PublicLinkDetails = ({
                 />
             )}
         </Box>
-    );
-};
-
-const CopyLinkButton = ({ url }: { url: string | undefined }) => {
-    const [copied, copy] = useClipboardCopy(url ?? "");
-    const label = t(copied ? "copied" : "copy_link");
-    return (
-        <Tooltip title={label}>
-            <span>
-                <IconButton
-                    aria-label={label}
-                    disabled={!url}
-                    onClick={copy}
-                    sx={{
-                        width: 36,
-                        height: 36,
-                        p: 0,
-                        mr: "-6px",
-                        borderRadius: "8px",
-                    }}
-                >
-                    {copied ? (
-                        <DoneIcon sx={{ fontSize: 24, color: "accent.main" }} />
-                    ) : (
-                        <HugeiconsIcon
-                            icon={Copy01Icon}
-                            size={24}
-                            strokeWidth={1.5}
-                        />
-                    )}
-                </IconButton>
-            </span>
-        </Tooltip>
     );
 };
 

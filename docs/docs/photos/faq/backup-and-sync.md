@@ -614,6 +614,28 @@ Ente treats a renamed file as a deleted file plus a new one. The new file is upl
 
 You can review and delete those copies in Uncategorized.
 
+### Why are my albums empty after I renamed a folder inside a watched folder? {#rename-folder-in-watched-folder}
+
+When you rename a folder inside a watched folder, the desktop app sees every file in it as deleted and added again. This can remove the photos from their albums and move them to [Uncategorized](/photos/faq/albums-and-organization#uncategorized). Your photos are not deleted.
+
+Do not rename the folder back. That repeats the same process. You can keep the new name.
+
+To restore the photos to albums:
+
+1. Open the desktop app and click **Watch folders** in the sidebar.
+2. Click the **Stop watching** button next to the main watched folder, then **Yes, stop**. This does not delete any photos from Ente.
+3. Click **Add folder** and select the same main folder again.
+4. Choose the same option you used before, for example **Separate albums**.
+5. Wait for the sync to finish.
+
+Ente checks for photos it has already uploaded. When it recognizes a match, it adds the photo to an album without uploading the file again. If you renamed a photo in Ente, it may upload again because its name no longer matches the file on your computer.
+
+With **Separate albums**, each photo goes into an album named after its immediate parent folder. If the renamed folder directly contains photos, they appear in a new album with that folder's new name. The old album is not refilled by those photos. Photos in deeper subfolders can return to their existing albums. Check where the photos appear before deleting any empty album.
+
+To remove leftover entries, open Uncategorized and select the clean icon (broom). This removes only items that are also in another album. Review anything left in Uncategorized before deleting it.
+
+To avoid this next time, stop watching the main folder before you rename a folder inside it, then add the main folder again.
+
 ### Why are my watch folders not syncing? {#watch-folders-not-syncing}
 
 Common issues and solutions:
@@ -648,8 +670,8 @@ While the app may work with network drives in some cases, we've found that netwo
 
 1. Click "Watch folders" in the sidebar
 2. Find the folder you want to stop watching
-3. Click the three dots next to that folder entry
-4. Select "Stop watching"
+3. Click the **Stop watching** button next to that folder entry
+4. Confirm with **Yes, stop**
 
 The folder will no longer be monitored, but all files that were already uploaded to Ente will remain there. Stopping watch does not delete any photos from Ente.
 
