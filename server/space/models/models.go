@@ -391,7 +391,6 @@ type PostObjectPayload struct {
 }
 
 type PostAssetPayload struct {
-	// NestedVideo keeps nested input out of recursive validation.
 	NestedVideo    *json.RawMessage `json:"video,omitempty"`
 	ObjectKey      string           `json:"objectKey" binding:"required"`
 	Size           int64            `json:"size,omitempty" binding:"omitempty,gt=0"`
