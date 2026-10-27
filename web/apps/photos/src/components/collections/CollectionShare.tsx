@@ -3,13 +3,16 @@
 import Avatar from "@/components/Avatar";
 import type { RemotePullOpts } from "@/components/gallery";
 import { PublicLinkCreated } from "@/components/share/PublicLinkCreated";
+import { PublicLinkField } from "@/components/share/PublicLinkField";
 import { sidebarStyles, sidebarTheme } from "@/components/sidebar/theme";
 import { usePublicLinkURL } from "@/components/utils/use-public-link-url";
 import { avatarTextColor } from "@/services/avatar";
 import AddIcon from "@mui/icons-material/Add";
 import AdminPanelSettingsIcon from "@mui/icons-material/AdminPanelSettings";
+import ArrowBackIcon from "@mui/icons-material/ArrowBack";
 import BlockIcon from "@mui/icons-material/Block";
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
+import CloseIcon from "@mui/icons-material/Close";
 import CodeIcon from "@mui/icons-material/Code";
 import ContentCopyIcon from "@mui/icons-material/ContentCopyOutlined";
 import DoneIcon from "@mui/icons-material/Done";
@@ -21,13 +24,22 @@ import Photo, { default as PhotoIcon } from "@mui/icons-material/Photo";
 import PublicIcon from "@mui/icons-material/Public";
 import RemoveCircleOutlinedIcon from "@mui/icons-material/RemoveCircleOutlined";
 import WorkspacesIcon from "@mui/icons-material/Workspaces";
-import { Box, Stack, styled, ThemeProvider, Typography } from "@mui/material";
+import {
+    Box,
+    IconButton,
+    InputBase,
+    Stack,
+    styled,
+    ThemeProvider,
+    Typography,
+} from "@mui/material";
 import NumberAvatar from "@mui/material/Avatar";
 import TextField from "@mui/material/TextField";
 import type { LocalUser } from "ente-accounts/services/user";
 import { EnteSwitch } from "ente-base/components/EnteSwitch";
 import { LoadingButton } from "ente-base/components/mui/LoadingButton";
 import {
+    NestedSidebarDrawer,
     SidebarDrawer,
     SidebarDrawerTitlebar,
     TitledNestedSidebarDrawer,
@@ -37,15 +49,21 @@ import {
     SidebarPanelContext,
 } from "ente-base/components/mui/SidebarDrawerContext";
 import {
+    RowButtonGroup as BaseRowButtonGroup,
     RowButton,
     RowButtonDivider,
     RowButtonEndActivityIndicator,
-    RowButtonGroup,
     RowButtonGroupHint,
     RowButtonGroupTitle,
     RowLabel,
     RowSwitch,
 } from "ente-base/components/RowButton";
+import {
+    v2CloseButtonSx,
+    v2InputSx,
+    v2SubmitButtonSx,
+    v2TitleSx,
+} from "ente-base/components/SingleInput.styles";
 import { SingleInputDialog } from "ente-base/components/SingleInputDialog";
 import type { SingleInputFormProps } from "ente-base/components/SingleInputForm";
 import { useClipboardCopy } from "ente-base/components/utils/hooks";
@@ -53,6 +71,7 @@ import {
     useModalVisibility,
     type ModalVisibilityProps,
 } from "ente-base/components/utils/modal";
+import { isSxArray } from "ente-base/components/utils/sx";
 import { RowCard } from "ente-base/components/v2/RowCard";
 import { useBaseContext } from "ente-base/context";
 import { deriveInteractiveKey } from "ente-base/crypto";
@@ -84,6 +103,7 @@ import { useFormik } from "formik";
 import { t } from "i18next";
 import React, {
     useCallback,
+    useContext,
     useEffect,
     useMemo,
     useRef,
@@ -91,6 +111,159 @@ import React, {
 } from "react";
 import { Trans } from "react-i18next";
 import { z } from "zod";
+
+// Keep the compact share dialog styling out of embedded sidebar panels.
+const RowButtonGroup: React.FC<React.PropsWithChildren> = ({ children }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
+    return (
+        <BaseRowButtonGroup
+            data-share-group
+            sx={
+                inPanel
+                    ? undefined
+                    : {
+                          bgcolor: "background.paper",
+                          borderRadius: "20px",
+                          overflow: "hidden",
+                          "& > hr": { mx: "16px", opacity: 0.2 },
+                          "& .MuiTypography-root": {
+                              fontSize: 14,
+                              lineHeight: "20px",
+                              fontWeight: 500,
+                          },
+                          "& > button": { minHeight: 52 },
+                          "& > button > .MuiStack-root > .MuiStack-root": {
+                              py: "16px",
+                              gap: "12px",
+                          },
+                          "& > .MuiStack-root > .MuiTypography-root": {
+                              py: "16px",
+                          },
+                          "& .MuiSvgIcon-root": { fontSize: 20 },
+                      }
+            }
+        >
+            {children}
+        </BaseRowButtonGroup>
+    );
+};
+
+const ShareTitlebar: React.FC<
+    React.ComponentProps<typeof SidebarDrawerTitlebar>
+> = (props) => {
+    const inPanel = !!useContext(SidebarPanelContext);
+    if (inPanel) return <SidebarDrawerTitlebar {...props} />;
+    const {
+        title,
+        caption,
+        onClose,
+        onRootClose,
+        actionButton,
+        showBackButton = true,
+        showRootCloseButton = true,
+    } = props;
+    return (
+        <Stack
+            data-share-header
+            direction="row"
+            sx={{ mx: "12px", gap: "12px", alignItems: "flex-start" }}
+        >
+            {showBackButton && (
+                <IconButton
+                    aria-label="Back"
+                    onClick={onClose}
+                    sx={(theme) => ({
+                        ...v2CloseButtonSx(theme),
+                        backgroundColor: "transparent",
+                        ...theme.applyStyles("dark", {
+                            backgroundColor: "transparent",
+                        }),
+                        "&.Mui-focusVisible": {
+                            backgroundColor: "fill.faintHover",
+                        },
+                    })}
+                >
+                    <ArrowBackIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+            )}
+            <Stack sx={{ flex: 1, minWidth: 0, gap: "4px" }}>
+                <Typography
+                    component="h2"
+                    sx={{
+                        ...v2TitleSx,
+                        fontFamily: "'Outfit Variable', sans-serif",
+                        overflowWrap: "anywhere",
+                    }}
+                >
+                    {title}
+                </Typography>
+                {caption && (
+                    <Typography
+                        sx={{
+                            fontSize: 14,
+                            lineHeight: "20px",
+                            fontWeight: 500,
+                            color: "text.muted",
+                            overflowWrap: "anywhere",
+                        }}
+                    >
+                        {caption}
+                    </Typography>
+                )}
+            </Stack>
+            {actionButton}
+            {showRootCloseButton && (
+                <IconButton
+                    aria-label={t("close")}
+                    onClick={onRootClose}
+                    sx={v2CloseButtonSx}
+                >
+                    <CloseIcon sx={{ fontSize: 18 }} />
+                </IconButton>
+            )}
+        </Stack>
+    );
+};
+
+const ShareNestedDrawer: React.FC<
+    React.ComponentProps<typeof TitledNestedSidebarDrawer>
+> = ({ open, onClose, onRootClose, anchor, maxWidth, children, ...rest }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
+    const depth = useContext(SidebarDrawerDepthContext);
+    if (inPanel) {
+        return (
+            <TitledNestedSidebarDrawer
+                {...{ open, onClose, onRootClose, anchor, maxWidth, children }}
+                {...rest}
+            />
+        );
+    }
+    return (
+        <NestedSidebarDrawer
+            {...{ open, onClose, onRootClose, anchor, maxWidth }}
+            sx={{ "& .MuiDrawer-paper": { bgcolor: "background.paper2" } }}
+        >
+            <Stack
+                sx={{
+                    gap: "4px",
+                    py: "12px",
+                    "& > .MuiStack-root:not([data-share-header])": {
+                        px: "12px",
+                    },
+                }}
+            >
+                <ShareTitlebar
+                    {...{ onClose, onRootClose }}
+                    {...rest}
+                    titleInline
+                />
+                <SidebarDrawerDepthContext.Provider value={depth + 1}>
+                    {children}
+                </SidebarDrawerDepthContext.Provider>
+            </Stack>
+        </NestedSidebarDrawer>
+    );
+};
 
 export type CollectionShareProps = ModalVisibilityProps & {
     user: LocalUser;
@@ -117,6 +290,7 @@ export const CollectionShare: React.FC<CollectionShareProps> = ({
     onRemotePull,
     intent,
 }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
     const { onGenericError } = useBaseContext();
     const { showLoadingBar, hideLoadingBar } = usePhotosAppContext();
 
@@ -220,9 +394,19 @@ export const CollectionShare: React.FC<CollectionShareProps> = ({
     }
 
     return (
-        <SidebarDrawer anchor="right" {...{ open, onClose }}>
+        <SidebarDrawer
+            anchor="right"
+            {...{ open, onClose }}
+            sx={
+                inPanel
+                    ? undefined
+                    : { "& .MuiDrawer-paper": { bgcolor: "background.paper2" } }
+            }
+        >
             <Stack sx={{ gap: "4px", py: "12px" }}>
-                <SidebarDrawerTitlebar
+                <ShareTitlebar
+                    titleInline={!inPanel}
+                    showBackButton={inPanel}
                     onClose={onClose}
                     onRootClose={onClose}
                     title={
@@ -232,7 +416,13 @@ export const CollectionShare: React.FC<CollectionShareProps> = ({
                     }
                     caption={collection.name}
                 />
-                <Stack sx={{ py: "20px", px: "8px", gap: "24px" }}>
+                <Stack
+                    sx={{
+                        py: "20px",
+                        px: inPanel ? "8px" : "12px",
+                        gap: "24px",
+                    }}
+                >
                     {showEmailSection ? (
                         <EmailShare
                             onRootClose={onClose}
@@ -493,6 +683,7 @@ const EmailShare: React.FC<EmailShareProps> = ({
     wrap,
     onRemotePull,
 }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
     const { show: showAddParticipant, props: addParticipantVisibilityProps } =
         useModalVisibility();
     const { show: showManageEmail, props: manageEmailVisibilityProps } =
@@ -543,9 +734,15 @@ const EmailShare: React.FC<EmailShareProps> = ({
                                 }
                                 label={
                                     collection.sharees.length === 1 ? (
-                                        <ResolvedEmailText
-                                            email={collection.sharees[0]?.email}
-                                        />
+                                        inPanel ? (
+                                            <ResolvedEmailText
+                                                email={
+                                                    collection.sharees[0]?.email
+                                                }
+                                            />
+                                        ) : (
+                                            collection.sharees[0]?.email
+                                        )
                                     ) : null
                                 }
                                 endIcon={<ChevronRightIcon />}
@@ -774,7 +971,7 @@ const AddParticipant: React.FC<AddParticipantProps> = ({
     };
 
     return (
-        <TitledNestedSidebarDrawer
+        <ShareNestedDrawer
             anchor="right"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
@@ -787,7 +984,7 @@ const AddParticipant: React.FC<AddParticipantProps> = ({
                 submitButtonTitle={title}
                 onSubmit={collectionShare}
             />
-        </TitledNestedSidebarDrawer>
+        </ShareNestedDrawer>
     );
 };
 
@@ -807,6 +1004,7 @@ const AddParticipantForm: React.FC<AddParticipantFormProps> = ({
     submitButtonTitle,
     onSubmit,
 }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
     const formik = useFormik({
         initialValues: { email: "", selectedEmails: new Array<string>() },
         onSubmit: async ({ email, selectedEmails }, { setFieldError }) => {
@@ -847,24 +1045,80 @@ const AddParticipantForm: React.FC<AddParticipantFormProps> = ({
 
     return (
         <form onSubmit={formik.handleSubmit}>
-            <Stack sx={{ gap: 1, py: "20px", px: 2 }}>
+            <Stack
+                sx={{
+                    gap: inPanel ? 1 : "20px",
+                    py: "20px",
+                    px: inPanel ? 2 : "12px",
+                }}
+            >
                 <div>
                     <RowButtonGroupTitle>
                         {t("add_new_email")}
                     </RowButtonGroupTitle>
-                    <TextField
-                        name="email"
-                        type="email"
-                        label={t("enter_email")}
-                        margin="none"
-                        value={formik.values.email}
-                        onChange={formik.handleChange}
-                        error={!!formik.errors.email}
-                        helperText={formik.errors.email ?? " "}
-                        disabled={formik.isSubmitting}
-                        onClick={resetExistingSelection}
-                        fullWidth
-                    />
+                    {inPanel ? (
+                        <TextField
+                            name="email"
+                            type="email"
+                            label={t("enter_email")}
+                            margin="none"
+                            value={formik.values.email}
+                            onChange={formik.handleChange}
+                            error={!!formik.errors.email}
+                            helperText={formik.errors.email ?? " "}
+                            disabled={formik.isSubmitting}
+                            onClick={resetExistingSelection}
+                            fullWidth
+                        />
+                    ) : (
+                        <>
+                            <InputBase
+                                name="email"
+                                type="email"
+                                inputProps={{ "aria-label": t("enter_email") }}
+                                placeholder={t("enter_email")}
+                                value={formik.values.email}
+                                onChange={formik.handleChange}
+                                error={!!formik.errors.email}
+                                disabled={formik.isSubmitting}
+                                onClick={resetExistingSelection}
+                                fullWidth
+                                sx={[
+                                    ...(isSxArray(v2InputSx)
+                                        ? v2InputSx
+                                        : [v2InputSx]),
+                                    (theme) => ({
+                                        boxSizing: "border-box",
+                                        borderColor: "rgba(0, 0, 0, 0.16)",
+                                        ...theme.applyStyles("dark", {
+                                            bgcolor: "#303030",
+                                            borderColor:
+                                                "rgba(255, 255, 255, 0.18)",
+                                        }),
+                                        "&.Mui-focused": {
+                                            borderColor: "accent.main",
+                                        },
+                                        "&.Mui-error": {
+                                            borderColor: "critical.main",
+                                        },
+                                    }),
+                                ]}
+                            />
+                            {formik.errors.email && (
+                                <Typography
+                                    role="alert"
+                                    sx={{
+                                        mt: "8px",
+                                        fontSize: 12,
+                                        lineHeight: "16px",
+                                        color: "critical.main",
+                                    }}
+                                >
+                                    {formik.errors.email}
+                                </Typography>
+                            )}
+                        </>
+                    )}
                 </div>
 
                 {existingEmails.length > 0 && (
@@ -900,7 +1154,14 @@ const AddParticipantForm: React.FC<AddParticipantFormProps> = ({
                     color="accent"
                     loading={formik.isSubmitting}
                     fullWidth
-                    sx={{ my: 6 }}
+                    sx={
+                        inPanel
+                            ? { my: 6 }
+                            : [
+                                  v2SubmitButtonSx,
+                                  { flex: "none", minHeight: 52 },
+                              ]
+                    }
                 >
                     {submitButtonTitle}
                 </LoadingButton>
@@ -1012,7 +1273,7 @@ const ManageEmailShare: React.FC<ManageEmailShareProps> = ({
 
     return (
         <>
-            <TitledNestedSidebarDrawer
+            <ShareNestedDrawer
                 anchor="right"
                 {...{ open, onClose }}
                 onRootClose={handleRootClose}
@@ -1185,7 +1446,7 @@ const ManageEmailShare: React.FC<ManageEmailShareProps> = ({
                         </RowButtonGroup>
                     </Stack>
                 </Stack>
-            </TitledNestedSidebarDrawer>
+            </ShareNestedDrawer>
             <AddParticipant
                 {...addParticipantVisibilityProps}
                 {...{
@@ -1319,7 +1580,7 @@ const ManageParticipant: React.FC<ManageParticipantProps> = ({
     }
 
     return (
-        <TitledNestedSidebarDrawer
+        <ShareNestedDrawer
             anchor="right"
             {...{ open, onClose }}
             onRootClose={handleRootClose}
@@ -1397,7 +1658,7 @@ const ManageParticipant: React.FC<ManageParticipantProps> = ({
                     </Stack>
                 </Stack>
             </Stack>
-        </TitledNestedSidebarDrawer>
+        </ShareNestedDrawer>
     );
 };
 
@@ -1418,6 +1679,7 @@ const PublicShare: React.FC<PublicShareProps> = ({
     canManage,
     openManageLink,
 }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
     const { customDomain } = useSettingsSnapshot();
 
     const {
@@ -1475,7 +1737,9 @@ const PublicShare: React.FC<PublicShareProps> = ({
             ) : canManage ? (
                 <EnablePublicShareOptions
                     {...{ collection, onRemotePull, setPublicURL }}
-                    onLinkCreated={showPublicLinkCreated}
+                    onLinkCreated={() => {
+                        if (inPanel) showPublicLinkCreated();
+                    }}
                 />
             ) : null}
             <PublicLinkCreated
@@ -1594,6 +1858,7 @@ const ManagePublicShare: React.FC<ManagePublicShareProps> = ({
         props: managePublicShareVisibilityProps,
     } = useModalVisibility();
 
+    const inPanel = !!useContext(SidebarPanelContext);
     const [copied, handleCopyLink] = useClipboardCopy(resolvedURL);
 
     useEffect(() => {
@@ -1608,9 +1873,16 @@ const ManagePublicShare: React.FC<ManagePublicShareProps> = ({
     return (
         <>
             <Stack>
-                <RowButtonGroupTitle icon={<PublicIcon />}>
+                <RowButtonGroupTitle
+                    icon={inPanel ? <PublicIcon /> : <LinkIcon />}
+                >
                     {t("public_link_enabled")}
                 </RowButtonGroupTitle>
+                {!inPanel && !isLinkExpired(publicURL.validTill) && (
+                    <Stack sx={{ mb: "16px" }}>
+                        <PublicLinkField url={resolvedURL} variant="dialog" />
+                    </Stack>
+                )}
                 <RowButtonGroup>
                     {isLinkExpired(publicURL.validTill) ? (
                         <RowButton
@@ -1620,7 +1892,7 @@ const ManagePublicShare: React.FC<ManagePublicShareProps> = ({
                             onClick={showManagePublicShare}
                             label={t("link_expired")}
                         />
-                    ) : (
+                    ) : inPanel ? (
                         <RowButton
                             startIcon={
                                 copied ? (
@@ -1633,8 +1905,10 @@ const ManagePublicShare: React.FC<ManagePublicShareProps> = ({
                             disabled={isLinkExpired(publicURL.validTill)}
                             label={t("copy_link")}
                         />
+                    ) : null}
+                    {(inPanel || isLinkExpired(publicURL.validTill)) && (
+                        <RowButtonDivider />
                     )}
-                    <RowButtonDivider />
                     <RowButton
                         startIcon={<LinkIcon />}
                         endIcon={<ChevronRightIcon />}
@@ -1666,24 +1940,29 @@ const isLinkExpired = (validTill: number) =>
 const ReadOnlyPublicShare: React.FC<{ resolvedURL: string }> = ({
     resolvedURL,
 }) => {
+    const inPanel = !!useContext(SidebarPanelContext);
     const [copied, handleCopyLink] = useClipboardCopy(resolvedURL);
     return (
         <Stack>
-            <RowButtonGroupTitle icon={<PublicIcon />}>
+            <RowButtonGroupTitle icon={inPanel ? <PublicIcon /> : <LinkIcon />}>
                 {t("public_link_enabled")}
             </RowButtonGroupTitle>
             <RowButtonGroup>
-                <RowButton
-                    startIcon={
-                        copied ? (
-                            <DoneIcon sx={{ color: "accent.main" }} />
-                        ) : (
-                            <ContentCopyIcon />
-                        )
-                    }
-                    onClick={handleCopyLink}
-                    label={t("copy_link")}
-                />
+                {!inPanel ? (
+                    <PublicLinkField url={resolvedURL} />
+                ) : (
+                    <RowButton
+                        startIcon={
+                            copied ? (
+                                <DoneIcon sx={{ color: "accent.main" }} />
+                            ) : (
+                                <ContentCopyIcon />
+                            )
+                        }
+                        onClick={handleCopyLink}
+                        label={t("copy_link")}
+                    />
+                )}
             </RowButtonGroup>
         </Stack>
     );
@@ -1716,6 +1995,7 @@ export const ManagePublicShareOptions: React.FC<
         setBlockingLoad,
         onRemotePull,
     } = props;
+    const inPanel = !!useContext(SidebarPanelContext);
     const panelRef = useRef<HTMLDivElement>(null);
     const [errorMessage, setErrorMessage] = useState("");
     const { embedURL: embedBaseURL } = useSettingsSnapshot();
@@ -1789,38 +2069,73 @@ export const ManagePublicShareOptions: React.FC<
 
     const content = (
         <Stack sx={{ gap: 3, py: "20px", px: "8px" }}>
-            <ManageLayout
-                {...{ collection, onRootClose, onRemotePull, setBlockingLoad }}
-            />
-            <ManagePublicCollect
-                {...{ publicURL }}
-                onUpdate={handlePublicURLUpdate}
-            />
-            <ManageLinkExpiry
-                {...{ onRootClose, publicURL }}
-                onUpdate={handlePublicURLUpdate}
-            />
-            <RowButtonGroup>
-                <ManageDeviceLimit
+            <Stack
+                sx={
+                    inPanel
+                        ? { gap: 3 }
+                        : {
+                              bgcolor: "background.paper",
+                              borderRadius: "20px",
+                              overflow: "hidden",
+                              "& [data-share-group]": {
+                                  bgcolor: "transparent",
+                                  borderRadius: 0,
+                              },
+                              "& > * + *": {
+                                  position: "relative",
+                                  "&::before": {
+                                      content: '""',
+                                      position: "absolute",
+                                      top: 0,
+                                      left: 16,
+                                      right: 16,
+                                      borderTop: "1px solid",
+                                      borderColor: "divider",
+                                      opacity: 0.2,
+                                      pointerEvents: "none",
+                                  },
+                              },
+                          }
+                }
+            >
+                <ManageLayout
+                    {...{
+                        collection,
+                        onRootClose,
+                        onRemotePull,
+                        setBlockingLoad,
+                    }}
+                />
+                <ManagePublicCollect
+                    {...{ publicURL }}
+                    onUpdate={handlePublicURLUpdate}
+                />
+                <ManageLinkExpiry
                     {...{ onRootClose, publicURL }}
                     onUpdate={handlePublicURLUpdate}
                 />
-                <RowButtonDivider />
-                <ManageDownloadAccess
-                    {...{ publicURL }}
-                    onUpdate={handlePublicURLUpdate}
-                />
-                <RowButtonDivider />
-                <ManageJoinAlbum
-                    {...{ publicURL }}
-                    onUpdate={handlePublicURLUpdate}
-                />
-                <RowButtonDivider />
-                <ManageLinkPassword
-                    {...{ publicURL }}
-                    onUpdate={handlePublicURLUpdate}
-                />
-            </RowButtonGroup>
+                <RowButtonGroup>
+                    <ManageDeviceLimit
+                        {...{ onRootClose, publicURL }}
+                        onUpdate={handlePublicURLUpdate}
+                    />
+                    <RowButtonDivider />
+                    <ManageDownloadAccess
+                        {...{ publicURL }}
+                        onUpdate={handlePublicURLUpdate}
+                    />
+                    <RowButtonDivider />
+                    <ManageJoinAlbum
+                        {...{ publicURL }}
+                        onUpdate={handlePublicURLUpdate}
+                    />
+                    <RowButtonDivider />
+                    <ManageLinkPassword
+                        {...{ publicURL }}
+                        onUpdate={handlePublicURLUpdate}
+                    />
+                </RowButtonGroup>
+            </Stack>
             <RowButtonGroup>
                 <RowButton
                     startIcon={
@@ -1969,15 +2284,16 @@ export const ManagePublicShareOptions: React.FC<
     }
 
     return (
-        <TitledNestedSidebarDrawer
+        <ShareNestedDrawer
             anchor="right"
             open={props.open}
             onClose={onClose}
             onRootClose={handleRootClose}
             title={t("manage_link")}
+            caption={collection.name}
         >
             {content}
-        </TitledNestedSidebarDrawer>
+        </ShareNestedDrawer>
     );
 };
 
@@ -2108,7 +2424,7 @@ const ManageLinkExpiry: React.FC<ManagePublicLinkSettingDrawerProps> = ({
                     />
                 </RowButtonGroup>
             )}
-            <TitledNestedSidebarDrawer
+            <ShareNestedDrawer
                 anchor="right"
                 {...expiryOptionsVisibilityProps}
                 onRootClose={onRootClose}
@@ -2130,7 +2446,7 @@ const ManageLinkExpiry: React.FC<ManagePublicLinkSettingDrawerProps> = ({
                         ))}
                     </RowButtonGroup>
                 </Stack>
-            </TitledNestedSidebarDrawer>
+            </ShareNestedDrawer>
         </>
     );
 };
@@ -2206,7 +2522,7 @@ const ManageDeviceLimit: React.FC<ManagePublicLinkSettingDrawerProps> = ({
                     endIcon={<ChevronRightIcon />}
                 />
             )}
-            <TitledNestedSidebarDrawer
+            <ShareNestedDrawer
                 anchor="right"
                 {...deviceOptionsVisibilityProps}
                 onRootClose={onRootClose}
@@ -2228,7 +2544,7 @@ const ManageDeviceLimit: React.FC<ManagePublicLinkSettingDrawerProps> = ({
                         ))}
                     </RowButtonGroup>
                 </Stack>
-            </TitledNestedSidebarDrawer>
+            </ShareNestedDrawer>
         </>
     );
 };
@@ -2449,7 +2765,7 @@ const ManageLayout: React.FC<ManageLayoutProps> = ({
                     />
                 </RowButtonGroup>
             )}
-            <TitledNestedSidebarDrawer
+            <ShareNestedDrawer
                 anchor="right"
                 {...layoutOptionsVisibilityProps}
                 onRootClose={onRootClose}
@@ -2500,7 +2816,7 @@ const ManageLayout: React.FC<ManageLayoutProps> = ({
                         </Typography>
                     )}
                 </Stack>
-            </TitledNestedSidebarDrawer>
+            </ShareNestedDrawer>
         </>
     );
 };
