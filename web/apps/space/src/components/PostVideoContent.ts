@@ -217,8 +217,8 @@ export const createSpaceVideoContent = (
         button.disabled = false;
         button.setAttribute("aria-hidden", "true");
         video.setAttribute("aria-label", "Pause video");
-        if (cover && cover.style.opacity != "0" && coverFrame == undefined)
-            coverFrame = video.requestVideoFrameCallback(() => {
+        if (cover && cover.style.opacity != "0" && coverFrame == undefined) {
+            const reveal = () => {
                 coverFrame = undefined;
                 cover.style.transition = window.matchMedia(
                     "(prefers-reduced-motion: reduce)",
@@ -226,7 +226,11 @@ export const createSpaceVideoContent = (
                     ? "none"
                     : "opacity 150ms ease-out";
                 cover.style.opacity = "0";
-            });
+            };
+            if (typeof video.requestVideoFrameCallback == "function")
+                coverFrame = video.requestVideoFrameCallback(reveal);
+            else reveal();
+        }
     };
     const pause = () => {
         generation++;

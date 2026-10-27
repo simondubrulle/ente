@@ -212,6 +212,29 @@ test("a preloaded viewer video dissolves its cover only after playback presents 
     expect(load).not.toHaveBeenCalled();
 });
 
+test("viewer playback dissolves its cover without video-frame callback APIs", async () => {
+    const content = create(false);
+    Reflect.deleteProperty(content.video, "requestVideoFrameCallback");
+    Reflect.deleteProperty(content.video, "cancelVideoFrameCallback");
+    await content.preload();
+    content.video.onloadeddata?.();
+    expect(content.cover?.style.opacity).toBe("1");
+    content.play();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.paused).toBe(false);
+    expect(content.video.getAttribute("src")).toBe("blob:video");
+    expect(content.error.hidden).toBe(true);
+    expect(content.cover?.style.opacity).toBe("0");
+    expect(content.cover?.style.transition).toBe("opacity 150ms ease-out");
+    content.pause();
+    expect(content.video.paused).toBe(true);
+    content.play(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(content.video.paused).toBe(false);
+    expect(content.error.hidden).toBe(true);
+    expect(load).toHaveBeenCalledOnce();
+});
+
 test("viewer playback loads during the opening animation and waits for it to land", async () => {
     const opening = Promise.withResolvers<undefined>();
     const content = create(false, "blob:poster", {
