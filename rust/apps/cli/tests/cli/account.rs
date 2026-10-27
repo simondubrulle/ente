@@ -609,14 +609,14 @@ fn creation_enrollment_and_login_across_processes() -> ente_test_support::TestRe
             "--input",
             "-",
         ];
-        let mut input =
-            json!({"password": " secret 🙂 ", "otp": wrong_code, "totp": current_totp(secret)?});
+        let mut input = json!({"password": " secret 🙂 ", "otp": wrong_code});
         let error = failure(&second.with_input(&login, &serde_json::to_vec(&input)?));
         assert!(
             error.contains("Incorrect email verification code"),
             "{error}"
         );
         input["otp"] = code.into();
+        input["totp"] = current_totp(secret)?.into();
         success(second.with_input(&login, &serde_json::to_vec(&input)?));
         assert_eq!(
             home.json(&["account", "recovery-key"]),
