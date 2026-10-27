@@ -494,7 +494,6 @@ class PersonService {
     if (data.email != null) {
       await refreshPersonCache();
     }
-    memoriesCacheService.queueUpdateCache();
     return PersonEntity(result.id, data);
   }
 
@@ -834,12 +833,8 @@ class PersonService {
     }
     await updatePerson(updatedPerson);
     await refreshPersonCache();
-    if (hideFromMemories != null &&
-        hideFromMemories != person.data.hideFromMemories) {
-      memoriesCacheService.queueUpdateCache();
-      if (hideFromMemories) {
-        unawaited(memoriesCacheService.purgePersonFromMemoriesCache(id));
-      }
+    if (hideFromMemories == true && !person.data.hideFromMemories) {
+      unawaited(memoriesCacheService.purgePersonFromMemoriesCache(id));
     }
     return updatedPerson;
   }
