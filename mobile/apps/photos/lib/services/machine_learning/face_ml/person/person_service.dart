@@ -494,6 +494,7 @@ class PersonService {
     if (data.email != null) {
       await refreshPersonCache();
     }
+    memoriesCacheService.queueUpdateCache();
     return PersonEntity(result.id, data);
   }
 
