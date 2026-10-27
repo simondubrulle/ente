@@ -12,11 +12,17 @@ export const createSpaceVideoContent = (
     load?: SpacePostAssetURLLoader,
     {
         inline = false,
+        showDuration = false,
+        initialTime,
+        initialFrame,
         onPlay,
         onPause,
         onTogglePlayback,
     }: {
         inline?: boolean;
+        showDuration?: boolean;
+        initialTime?: number;
+        initialFrame?: HTMLCanvasElement;
         onPlay?: () => Promise<void> | void;
         onPause?: () => void;
         onTogglePlayback?: (play: boolean) => void;
@@ -112,22 +118,43 @@ export const createSpaceVideoContent = (
     supportMessage.style.marginTop = "2px";
     errorMessage.append(errorTitle, supportMessage);
     element.append(video);
-    let cover: HTMLImageElement | undefined;
-    if (!inline && item.imageUrl) {
-        cover = document.createElement("img");
-        cover.src = item.imageUrl;
-        cover.alt = "";
+    let cover: HTMLDivElement | undefined;
+    if (!inline && (item.imageUrl || initialFrame)) {
+        cover = document.createElement("div");
         Object.assign(cover.style, {
             position: "absolute",
             inset: "0",
-            width: "100%",
-            height: "100%",
-            objectFit: "contain",
+            opacity: "1",
             pointerEvents: "none",
         });
+        if (item.imageUrl) {
+            const image = document.createElement("img");
+            image.src = item.imageUrl;
+            image.alt = "";
+            cover.append(image);
+        }
+        if (initialFrame) cover.append(initialFrame);
+        for (const layer of cover.children)
+            Object.assign((layer as HTMLElement).style, {
+                position: "absolute",
+                inset: "0",
+                width: "100%",
+                height: "100%",
+                objectFit: "contain",
+            });
         element.append(cover);
     }
     element.append(button, loading, errorMessage);
+    if (showDuration) {
+        const duration = Math.ceil(
+            (media.end ?? media.durationMs / 1000) - (media.start ?? 0),
+        );
+        const badge = document.createElement("span");
+        badge.className = "space-video-duration";
+        badge.textContent = `${duration}s`;
+        badge.setAttribute("aria-label", `Video duration: ${duration} seconds`);
+        element.append(badge);
+    }
     const cacheReadController = new AbortController();
     let generation = 0;
     let sourceGeneration = 0;
@@ -140,6 +167,7 @@ export const createSpaceVideoContent = (
     let retryTimer: ReturnType<typeof setTimeout> | undefined;
     let loadingTimer: ReturnType<typeof setTimeout> | undefined;
     let playbackTimeout: ReturnType<typeof setTimeout> | undefined;
+    let coverFrame: number | undefined;
     const hideLoading = () => {
         clearTimeout(loadingTimer);
         loadingTimer = undefined;
@@ -170,6 +198,8 @@ export const createSpaceVideoContent = (
     };
     const showPlayButton = () => {
         hideLoading();
+        if (coverFrame != undefined) video.cancelVideoFrameCallback(coverFrame);
+        coverFrame = undefined;
         const blocked = Boolean(failure);
         const label = blocked ? "Video unavailable" : "Play video";
         button.setAttribute("aria-hidden", String(!active || blocked));
@@ -187,6 +217,20 @@ export const createSpaceVideoContent = (
         button.disabled = false;
         button.setAttribute("aria-hidden", "true");
         video.setAttribute("aria-label", "Pause video");
+        if (cover && cover.style.opacity != "0" && coverFrame == undefined) {
+            const reveal = () => {
+                coverFrame = undefined;
+                cover.style.transition = window.matchMedia(
+                    "(prefers-reduced-motion: reduce)",
+                ).matches
+                    ? "none"
+                    : "opacity 150ms ease-out";
+                cover.style.opacity = "0";
+            };
+            if (typeof video.requestVideoFrameCallback == "function")
+                coverFrame = video.requestVideoFrameCallback(reveal);
+            else reveal();
+        }
     };
     const pause = () => {
         generation++;
@@ -198,7 +242,12 @@ export const createSpaceVideoContent = (
         sourceGeneration++;
         pendingLoad = undefined;
         pause();
-        if (cover) cover.hidden = false;
+        initialTime = undefined;
+        initialFrame?.remove();
+        if (cover) {
+            cover.style.transition = "none";
+            cover.style.opacity = "1";
+        }
         if (item.imageUrl) video.poster = item.imageUrl;
         video.removeAttribute("src");
         video.load();
@@ -354,10 +403,11 @@ export const createSpaceVideoContent = (
         else reset();
     };
     video.onloadedmetadata = () => {
-        if (media.start) video.currentTime = media.start;
+        const time = initialTime ?? media.start;
+        if (time) video.currentTime = time;
+        initialTime = undefined;
     };
     video.onloadeddata = () => {
-        if (cover) cover.hidden = true;
         video.removeAttribute("poster");
     };
     video.ontimeupdate = () => {
