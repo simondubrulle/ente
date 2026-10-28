@@ -6,6 +6,7 @@ import {
     CollectionSelector,
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
+import { DesktopWhatsNew } from "@/components/DesktopWhatsNew";
 import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
 import { FileListWithViewer } from "@/components/FileListWithViewer";
@@ -18,7 +19,6 @@ import {
     type FileOp,
 } from "@/components/SelectedFileOptions";
 import { Upload } from "@/components/Upload";
-import { WhatsNew } from "@/components/WhatsNew";
 import { AlbumSlideshow } from "@/components/collections/AlbumSlideshow";
 import { CollectionMap } from "@/components/collections/CollectionMap";
 import {
@@ -57,7 +57,6 @@ import {
     notifyUnsupportedSharedFavoritesDialogAttributes,
     trashFilesDialogAttributes,
 } from "@/components/utils/dialog-attributes";
-import { shouldShowWhatsNew } from "@/services/changelog";
 import exportService from "@/services/export";
 import { processPendingAlbumJoin } from "@/services/join-album";
 import {
@@ -313,8 +312,6 @@ const Page: React.FC = () => {
         show: showFamilyManagement,
         props: familyManagementVisibilityProps,
     } = useModalVisibility();
-    const { show: showWhatsNew, props: whatsNewVisibilityProps } =
-        useModalVisibility();
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
         useModalVisibility();
     const {
@@ -773,7 +770,6 @@ const Page: React.FC = () => {
                     void remotePull({ silent: true, source: "desktop-focus" });
                     void watcher.checkAccessibility();
                 });
-                if (await shouldShowWhatsNew(electron)) showWhatsNew();
             }
         })();
 
@@ -2585,7 +2581,7 @@ const Page: React.FC = () => {
                         renderSubscriptionDialogs(onRootClose)
                     }
                 </Sidebar>
-                <WhatsNew {...whatsNewVisibilityProps} />
+                <DesktopWhatsNew />
                 <PeopleConsentDialog
                     {...peopleConsentVisibilityProps}
                     onClose={() => {
