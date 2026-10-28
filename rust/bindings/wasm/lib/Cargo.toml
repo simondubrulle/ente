@@ -3,6 +3,7 @@ name = "ente-wasm-lib"
 edition.workspace = true
 
 [features]
+account-deletion = ["session", "dep:wasm-bindgen-futures"]
 accounts = ["dep:ente-accounts", "dep:serde", "dep:serde-wasm-bindgen", "dep:tsify"]
 cast = ["dep:ente-cast", "dep:serde", "dep:serde-wasm-bindgen", "dep:tsify"]
 collections = ["session", "dep:ente-collections"]

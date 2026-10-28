@@ -224,10 +224,7 @@ Future<void> _init() async {
   if (shouldAllowAuthScreenCapture) {
     await LockScreenSettings.instance.setHideAppContent(false, persist: false);
   }
-  AccountDeletionSettings.instance.init(
-    host: Configuration.instance,
-    enteDio: Network.instance.enteDio,
-  );
+  AccountDeletionSettings.instance.init(host: Configuration.instance);
   await LocalBackupService.instance.init(
     hasOptedForOfflineMode: Configuration.instance.hasOptedForOfflineMode(),
   );
