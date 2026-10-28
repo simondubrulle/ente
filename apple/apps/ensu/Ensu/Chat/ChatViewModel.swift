@@ -534,21 +534,9 @@ final class ChatViewModel: ObservableObject {
         guard !isGenerating, !isDownloading, !isSendPending, editingMessageId == nil,
             !composerIsComposing, !voiceTranscriber.active, !voiceTranscriber.hasActiveTasks
         else { return }
-        let range = composerSelection
-        let text = draftText as NSString
-        guard range.location >= 0, range.length >= 0, range.location <= text.length,
-            range.length <= text.length - range.location,
-            [range.location, NSMaxRange(range)].allSatisfy({
-                $0 == text.length || text.rangeOfComposedCharacterSequence(at: $0).location == $0
-            })
-        else { return }
         sessionSummaryTask?.cancel()
         cancelChatWarmup(releaseLoadedModel: false)
         let destination = (currentSessionId ?? emptyComposerId).uuidString
-        let revision = composerRevision
-        let insertion = DictationInsertion(
-            destination: destination, revision: revision,
-            startUtf16: UInt32(range.location), endUtf16: UInt32(NSMaxRange(range)))
         voiceTranscriber.onInsert = { [weak self] insertion, text in
             guard let self, self.appForeground else { return false }
             do {
@@ -563,11 +551,29 @@ final class ChatViewModel: ObservableObject {
                 return true
             } catch { return false }
         }
-        voiceTranscriber.open(insertion: insertion)
+        voiceTranscriber.open { [weak self] in
+            guard let self, self.appForeground, self.chatActive,
+                !self.isGenerating, !self.isDownloading, !self.isSendPending,
+                self.editingMessageId == nil, !self.composerIsComposing,
+                (self.currentSessionId ?? self.emptyComposerId).uuidString == destination
+            else { return nil }
+            let range = self.composerSelection
+            let text = self.draftText as NSString
+            guard range.location >= 0, range.length >= 0, range.location <= text.length,
+                range.length <= text.length - range.location,
+                [range.location, NSMaxRange(range)].allSatisfy({
+                    $0 == text.length
+                        || text.rangeOfComposedCharacterSequence(at: $0).location == $0
+                })
+            else { return nil }
+            return DictationInsertion(
+                destination: destination, revision: self.composerRevision,
+                startUtf16: UInt32(range.location), endUtf16: UInt32(NSMaxRange(range)))
+        }
     }
 
     func cancelVoiceInput() {
-        voiceTranscriber.cancel()
+        voiceTranscriber.releaseComposer()
         emptyComposerId = UUID()
         voiceInsertionCaret = nil
     }
@@ -715,7 +721,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func sendDraft() {
-        guard !voiceTranscriber.active else { return }
+        guard !voiceTranscriber.blocksComposer else { return }
         guard !isGenerating && !isDownloading && !isSendPending else { return }
         guard !isChatUnsupported else {
             showUnsupportedDeviceDialog = true
@@ -734,6 +740,7 @@ final class ChatViewModel: ObservableObject {
             generationErrorMessage = ModelImagesUnsupported().localizedDescription
             return
         }
+        voiceTranscriber.releaseComposer()
         let sourceSnapshot = currentSourceSelection()
         let sendId = UUID()
         pendingSendId = sendId
@@ -1143,6 +1150,7 @@ final class ChatViewModel: ObservableObject {
             userNode = messageStore[sessionId]?.first(where: { $0.id == parentId })
         }
         guard let userNode else { return }
+        voiceTranscriber.interrupt()
         let sourceSnapshot = currentSourceSelection()
         cancelPendingSend()
         priorGeneration?.cancel()
@@ -1595,9 +1603,6 @@ final class ChatViewModel: ObservableObject {
                 sessionId: parent.sessionId, promptText: prompt.text,
                 promptImageCount: prompt.imageFiles.count, currentMessageId: parent.id,
                 limits: limits, systemPrompt: systemPrompt)
-            if normalHistory.currentInputTooLarge {
-                throw ConversationError.CurrentInputTooLarge
-            }
             if normalHistory.wasTrimmed && overflowBypassMessageId != parent.id {
                 return .overflow(
                     inputTokens: normalHistory.inputTokens,
@@ -2503,7 +2508,6 @@ final class ChatViewModel: ObservableObject {
         let inputTokens: Int
         let inputBudget: Int
         let wasTrimmed: Bool
-        let currentInputTooLarge: Bool
     }
 
     private struct GenerationLimits {
@@ -2572,8 +2576,7 @@ final class ChatViewModel: ObservableObject {
         if remaining <= 0 || historyMessages.isEmpty {
             return HistorySelection(
                 messages: [], inputTokens: inputTokens, inputBudget: inputBudget,
-                wasTrimmed: inputTokens > inputBudget,
-                currentInputTooLarge: systemTokens + promptTokens > inputBudget)
+                wasTrimmed: inputTokens > inputBudget)
         }
 
         let quantum = max(1, inputBudget / 4)
@@ -2603,7 +2606,7 @@ final class ChatViewModel: ObservableObject {
 
         return HistorySelection(
             messages: selected, inputTokens: inputTokens, inputBudget: inputBudget,
-            wasTrimmed: inputTokens > inputBudget, currentInputTooLarge: false)
+            wasTrimmed: inputTokens > inputBudget)
     }
 
     private func resolveMaxOutputTokens(contextLength: Int) -> Int {

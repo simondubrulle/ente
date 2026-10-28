@@ -128,6 +128,7 @@ internal fun HomeNavigation(
                         chatState = appState.chat,
                         isDrawerOpen = drawerState.currentValue == DrawerValue.Open,
                         onMessageChange = store::updateMessageText,
+                        onComposerSelection = store::updateComposerSelection,
                         onSend = store::sendMessage,
                         onStop = store::stopGeneration,
                         onCancelDownload = store::cancelDownload,

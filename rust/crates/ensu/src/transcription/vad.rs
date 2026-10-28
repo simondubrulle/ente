@@ -12,6 +12,7 @@ pub(crate) struct SileroV4Vad {
     session: Session,
     hidden: [f32; 128],
     cell: [f32; 128],
+    threshold: f32,
 }
 
 fn inference(error: impl std::fmt::Display) -> TranscribeError {
@@ -19,7 +20,7 @@ fn inference(error: impl std::fmt::Display) -> TranscribeError {
 }
 
 impl SileroV4Vad {
-    pub fn new(path: impl AsRef<Path>) -> Result<Self, TranscribeError> {
+    pub fn new(path: impl AsRef<Path>, threshold: f32) -> Result<Self, TranscribeError> {
         let session = Session::builder()
             .map_err(inference)?
             .with_optimization_level(GraphOptimizationLevel::Level3)
@@ -34,6 +35,7 @@ impl SileroV4Vad {
             session,
             hidden: [0.0; 128],
             cell: [0.0; 128],
+            threshold,
         })
     }
 
@@ -97,7 +99,7 @@ impl Vad for SileroV4Vad {
         SILERO_V4_FRAME_SAMPLES
     }
     fn is_speech(&mut self, frame: &[f32]) -> Result<bool, TranscribeError> {
-        Ok(self.speech_probability(frame)? > 0.5)
+        Ok(self.speech_probability(frame)? > self.threshold)
     }
     fn reset(&mut self) {
         self.hidden.fill(0.0);

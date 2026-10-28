@@ -50,6 +50,7 @@ internal fun ChatView(
     onOpenVoiceInput: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
     isDrawerOpen: Boolean,
     onMessageChange: (String) -> Unit,
+    onComposerSelection: (Int, Int, Boolean) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onCancelDownload: () -> Unit,
@@ -235,7 +236,7 @@ internal fun ChatView(
                                 inputBarHeightDp = with(density) { coords.size.height.toDp() }
                             }
                 )
-            } else if (chatState.isModelStateKnown) {
+            } else if (chatState.isModelStateKnown && !showDownloadOnboarding) {
                 val voicePreview = voiceController.composerPreview(chatState.messageText)
                 MessageInput(
                     modifier =
@@ -256,6 +257,7 @@ internal fun ChatView(
                     sourcesError = chatState.sourceSelectionError,
                     onRetrySources = onRetrySources,
                     onMessageChange = onMessageChange,
+                    onComposerSelection = onComposerSelection,
                     onSend = {
                         focusManager.clearFocus()
                         onSend()
@@ -265,10 +267,7 @@ internal fun ChatView(
                     onRemoveAttachment = onRemoveAttachment,
                     onCancelEdit = onCancelEdit,
                     voiceController = voiceController,
-                    onVoiceInput = { value ->
-                        onOpenVoiceInput(value)
-                        focusManager.clearFocus()
-                    },
+                    onVoiceInput = onOpenVoiceInput,
                     voiceCaret = voicePreview?.caretUtf16?.toInt() ?: voiceController.composerCaret,
                     focusRequestId = focusRequestId,
                 )

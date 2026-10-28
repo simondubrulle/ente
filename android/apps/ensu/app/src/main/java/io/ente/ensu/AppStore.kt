@@ -92,6 +92,15 @@ class AppStore(
 
     private var composerRevision = 0uL
     private var emptyComposerId = UUID.randomUUID().toString()
+    private var composerSelectionStart = 0
+    private var composerSelectionEnd = 0
+    private var composerIsComposing = false
+
+    internal fun updateComposerSelection(start: Int, end: Int, isComposing: Boolean) {
+        composerSelectionStart = start
+        composerSelectionEnd = end
+        composerIsComposing = isComposing
+    }
 
     private fun invalidateComposer() {
         composerRevision++
@@ -138,14 +147,30 @@ class AppStore(
         if (selectionStart !in 0..selectionEnd || selectionEnd > text.length) return
         val characters = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
         if (!characters.isBoundary(selectionStart) || !characters.isBoundary(selectionEnd)) return
-        voiceController.open(
-            DictationInsertion(
-                chat.currentSessionId ?: emptyComposerId,
-                composerRevision,
-                selectionStart.toUInt(),
-                selectionEnd.toUInt(),
+        updateComposerSelection(selectionStart, selectionEnd, isComposing)
+        val destination = chat.currentSessionId ?: emptyComposerId
+        voiceController.open {
+            val current = _state.value.chat
+            val start = composerSelectionStart
+            val end = composerSelectionEnd
+            val boundaries =
+                BreakIterator.getCharacterInstance(Locale.ROOT).apply {
+                    setText(current.messageText)
+                }
+            if (
+                destination != (current.currentSessionId ?: emptyComposerId) ||
+                    current.isGenerating ||
+                    current.isDownloading ||
+                    current.editingMessageId != null ||
+                    composerIsComposing ||
+                    start !in 0..end ||
+                    end > current.messageText.length ||
+                    !boundaries.isBoundary(start) ||
+                    !boundaries.isBoundary(end)
             )
-        )
+                null
+            else DictationInsertion(destination, composerRevision, start.toUInt(), end.toUInt())
+        }
     }
 
     fun dispose() = voiceController.dispose()
@@ -171,7 +196,10 @@ class AppStore(
         modelSettingsActions.setAppForeground(active)
     }
 
-    fun setPickerPending(pending: Boolean) = modelSettingsActions.setPickerPending(pending)
+    fun setPickerPending(pending: Boolean) {
+        if (pending) voiceController.discard(keepDownload = true)
+        modelSettingsActions.setPickerPending(pending)
+    }
 
     fun handleMemoryPressure() {
         voiceController.interrupt(VoiceInputFailure.MemoryUnavailable)
@@ -246,27 +274,27 @@ class AppStore(
     }
 
     fun createNewSession(): String {
-        voiceController.discard()
+        voiceController.discard(keepDownload = true)
         invalidateComposer()
         return chatActions.createNewSession()
     }
 
     fun startNewSessionDraft() {
-        voiceController.discard()
+        voiceController.discard(keepDownload = true)
         emptyComposerId = UUID.randomUUID().toString()
         invalidateComposer()
         chatActions.startNewSessionDraft()
     }
 
     fun selectSession(sessionId: String) {
-        voiceController.discard()
+        voiceController.discard(keepDownload = true)
         invalidateComposer()
         chatActions.selectSession(sessionId)
     }
 
     fun deleteSession(sessionId: String) {
         if (sessionId == _state.value.chat.currentSessionId) {
-            voiceController.discard()
+            voiceController.discard(keepDownload = true)
             invalidateComposer()
         }
         chatActions.deleteSession(sessionId)
@@ -286,7 +314,7 @@ class AppStore(
         chatActions.updateBranchSelection(messageId, selectedIndex)
 
     fun beginEditing(messageId: String) {
-        voiceController.discard()
+        voiceController.discard(keepDownload = true)
         invalidateComposer()
         chatActions.beginEditing(messageId)
     }
@@ -335,10 +363,14 @@ class AppStore(
         modelSettingsActions.cancelModelDownload()
     }
 
-    fun retryAssistantMessage(messageId: String) = chatActions.retryAssistantMessage(messageId)
+    fun retryAssistantMessage(messageId: String) {
+        voiceController.interrupt()
+        chatActions.retryAssistantMessage(messageId)
+    }
 
     fun sendMessage() {
-        if (voiceController.active) return
+        if (voiceController.blocksComposer) return
+        voiceController.discard(keepDownload = true)
         invalidateComposer()
         chatActions.sendMessage()
     }

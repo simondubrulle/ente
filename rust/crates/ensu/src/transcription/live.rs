@@ -7,16 +7,27 @@ use transcribe_rs::vad::Vad;
 use super::{StreamNormalizer, Transcriber};
 use crate::voice::{
     AlignedWord, CaptureFeedResult, CaptureFormat, CaptureQueue, Result, RollingRecognizer,
-    VoiceError,
+    TranscriptBoundary, VoiceError,
 };
 
 pub enum LiveEvent {
     Ready,
-    Audio { start: u64, end: u64, voiced: bool },
+    Audio {
+        start: u64,
+        end: u64,
+        voiced: bool,
+    },
     Hypothesis(String),
-    Commit { start: u64, end: u64, text: String },
-    Deferred,
-    ReplaceTranscript(String),
+    Commit {
+        start: u64,
+        end: u64,
+        text: String,
+    },
+    Deferred {
+        reason: VoiceError,
+        committed_through: u64,
+        model_ready: bool,
+    },
     Coverage(u64),
     Idle,
     CaptureClosed,
@@ -121,8 +132,8 @@ impl LiveTranscription {
                     .load_model()
                     .map_err(|error| super::voice_error("Load transcription model", error))
             },
-            |request| transcriber.transcribe_window(&request.samples),
-            |pcm| transcriber.transcribe_recording(pcm, || self.queue.is_cancelled()),
+            |request| transcriber.transcribe_window(&request.samples, || self.queue.is_cancelled()),
+            |pcm| transcriber.transcribe_tail(pcm, || self.queue.is_cancelled()),
             on_event,
         )
     }
@@ -132,7 +143,7 @@ impl LiveTranscription {
         make_vad: impl FnOnce() -> Result<Box<dyn Vad>>,
         prepare: impl FnOnce() -> Result<()> + Send,
         mut decode: impl FnMut(&crate::voice::DecodeWindow) -> Result<Vec<AlignedWord>> + Send,
-        decode_recorded: impl FnOnce(&[u8]) -> Result<String>,
+        decode_recorded: impl FnMut(&[u8]) -> Result<Vec<AlignedWord>>,
         on_event: &mut impl FnMut(LiveEvent) -> Result<LiveControl>,
     ) -> Result<()> {
         let _capture = self.start()?;
@@ -144,6 +155,8 @@ impl LiveTranscription {
         }
         let mut normalizer = StreamNormalizer::new(self.queue.format())?;
         let mut rolling = RollingRecognizer::default();
+        let mut boundary = TranscriptBoundary::default();
+        let mut provisional = Vec::new();
         let mut pcm = super::recorded::RecordedPcm::default();
         let mut accepted = 0_u64;
         let mut deferred = false;
@@ -194,13 +207,20 @@ impl LiveTranscription {
                             },
                             on_event,
                         )?;
-                        pcm.push(&frame[..real])?;
+                        pcm.push(&frame[..real], voiced)?;
                         if !deferred {
                             match rolling.feed(&frame[..real], voiced) {
                                 Ok(()) => {}
                                 Err(VoiceError::BacklogFull) => {
                                     deferred = true;
-                                    self.emit(LiveEvent::Deferred, on_event)?;
+                                    self.emit(
+                                        LiveEvent::Deferred {
+                                            reason: VoiceError::BacklogFull,
+                                            committed_through: boundary.end,
+                                            model_ready: prepared,
+                                        },
+                                        on_event,
+                                    )?;
                                 }
                                 Err(error) => return Err(error),
                             }
@@ -244,16 +264,25 @@ impl LiveTranscription {
                                             on_event,
                                         )?;
                                         self.emit(
-                                            LiveEvent::Coverage(update.covered_through),
+                                            LiveEvent::Coverage(update.boundary.end),
                                             on_event,
                                         )?;
+                                        boundary = update.boundary;
+                                        provisional = update.provisional;
                                     }
                                     Err(
-                                        VoiceError::UnstableTranscript
-                                        | VoiceError::IncompleteAudio,
+                                        reason @ (VoiceError::UnstableTranscript
+                                        | VoiceError::IncompleteAudio),
                                     ) => {
                                         deferred = true;
-                                        self.emit(LiveEvent::Deferred, on_event)?;
+                                        self.emit(
+                                            LiveEvent::Deferred {
+                                                reason,
+                                                committed_through: boundary.end,
+                                                model_ready: prepared,
+                                            },
+                                            on_event,
+                                        )?;
                                     }
                                     Err(error) => return Err(error),
                                 }
@@ -304,13 +333,9 @@ impl LiveTranscription {
                 drop(vad);
                 drop(normalizer);
                 self.check()?;
-                let text = decode_recorded(pcm.bytes())?;
+                self.finish_recording(&pcm, &boundary, &provisional, decode_recorded, on_event)?;
                 self.check()?;
-                if text.trim().is_empty() {
-                    return Err(VoiceError::IncompleteAudio);
-                }
-                self.emit(LiveEvent::ReplaceTranscript(text), on_event)?;
-                self.emit(LiveEvent::Coverage(accepted), on_event)?;
+                self.emit(LiveEvent::Hypothesis(String::new()), on_event)?;
             }
             Ok(())
         })
@@ -406,7 +431,8 @@ mod tests {
         let (release, loading) = mpsc::sync_channel(1);
         let mut accepted = 0;
         let mut deferred = false;
-        let mut replacement = None;
+        let mut replacement = String::new();
+        let mut decoded_samples = 0;
         let mut coverage = 0;
         stream
             .run_with(
@@ -417,8 +443,14 @@ mod tests {
                 },
                 |_| panic!("Initialization exceeded the existing live backlog limit"),
                 |pcm| {
-                    assert_eq!(pcm, [0, 32].repeat(12 * 16000));
-                    Ok("All opening speech".into())
+                    assert!(pcm.len() <= super::super::MAX_RECORDED_WINDOW_SAMPLES * 2);
+                    assert!(pcm.as_chunks::<2>().0.iter().all(|frame| *frame == [0, 32]));
+                    let first = decoded_samples == 0;
+                    decoded_samples += pcm.len() / 2;
+                    super::super::recorded::decoded_chunk(
+                        pcm,
+                        if first { "All opening" } else { " speech" },
+                    )
                 },
                 &mut |event| {
                     match event {
@@ -434,8 +466,8 @@ mod tests {
                                 release.send(()).unwrap();
                             }
                         }
-                        LiveEvent::Deferred => deferred = true,
-                        LiveEvent::ReplaceTranscript(text) => replacement = Some(text),
+                        LiveEvent::Deferred { .. } => deferred = true,
+                        LiveEvent::Commit { text, .. } => replacement.push_str(&text),
                         LiveEvent::Coverage(end) => coverage = end,
                         _ => {}
                     }
@@ -443,7 +475,8 @@ mod tests {
                 },
             )
             .unwrap();
-        assert_eq!(replacement.as_deref(), Some("All opening speech"));
+        assert_eq!(replacement, "All opening speech");
+        assert!(decoded_samples >= 12 * 16000);
         assert_eq!(coverage, 12 * 16000);
     }
 
@@ -548,7 +581,7 @@ mod tests {
     }
 
     #[test]
-    fn failed_live_decode_continues_capture_and_replays_every_sample_once() {
+    fn failed_initial_decode_recovers_all_audio_without_ending_capture() {
         for failure in [VoiceError::UnstableTranscript, VoiceError::IncompleteAudio] {
             let stream = stream();
             for _ in 0..3 {
@@ -565,11 +598,11 @@ mod tests {
                     |_| Err(failure.clone()),
                     |pcm| {
                         assert_eq!(pcm, [0, 32].repeat(9600 + 1001));
-                        Ok("Complete recording".into())
+                        super::super::recorded::decoded_chunk(pcm, "Complete recording")
                     },
                     &mut |event| {
                         match event {
-                            LiveEvent::Deferred => {
+                            LiveEvent::Deferred { .. } => {
                                 assert!(!deferred);
                                 assert!(!closed);
                                 deferred = true;
@@ -580,7 +613,7 @@ mod tests {
                                 assert!(deferred);
                                 closed = true;
                             }
-                            LiveEvent::ReplaceTranscript(text) => {
+                            LiveEvent::Commit { text, .. } => {
                                 assert!(closed);
                                 final_text.push(text);
                             }
@@ -597,28 +630,175 @@ mod tests {
     }
 
     #[test]
+    fn recovery_preserves_committed_prefix_and_cancel_keeps_the_visible_tail() {
+        use super::super::DictationState;
+
+        fn word(text: &str, start: u64, end: u64) -> AlignedWord {
+            AlignedWord {
+                text: text.into(),
+                start,
+                end,
+            }
+        }
+
+        for failure in [VoiceError::UnstableTranscript, VoiceError::IncompleteAudio] {
+            for outcome in 0..3 {
+                let stream = stream();
+                let (release, loading) = mpsc::sync_channel(1);
+                let mut state = DictationState::new(true);
+                state.session.begin_capture().unwrap();
+                let mut samples = [0, 32].repeat(192000);
+                samples[128000 * 2..128512 * 2].fill(0);
+                let mut fed = 0;
+                let mut calls = 0;
+                let mut recovered = 0;
+                let mut committed = false;
+                let mut deferred = false;
+                let expected_failure = failure.clone();
+                let recovery_failure =
+                    VoiceError::ProcessingFailed("injected recovery failure".into());
+                let result = stream.run_with(
+                    vad,
+                    move || {
+                        loading.recv_timeout(Duration::from_secs(3)).unwrap();
+                        Ok(())
+                    },
+                    |_| {
+                        calls += 1;
+                        if calls > 3 {
+                            return Err(failure.clone());
+                        }
+                        let mut words = vec![
+                            word("Stable", 4000, 8000),
+                            word("tentative", 64000, 68000),
+                            word("tail", 72000, 76000),
+                        ];
+                        if calls == 3 {
+                            words.push(word("later", 144000, 152000));
+                        }
+                        Ok(words)
+                    },
+                    |pcm| {
+                        recovered += 1;
+                        if recovered == 1 {
+                            assert_eq!(pcm, &samples[..128512 * 2]);
+                            if outcome == 1 {
+                                stream.cancel();
+                            }
+                            Ok(vec![
+                                word("Stable", 4000, 8000),
+                                word("corrected", 64000, 68000),
+                                word("tail", 72000, 76000),
+                            ])
+                        } else if outcome == 2 {
+                            Err(recovery_failure.clone())
+                        } else {
+                            assert_eq!(recovered, 2);
+                            assert_eq!(pcm, &samples[52000 * 2..]);
+                            Ok(vec![
+                                word("tail", 20000, 24000),
+                                word("later", 92000, 100000),
+                                word("ending", 138000, 140000),
+                            ])
+                        }
+                    },
+                    &mut |event| {
+                        let feed_until = match &event {
+                            LiveEvent::Idle if fed < 139264 => (fed + 3200).min(139264),
+                            LiveEvent::Audio { end: 139264, .. } => {
+                                release.send(()).unwrap();
+                                fed
+                            }
+                            LiveEvent::Hypothesis(_) if !committed => fed + 8192,
+                            LiveEvent::Commit { text, .. } if !committed => {
+                                assert_eq!(text, "Stable");
+                                committed = true;
+                                fed + 8192
+                            }
+                            LiveEvent::Deferred {
+                                reason,
+                                committed_through,
+                                model_ready,
+                            } => {
+                                assert_eq!(reason, &expected_failure);
+                                assert_eq!(*committed_through, 8000);
+                                assert!(*model_ready);
+                                assert_eq!(state.text(), "Stable");
+                                assert_eq!(state.hypothesis(), " tentative tail later");
+                                deferred = true;
+                                192000
+                            }
+                            _ => fed,
+                        };
+                        while fed < feed_until {
+                            let end = (fed + 3200).min(feed_until);
+                            stream.feed(&samples[fed * 2..end * 2])?;
+                            fed = end;
+                        }
+                        if matches!(event, LiveEvent::Deferred { .. }) {
+                            stream.finish();
+                        }
+                        state.apply(event, || false)?;
+                        Ok(LiveControl::Continue)
+                    },
+                );
+                assert!(deferred && committed);
+                state.finish(result.is_ok()).unwrap();
+                match outcome {
+                    1 => {
+                        assert_eq!(result, Err(VoiceError::Cancelled));
+                        assert_eq!(state.text(), "Stable tentative tail later");
+                    }
+                    2 => {
+                        assert_eq!(result, Err(recovery_failure));
+                        assert_eq!(state.text(), "Stable corrected tail later");
+                    }
+                    _ => {
+                        result.unwrap();
+                        assert_eq!(state.text(), "Stable corrected tail later ending");
+                    }
+                }
+                assert!(state.hypothesis().is_empty());
+                assert_eq!(state.session.incomplete(), outcome != 0);
+            }
+        }
+    }
+
+    #[test]
     fn incomplete_or_cancelled_recovery_cannot_publish_text_or_coverage() {
-        for cancelled in [false, true] {
+        for (samples, cancelled) in [(1001, false), (1001, true), (32000, false), (32000, true)] {
             let stream = stream();
-            stream.feed(&[0, 32].repeat(1001)).unwrap();
+            for chunk in [0, 32].repeat(samples).chunks(3200 * 2) {
+                stream.feed(chunk).unwrap();
+            }
             stream.finish();
             let result = stream.run_with(
                 vad,
                 || Ok(()),
-                |_| Err(VoiceError::UnstableTranscript),
                 |_| {
+                    if samples == 1001 {
+                        Err(VoiceError::UnstableTranscript)
+                    } else {
+                        Ok(vec![AlignedWord {
+                            text: "truncated prefix".into(),
+                            start: 0,
+                            end: 8000,
+                        }])
+                    }
+                },
+                |pcm| {
                     if cancelled {
                         stream.cancel();
-                        Ok("late result".into())
+                        super::super::recorded::decoded_chunk(pcm, "late result")
                     } else {
-                        Ok(String::new())
+                        super::super::recorded::decoded_chunk(pcm, "")
                     }
                 },
                 &mut |event| {
-                    assert!(!matches!(
-                        event,
-                        LiveEvent::ReplaceTranscript(_) | LiveEvent::Coverage(_)
-                    ));
+                    assert!(!matches!(event, LiveEvent::Commit { .. }));
+                    if let LiveEvent::Coverage(end) = event {
+                        assert_eq!(end, 0);
+                    }
                     Ok(LiveControl::Continue)
                 },
             );

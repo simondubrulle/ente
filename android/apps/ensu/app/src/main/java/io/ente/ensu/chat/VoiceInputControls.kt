@@ -38,6 +38,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
@@ -51,6 +52,7 @@ import io.ente.ensu.designsystem.EnsuColor
 import io.ente.ensu.designsystem.EnsuSpacing
 import io.ente.ensu.designsystem.EnsuTypography
 import io.ente.ensu.designsystem.HugeIcons
+import io.ente.ensu.platform.rememberHaptics
 
 @Composable
 internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
@@ -60,7 +62,7 @@ internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
     val context = LocalContext.current
     val label =
         when (state) {
-            is VoiceInputState.Downloading -> "Downloading"
+            is VoiceInputState.Downloading -> if (state.queued) "Download queued" else "Downloading"
             VoiceInputState.Preparing,
             VoiceInputState.Idle -> "Preparing"
             VoiceInputState.Transcribing ->
@@ -98,7 +100,7 @@ internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
             VoiceWaveform(controller.audioLevels, Modifier.weight(1f).height(24.dp))
         else Spacer(Modifier.weight(1f))
         if (controller.active && !state.isRecording) {
-            TextButton(onClick = controller::discard) { Text("Cancel") }
+            TextButton(onClick = { controller.discard() }) { Text("Cancel") }
         }
     }
 }
@@ -110,6 +112,7 @@ internal fun VoiceInputButton(
     onOpen: () -> Unit,
 ) {
     val context = LocalContext.current
+    val haptic = rememberHaptics()
     var permissionRequest by rememberSaveable { mutableStateOf<Long?>(null) }
     val permission =
         rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) {
@@ -140,6 +143,7 @@ internal fun VoiceInputButton(
     val canPress = if (controller.active) capturing else enabled && controller.canOpen
     val description =
         when {
+            downloading?.queued == true -> "Voice model download queued"
             downloading != null -> "Downloading voice model"
             preparing -> "Preparing voice input"
             transcribing -> "Transcribing"
@@ -149,17 +153,20 @@ internal fun VoiceInputButton(
     IconButton(
         onClick = {
             when {
-                capturing -> controller.stop()
+                capturing -> {
+                    haptic.perform(HapticFeedbackType.LongPress)
+                    controller.stop()
+                }
                 else -> onOpen()
             }
         },
         enabled = canPress,
-        modifier = Modifier.size(44.dp).semantics { contentDescription = description },
+        modifier = Modifier.size(36.dp).semantics { contentDescription = description },
     ) {
         when {
             downloading != null || preparing || transcribing ->
                 Box(Modifier.size(28.dp), contentAlignment = Alignment.Center) {
-                    if (downloading?.percent != null)
+                    if (downloading?.percent != null && !downloading.queued)
                         CircularProgressIndicator(
                             progress = { downloading.percent.coerceIn(0, 100) / 100f },
                             modifier = Modifier.size(28.dp),
@@ -187,7 +194,7 @@ internal fun VoiceInputButton(
                         tint = EnsuColor.backgroundBase(),
                     )
                 }
-            else -> Icon(painterResource(HugeIcons.Mic02Icon), null, Modifier.size(20.dp))
+            else -> Icon(painterResource(HugeIcons.Mic02Icon), null, Modifier.size(18.dp))
         }
     }
 }

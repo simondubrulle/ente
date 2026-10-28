@@ -57,6 +57,7 @@ internal enum class VoiceInputFailure(val message: String) {
     MemoryUnavailable("Not enough free memory. Close other apps and try again."),
     MicrophoneUnavailable("Could not start the microphone. Tap the microphone to try again."),
     Interrupted("Voice input was interrupted. Review the available text and try again."),
+    Incomplete("Some words may be missing. Review the text."),
     ProcessingFailed("Could not transcribe voice input. Review the available text and try again."),
 }
 
@@ -84,7 +85,7 @@ internal sealed interface VoiceInputState {
 
     data object Recording : VoiceInputState
 
-    data class Downloading(val percent: Int?) : VoiceInputState
+    data class Downloading(val percent: Int?, val queued: Boolean = true) : VoiceInputState
 
     data object Transcribing : VoiceInputState
 
@@ -130,8 +131,10 @@ internal class VoiceTranscriptionController(
     private var capture: LiveMicrophone? = null
     private var work: Job? = null
     private var finishingNoticeJob: Job? = null
+    private var transientErrorJob: Job? = null
     private var attemptFinished = false
     private var insertion: DictationInsertion? = null
+    private var insertionFactory: (() -> DictationInsertion?)? = null
     private var foreground = true
     private var generation = 0L
     val sessionVersion: Long
@@ -166,13 +169,17 @@ internal class VoiceTranscriptionController(
     val canOpen: Boolean
         get() = !active && !hasActiveWork
 
-    fun open(insertion: DictationInsertion) {
+    val blocksComposer: Boolean
+        get() = active && state != VoiceInputState.Idle && state !is VoiceInputState.Downloading
+
+    fun open(insertionFactory: () -> DictationInsertion?) {
         if (!canOpen) return
+        transientErrorJob?.cancel()
         generation++
         initialRecordPending = true
         attemptFinished = false
         isFinishingSlow = false
-        this.insertion = insertion
+        this.insertionFactory = insertionFactory
         session = DictationSession(live = usesLiveDictation)
         snapshot = session?.snapshot()
         failure = null
@@ -183,7 +190,7 @@ internal class VoiceTranscriptionController(
 
     fun composerPreview(original: String): io.ente.ensu.bindings.DictationInsertionResult? {
         val value = snapshot ?: return null
-        if (!active) return null
+        if (!blocksComposer) return null
         return runCatching { insertion?.preview(original, value.text + value.hypothesis) }
             .getOrNull()
     }
@@ -211,14 +218,17 @@ internal class VoiceTranscriptionController(
                 startOnForeground = false
                 record()
             } else session?.let { refresh(it, generation) }
-        } else if (!awaitingPermission && !startOnForeground) interrupt()
+        } else if (
+            !awaitingPermission && !startOnForeground && state !is VoiceInputState.Downloading
+        )
+            interrupt()
     }
 
     fun record() {
         val owner = session ?: return
         if (!active || !foreground || hasActiveWork || attemptFinished) return
         failure = null
-        state = VoiceInputState.Preparing
+        state = VoiceInputState.Downloading(null)
         val token = generation
         hasActiveWork = true
         work =
@@ -232,16 +242,30 @@ internal class VoiceTranscriptionController(
                                 modelAssets.all { assetStore.isDownloaded(it) }
                             }
                         ) {
-                            state = VoiceInputState.Downloading(null)
                             assetStore.download(modelAssets) { progress ->
                                 scope.launch {
                                     if (token == generation && state is VoiceInputState.Downloading)
                                         state =
-                                            VoiceInputState.Downloading(progress.percentage.toInt())
+                                            VoiceInputState.Downloading(
+                                                progress.totalBytes?.let {
+                                                    progress.percentage.toInt()
+                                                },
+                                                progress.queued,
+                                            )
                                 }
                             }
                         }
-                        if (token != generation || !foreground) return@launch
+                        if (token != generation) return@launch
+                        if (!foreground) {
+                            discard()
+                            return@launch
+                        }
+                        insertion = insertionFactory?.invoke()
+                        insertionFactory = null
+                        if (insertion == null) {
+                            discard()
+                            return@launch
+                        }
                         state = VoiceInputState.Preparing
                         val activeStream = DictationStream(owner, 16000u, 1u)
                         stream = activeStream
@@ -370,6 +394,8 @@ internal class VoiceTranscriptionController(
         val completedState =
             when {
                 added && !value.incomplete -> VoiceInputState.Idle
+                added && failure == VoiceInputFailure.ProcessingFailed ->
+                    VoiceInputState.Error(VoiceInputFailure.Incomplete)
                 text.isBlank() -> VoiceInputState.Error(failure ?: VoiceInputFailure.NoSpeech)
                 else -> VoiceInputState.Error(failure ?: VoiceInputFailure.Interrupted)
             }
@@ -378,8 +404,15 @@ internal class VoiceTranscriptionController(
         snapshot = null
         session = null
         insertion = null
+        insertionFactory = null
         audioLevels = List(24) { 0f }
         state = completedState
+        if (completedState == VoiceInputState.Error(VoiceInputFailure.NoSpeech)) {
+            transientErrorJob = scope.launch {
+                delay(10_000)
+                if (token == generation && state == completedState) state = VoiceInputState.Idle
+            }
+        }
     }
 
     private fun watchFinalization(
@@ -426,6 +459,10 @@ internal class VoiceTranscriptionController(
 
     fun interrupt(reason: VoiceInputFailure = VoiceInputFailure.Interrupted) {
         if (!active || attemptFinished) return
+        if (state is VoiceInputState.Downloading) {
+            insertionFactory = null
+            return
+        }
         if (!hasActiveWork && stream == null) {
             discard()
             return
@@ -439,10 +476,16 @@ internal class VoiceTranscriptionController(
         isFinishingSlow = false
     }
 
-    fun discard() {
+    fun discard(keepDownload: Boolean = false) {
+        if (keepDownload && state is VoiceInputState.Downloading && hasActiveWork) {
+            insertionFactory = null
+            return
+        }
         awaitingPermission = false
         startOnForeground = false
         generation++
+        transientErrorJob?.cancel()
+        transientErrorJob = null
         finishingNoticeJob?.cancel()
         finishingNoticeJob = null
         capture?.stop()
@@ -454,6 +497,7 @@ internal class VoiceTranscriptionController(
         snapshot = null
         session = null
         insertion = null
+        insertionFactory = null
         stream = null
         capture = null
     }

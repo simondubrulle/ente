@@ -229,7 +229,7 @@ impl DictationStream {
             .compare_exchange(false, true, Ordering::AcqRel, Ordering::Acquire)
             .is_ok()
         {
-            self.session.lock().session.worker_exited(false)?;
+            self.session.lock().finish(false)?;
         }
         Ok(())
     }
@@ -244,12 +244,21 @@ impl DictationStream {
         let mut notified_stop = false;
         let mut last_notification = Instant::now();
         let mut on_event = |event: LiveEvent| {
+            if let LiveEvent::Deferred {
+                reason,
+                committed_through,
+                model_ready,
+            } = &event
+            {
+                let committed_ms = committed_through / 16;
+                let audio_ms = self.session.lock().session.accepted_samples() / 16;
+                ente_uniffi_log::info!(
+                    "Dictation deferring remaining audio: reason={reason} committed_ms={committed_ms} audio_ms={audio_ms} model_ready={model_ready}"
+                );
+            }
             let immediate = matches!(
                 &event,
-                LiveEvent::Commit { .. }
-                    | LiveEvent::ReplaceTranscript(_)
-                    | LiveEvent::Deferred
-                    | LiveEvent::CaptureClosed
+                LiveEvent::Commit { .. } | LiveEvent::Deferred { .. } | LiveEvent::CaptureClosed
             );
             if matches!(&event, LiveEvent::Ready) {
                 let phase = self.session.lock().session.phase();
@@ -291,8 +300,14 @@ impl DictationStream {
                 state.session.observe_drained_audio(accepted, submitted)?;
             }
         }
-        state.session.worker_exited(result.is_ok())?;
+        state.finish(result.is_ok())?;
+        let reason = state.session.stop_reason();
+        let audio_ms = state.session.accepted_samples() / 16;
+        let incomplete = state.session.incomplete();
         drop(state);
+        ente_uniffi_log::info!(
+            "Dictation finished: reason={reason:?} audio_ms={audio_ms} incomplete={incomplete}"
+        );
         self.stream.finish();
         if !notified_stop {
             callback.on_capture_closed();
@@ -386,7 +401,7 @@ mod tests {
         stream.abandon(DictationStopReason::Interruption).unwrap();
         assert!(owner.snapshot().worker_active);
         assert!(DictationStream::new(owner.clone(), 16000, 1).is_err());
-        owner.lock().session.worker_exited(false).unwrap();
+        owner.lock().finish(false).unwrap();
         let value = owner.snapshot();
         assert_eq!(
             format!("{}{}", value.text, value.hypothesis),
@@ -436,7 +451,7 @@ mod tests {
         }
     }
     #[test]
-    fn replacement_matches_the_composer_preview_and_discard_rejects_late_text() {
+    fn completion_preserves_committed_text_and_discard_rejects_late_text() {
         let owner = DictationSession::new(true);
         let stream = DictationStream::new(owner.clone(), 16000, 1).unwrap();
         event(
@@ -463,13 +478,24 @@ mod tests {
         );
         event(
             &owner,
-            LiveEvent::ReplaceTranscript("Complete recording".into()),
+            LiveEvent::Commit {
+                start: 16000,
+                end: 32000,
+                text: "corrected tail".into(),
+            },
         );
-        assert_eq!(owner.snapshot().text, "Complete recording");
+        assert_eq!(owner.snapshot().text, "partial corrected tail");
         assert!(owner.snapshot().hypothesis.is_empty());
         stream.abandon(DictationStopReason::Discard).unwrap();
-        event(&owner, LiveEvent::ReplaceTranscript("late".into()));
-        assert_eq!(owner.snapshot().text, "Complete recording");
+        event(
+            &owner,
+            LiveEvent::Commit {
+                start: 32000,
+                end: 48000,
+                text: "late".into(),
+            },
+        );
+        assert_eq!(owner.snapshot().text, "partial corrected tail");
         assert!(matches!(owner.snapshot().phase, DictationPhase::Closed));
     }
 }

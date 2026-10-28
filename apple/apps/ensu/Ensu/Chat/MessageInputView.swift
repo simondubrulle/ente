@@ -41,7 +41,7 @@ struct MessageInputView: View {
         let hasContent =
             !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || !attachments.isEmpty
         return hasContent && !isDownloading && !isSendPending
-            && !voiceService.active
+            && !voiceService.blocksComposer
     }
 
     private var isImageAttachmentLimitReached: Bool {
@@ -102,11 +102,12 @@ struct MessageInputView: View {
                         .padding(.horizontal, EnsuSpacing.pageHorizontal)
 
                     HStack(alignment: .bottom, spacing: EnsuSpacing.xs) {
-                        if supportsImageAttachments && !voiceService.active {
+                        if supportsImageAttachments && !voiceService.blocksComposer {
                             ActionButton(
                                 icon: "ImagePlusIcon", tooltip: "Add photos",
                                 color: EnsuColor.textPrimary, size: 32
                             ) {
+                                voiceService.releaseComposer()
                                 dismissInput()
                                 showPhotos = true
                             }
@@ -136,7 +137,7 @@ struct MessageInputView: View {
                         MessageTextView(
                             text: Binding(
                                 get: { composerText },
-                                set: { if !voiceService.active { text = $0 } }
+                                set: { if !voiceService.blocksComposer { text = $0 } }
                             ),
                             isFocused: $isFocused,
                             moveCursorToEndToken: moveCursorToEndToken,
@@ -151,8 +152,8 @@ struct MessageInputView: View {
                             insertionCaret: voicePreview.map { Int($0.caretUtf16) }
                                 ?? voiceInsertionCaret,
                             onSelectionChange: onComposerSelection,
-                            readOnly: voiceService.active,
-                            maximumLines: voiceService.active ? 8 : 5
+                            readOnly: voiceService.blocksComposer,
+                            maximumLines: voiceService.blocksComposer ? 8 : 5
                         )
                         .padding(.vertical, 6)
                         .overlay(alignment: .topLeading) {
@@ -182,6 +183,7 @@ struct MessageInputView: View {
                                 onDismissKeyboard()
                                 onVoiceInput()
                             }
+                            .padding(.leading, EnsuSpacing.xs)
                         }
 
                         Button {

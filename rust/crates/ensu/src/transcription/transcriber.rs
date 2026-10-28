@@ -3,7 +3,7 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity};
-use transcribe_rs::{OrtAccelerator, get_ort_accelerator};
+use transcribe_rs::{OrtAccelerator, TranscriptionResult, get_ort_accelerator};
 
 use super::graph_cache::{GRAPHS, GraphCache, LoadPlan, SOURCES};
 use crate::transcription::audio::extract_speech_from_pcm16;
@@ -28,7 +28,7 @@ impl Transcriber {
         if !metadata.is_file() {
             return Err(crate::voice::VoiceError::VadNotDownloaded);
         }
-        super::SileroV4Vad::new(&self.vad_model_path)
+        super::SileroV4Vad::new(&self.vad_model_path, 0.3)
             .map(|vad| Box::new(vad) as Box<dyn transcribe_rs::vad::Vad>)
             .map_err(|error| super::voice_error("Load voice activity model", error))
     }
@@ -36,8 +36,12 @@ impl Transcriber {
     pub(crate) fn transcribe_window(
         &self,
         samples: &[f32],
+        mut is_cancelled: impl FnMut() -> bool,
     ) -> crate::voice::Result<Vec<crate::voice::AlignedWord>> {
-        use crate::voice::{AlignedWord, MAX_WINDOW_SAMPLES, VoiceError};
+        use crate::voice::{MAX_WINDOW_SAMPLES, VoiceError};
+        if is_cancelled() {
+            return Err(VoiceError::Cancelled);
+        }
         if samples.is_empty()
             || samples.len() > MAX_WINDOW_SAMPLES
             || samples.iter().any(|s| !s.is_finite())
@@ -52,34 +56,10 @@ impl Transcriber {
             true,
         )
         .map_err(|error| super::voice_error("Load transcription model", error))?;
-        let result = model
-            .transcribe_with(
-                samples,
-                &ParakeetParams {
-                    timestamp_granularity: Some(TimestampGranularity::Word),
-                    ..Default::default()
-                },
-            )
-            .map_err(|error| super::voice_error("Transcribe live audio", error))?;
-        result
-            .segments
-            .ok_or(VoiceError::UnstableTranscript)?
-            .into_iter()
-            .map(|word| {
-                if !word.start.is_finite()
-                    || !word.end.is_finite()
-                    || word.end < word.start
-                    || word.start * 16000.0 > samples.len() as f32
-                {
-                    return Err(VoiceError::UnstableTranscript);
-                }
-                Ok(AlignedWord {
-                    text: word.text,
-                    start: (word.start.max(0.0) * 16000.0).round() as u64,
-                    end: ((word.end.max(0.0) * 16000.0).round() as u64).min(samples.len() as u64),
-                })
-            })
-            .collect()
+        let result = decode_window(model, samples, &mut is_cancelled)
+            .map_err(|error| super::voice_error("Transcribe live audio", error))?
+            .ok_or(VoiceError::Cancelled)?;
+        aligned_words(result, samples.len())
     }
 
     pub fn new(model_dir: impl Into<PathBuf>, vad_model_path: impl Into<PathBuf>) -> Self {
@@ -120,31 +100,8 @@ impl Transcriber {
     }
 
     pub fn transcribe(&self, input_sample_rate: u32, pcm_le: &[u8]) -> Result<String> {
-        self.transcribe_with_cancel(input_sample_rate, pcm_le, || false)
-            .map(Option::unwrap_or_default)
-    }
-
-    pub(crate) fn transcribe_recording(
-        &self,
-        pcm_le: &[u8],
-        is_cancelled: impl FnMut() -> bool,
-    ) -> crate::voice::Result<String> {
-        self.transcribe_with_cancel(16_000, pcm_le, is_cancelled)
-            .map_err(|error| super::voice_error("Transcribe recorded audio", error))?
-            .ok_or(crate::voice::VoiceError::Cancelled)
-    }
-
-    fn transcribe_with_cancel(
-        &self,
-        input_sample_rate: u32,
-        pcm_le: &[u8],
-        mut is_cancelled: impl FnMut() -> bool,
-    ) -> Result<Option<String>> {
-        if is_cancelled() {
-            return Ok(None);
-        }
         if pcm_le.is_empty() {
-            return Ok(Some(String::new()));
+            return Ok(String::new());
         }
         if !self.model_dir.is_dir() {
             return Err(TranscriptionError::NotDownloaded);
@@ -152,45 +109,118 @@ impl Transcriber {
         if !self.vad_model_path.is_file() {
             return Err(TranscriptionError::VadNotDownloaded);
         }
-
-        let speech = extract_speech_from_pcm16(
-            &self.vad_model_path,
-            input_sample_rate,
-            pcm_le,
-            &mut is_cancelled,
-        )?;
-        if is_cancelled() {
-            return Ok(None);
-        }
+        let speech = extract_speech_from_pcm16(&self.vad_model_path, input_sample_rate, pcm_le)?;
         if speech.is_empty() {
-            return Ok(Some(String::new()));
+            return Ok(String::new());
         }
+        let mut loaded = self.lock();
+        let model = ensure_loaded(
+            &mut loaded,
+            &self.model_dir,
+            self.graph_cache.as_ref(),
+            true,
+        )?;
+        let result = model.transcribe_with(
+            &speech,
+            &ParakeetParams {
+                timestamp_granularity: Some(TimestampGranularity::Segment),
+                ..Default::default()
+            },
+        )?;
+        Ok(super::text::filter_transcription_output(&result.text))
+    }
 
+    pub(crate) fn transcribe_tail(
+        &self,
+        pcm_le: &[u8],
+        mut is_cancelled: impl FnMut() -> bool,
+    ) -> crate::voice::Result<Vec<crate::voice::AlignedWord>> {
+        use crate::voice::VoiceError;
+
+        if is_cancelled() {
+            return Err(VoiceError::Cancelled);
+        }
+        let samples = super::audio::pcm16_samples(pcm_le)
+            .map_err(|error| super::voice_error("Read recorded audio", error))?;
+        if samples.is_empty() || samples.len() > super::MAX_RECORDED_WINDOW_SAMPLES {
+            return Err(VoiceError::InvalidAudio(
+                "Recorded audio exceeds the recognition window".into(),
+            ));
+        }
         let mut loaded = self.lock();
         let model = ensure_loaded(
             &mut loaded,
             &self.model_dir,
             self.graph_cache.as_ref(),
             false,
-        )?;
-        super::recorded::transcribe_chunks(&speech, |samples| {
-            if is_cancelled() {
-                return Ok(None);
-            }
-            let result = model.transcribe_with(
-                samples,
-                &ParakeetParams {
-                    timestamp_granularity: Some(TimestampGranularity::Segment),
-                    ..Default::default()
-                },
-            )?;
-            Ok((!is_cancelled()).then_some(result.text))
-        })
+        )
+        .map_err(|error| super::voice_error("Load transcription model", error))?;
+        let result = decode_window(model, &samples, &mut is_cancelled)
+            .map_err(|error| super::voice_error("Transcribe recorded audio", error))?
+            .ok_or(VoiceError::Cancelled)?;
+        aligned_words(result, samples.len())
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<ParakeetModel>> {
         self.loaded.lock().unwrap_or_else(PoisonError::into_inner)
     }
+}
+
+fn decode_window(
+    model: &mut ParakeetModel,
+    samples: &[f32],
+    is_cancelled: &mut impl FnMut() -> bool,
+) -> Result<Option<TranscriptionResult>> {
+    if is_cancelled() {
+        return Ok(None);
+    }
+    let params = ParakeetParams {
+        timestamp_granularity: Some(TimestampGranularity::Word),
+        ..Default::default()
+    };
+    let mut result = model.transcribe_with(samples, &params)?;
+    if is_cancelled() {
+        return Ok(None);
+    }
+    let maximum = if samples.len() <= crate::voice::MAX_WINDOW_SAMPLES {
+        crate::voice::MAX_WINDOW_SAMPLES
+    } else {
+        super::MAX_RECORDED_WINDOW_SAMPLES
+    };
+    let padding = (maximum - samples.len()).min(super::ENDPOINT_PADDING_SAMPLES);
+    if result.text.trim().is_empty() && padding > 0 {
+        let mut padded = Vec::with_capacity(samples.len() + padding);
+        padded.extend_from_slice(samples);
+        padded.resize(samples.len() + padding, 0.0);
+        result = model.transcribe_with(&padded, &params)?;
+    }
+    Ok((!is_cancelled()).then_some(result))
+}
+
+fn aligned_words(
+    result: TranscriptionResult,
+    samples: usize,
+) -> crate::voice::Result<Vec<crate::voice::AlignedWord>> {
+    use crate::voice::{AlignedWord, VoiceError};
+    result
+        .segments
+        .ok_or(VoiceError::UnstableTranscript)?
+        .into_iter()
+        .map(|word| {
+            if !word.start.is_finite()
+                || !word.end.is_finite()
+                || word.end < word.start
+                || word.start * 16000.0 > samples as f32
+            {
+                return Err(VoiceError::UnstableTranscript);
+            }
+            Ok(AlignedWord {
+                text: word.text,
+                start: (word.start.max(0.0) * 16000.0).round() as u64,
+                end: ((word.end.max(0.0) * 16000.0).round() as u64).min(samples as u64),
+            })
+        })
+        .collect()
 }
 
 fn ensure_loaded<'a>(

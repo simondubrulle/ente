@@ -7,7 +7,7 @@ struct VoiceInputControls: View {
 
     private var status: String {
         switch service.state {
-        case .downloading: return "Downloading"
+        case .downloading(_, let queued): return queued ? "Download queued" : "Downloading"
         case .preparing: return "Preparing"
         case .transcribing: return service.isFinishingSlow ? "Still transcribing" : "Transcribing"
         case .recording: return service.snapshot?.phase == .countdown ? "Finishing" : "Listening"
@@ -91,7 +91,8 @@ struct VoiceInputButton: View {
 
     private var label: String {
         switch service.state {
-        case .downloading: return "Downloading voice model"
+        case .downloading(_, let queued):
+            return queued ? "Voice model download queued" : "Downloading voice model"
         case .preparing: return "Preparing voice input"
         case .transcribing: return "Transcribing"
         case .recording: return "Stop dictation"
@@ -101,12 +102,17 @@ struct VoiceInputButton: View {
 
     var body: some View {
         Button {
-            if service.state.isRecording { service.stop() } else { onOpen() }
+            if service.state.isRecording {
+                hapticWarning()
+                service.stop()
+            } else {
+                onOpen()
+            }
         } label: {
             ZStack {
                 switch service.state {
-                case .downloading(let percent):
-                    if let percent {
+                case .downloading(let percent, let queued):
+                    if let percent, !queued {
                         Circle().stroke(EnsuColor.textMuted.opacity(0.2), lineWidth: 2)
                         Circle().trim(from: 0, to: CGFloat(min(100, max(0, percent))) / 100)
                             .stroke(
@@ -125,11 +131,11 @@ struct VoiceInputButton: View {
                     RoundedRectangle(cornerRadius: 2).fill(EnsuColor.backgroundBase)
                         .frame(width: 12, height: 12)
                 case .idle, .error:
-                    Image("Mic02Icon").resizable().scaledToFit().frame(width: 20, height: 20)
+                    Image("Mic02Icon").resizable().scaledToFit().frame(width: 16, height: 16)
                 }
             }
             .frame(width: 28, height: 28)
-            .frame(width: 44, height: 44)
+            .frame(width: 32, height: 32)
             .contentShape(Rectangle())
         }
         .foregroundStyle(canPress ? EnsuColor.textPrimary : EnsuColor.textMuted)

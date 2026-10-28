@@ -5,7 +5,7 @@ import Combine
 enum VoiceInputFailure: Equatable {
     case permission, microphone, noSpeech, interrupted, captureInterrupted
     case modelUnavailable, memoryUnavailable, storageFull, download, fileAccess, transcription
-    case insertion
+    case insertion, incomplete
 
     var message: String {
         switch self {
@@ -31,6 +31,8 @@ enum VoiceInputFailure: Equatable {
             return "Could not access voice model files. Try again."
         case .transcription:
             return "Could not transcribe voice input. Review the available text or try again."
+        case .incomplete:
+            return "Some words may be missing. Review the text."
         case .insertion:
             return "The draft changed before voice input finished. Tap the microphone to try again."
         }
@@ -62,7 +64,7 @@ enum VoiceInputState: Equatable {
     case idle
     case preparing
     case recording
-    case downloading(percent: Int?)
+    case downloading(percent: Int?, queued: Bool)
     case transcribing
     case error(VoiceInputFailure)
 
@@ -87,7 +89,19 @@ final class VoiceTranscriptionService: ObservableObject {
     @Published private(set) var snapshot: DictationSnapshot?
     @Published private(set) var audioLevels = Array(repeating: Float.zero, count: 24)
     @Published private(set) var notice: VoiceInputFailure?
-    @Published private(set) var state: VoiceInputState = .idle
+    @Published private(set) var state: VoiceInputState = .idle {
+        didSet {
+            transientErrorTask?.cancel()
+            transientErrorTask = nil
+            if state == .error(.noSpeech) {
+                transientErrorTask = Task { @MainActor [weak self] in
+                    do { try await Task.sleep(for: .seconds(10)) } catch { return }
+                    guard let self, self.state == .error(.noSpeech) else { return }
+                    self.state = .idle
+                }
+            }
+        }
+    }
     @Published private(set) var isFinishingSlow = false
     var onActivityChanged: (@MainActor () -> Void)?
     var onInsert: (@MainActor (DictationInsertion, String) -> Bool)?
@@ -101,8 +115,10 @@ final class VoiceTranscriptionService: ObservableObject {
     private var recorder: LivePcmRecorder?
     private var task: Task<Void, Never>?
     private var finishingNoticeTask: Task<Void, Never>?
+    private var transientErrorTask: Task<Void, Never>?
     private var attemptFinished = false
     private var insertion: DictationInsertion?
+    private var makeInsertion: (@MainActor () -> DictationInsertion?)?
     private var generation = UUID()
     private var foreground = true
     private var awaitingPermission = false
@@ -155,10 +171,18 @@ final class VoiceTranscriptionService: ObservableObject {
         }
     }
 
-    func open(insertion: DictationInsertion) {
+    var blocksComposer: Bool {
+        guard active else { return false }
+        switch state {
+        case .idle, .downloading: return false
+        default: return true
+        }
+    }
+
+    func open(makeInsertion: @escaping @MainActor () -> DictationInsertion?) {
         guard !active, !hasActiveTasks else { return }
         generation = UUID()
-        self.insertion = insertion
+        self.makeInsertion = makeInsertion
         attemptFinished = false
         isFinishingSlow = false
         session = DictationSession(live: usesLiveDictation)
@@ -179,6 +203,7 @@ final class VoiceTranscriptionService: ObservableObject {
                 refresh(owner, token: generation)
             }
         } else if !awaitingPermission, !startOnForeground {
+            if case .downloading = state { return }
             interrupt()
         }
     }
@@ -221,7 +246,7 @@ final class VoiceTranscriptionService: ObservableObject {
         }
         hasActiveTasks = true
         notice = nil
-        state = .preparing
+        state = .downloading(percent: nil, queued: true)
         task = Task { [weak self] in
             guard let self else { return }
             defer {
@@ -238,19 +263,30 @@ final class VoiceTranscriptionService: ObservableObject {
             }
             do {
                 if !self.modelAssets.allSatisfy({ self.assetStore.isDownloaded($0) }) {
-                    self.state = .downloading(percent: nil)
                     try await self.assetStore.download(assets: self.modelAssets) {
                         [weak self] progress in
                         Task { @MainActor [weak self] in
                             guard let self, self.generation == token,
                                 case .downloading = self.state
                             else { return }
-                            self.state = .downloading(percent: Int(progress.percentage))
+                            self.state = .downloading(
+                                percent: progress.totalBytes.map { _ in Int(progress.percentage) },
+                                queued: progress.queued)
                         }
                     }
                 }
                 try Task.checkCancellation()
-                guard self.generation == token, self.foreground else { return }
+                guard self.generation == token else { return }
+                guard self.foreground else {
+                    self.cancel()
+                    return
+                }
+                guard let insertion = self.makeInsertion?() else {
+                    self.cancel()
+                    return
+                }
+                self.insertion = insertion
+                self.makeInsertion = nil
                 self.state = .preparing
                 let recorder: LivePcmRecorder
                 do {
@@ -345,7 +381,9 @@ final class VoiceTranscriptionService: ObservableObject {
         let added = hasText && insertion.map { onInsert?($0, text) == true } == true
         let completedState: VoiceInputState
         if added {
-            completedState = value.incomplete ? .error(notice ?? .interrupted) : .idle
+            let failure: VoiceInputFailure =
+                notice == .transcription ? .incomplete : notice ?? .interrupted
+            completedState = value.incomplete ? .error(failure) : .idle
         } else {
             completedState = .error(hasText ? .insertion : notice ?? .noSpeech)
         }
@@ -354,6 +392,7 @@ final class VoiceTranscriptionService: ObservableObject {
         session = nil
         snapshot = nil
         insertion = nil
+        makeInsertion = nil
         onInsert = nil
         audioLevels = Array(repeating: 0, count: 24)
         state = completedState
@@ -387,6 +426,10 @@ final class VoiceTranscriptionService: ObservableObject {
 
     func interrupt(reason: VoiceInputFailure = .interrupted) {
         guard active, !attemptFinished else { return }
+        if case .downloading = state {
+            releaseComposer()
+            return
+        }
         if !hasActiveTasks, stream == nil {
             cancel()
             return
@@ -398,6 +441,15 @@ final class VoiceTranscriptionService: ObservableObject {
         isFinishingSlow = false
         notice = reason
         state = .transcribing
+    }
+
+    func releaseComposer() {
+        if case .downloading = state {
+            makeInsertion = nil
+            onInsert = nil
+        } else {
+            cancel()
+        }
     }
 
     func cancel() {
@@ -415,6 +467,7 @@ final class VoiceTranscriptionService: ObservableObject {
         snapshot = nil
         session = nil
         insertion = nil
+        makeInsertion = nil
         stream = nil
         recorder = nil
         onInsert = nil

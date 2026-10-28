@@ -17,34 +17,35 @@ pub fn extract_speech_from_pcm16(
     vad_model_path: impl AsRef<Path>,
     input_sample_rate: u32,
     pcm_le: &[u8],
-    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     if input_sample_rate == 0 {
         return Err(TranscriptionError::InvalidAudio(
             "input sample rate must be greater than zero".to_string(),
         ));
     }
+    let samples = pcm16_samples(pcm_le)?;
+    extract_speech(vad_model_path, input_sample_rate, &samples)
+}
+
+pub(super) fn pcm16_samples(pcm_le: &[u8]) -> Result<Vec<f32>> {
     if !pcm_le.len().is_multiple_of(2) {
         return Err(TranscriptionError::InvalidAudio(
             "PCM16 input must contain an even number of bytes".to_string(),
         ));
     }
 
-    let samples = pcm_le
+    Ok(pcm_le
         .as_chunks::<2>()
         .0
         .iter()
         .map(|chunk| i16::from_le_bytes(*chunk) as f32 / 32768.0)
-        .collect::<Vec<_>>();
-
-    extract_speech(vad_model_path, input_sample_rate, &samples, is_cancelled)
+        .collect())
 }
 
 fn extract_speech(
     vad_model_path: impl AsRef<Path>,
     input_sample_rate: u32,
     samples: &[f32],
-    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     if samples.is_empty() {
         return Ok(Vec::new());
@@ -54,7 +55,7 @@ fn extract_speech(
     if !vad_model_path.is_file() {
         return Err(TranscriptionError::VadNotDownloaded);
     }
-    let silero = SileroV4Vad::new(vad_model_path)?;
+    let silero = SileroV4Vad::new(vad_model_path, 0.5)?;
     let mut vad = SmoothedVad::new(
         Box::new(silero),
         VAD_PREFILL_FRAMES,
@@ -62,14 +63,13 @@ fn extract_speech(
         VAD_ONSET_FRAMES,
     );
 
-    extract_speech_with_vad(input_sample_rate, samples, &mut vad, is_cancelled)
+    extract_speech_with_vad(input_sample_rate, samples, &mut vad)
 }
 
 fn extract_speech_with_vad(
     input_sample_rate: u32,
     samples: &[f32],
     vad: &mut dyn Vad,
-    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     let mut resampler = FrameResampler::new(
         input_sample_rate as usize,
@@ -91,15 +91,7 @@ fn extract_speech_with_vad(
             Err(error) => vad_error = Some(error),
         }
     };
-    for chunk in samples.chunks(input_sample_rate as usize) {
-        if is_cancelled() {
-            return Ok(Vec::new());
-        }
-        resampler.push(chunk, &mut emit)?;
-    }
-    if is_cancelled() {
-        return Ok(Vec::new());
-    }
+    resampler.push(samples, &mut emit)?;
     resampler.finish(&mut emit)?;
     if let Some(error) = vad_error {
         return Err(error.into());
@@ -231,10 +223,9 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vad_failure_and_cancellation_do_not_return_partial_recordings() {
+    fn vad_failure_does_not_return_partial_recording() {
         struct FailsAfterSpeech {
             frames: usize,
-            fail: bool,
         }
         impl Vad for FailsAfterSpeech {
             fn frame_size(&self) -> usize {
@@ -245,7 +236,7 @@ mod tests {
                 _: &[f32],
             ) -> std::result::Result<bool, transcribe_rs::TranscribeError> {
                 self.frames += 1;
-                if self.frames == 1 || !self.fail {
+                if self.frames == 1 {
                     Ok(true)
                 } else {
                     Err(transcribe_rs::TranscribeError::Inference(
@@ -255,27 +246,11 @@ mod tests {
             }
             fn reset(&mut self) {}
         }
-        let mut vad = FailsAfterSpeech {
-            frames: 0,
-            fail: true,
-        };
+        let mut vad = FailsAfterSpeech { frames: 0 };
         assert!(
-            matches!(extract_speech_with_vad(16000, &vec![0.2; 1440], &mut vad, &mut || false), Err(TranscriptionError::Transcribe(detail)) if detail.contains("injected VAD failure"))
+            matches!(extract_speech_with_vad(16000, &vec![0.2; 1440], &mut vad), Err(TranscriptionError::Transcribe(detail)) if detail.contains("injected VAD failure"))
         );
         assert_eq!(vad.frames, 2);
-        let mut vad = FailsAfterSpeech {
-            frames: 0,
-            fail: false,
-        };
-        let mut checks = 0;
-        let speech = extract_speech_with_vad(16000, &vec![0.2; 32000], &mut vad, &mut || {
-            checks += 1;
-            checks > 1
-        })
-        .unwrap();
-        assert!(speech.is_empty());
-        assert_eq!(checks, 2);
-        assert_eq!(vad.frames, 16000 / vad.frame_size());
     }
 
     fn resample(input: &[f32], sample_rate: usize, push_size: usize) -> Vec<f32> {
@@ -295,6 +270,13 @@ mod tests {
 
     #[test]
     fn native_rate_preserves_samples_and_pads_the_last_frame() {
+        let pcm = [-32768_i16, -512, -1, 0, 1, 512, 32767];
+        let bytes: Vec<_> = pcm.iter().flat_map(|sample| sample.to_le_bytes()).collect();
+        assert_eq!(
+            pcm16_samples(&bytes).unwrap(),
+            pcm.map(|sample| f32::from(sample) / 32768.0)
+        );
+        assert!(pcm16_samples(&bytes[..bytes.len() - 1]).is_err());
         let input: Vec<_> = (0..961).map(|i| i as f32 / 1000.0 - 0.5).collect();
         let output = resample(&input, 16_000, 137);
 

@@ -4,8 +4,13 @@ mod live;
 mod normalize;
 mod recorded;
 mod session;
+mod text;
 mod transcriber;
 mod vad;
+
+pub(super) const ENDPOINT_PADDING_SAMPLES: usize = crate::voice::VOICE_SAMPLE_RATE as usize / 2;
+
+pub(super) const MAX_RECORDED_WINDOW_SAMPLES: usize = crate::voice::MAX_WINDOW_SAMPLES * 2;
 
 pub use live::{LiveControl, LiveEvent, LiveTranscription};
 pub(crate) use normalize::{StreamNormalizer, VAD_FRAME_SAMPLES};

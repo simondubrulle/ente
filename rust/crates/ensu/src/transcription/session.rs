@@ -32,6 +32,17 @@ impl DictationState {
         )
     }
 
+    pub fn finish(&mut self, successful: bool) -> voice::Result<()> {
+        self.session.worker_exited(successful)?;
+        self.text = super::text::filter_transcription_output(&format!(
+            "{}{}",
+            self.text,
+            self.hypothesis()
+        ));
+        self.hypothesis.clear();
+        Ok(())
+    }
+
     pub fn apply(
         &mut self,
         event: LiveEvent,
@@ -70,16 +81,7 @@ impl DictationState {
                 self.text.push_str(&text);
                 self.hypothesis.clear();
             }
-            LiveEvent::ReplaceTranscript(text) => {
-                if text.trim().is_empty() {
-                    return Err(voice::VoiceError::IncompleteAudio);
-                }
-                self.session.observe_recognition(true)?;
-                self.text = text;
-                self.hypothesis.clear();
-                self.last_commit_end = u64::MAX;
-            }
-            LiveEvent::Deferred => self.session.defer_recognition(),
+            LiveEvent::Deferred { .. } => self.session.defer_recognition(),
             LiveEvent::Coverage(end) => self.session.recognize_through(end)?,
             LiveEvent::Idle => {
                 if self.session.silence_elapsed() && finish_if_empty() {
@@ -102,6 +104,56 @@ mod tests {
 
     fn event(state: &mut DictationState, event: LiveEvent) {
         state.apply(event, || true).unwrap();
+    }
+
+    #[test]
+    fn cleanup_waits_for_completion_and_spans_commits_and_unfinished_hypotheses() {
+        for successful in [false, true] {
+            let mut state = DictationState::new(true);
+            state.session.begin_capture().unwrap();
+            event(
+                &mut state,
+                LiveEvent::Audio {
+                    start: 0,
+                    end: 32000,
+                    voiced: true,
+                },
+            );
+            event(
+                &mut state,
+                LiveEvent::Commit {
+                    start: 0,
+                    end: 16000,
+                    text: "um I I".into(),
+                },
+            );
+            event(&mut state, LiveEvent::Hypothesis("I uh think".into()));
+            assert_eq!(state.text(), "um I I");
+            assert_eq!(state.hypothesis(), " I uh think");
+            if successful {
+                event(
+                    &mut state,
+                    LiveEvent::Commit {
+                        start: 16000,
+                        end: 32000,
+                        text: "I uh think".into(),
+                    },
+                );
+                event(&mut state, LiveEvent::Coverage(32000));
+            }
+            state
+                .session
+                .stop(if successful {
+                    voice::StopReason::Done
+                } else {
+                    voice::StopReason::Interruption
+                })
+                .unwrap();
+            state.finish(successful).unwrap();
+            assert_eq!(state.text(), "I think");
+            assert!(state.hypothesis().is_empty());
+            assert_eq!(state.session.incomplete(), !successful);
+        }
     }
 
     #[test]
@@ -158,7 +210,7 @@ mod tests {
                 event(state, LiveEvent::Commit { start, end, text });
             }
             event(state, LiveEvent::Hypothesis(update.hypothesis));
-            event(state, LiveEvent::Coverage(update.covered_through));
+            event(state, LiveEvent::Coverage(update.boundary.end));
         }
 
         for (words, expected) in [
@@ -199,13 +251,14 @@ mod tests {
                     .collect()
             };
             for i in 0..3 {
-                rolling.feed(&vec![0.2; 16000], true).unwrap();
+                rolling.feed(&vec![0.2; 8000], i == 0).unwrap();
+                rolling.feed(&vec![0.2; 8000], false).unwrap();
                 event(
                     &mut state,
                     LiveEvent::Audio {
                         start: i * 16000,
                         end: (i + 1) * 16000,
-                        voiced: true,
+                        voiced: i == 0,
                     },
                 );
                 let request = rolling.next_window().unwrap().unwrap();

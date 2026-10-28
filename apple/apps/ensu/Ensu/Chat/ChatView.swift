@@ -364,7 +364,7 @@ struct ChatView: View {
                         }
                         .padding(.bottom, keyboard.isVisible ? keyboard.height : 0)
                         .zIndex(1)
-                } else {
+                } else if viewModel.isModelDownloaded {
                     let shouldAutoFocus = shouldAutoFocusInput
 
                     MessageInputView(

@@ -39,6 +39,7 @@ import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -69,6 +70,7 @@ internal fun MessageInput(
     sourcesError: String?,
     onRetrySources: () -> Unit,
     onMessageChange: (String) -> Unit,
+    onComposerSelection: (Int, Int, Boolean) -> Unit,
     onSend: () -> Unit,
     onStop: () -> Unit,
     onAttachmentSelected: (AttachmentType) -> Unit,
@@ -80,6 +82,7 @@ internal fun MessageInput(
     focusRequestId: Int,
 ) {
     val haptic = rememberHaptics()
+    val focusManager = LocalFocusManager.current
     val placeholder = "Ask Ensu"
     val composerIconSize = 18.dp
 
@@ -93,7 +96,7 @@ internal fun MessageInput(
         )
     }
 
-    LaunchedEffect(messageText, voiceCaret, voiceController.active) {
+    LaunchedEffect(messageText, voiceCaret, voiceController.blocksComposer) {
         if (messageText != fieldValue.text || voiceCaret != null) {
             fieldValue =
                 TextFieldValue(
@@ -103,6 +106,13 @@ internal fun MessageInput(
                             voiceCaret?.coerceIn(0, messageText.length) ?: messageText.length
                         ),
                 )
+        }
+        if (!voiceController.blocksComposer) {
+            onComposerSelection(
+                fieldValue.selection.min,
+                fieldValue.selection.max,
+                fieldValue.composition != null,
+            )
         }
     }
 
@@ -218,7 +228,7 @@ internal fun MessageInput(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                if (supportsImageAttachments && !voiceController.active) {
+                if (supportsImageAttachments && !voiceController.blocksComposer) {
                     IconButton(
                         onClick = {
                             haptic.perform(HapticFeedbackType.TextHandleMove)
@@ -246,14 +256,21 @@ internal fun MessageInput(
                     value = fieldValue,
                     onValueChange = { newValue ->
                         fieldValue = newValue
-                        if (!voiceController.active) onMessageChange(newValue.text)
+                        if (!voiceController.blocksComposer) {
+                            onMessageChange(newValue.text)
+                            onComposerSelection(
+                                newValue.selection.min,
+                                newValue.selection.max,
+                                newValue.composition != null,
+                            )
+                        }
                     },
                     modifier = Modifier.weight(1f).focusRequester(focusRequester),
                     textStyle = EnsuTypography.message.copy(color = EnsuColor.textPrimary()),
                     visualTransformation = LongMessageVisualTransformation,
                     minLines = 1,
-                    maxLines = if (voiceController.active) 8 else 5,
-                    readOnly = voiceController.active,
+                    maxLines = if (voiceController.blocksComposer) 8 else 5,
+                    readOnly = voiceController.blocksComposer,
                     keyboardOptions =
                         KeyboardOptions(capitalization = KeyboardCapitalization.Sentences),
                     cursorBrush = SolidColor(EnsuColor.accent()),
@@ -276,9 +293,17 @@ internal fun MessageInput(
                 if (editingMessage == null) {
                     VoiceInputButton(
                         controller = voiceController,
-                        enabled = !isGenerating && !isDownloading && fieldValue.composition == null,
+                        enabled = !isGenerating && !isDownloading,
                         onOpen = {
                             haptic.perform(HapticFeedbackType.TextHandleMove)
+                            focusManager.clearFocus(force = true)
+                            fieldValue = fieldValue.copy(composition = null)
+                            onMessageChange(fieldValue.text)
+                            onComposerSelection(
+                                fieldValue.selection.min,
+                                fieldValue.selection.max,
+                                false,
+                            )
                             onVoiceInput(fieldValue)
                         },
                     )
@@ -287,7 +312,7 @@ internal fun MessageInput(
                 val canSend =
                     sourcesReady &&
                         (messageText.isNotBlank() || attachments.isNotEmpty()) &&
-                        !voiceController.active &&
+                        !voiceController.blocksComposer &&
                         !hasUnsupportedImages
 
                 IconButton(

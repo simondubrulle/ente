@@ -947,9 +947,6 @@ internal class ChatStoreActions(
                             systemPrompt = normalSystemPrompt,
                         )
 
-                    if (normalHistorySelection.currentInputTooLarge) {
-                        throw ConversationException.CurrentInputTooLarge()
-                    }
                     if (
                         normalHistorySelection.wasTrimmed &&
                             overflowBypassMessageId != userMessage.id
@@ -1089,18 +1086,6 @@ internal class ChatStoreActions(
             throw err
         } catch (_: LlmException.Cancelled) {
             interrupted = true
-        } catch (_: ConversationException.CurrentInputTooLarge) {
-            if (isActive() && !stopRequested) {
-                state.update {
-                    it.copy(
-                        chat =
-                            it.chat.copy(
-                                transientAssistantError = CURRENT_INPUT_TOO_LARGE_MESSAGE,
-                                transientAssistantParentId = userMessage.id,
-                            )
-                    )
-                }
-            }
         } catch (err: ModelMemoryUnavailable) {
             if (isActive() && !stopRequested) {
                 state.update {
@@ -1861,7 +1846,6 @@ internal class ChatStoreActions(
         val inputTokens: Int,
         val inputBudget: Int,
         val wasTrimmed: Boolean,
-        val currentInputTooLarge: Boolean,
     )
 
     private data class GenerationLimits(
@@ -1933,7 +1917,6 @@ internal class ChatStoreActions(
                 inputTokens,
                 inputBudget,
                 inputTokens > inputBudget,
-                systemTokens + promptTokens > inputBudget,
             )
         }
 
@@ -1964,13 +1947,7 @@ internal class ChatStoreActions(
             )
         }
 
-        return HistorySelection(
-            selected,
-            inputTokens,
-            inputBudget,
-            inputTokens > inputBudget,
-            false,
-        )
+        return HistorySelection(selected, inputTokens, inputBudget, inputTokens > inputBudget)
     }
 
     private fun resolveGenerationLimits(contextLength: Int): GenerationLimits {

@@ -9,9 +9,8 @@ pub(crate) use capture::CaptureQueue;
 pub use capture::{CaptureFeedResult, CaptureFormat};
 pub(crate) use composer::transcript_separator;
 pub use composer::{ComposerAnchor, ComposerTransfer, VoiceInsertion, preview_insertion};
-#[cfg(test)]
 pub(crate) use rolling::RecognitionUpdate;
-pub(crate) use rolling::{AlignedWord, DecodeWindow, RollingRecognizer};
+pub(crate) use rolling::{AlignedWord, DecodeWindow, RollingRecognizer, TranscriptBoundary};
 pub use session::{StopReason, VoicePhase, VoiceSession};
 
 #[derive(Debug, Clone, PartialEq, Eq, thiserror::Error)]
