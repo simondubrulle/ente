@@ -11,35 +11,48 @@ struct VoiceInputControls: View {
         case .preparing: return "Preparing"
         case .transcribing: return service.isFinishingSlow ? "Still transcribing" : "Transcribing"
         case .recording: return service.snapshot?.phase == .countdown ? "Finishing" : "Listening"
-        case .error(let message):
-            if message.contains("permission") { return "Microphone access" }
-            return message == "No speech detected." ? "No speech" : "Stopped"
+        case .error(.permission): return "Microphone access"
+        case .error(.noSpeech): return "No speech"
+        case .error: return "Stopped"
         case .idle: return "Preparing"
         }
     }
 
+    private var failure: VoiceInputFailure? {
+        if case .error(let failure) = service.state { return failure }
+        return service.notice
+    }
+
     var body: some View {
         if service.active || service.state.isError {
-            HStack(spacing: 12) {
-                Text(status).font(EnsuTypography.small).foregroundStyle(EnsuColor.textMuted)
-                    .accessibilityHint(service.notice ?? "")
-                    .onTapGesture {
-                        if case .error(let message) = service.state,
-                            message.contains("permission"),
-                            let url = URL(string: UIApplication.openSettingsURLString)
-                        {
-                            openURL(url)
-                        }
+            VStack(alignment: .leading, spacing: EnsuSpacing.xs) {
+                HStack(spacing: 12) {
+                    Text(status).font(EnsuTypography.small).foregroundStyle(EnsuColor.textMuted)
+                    if service.state.isRecording {
+                        waveform.frame(height: 24)
+                    } else {
+                        Spacer(minLength: 0)
                     }
-                if service.state.isRecording {
-                    waveform.frame(height: 24)
-                } else {
-                    Spacer(minLength: 0)
+                    if service.active, !service.state.isRecording {
+                        Button("Cancel", action: service.cancel)
+                            .font(EnsuTypography.small)
+                            .foregroundStyle(EnsuColor.textPrimary)
+                    }
                 }
-                if service.active, !service.state.isRecording {
-                    Button("Cancel", action: service.cancel)
+                if let failure {
+                    Text(failure.message)
+                        .font(EnsuTypography.small)
+                        .foregroundStyle(EnsuColor.textMuted)
+                        .fixedSize(horizontal: false, vertical: true)
+                    if failure == .permission {
+                        Button("Open Settings") {
+                            if let url = URL(string: UIApplication.openSettingsURLString) {
+                                openURL(url)
+                            }
+                        }
                         .font(EnsuTypography.small)
                         .foregroundStyle(EnsuColor.textPrimary)
+                    }
                 }
             }
         }

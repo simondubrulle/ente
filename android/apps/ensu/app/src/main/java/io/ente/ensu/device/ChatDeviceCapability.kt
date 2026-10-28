@@ -2,9 +2,6 @@ package io.ente.ensu.device
 
 const val CHAT_MIN_RAM_BYTES: Long = 1_600_000_000L
 
-internal fun supportsLiveVoice(totalMemoryBytes: Long?): Boolean =
-    totalMemoryBytes != null && totalMemoryBytes > 4L * 1024 * 1024 * 1024
-
 internal fun chatDeviceCapability(totalMemoryBytes: Long): ChatDeviceCapability =
     when {
         totalMemoryBytes <= 0 -> ChatDeviceCapability.Unknown

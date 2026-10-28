@@ -56,8 +56,7 @@ import io.ente.ensu.designsystem.HugeIcons
 internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
     val state = controller.state
     if (!controller.active && state !is VoiceInputState.Error) return
-    val permissionNeeded =
-        (state as? VoiceInputState.Error)?.message?.contains("permission") == true
+    val permissionNeeded = (state as? VoiceInputState.Error)?.reason == VoiceInputFailure.Permission
     val context = LocalContext.current
     val label =
         when (state) {
@@ -69,9 +68,7 @@ internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
             VoiceInputState.Recording ->
                 if (controller.snapshot?.phase == DictationPhase.COUNTDOWN) "Finishing"
                 else "Listening"
-            is VoiceInputState.Error ->
-                if (permissionNeeded) "Microphone access"
-                else if (state.message == "No speech detected.") "No speech" else "Stopped"
+            is VoiceInputState.Error -> state.reason.message
         }
     Row(
         Modifier.padding(horizontal = EnsuSpacing.pageHorizontal.dp),

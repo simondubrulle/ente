@@ -272,7 +272,7 @@ final class ChatViewModel: ObservableObject {
     }
 
     func handleMemoryPressure() {
-        voiceTranscriber.interrupt(message: "Voice input paused because memory is low.")
+        voiceTranscriber.interrupt(reason: .memoryUnavailable)
         sessionSummaryTask?.cancel()
         warmupSuppressed = true
         cancelChatWarmup()

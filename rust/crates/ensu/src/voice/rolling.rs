@@ -13,13 +13,13 @@ const REQUIRED_OBSERVATIONS: u8 = 3;
 const RIGHT_CONTEXT_WORDS: usize = 2;
 
 #[derive(Clone, Debug)]
-pub struct AlignedWord {
+pub(crate) struct AlignedWord {
     pub text: String,
     pub start: u64,
     pub end: u64,
 }
 
-pub struct DecodeWindow {
+pub(crate) struct DecodeWindow {
     pub id: u64,
     pub start: u64,
     pub end: u64,
@@ -28,7 +28,7 @@ pub struct DecodeWindow {
 }
 
 #[derive(Debug)]
-pub struct RecognitionUpdate {
+pub(crate) struct RecognitionUpdate {
     pub commit: Option<(u64, u64, String)>,
     pub hypothesis: String,
     pub covered_through: u64,
@@ -41,7 +41,7 @@ struct Region {
 }
 
 #[derive(Default)]
-pub struct RollingRecognizer {
+pub(crate) struct RollingRecognizer {
     ring: AudioRing,
     regions: VecDeque<Region>,
     previous: Vec<AlignedWord>,
@@ -56,7 +56,7 @@ pub struct RollingRecognizer {
 impl RollingRecognizer {
     pub fn feed(&mut self, samples: &[f32], voiced: bool) -> Result<()> {
         if samples.is_empty() {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio("Audio buffer is empty".into()));
         }
         let start = self.ring.accepted();
         self.ring.push(start, samples)?;

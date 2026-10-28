@@ -103,7 +103,9 @@ impl VoiceSession {
             || end <= start
             || voiced_end.is_some_and(|v| v <= start || v > end)
         {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Audio must be continuous and contain a valid speech range".into(),
+            ));
         }
         self.accepted = end;
         if let Some(voice) = voiced_end {
@@ -182,7 +184,9 @@ impl VoiceSession {
             return Err(VoiceError::InvalidState);
         }
         if end < self.recognized || end > self.accepted {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Recognition coverage is outside the accepted audio range".into(),
+            ));
         }
         self.recognized = end;
         Ok(())
@@ -192,7 +196,9 @@ impl VoiceSession {
             return Err(VoiceError::InvalidState);
         }
         if start != self.accepted || end <= start {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Drained audio must continue the accepted audio range".into(),
+            ));
         }
         self.accepted = end;
         Ok(())
@@ -255,38 +261,40 @@ mod tests {
     }
 
     #[test]
-    fn live_grace_waits_for_text_or_fifteen_seconds() {
-        let mut session = VoiceSession::default();
-        session.begin_capture().unwrap();
-        session.observe_audio(0, 32000, Some(24000)).unwrap();
-        session.observe_recognition(false).unwrap();
-        session.observe_audio(32000, 80000, None).unwrap();
-        assert_eq!(session.phase(), VoicePhase::Listening);
-        session.observe_audio(80000, 13 * 16000, None).unwrap();
-        assert!(!session.silence_elapsed());
-        assert_eq!(session.silence_deadline(), Some(15 * 16000));
-        session.observe_audio(13 * 16000, 15 * 16000, None).unwrap();
-        assert!(session.silence_elapsed());
-    }
-
-    #[test]
-    fn recognition_and_later_speech_recompute_the_current_deadline() {
-        let mut session = VoiceSession::default();
-        session.begin_capture().unwrap();
-        session.observe_audio(0, 16000, Some(16000)).unwrap();
-        session.observe_audio(16000, 13 * 16000, None).unwrap();
-        assert!(!session.silence_elapsed());
-        session.observe_recognition(true).unwrap();
-        assert!(session.silence_elapsed());
-        session
-            .observe_audio(13 * 16000, 14 * 16000, Some(14 * 16000))
-            .unwrap();
-        assert!(!session.silence_elapsed());
-        assert_eq!(session.phase(), VoicePhase::Listening);
-        session.observe_audio(14 * 16000, 16 * 16000, None).unwrap();
-        assert!(!session.silence_elapsed());
-        session.observe_audio(16 * 16000, 17 * 16000, None).unwrap();
-        assert!(session.silence_elapsed());
+    fn live_grace_ends_with_text_or_timeout_and_later_speech_resets_silence() {
+        for has_text in [false, true] {
+            let mut session = VoiceSession::default();
+            session.begin_capture().unwrap();
+            session.observe_audio(0, 32000, Some(24000)).unwrap();
+            session.observe_recognition(false).unwrap();
+            session.observe_audio(32000, 80000, None).unwrap();
+            assert_eq!(session.phase(), VoicePhase::Listening);
+            session.observe_audio(80000, 13 * 16000, None).unwrap();
+            assert!(!session.silence_elapsed());
+            assert_eq!(session.silence_deadline(), Some(15 * 16000));
+            let resumed_at = if has_text {
+                session.observe_recognition(true).unwrap();
+                13 * 16000
+            } else {
+                session.observe_audio(13 * 16000, 15 * 16000, None).unwrap();
+                15 * 16000
+            };
+            assert!(session.silence_elapsed());
+            let voice_end = resumed_at + 16000;
+            session
+                .observe_audio(resumed_at, voice_end, Some(voice_end))
+                .unwrap();
+            assert!(!session.silence_elapsed());
+            assert_eq!(session.phase(), VoicePhase::Listening);
+            session
+                .observe_audio(voice_end, voice_end + 32000, None)
+                .unwrap();
+            assert!(!session.silence_elapsed());
+            session
+                .observe_audio(voice_end + 32000, voice_end + 48000, None)
+                .unwrap();
+            assert!(session.silence_elapsed());
+        }
     }
 
     #[test]

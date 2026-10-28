@@ -18,9 +18,19 @@ pub struct Transcriber {
 
 impl Transcriber {
     pub(crate) fn live_vad(&self) -> crate::voice::Result<Box<dyn transcribe_rs::vad::Vad>> {
+        let metadata = std::fs::metadata(&self.vad_model_path).map_err(|error| {
+            if error.kind() == std::io::ErrorKind::NotFound {
+                crate::voice::VoiceError::VadNotDownloaded
+            } else {
+                super::voice_error("Read voice activity model", error)
+            }
+        })?;
+        if !metadata.is_file() {
+            return Err(crate::voice::VoiceError::VadNotDownloaded);
+        }
         super::SileroV4Vad::new(&self.vad_model_path)
             .map(|vad| Box::new(vad) as Box<dyn transcribe_rs::vad::Vad>)
-            .map_err(|_| crate::voice::VoiceError::ProcessingFailed)
+            .map_err(|error| super::voice_error("Load voice activity model", error))
     }
 
     pub(crate) fn transcribe_window(
@@ -32,7 +42,7 @@ impl Transcriber {
             || samples.len() > MAX_WINDOW_SAMPLES
             || samples.iter().any(|s| !s.is_finite())
         {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio("Recognition requires a nonempty window of finite samples within the duration limit".into()));
         }
         let mut loaded = self.lock();
         let model = ensure_loaded(
@@ -41,7 +51,7 @@ impl Transcriber {
             self.graph_cache.as_ref(),
             true,
         )
-        .map_err(|_| VoiceError::ProcessingFailed)?;
+        .map_err(|error| super::voice_error("Load transcription model", error))?;
         let result = model
             .transcribe_with(
                 samples,
@@ -50,7 +60,7 @@ impl Transcriber {
                     ..Default::default()
                 },
             )
-            .map_err(|_| VoiceError::ProcessingFailed)?;
+            .map_err(|error| super::voice_error("Transcribe live audio", error))?;
         result
             .segments
             .ok_or(VoiceError::UnstableTranscript)?
@@ -110,8 +120,31 @@ impl Transcriber {
     }
 
     pub fn transcribe(&self, input_sample_rate: u32, pcm_le: &[u8]) -> Result<String> {
+        self.transcribe_with_cancel(input_sample_rate, pcm_le, || false)
+            .map(Option::unwrap_or_default)
+    }
+
+    pub(crate) fn transcribe_recording(
+        &self,
+        pcm_le: &[u8],
+        is_cancelled: impl FnMut() -> bool,
+    ) -> crate::voice::Result<String> {
+        self.transcribe_with_cancel(16_000, pcm_le, is_cancelled)
+            .map_err(|error| super::voice_error("Transcribe recorded audio", error))?
+            .ok_or(crate::voice::VoiceError::Cancelled)
+    }
+
+    fn transcribe_with_cancel(
+        &self,
+        input_sample_rate: u32,
+        pcm_le: &[u8],
+        mut is_cancelled: impl FnMut() -> bool,
+    ) -> Result<Option<String>> {
+        if is_cancelled() {
+            return Ok(None);
+        }
         if pcm_le.is_empty() {
-            return Ok(String::new());
+            return Ok(Some(String::new()));
         }
         if !self.model_dir.is_dir() {
             return Err(TranscriptionError::NotDownloaded);
@@ -120,9 +153,17 @@ impl Transcriber {
             return Err(TranscriptionError::VadNotDownloaded);
         }
 
-        let speech = extract_speech_from_pcm16(&self.vad_model_path, input_sample_rate, pcm_le)?;
+        let speech = extract_speech_from_pcm16(
+            &self.vad_model_path,
+            input_sample_rate,
+            pcm_le,
+            &mut is_cancelled,
+        )?;
+        if is_cancelled() {
+            return Ok(None);
+        }
         if speech.is_empty() {
-            return Ok(String::new());
+            return Ok(Some(String::new()));
         }
 
         let mut loaded = self.lock();
@@ -132,15 +173,19 @@ impl Transcriber {
             self.graph_cache.as_ref(),
             false,
         )?;
-        let result = model.transcribe_with(
-            &speech,
-            &ParakeetParams {
-                timestamp_granularity: Some(TimestampGranularity::Segment),
-                ..Default::default()
-            },
-        )?;
-
-        Ok(result.text.trim().to_owned())
+        super::recorded::transcribe_chunks(&speech, |samples| {
+            if is_cancelled() {
+                return Ok(None);
+            }
+            let result = model.transcribe_with(
+                samples,
+                &ParakeetParams {
+                    timestamp_granularity: Some(TimestampGranularity::Segment),
+                    ..Default::default()
+                },
+            )?;
+            Ok((!is_cancelled()).then_some(result.text))
+        })
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<ParakeetModel>> {

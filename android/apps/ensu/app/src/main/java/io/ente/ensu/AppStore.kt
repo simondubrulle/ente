@@ -10,6 +10,7 @@ import io.ente.ensu.chat.AttachmentStoreActions
 import io.ente.ensu.chat.ChatMessage
 import io.ente.ensu.chat.ChatRepository
 import io.ente.ensu.chat.ChatStoreActions
+import io.ente.ensu.chat.VoiceInputFailure
 import io.ente.ensu.chat.VoiceTranscriptionController
 import io.ente.ensu.device.AndroidDeviceCapabilityProvider
 import io.ente.ensu.device.ChatDeviceCapability
@@ -91,6 +92,12 @@ class AppStore(
 
     private var composerRevision = 0uL
     private var emptyComposerId = UUID.randomUUID().toString()
+
+    private fun invalidateComposer() {
+        composerRevision++
+        voiceController.composerCaret = null
+    }
+
     internal val voiceController: VoiceTranscriptionController =
         VoiceTranscriptionController(
             context.applicationContext,
@@ -167,7 +174,7 @@ class AppStore(
     fun setPickerPending(pending: Boolean) = modelSettingsActions.setPickerPending(pending)
 
     fun handleMemoryPressure() {
-        voiceController.interrupt("Voice input paused because memory is low.")
+        voiceController.interrupt(VoiceInputFailure.MemoryUnavailable)
         chatActions.cancelSessionSummary()
         modelSettingsActions.handleMemoryPressure()
     }
@@ -180,6 +187,10 @@ class AppStore(
     fun refreshDeviceCapability(scope: CoroutineScope? = null) {
         val capability = deviceCapabilityProvider.chatCapability()
         val unsupported = capability is ChatDeviceCapability.UnsupportedLowMemory
+        if (unsupported) {
+            voiceController.discard()
+            invalidateComposer()
+        }
         _state.value =
             _state.value.copy(
                 chat =
@@ -234,23 +245,30 @@ class AppStore(
             )
     }
 
-    fun createNewSession(): String = chatActions.createNewSession()
+    fun createNewSession(): String {
+        voiceController.discard()
+        invalidateComposer()
+        return chatActions.createNewSession()
+    }
 
     fun startNewSessionDraft() {
         voiceController.discard()
         emptyComposerId = UUID.randomUUID().toString()
-        composerRevision++
+        invalidateComposer()
         chatActions.startNewSessionDraft()
     }
 
     fun selectSession(sessionId: String) {
         voiceController.discard()
-        composerRevision++
+        invalidateComposer()
         chatActions.selectSession(sessionId)
     }
 
     fun deleteSession(sessionId: String) {
-        if (sessionId == _state.value.chat.currentSessionId) voiceController.discard()
+        if (sessionId == _state.value.chat.currentSessionId) {
+            voiceController.discard()
+            invalidateComposer()
+        }
         chatActions.deleteSession(sessionId)
     }
 
@@ -259,8 +277,7 @@ class AppStore(
 
     fun updateMessageText(value: String) {
         if (value != _state.value.chat.messageText) {
-            composerRevision++
-            voiceController.composerCaret = null
+            invalidateComposer()
         }
         chatActions.updateMessageText(value)
     }
@@ -270,11 +287,14 @@ class AppStore(
 
     fun beginEditing(messageId: String) {
         voiceController.discard()
-        composerRevision++
+        invalidateComposer()
         chatActions.beginEditing(messageId)
     }
 
-    fun cancelEditing() = chatActions.cancelEditing()
+    fun cancelEditing() {
+        invalidateComposer()
+        chatActions.cancelEditing()
+    }
 
     fun setAttachmentProcessing(isProcessing: Boolean) =
         attachmentActions.setAttachmentProcessing(isProcessing)
@@ -319,8 +339,7 @@ class AppStore(
 
     fun sendMessage() {
         if (voiceController.active) return
-        voiceController.composerCaret = null
-        composerRevision++
+        invalidateComposer()
         chatActions.sendMessage()
     }
 

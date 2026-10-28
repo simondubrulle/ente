@@ -2,7 +2,7 @@ use std::ops::Range;
 
 use super::{Result, VoiceError};
 
-pub fn utf16_range(text: &str, start: u32, end: u32) -> Result<Range<usize>> {
+fn utf16_range(text: &str, start: u32, end: u32) -> Result<Range<usize>> {
     if start > end {
         return Err(VoiceError::InvalidTextRange);
     }
@@ -34,8 +34,6 @@ fn left_edge(text: &str) -> Option<char> {
         .or_else(|| text.chars().next())
 }
 
-// Recognition already supplies word boundaries. Symbols and punctuation belong to
-// those words and must not suppress their separators, including across commits.
 pub(crate) fn transcript_separator(left: &str, right: &str) -> &'static str {
     fn unspaced(c: char) -> bool {
         matches!(c as u32, 0x3040..=0x30ff | 0x3400..=0x9fff | 0x20000..=0x3134f)
@@ -50,7 +48,7 @@ pub(crate) fn transcript_separator(left: &str, right: &str) -> &'static str {
     }
 }
 
-pub fn boundary_separator(left: &str, right: &str) -> &'static str {
+fn boundary_separator(left: &str, right: &str) -> &'static str {
     fn opening(c: char) -> bool {
         matches!(c, '¿' | '¡')
             || regex::regex!(r"\A[\p{Ps}\p{Pi}]\z").is_match(c.encode_utf8(&mut [0; 4]))
@@ -103,8 +101,6 @@ pub fn boundary_separator(left: &str, right: &str) -> &'static str {
         return "";
     }
 
-    // A currency prefix attaches to its amount; a trailing currency symbol is
-    // already part of a completed amount and needs a word separator.
     if regex::regex!(r"\A\p{Sc}\z").is_match(a.encode_utf8(&mut [0; 4]))
         && !left.rsplit_once(a).is_some_and(|(before, _)| {
             before
@@ -173,7 +169,7 @@ pub fn preview_insertion(
 
 #[derive(Debug, Default)]
 pub struct ComposerTransfer {
-    receipt: Option<(VoiceInsertion, u32)>,
+    applied: bool,
 }
 
 impl ComposerTransfer {
@@ -186,12 +182,8 @@ impl ComposerTransfer {
         foreground: bool,
         composing: bool,
     ) -> Result<u32> {
-        if let Some((applied, receipt)) = &self.receipt {
-            return if applied == insertion {
-                Ok(*receipt)
-            } else {
-                Err(VoiceError::RevisionConflict)
-            };
+        if self.applied {
+            return Err(VoiceError::RevisionConflict);
         }
         if !foreground || insertion.anchor.destination != destination {
             return Err(VoiceError::RevisionConflict);
@@ -210,7 +202,7 @@ impl ComposerTransfer {
         let (rendered, caret) = preview_insertion(text, &anchor, &insertion.text)?;
         *text = rendered;
         *revision += 1;
-        self.receipt = Some((insertion.clone(), caret));
+        self.applied = true;
         Ok(caret)
     }
 }
@@ -232,27 +224,25 @@ mod tests {
     }
 
     #[test]
-    fn selected_text_is_replaced_once_even_after_lost_acknowledgement() {
+    fn selected_text_is_replaced_once_and_duplicate_transfers_are_rejected() {
         let mut owner = ComposerTransfer::default();
         let mut text = "  meet Friday\n".to_owned();
         let mut revision = 7;
         let insert = insertion(7, 13, "Saturday");
-        let receipt = owner
+        owner
             .apply(&insert, "chat", &mut revision, &mut text, true, false)
             .unwrap();
         assert_eq!(text, "  meet Saturday\n");
         assert_eq!(
-            owner
-                .apply(
-                    &insert,
-                    "different-chat",
-                    &mut revision,
-                    &mut text,
-                    false,
-                    false
-                )
-                .unwrap(),
-            receipt
+            owner.apply(
+                &insert,
+                "different-chat",
+                &mut revision,
+                &mut text,
+                false,
+                false
+            ),
+            Err(VoiceError::RevisionConflict)
         );
         assert_eq!(revision, 8);
         assert_eq!(text, "  meet Saturday\n");
@@ -287,9 +277,10 @@ mod tests {
             .apply(&insert, "chat", &mut revision, &mut text, true, false)
             .unwrap();
         assert_eq!(text, "My edited draft hello");
-        owner
-            .apply(&insert, "chat", &mut revision, &mut text, true, false)
-            .unwrap();
+        assert_eq!(
+            owner.apply(&insert, "chat", &mut revision, &mut text, true, false),
+            Err(VoiceError::RevisionConflict)
+        );
         assert_eq!(text, "My edited draft hello");
         assert_eq!(revision, 9);
     }
@@ -379,7 +370,6 @@ mod tests {
                 caret
             );
             assert_eq!(text, expected);
-            // The same boundary can occur after the inserted text, too.
             let anchor = insertion(0, 0, draft).anchor;
             assert_eq!(
                 preview_insertion(dictated, &anchor, draft).unwrap().0,

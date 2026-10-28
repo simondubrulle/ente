@@ -19,12 +19,14 @@ pub struct CaptureFormat {
 impl CaptureFormat {
     pub fn validate(self) -> Result<Self> {
         if !(8_000..=48_000).contains(&self.sample_rate) || !matches!(self.channels, 1 | 2) {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Capture requires 8–48 kHz PCM16 with one or two channels".into(),
+            ));
         }
         Ok(self)
     }
 
-    pub fn bytes_per_frame(self) -> usize {
+    pub(crate) fn bytes_per_frame(self) -> usize {
         usize::from(self.channels) * 2
     }
 }
@@ -36,7 +38,7 @@ struct Pending {
     closed: bool,
 }
 
-pub struct CaptureQueue {
+pub(crate) struct CaptureQueue {
     format: CaptureFormat,
     pending: Mutex<Pending>,
     failed: AtomicBool,
@@ -72,7 +74,10 @@ impl CaptureQueue {
             || pcm.len() / frame_bytes > self.format.sample_rate as usize / 5
         {
             self.failed.store(true, Ordering::Release);
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Capture buffer must contain complete PCM16 frames and at most 200 ms of audio"
+                    .into(),
+            ));
         }
         let owned = pcm.to_vec();
         let mut pending = self.lock();

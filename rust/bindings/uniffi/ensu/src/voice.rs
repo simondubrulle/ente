@@ -6,14 +6,37 @@ use std::time::{Duration, Instant};
 
 #[derive(Debug, thiserror::Error, uniffi::Error)]
 pub enum DictationError {
+    #[error("Transcription model is not downloaded")]
+    NotDownloaded,
+    #[error("Voice activity model is not downloaded")]
+    VadNotDownloaded,
+    #[error("not enough storage space")]
+    StorageFull,
+    #[error("Voice recording was cancelled")]
+    Cancelled,
+    #[error("{detail}")]
+    InvalidAudio { detail: String },
+    #[error("{detail}")]
+    Io { detail: String },
+    #[error("{detail}")]
+    ProcessingFailed { detail: String },
     #[error("{detail}")]
     InvalidOperation { detail: String },
 }
 
 impl From<voice::VoiceError> for DictationError {
     fn from(value: voice::VoiceError) -> Self {
-        Self::InvalidOperation {
-            detail: value.to_string(),
+        match value {
+            voice::VoiceError::NotDownloaded => Self::NotDownloaded,
+            voice::VoiceError::VadNotDownloaded => Self::VadNotDownloaded,
+            voice::VoiceError::StorageFull => Self::StorageFull,
+            voice::VoiceError::Cancelled => Self::Cancelled,
+            voice::VoiceError::InvalidAudio(detail) => Self::InvalidAudio { detail },
+            voice::VoiceError::Io(detail) => Self::Io { detail },
+            voice::VoiceError::ProcessingFailed(detail) => Self::ProcessingFailed { detail },
+            error => Self::InvalidOperation {
+                detail: error.to_string(),
+            },
         }
     }
 }
@@ -333,48 +356,6 @@ mod tests {
         }
     }
 
-    #[test]
-    fn composer_previews_replace_the_selection_without_consuming_the_transfer() {
-        let insertion = DictationInsertion::new("chat".into(), 7, 7, 13);
-        let original = "  meet Friday\n".to_owned();
-        assert_eq!(
-            insertion
-                .preview(original.clone(), String::new())
-                .unwrap()
-                .text,
-            original
-        );
-        assert_eq!(
-            insertion
-                .preview(original.clone(), "Sat".into())
-                .unwrap()
-                .text,
-            "  meet Sat\n"
-        );
-        let preview = insertion
-            .preview(original.clone(), "Saturday".into())
-            .unwrap();
-        assert_eq!(preview.revision, 7);
-        let final_text = insertion
-            .apply("chat".into(), 7, original, "Saturday".into(), true, false)
-            .unwrap();
-        assert_eq!(preview.text, final_text.text);
-        assert_eq!(preview.caret_utf16, final_text.caret_utf16);
-        assert_eq!(final_text.revision, 8);
-        assert!(
-            insertion
-                .apply(
-                    "chat".into(),
-                    8,
-                    final_text.text,
-                    "Sunday".into(),
-                    true,
-                    false
-                )
-                .is_err()
-        );
-    }
-
     fn event(session: &DictationSession, event: LiveEvent) {
         session.lock().apply(event, || true).unwrap();
     }
@@ -414,18 +395,6 @@ mod tests {
         assert!(!value.worker_active);
         assert!(value.incomplete);
         assert!(matches!(value.phase, DictationPhase::Ready));
-        let insertion = DictationInsertion::new("chat".into(), 0, 7, 7);
-        let draft = insertion
-            .apply(
-                "chat".into(),
-                0,
-                "Notes: ".into(),
-                value.text + &value.hypothesis,
-                true,
-                false,
-            )
-            .unwrap();
-        assert_eq!(draft.text, "Notes: Keep this opening word");
         assert!(matches!(
             owner
                 .lock()
@@ -453,14 +422,13 @@ mod tests {
             let owner = DictationSession::new(live);
             let stream = DictationStream::new(owner.clone(), 16000, 1).unwrap();
             let signals = Arc::new(StreamSignals::default());
-            assert!(
-                stream
-                    .run(
-                        crate::transcription::Transcriber::new("missing".into(), "missing".into()),
-                        signals.clone()
-                    )
-                    .is_err()
-            );
+            assert!(matches!(
+                stream.run(
+                    crate::transcription::Transcriber::new("missing".into(), "missing".into()),
+                    signals.clone()
+                ),
+                Err(DictationError::VadNotDownloaded)
+            ));
             assert_eq!(signals.ready.load(Ordering::Relaxed), 0);
             assert_eq!(signals.stopped.load(Ordering::Relaxed), 1);
             assert!(!owner.snapshot().worker_active);

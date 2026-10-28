@@ -206,6 +206,10 @@ pub(crate) fn llm_catalog() -> Vec<ModelPreset> {
     ]
 }
 
+pub fn supports_live_voice(total_memory_bytes: Option<u64>) -> bool {
+    total_memory_bytes.is_some_and(|bytes| bytes > MOBILE_SMALL_MEMORY_MAX_BYTES)
+}
+
 pub fn resolve_model_policy(
     surface: ModelRuntimeSurface,
     total_memory_bytes: Option<u64>,
@@ -367,6 +371,21 @@ mod tests {
                     preset.id
                 );
             }
+        }
+    }
+
+    #[test]
+    fn live_voice_requires_more_than_four_gib() {
+        let four_gib = 4 * 1024 * 1024 * 1024;
+        for (memory, expected) in [
+            (None, false),
+            (Some(0), false),
+            (Some(four_gib - 1), false),
+            (Some(four_gib), false),
+            (Some(four_gib + 1), true),
+            (Some(8 * 1024 * 1024 * 1024), true),
+        ] {
+            assert_eq!(supports_live_voice(memory), expected, "RAM: {memory:?}");
         }
     }
 

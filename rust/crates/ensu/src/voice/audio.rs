@@ -2,13 +2,13 @@ use std::collections::VecDeque;
 
 use super::{Result, VoiceError};
 
-pub const VOICE_SAMPLE_RATE: u64 = 16_000;
-pub const MAX_WINDOW_SAMPLES: usize = 10 * VOICE_SAMPLE_RATE as usize;
-pub const MAX_RING_SAMPLES: usize = 30 * VOICE_SAMPLE_RATE as usize;
-pub const MAX_BACKLOG_SAMPLES: u64 = 10 * VOICE_SAMPLE_RATE;
+pub(crate) const VOICE_SAMPLE_RATE: u64 = 16_000;
+pub(crate) const MAX_WINDOW_SAMPLES: usize = 10 * VOICE_SAMPLE_RATE as usize;
+const MAX_RING_SAMPLES: usize = 30 * VOICE_SAMPLE_RATE as usize;
+const MAX_BACKLOG_SAMPLES: u64 = 10 * VOICE_SAMPLE_RATE;
 
 #[derive(Debug)]
-pub struct AudioRing {
+pub(crate) struct AudioRing {
     samples: VecDeque<f32>,
     start: u64,
     processed: u64,
@@ -27,11 +27,13 @@ impl Default for AudioRing {
 impl AudioRing {
     pub fn push(&mut self, offset: u64, samples: &[f32]) -> Result<()> {
         if offset != self.accepted() || samples.iter().any(|v| !v.is_finite()) {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Invalid audio offset or samples".into(),
+            ));
         }
         let end = offset
             .checked_add(samples.len() as u64)
-            .ok_or(VoiceError::InvalidAudio)?;
+            .ok_or_else(|| VoiceError::InvalidAudio("Audio offset overflow".into()))?;
         if end - self.processed > MAX_BACKLOG_SAMPLES
             || self.samples.len().saturating_add(samples.len()) > MAX_RING_SAMPLES
         {
@@ -47,7 +49,9 @@ impl AudioRing {
             || end < start
             || end - start > MAX_WINDOW_SAMPLES as u64
         {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Audio window is outside the retained range".into(),
+            ));
         }
         Ok(self
             .samples
@@ -64,7 +68,9 @@ impl AudioRing {
             || retain_from < self.start
             || retain_from > processed
         {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Invalid processed audio range".into(),
+            ));
         }
         self.samples.drain(..(retain_from - self.start) as usize);
         self.start = retain_from;
@@ -112,10 +118,19 @@ mod tests {
     #[test]
     fn invalid_offsets_and_nan_are_rejected_atomically() {
         let mut ring = AudioRing::default();
-        assert_eq!(ring.push(1, &[0.0]), Err(VoiceError::InvalidAudio));
-        assert_eq!(ring.push(0, &[f32::NAN]), Err(VoiceError::InvalidAudio));
+        assert!(matches!(
+            ring.push(1, &[0.0]),
+            Err(VoiceError::InvalidAudio(_))
+        ));
+        assert!(matches!(
+            ring.push(0, &[f32::NAN]),
+            Err(VoiceError::InvalidAudio(_))
+        ));
         assert_eq!(ring.accepted(), 0);
         ring.push(0, &[0.1, 0.2]).unwrap();
-        assert_eq!(ring.acknowledge(3, 0), Err(VoiceError::InvalidAudio));
+        assert!(matches!(
+            ring.acknowledge(3, 0),
+            Err(VoiceError::InvalidAudio(_))
+        ));
     }
 }

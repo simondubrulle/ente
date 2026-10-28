@@ -32,7 +32,7 @@ impl StreamNormalizer {
                     WindowFunction::BlackmanHarris2,
                     FixedSync::Input,
                 )
-                .map_err(|_| VoiceError::InvalidAudio)?,
+                .map_err(|error| super::voice_error("Create audio resampler", error))?,
             )
         };
         let delay = resampler.as_ref().map_or(0, Resampler::output_delay);
@@ -55,7 +55,9 @@ impl StreamNormalizer {
     ) -> Result<()> {
         let frame_bytes = self.format.bytes_per_frame();
         if self.finished || !pcm.len().is_multiple_of(frame_bytes) {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Audio must contain complete PCM16 frames before normalization finishes".into(),
+            ));
         }
         for frame in pcm.chunks_exact(frame_bytes) {
             let mono = frame
@@ -89,7 +91,9 @@ impl StreamNormalizer {
         let expected = self.input_frames * 16000 / u64::from(self.format.sample_rate);
         while self.emitted < expected {
             let Some(resampler) = &self.resampler else {
-                return Err(VoiceError::ProcessingFailed);
+                return Err(VoiceError::ProcessingFailed(
+                    "Audio normalization did not produce all input samples".into(),
+                ));
             };
             self.input.resize(resampler.input_frames_next(), 0.0);
             self.process_chunk(emit)?;
@@ -106,11 +110,14 @@ impl StreamNormalizer {
 
     fn process_chunk(&mut self, emit: &mut impl FnMut(&[f32], usize) -> Result<()>) -> Result<()> {
         let resampler = self.resampler.as_mut().ok_or(VoiceError::InvalidState)?;
-        let input = InterleavedSlice::new(&self.input, 1, self.input.len())
-            .map_err(|_| VoiceError::InvalidAudio)?;
+        let input = InterleavedSlice::new(&self.input, 1, self.input.len()).map_err(|error| {
+            VoiceError::InvalidAudio(format!("Prepare audio resampler input: {error}"))
+        })?;
         let output = resampler
             .process(&input, None)
-            .map_err(|_| VoiceError::ProcessingFailed)?
+            .map_err(|error| {
+                VoiceError::ProcessingFailed(format!("Resample captured audio: {error}"))
+            })?
             .take_data();
         self.input.clear();
         let skip = self.delay.min(output.len());

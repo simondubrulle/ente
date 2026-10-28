@@ -119,14 +119,10 @@ impl LiveTranscription {
             || {
                 transcriber
                     .load_model()
-                    .map_err(|_| VoiceError::ProcessingFailed)
+                    .map_err(|error| super::voice_error("Load transcription model", error))
             },
             |request| transcriber.transcribe_window(&request.samples),
-            |pcm| {
-                transcriber
-                    .transcribe(16_000, pcm)
-                    .map_err(|_| VoiceError::ProcessingFailed)
-            },
+            |pcm| transcriber.transcribe_recording(pcm, || self.queue.is_cancelled()),
             on_event,
         )
     }
@@ -142,7 +138,9 @@ impl LiveTranscription {
         let _capture = self.start()?;
         let mut vad = make_vad()?;
         if vad.frame_size() != super::VAD_FRAME_SAMPLES {
-            return Err(VoiceError::InvalidAudio);
+            return Err(VoiceError::InvalidAudio(
+                "Voice activity model has an unsupported frame size".into(),
+            ));
         }
         let mut normalizer = StreamNormalizer::new(self.queue.format())?;
         let mut rolling = RollingRecognizer::default();
@@ -183,9 +181,9 @@ impl LiveTranscription {
                     let chunk = self.queue.take();
                     let had_chunk = chunk.is_some();
                     let mut emit = |frame: &[f32], real: usize| -> Result<()> {
-                        let voiced = vad
-                            .is_speech(frame)
-                            .map_err(|_| VoiceError::ProcessingFailed)?;
+                        let voiced = vad.is_speech(frame).map_err(|error| {
+                            super::voice_error("Detect speech in live audio", error)
+                        })?;
                         let start = accepted;
                         accepted += real as u64;
                         self.emit(
@@ -262,8 +260,10 @@ impl LiveTranscription {
                             }
                         }
                         Err(TryRecvError::Empty) => {}
-                        Err(TryRecvError::Disconnected) => {
-                            return Err(VoiceError::ProcessingFailed);
+                        Err(error @ TryRecvError::Disconnected) => {
+                            return Err(VoiceError::ProcessingFailed(format!(
+                                "Receive speech decoder result: {error}"
+                            )));
                         }
                     }
                     if prepared && finished && (deferred || rolling.is_settled()) {
@@ -276,9 +276,11 @@ impl LiveTranscription {
                         && !deferred
                         && let Some(request) = rolling.next_window()?
                     {
-                        requests
-                            .try_send(request)
-                            .map_err(|_| VoiceError::ProcessingFailed)?;
+                        requests.try_send(request).map_err(|error| {
+                            VoiceError::ProcessingFailed(format!(
+                                "Send speech decoder window: {error}"
+                            ))
+                        })?;
                     }
                     if !had_chunk && !finished {
                         self.emit(LiveEvent::Idle, on_event)?;
@@ -294,7 +296,9 @@ impl LiveTranscription {
             }
             drop(requests);
             drop(result_rx);
-            let exited = decoder.join().map_err(|_| VoiceError::ProcessingFailed);
+            let exited = decoder
+                .join()
+                .map_err(|_| VoiceError::ProcessingFailed("Speech decoder thread panicked".into()));
             exited.and(processing)?;
             if deferred {
                 drop(vad);
@@ -492,25 +496,55 @@ mod tests {
     }
 
     #[test]
-    fn failed_model_initialization_closes_capture_without_recognition() {
-        let stream = stream();
-        let mut closed = false;
-        let result = stream.run_with(
-            vad,
-            || Err(VoiceError::ProcessingFailed),
-            |_| panic!("Failed model must not decode"),
-            |_| panic!("Failed model must not transcribe"),
-            &mut |event| {
-                match event {
-                    LiveEvent::Ready | LiveEvent::Idle => {}
-                    LiveEvent::CaptureClosed => closed = true,
-                    _ => panic!("Failed initialization emitted recognition"),
-                }
-                Ok(LiveControl::Continue)
-            },
-        );
-        assert_eq!(result, Err(VoiceError::ProcessingFailed));
-        assert!(closed);
+    fn model_initialization_failures_preserve_causes_and_close_capture() {
+        use super::super::TranscriptionError;
+        use transcribe_rs::TranscribeError;
+
+        for (error, expected) in [
+            (TranscriptionError::NotDownloaded, VoiceError::NotDownloaded),
+            (
+                TranscriptionError::VadNotDownloaded,
+                VoiceError::VadNotDownloaded,
+            ),
+            (
+                TranscribeError::Io(std::io::ErrorKind::StorageFull.into()).into(),
+                VoiceError::StorageFull,
+            ),
+            (
+                TranscribeError::Io(std::io::Error::other("injected I/O failure")).into(),
+                VoiceError::Io("Load transcription model: injected I/O failure".into()),
+            ),
+            (
+                TranscribeError::Audio("injected audio failure".into()).into(),
+                VoiceError::InvalidAudio("Load transcription model: injected audio failure".into()),
+            ),
+            (
+                TranscribeError::Inference("injected initialization failure".into()).into(),
+                VoiceError::ProcessingFailed(
+                    "Load transcription model: inference error: injected initialization failure"
+                        .into(),
+                ),
+            ),
+        ] {
+            let stream = stream();
+            let mut closed = false;
+            let result = stream.run_with(
+                vad,
+                || Err(super::super::voice_error("Load transcription model", error)),
+                |_| panic!("Failed model must not decode"),
+                |_| panic!("Failed model must not transcribe"),
+                &mut |event| {
+                    match event {
+                        LiveEvent::Ready | LiveEvent::Idle => {}
+                        LiveEvent::CaptureClosed => closed = true,
+                        _ => panic!("Failed initialization emitted recognition"),
+                    }
+                    Ok(LiveControl::Continue)
+                },
+            );
+            assert_eq!(result, Err(expected));
+            assert!(closed);
+        }
     }
 
     #[test]

@@ -14,7 +14,6 @@ internal fun captureMicrophoneAudio(
             if (isStopped()) return
             throw IOException("Microphone read failed")
         }
-        // Stop changes the route too. Preserve a successful final read while draining.
         if (isInterrupted() && !isStopped()) throw IOException("Microphone interrupted")
         if (!deliver(count)) return
     }

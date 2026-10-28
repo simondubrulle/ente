@@ -2,13 +2,69 @@ import Foundation
 import AVFoundation
 import Combine
 
+enum VoiceInputFailure: Equatable {
+    case permission, microphone, noSpeech, interrupted, captureInterrupted
+    case modelUnavailable, memoryUnavailable, storageFull, download, fileAccess, transcription
+    case insertion
+
+    var message: String {
+        switch self {
+        case .permission:
+            return "Microphone permission is required. Enable it in Settings."
+        case .microphone:
+            return "Could not start the microphone. Tap the microphone to try again."
+        case .noSpeech:
+            return "No speech detected. Tap the microphone to try again."
+        case .interrupted:
+            return "Voice input stopped. Review the available text or try again."
+        case .captureInterrupted:
+            return "Audio capture interrupted. Some words may be missing; review the text."
+        case .modelUnavailable:
+            return "The voice model is unavailable. Tap the microphone to download it again."
+        case .memoryUnavailable:
+            return "Not enough free memory for voice input. Close other apps and try again."
+        case .storageFull:
+            return "Not enough storage for voice input. Free up space and try again."
+        case .download:
+            return "Could not download the voice model. Check your connection and try again."
+        case .fileAccess:
+            return "Could not access voice model files. Try again."
+        case .transcription:
+            return "Could not transcribe voice input. Review the available text or try again."
+        case .insertion:
+            return "The draft changed before voice input finished. Tap the microphone to try again."
+        }
+    }
+
+    static func classify(_ error: Error) -> Self? {
+        switch error {
+        case is CancellationError, AssetDownloadError.Cancelled, DictationError.Cancelled:
+            return nil
+        case is ModelMemoryUnavailable:
+            return .memoryUnavailable
+        case DictationError.NotDownloaded, DictationError.VadNotDownloaded:
+            return .modelUnavailable
+        case AssetDownloadError.StorageFull, DictationError.StorageFull:
+            return .storageFull
+        case AssetDownloadError.Io, DictationError.Io:
+            return .fileAccess
+        case is AssetDownloadError:
+            return .download
+        case DictationError.InvalidAudio:
+            return .captureInterrupted
+        default:
+            return .transcription
+        }
+    }
+}
+
 enum VoiceInputState: Equatable {
     case idle
     case preparing
     case recording
     case downloading(percent: Int?)
     case transcribing
-    case error(String)
+    case error(VoiceInputFailure)
 
     var isRecording: Bool {
         self == .recording
@@ -30,7 +86,7 @@ final class VoiceTranscriptionService: ObservableObject {
     }
     @Published private(set) var snapshot: DictationSnapshot?
     @Published private(set) var audioLevels = Array(repeating: Float.zero, count: 24)
-    @Published private(set) var notice: String?
+    @Published private(set) var notice: VoiceInputFailure?
     @Published private(set) var state: VoiceInputState = .idle
     @Published private(set) var isFinishingSlow = false
     var onActivityChanged: (@MainActor () -> Void)?
@@ -39,6 +95,7 @@ final class VoiceTranscriptionService: ObservableObject {
     private let assetStore: AssetStore
     private let modelAssets: [Asset]
     private let usesLiveDictation: Bool
+    private let logger = EnsuLogging.shared.logger("EnsuVoice")
     private var session: DictationSession?
     private var stream: DictationStream?
     private var recorder: LivePcmRecorder?
@@ -56,14 +113,15 @@ final class VoiceTranscriptionService: ObservableObject {
     }
     private func diagnostic(_ event: String) {
         #if DEBUG
-            EnsuLogging.shared.logger("EnsuVoice").info(event)
+            logger.info(event)
         #endif
     }
 
     init(provider: LlmProvider, assetStore: AssetStore) {
         self.provider = provider
         self.assetStore = assetStore
-        usesLiveDictation = supportsLiveVoice()
+        usesLiveDictation = supportsLiveVoice(
+            totalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
         modelAssets = [
             transcriptionModelAsset(),
             voiceActivityModelAsset(),
@@ -149,15 +207,14 @@ final class VoiceTranscriptionService: ObservableObject {
                         if self.foreground { self.record() } else { self.startOnForeground = true }
                     } else {
                         self.cancel()
-                        self.state = .error(
-                            "Microphone permission is required. Enable it in Settings.")
+                        self.state = .error(.permission)
                     }
                 }
             }
             return
         case .denied:
             cancel()
-            state = .error("Microphone permission is required. Enable it in Settings.")
+            state = .error(.permission)
             return
         case .granted: break
         @unknown default: return
@@ -195,7 +252,14 @@ final class VoiceTranscriptionService: ObservableObject {
                 try Task.checkCancellation()
                 guard self.generation == token, self.foreground else { return }
                 self.state = .preparing
-                let recorder = try LivePcmRecorder()
+                let recorder: LivePcmRecorder
+                do {
+                    recorder = try LivePcmRecorder()
+                } catch {
+                    self.logger.error("Could not prepare the microphone", error)
+                    self.notice = .microphone
+                    return
+                }
                 self.recorder = recorder
                 let sampleRate = recorder.sampleRate
                 let stream = try DictationStream(
@@ -212,13 +276,15 @@ final class VoiceTranscriptionService: ObservableObject {
                         }
                     }
                 ) {
-                    [weak self] in
+                    [weak self] error in
                     Task { @MainActor [weak self] in
                         guard let self, self.generation == token else { return }
-                        self.interrupt(
-                            message:
-                                "Audio capture interrupted. Some words may be missing; review the text."
-                        )
+                        if let error {
+                            self.logger.error("Audio capture failed", error)
+                        } else {
+                            self.logger.warning("Audio capture exceeded its buffer limit")
+                        }
+                        self.interrupt(reason: .captureInterrupted)
                     }
                 }
                 let callback = LiveVoiceCallback(
@@ -236,10 +302,8 @@ final class VoiceTranscriptionService: ObservableObject {
                                 self.notice = nil
                                 self.refresh(owner, token: token)
                             } catch {
-                                self.interrupt(
-                                    message:
-                                        "Could not start the microphone. Tap the microphone to start again."
-                                )
+                                self.logger.error("Could not start the microphone", error)
+                                self.interrupt(reason: .microphone)
                             }
                         }
                     },
@@ -257,16 +321,11 @@ final class VoiceTranscriptionService: ObservableObject {
                     }
                 )
                 try await self.provider.runLiveVoice(stream: stream, callback: callback)
-            } catch is CancellationError {
             } catch {
-                if let error = error as? DictationError, case .InvalidOperation(let detail) = error
-                {
-                    self.diagnostic("failure \(detail)")
-                } else {
-                    self.diagnostic("failure \(type(of: error))")
-                }
+                let failure = VoiceInputFailure.classify(error)
+                if failure != nil { self.logger.error("Voice input failed", error) }
                 if self.generation == token, self.notice == nil {
-                    self.notice = "Voice input stopped. Review the available text or try again."
+                    self.notice = failure ?? .interrupted
                 }
             }
         }
@@ -286,10 +345,9 @@ final class VoiceTranscriptionService: ObservableObject {
         let added = hasText && insertion.map { onInsert?($0, text) == true } == true
         let completedState: VoiceInputState
         if added {
-            completedState = value.incomplete ? .error("Voice input stopped.") : .idle
+            completedState = value.incomplete ? .error(notice ?? .interrupted) : .idle
         } else {
-            completedState = .error(
-                hasText ? "Voice input stopped." : notice ?? "No speech detected.")
+            completedState = .error(hasText ? .insertion : notice ?? .noSpeech)
         }
         active = false
         isFinishingSlow = false
@@ -327,7 +385,7 @@ final class VoiceTranscriptionService: ObservableObject {
         if recorder == nil { try? stream?.stop(reason: reason) }
     }
 
-    func interrupt(message: String = "Voice input stopped.") {
+    func interrupt(reason: VoiceInputFailure = .interrupted) {
         guard active, !attemptFinished else { return }
         if !hasActiveTasks, stream == nil {
             cancel()
@@ -338,7 +396,7 @@ final class VoiceTranscriptionService: ObservableObject {
         task?.cancel()
         finishingNoticeTask?.cancel()
         isFinishingSlow = false
-        notice = message
+        notice = reason
         state = .transcribing
     }
 
@@ -372,7 +430,9 @@ private final class LiveVoiceCallback: DictationStreamCallback, Sendable {
         change: @escaping @Sendable () -> Void,
         closed: @escaping @Sendable () -> Void
     ) {
-        self.ready = ready; self.change = change; self.closed = closed
+        self.ready = ready
+        self.change = change
+        self.closed = closed
     }
     func onReady() { ready() }
     func onChange() { change() }
@@ -416,7 +476,10 @@ private final class LivePcmRecorder {
     }
 
     func stop(afterDelivery: (@Sendable () -> Void)? = nil) {
-        if installed { engine.inputNode.removeTap(onBus: 0); installed = false }
+        if installed {
+            engine.inputNode.removeTap(onBus: 0)
+            installed = false
+        }
         delivery?.close()
         engine.stop()
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
@@ -431,7 +494,7 @@ private final class VoiceNotificationTokens: @unchecked Sendable {
     deinit { for value in values { NotificationCenter.default.removeObserver(value) } }
 }
 
-private final class LiveCaptureDelivery: @unchecked Sendable {
+final class LiveCaptureDelivery: @unchecked Sendable {
     private let queue = DispatchQueue(label: "io.ente.ensu.voice.capture", qos: .userInitiated)
     private let lock = NSLock()
     private var accepting = true
@@ -439,49 +502,69 @@ private final class LiveCaptureDelivery: @unchecked Sendable {
     private var chunksPending = 0
     private let stream: DictationStream
     private let rate: Int
-    private let interrupted: @Sendable () -> Void
+    private let interrupted: @Sendable (Error?) -> Void
     private let level: @Sendable (Float) -> Void
     private var meterFrames = 0
     private var meterEnergy = 0.0
 
     init(
         stream: DictationStream, sampleRate: UInt32,
-        level: @escaping @Sendable (Float) -> Void, interrupted: @escaping @Sendable () -> Void
+        level: @escaping @Sendable (Float) -> Void,
+        interrupted: @escaping @Sendable (Error?) -> Void
     ) {
-        self.stream = stream; rate = Int(sampleRate); self.interrupted = interrupted
+        self.stream = stream
+        rate = Int(sampleRate)
+        self.interrupted = interrupted
         self.level = level
     }
-    func close() { lock.lock(); accepting = false; lock.unlock() }
+
+    func close() {
+        lock.lock()
+        accepting = false
+        lock.unlock()
+    }
+
     func drain(_ completion: @escaping @Sendable () -> Void) { queue.async(execute: completion) }
 
     func accept(_ buffer: AVAudioPCMBuffer) {
         let frames = Int(buffer.frameLength)
+        accept(frames: frames) {
+            guard let channels = buffer.floatChannelData, buffer.format.channelCount > 0 else {
+                return nil
+            }
+            let channelCount = Int(buffer.format.channelCount)
+            var mono = [Float](repeating: 0, count: frames)
+            for frame in 0..<frames {
+                for channel in 0..<channelCount { mono[frame] += channels[channel][frame] }
+                mono[frame] /= Float(channelCount)
+            }
+            return mono
+        }
+    }
+
+    func accept(frames: Int, copySamples: () -> [Float]?) {
         guard frames > 0 else { return }
         lock.lock()
-        guard accepting else { lock.unlock(); return }
+        defer { lock.unlock() }
+        guard accepting else { return }
         guard frames <= rate, framesPending + frames <= rate * 2, chunksPending < 128,
-            let channels = buffer.floatChannelData, buffer.format.channelCount > 0
+            let samples = copySamples()
         else {
             accepting = false
-            lock.unlock()
             queue.async { [self] in
-                try? stream.abandon(reason: .failure); interrupted()
+                try? stream.abandon(reason: .failure)
+                interrupted(nil)
             }
             return
         }
         framesPending += frames
         chunksPending += 1
-        lock.unlock()
-        let channelCount = Int(buffer.format.channelCount)
-        var mono = [Float](repeating: 0, count: frames)
-        for frame in 0..<frames {
-            for channel in 0..<channelCount { mono[frame] += channels[channel][frame] }
-            mono[frame] /= Float(channelCount)
-        }
-        let samples = mono
         queue.async { [self] in
             defer {
-                lock.lock(); framesPending -= frames; chunksPending -= 1; lock.unlock()
+                lock.lock()
+                framesPending -= frames
+                chunksPending -= 1
+                lock.unlock()
             }
             do {
                 meterFrames += frames
@@ -489,7 +572,8 @@ private final class LiveCaptureDelivery: @unchecked Sendable {
                 if meterFrames >= rate / 10 {
                     let rms = sqrt(meterEnergy / Double(meterFrames))
                     level(Float(min(1, max(0, (20 * log10(max(rms, 0.00001)) + 55) / 45))))
-                    meterFrames = 0; meterEnergy = 0
+                    meterFrames = 0
+                    meterEnergy = 0
                 }
                 for start in stride(from: 0, to: frames, by: rate / 10) {
                     let end = min(frames, start + rate / 10)
@@ -509,8 +593,14 @@ private final class LiveCaptureDelivery: @unchecked Sendable {
                     }
                 }
             } catch {
-                lock.lock(); let wasAccepting = accepting; accepting = false; lock.unlock()
-                if wasAccepting { try? stream.abandon(reason: .failure); interrupted() }
+                lock.lock()
+                let wasAccepting = accepting
+                accepting = false
+                lock.unlock()
+                if wasAccepting {
+                    try? stream.abandon(reason: .failure)
+                    interrupted(error)
+                }
             }
         }
     }

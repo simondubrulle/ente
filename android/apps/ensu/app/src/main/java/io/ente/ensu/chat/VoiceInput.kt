@@ -2,7 +2,6 @@ package io.ente.ensu.chat
 
 import android.annotation.SuppressLint
 import android.content.Context
-import android.content.pm.ApplicationInfo
 import android.media.AudioFormat
 import android.media.AudioManager
 import android.media.AudioRecord
@@ -11,6 +10,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ente.ensu.assets.AssetStore
+import io.ente.ensu.bindings.AssetDownloadException
 import io.ente.ensu.bindings.DictationException
 import io.ente.ensu.bindings.DictationFeedResult
 import io.ente.ensu.bindings.DictationInsertion
@@ -20,11 +20,12 @@ import io.ente.ensu.bindings.DictationSnapshot
 import io.ente.ensu.bindings.DictationStopReason
 import io.ente.ensu.bindings.DictationStream
 import io.ente.ensu.bindings.DictationStreamCallback
+import io.ente.ensu.bindings.supportsLiveVoice
 import io.ente.ensu.bindings.transcriptionModelAsset
 import io.ente.ensu.bindings.voiceActivityModelAsset
 import io.ente.ensu.device.AndroidDeviceCapabilityProvider
-import io.ente.ensu.device.supportsLiveVoice
 import io.ente.ensu.llm.LlmProvider
+import io.ente.ensu.llm.ModelMemoryUnavailable
 import io.ente.ensu.logging.FileLogRepository
 import io.ente.ensu.logging.LogLevel
 import java.io.IOException
@@ -46,6 +47,36 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+internal enum class VoiceInputFailure(val message: String) {
+    Permission("Microphone permission is required. Enable it in Settings."),
+    NoSpeech("No speech detected. Try again."),
+    Download("Voice model download failed. Check your connection and try again."),
+    ModelUnavailable("Voice model could not be loaded. Try again."),
+    StorageFull("Not enough storage space. Free up space and try again."),
+    FileAccess("Could not read or save voice data. Check storage and try again."),
+    MemoryUnavailable("Not enough free memory. Close other apps and try again."),
+    MicrophoneUnavailable("Could not start the microphone. Tap the microphone to try again."),
+    Interrupted("Voice input was interrupted. Review the available text and try again."),
+    ProcessingFailed("Could not transcribe voice input. Review the available text and try again."),
+}
+
+internal fun voiceInputFailure(error: Exception): VoiceInputFailure =
+    when (error) {
+        is ModelMemoryUnavailable -> VoiceInputFailure.MemoryUnavailable
+        is AssetDownloadException.StorageFull,
+        is DictationException.StorageFull -> VoiceInputFailure.StorageFull
+        is AssetDownloadException.Cancelled,
+        is DictationException.Cancelled,
+        is DictationException.InvalidAudio -> VoiceInputFailure.Interrupted
+        is AssetDownloadException.Io,
+        is DictationException.Io,
+        is IOException -> VoiceInputFailure.FileAccess
+        is AssetDownloadException -> VoiceInputFailure.Download
+        is DictationException.NotDownloaded,
+        is DictationException.VadNotDownloaded -> VoiceInputFailure.ModelUnavailable
+        else -> VoiceInputFailure.ProcessingFailed
+    }
+
 internal sealed interface VoiceInputState {
     data object Idle : VoiceInputState
 
@@ -57,7 +88,7 @@ internal sealed interface VoiceInputState {
 
     data object Transcribing : VoiceInputState
 
-    data class Error(val message: String) : VoiceInputState
+    data class Error(val reason: VoiceInputFailure) : VoiceInputState
 }
 
 internal val VoiceInputState.isRecording: Boolean
@@ -71,20 +102,23 @@ internal class VoiceTranscriptionController(
     private val onVoiceInputJob: (Job) -> Unit,
     private val onInsert: (DictationInsertion, String) -> Boolean,
 ) {
-    private val diagnosticsEnabled =
-        context.applicationInfo.flags and ApplicationInfo.FLAG_DEBUGGABLE != 0
-
-    private fun diagnostic(event: String) {
-        if (diagnosticsEnabled) {
-            logRepository.log(LogLevel.Info, event, tag = "EnsuVoice")
-        }
-    }
+    private fun logFailure(error: Exception) =
+        logRepository.log(
+            LogLevel.Error,
+            "Voice input failed",
+            tag = "EnsuVoice",
+            throwable = error,
+        )
 
     private val audioManager = context.getSystemService(AudioManager::class.java)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private val usesLiveDictation =
         supportsLiveVoice(
-            AndroidDeviceCapabilityProvider(context).chatCapability().totalMemoryBytes
+            AndroidDeviceCapabilityProvider(context)
+                .chatCapability()
+                .totalMemoryBytes
+                ?.takeIf { it > 0 }
+                ?.toULong()
         )
     private val modelAssets =
         listOf(
@@ -119,7 +153,7 @@ internal class VoiceTranscriptionController(
     var snapshot: DictationSnapshot? by mutableStateOf(null)
         private set
 
-    private var notice: String? = null
+    private var failure: VoiceInputFailure? = null
 
     var audioLevels: List<Float> by mutableStateOf(List(24) { 0f })
         private set
@@ -141,7 +175,7 @@ internal class VoiceTranscriptionController(
         this.insertion = insertion
         session = DictationSession(live = usesLiveDictation)
         snapshot = session?.snapshot()
-        notice = null
+        failure = null
         audioLevels = List(24) { 0f }
         active = true
         state = VoiceInputState.Idle
@@ -166,8 +200,7 @@ internal class VoiceTranscriptionController(
             if (foreground) record() else startOnForeground = true
         } else {
             discard()
-            state =
-                VoiceInputState.Error("Microphone permission is required. Enable it in Settings.")
+            state = VoiceInputState.Error(VoiceInputFailure.Permission)
         }
     }
 
@@ -184,7 +217,7 @@ internal class VoiceTranscriptionController(
     fun record() {
         val owner = session ?: return
         if (!active || !foreground || hasActiveWork || attemptFinished) return
-        notice = null
+        failure = null
         state = VoiceInputState.Preparing
         val token = generation
         hasActiveWork = true
@@ -223,18 +256,29 @@ internal class VoiceTranscriptionController(
                                             audioLevels = audioLevels.drop(1) + level
                                     }
                                 },
-                            ) {
+                            ) { error ->
                                 scope.launch {
-                                    if (token == generation)
-                                        interrupt(
-                                            "Microphone interrupted. Review the text before continuing."
-                                        )
+                                    if (token == generation) {
+                                        logFailure(error)
+                                        interrupt()
+                                    }
                                 }
                             }
                         capture = microphone
                         ownedCapture = microphone
                         coroutineScope {
-                            val hardwareReady = async(Dispatchers.IO) { microphone.prepare() }
+                            val hardwareReady =
+                                async(Dispatchers.IO) {
+                                    try {
+                                        microphone.prepare()
+                                    } catch (error: Exception) {
+                                        withContext(Dispatchers.Main.immediate) {
+                                            if (token == generation && failure == null)
+                                                failure = VoiceInputFailure.MicrophoneUnavailable
+                                        }
+                                        throw error
+                                    }
+                                }
                             val callback =
                                 object : DictationStreamCallback {
                                     override fun onReady() {
@@ -254,13 +298,17 @@ internal class VoiceTranscriptionController(
                                                 microphone.start(scope)
                                                 state = VoiceInputState.Recording
                                                 audioLevels = List(24) { 0f }
-                                                notice = null
+                                                failure = null
                                                 refresh(owner, token)
-                                            } catch (_: Exception) {
-                                                if (token == generation)
+                                            } catch (error: CancellationException) {
+                                                throw error
+                                            } catch (error: Exception) {
+                                                if (token == generation) {
+                                                    logFailure(error)
                                                     interrupt(
-                                                        "Could not start the microphone. Tap the microphone to start again."
+                                                        VoiceInputFailure.MicrophoneUnavailable
                                                     )
+                                                }
                                             }
                                         }
                                     }
@@ -279,16 +327,18 @@ internal class VoiceTranscriptionController(
                             llmProvider.runLiveVoice(activeStream, callback)
                         }
                     } catch (error: CancellationException) {
+                        if (token == generation && failure == null)
+                            failure = VoiceInputFailure.Interrupted
                         throw error
                     } catch (error: Exception) {
                         ownedStream?.let { runCatching { it.abandon(DictationStopReason.FAILURE) } }
-                        diagnostic(
-                            if (error is DictationException.InvalidOperation)
-                                "failure ${error.detail}"
-                            else "failure ${error.javaClass.simpleName}"
+                        if (
+                            error !is AssetDownloadException.Cancelled &&
+                                error !is DictationException.Cancelled
                         )
-                        if (token == generation && notice == null) {
-                            notice = "Voice input stopped. Review the available text or try again."
+                            logFailure(error)
+                        if (token == generation && failure == null) {
+                            failure = voiceInputFailure(error)
                         }
                     } finally {
                         withContext(NonCancellable) { ownedCapture?.stopAndDrain() }
@@ -320,8 +370,8 @@ internal class VoiceTranscriptionController(
         val completedState =
             when {
                 added && !value.incomplete -> VoiceInputState.Idle
-                text.isBlank() -> VoiceInputState.Error(notice ?: "No speech detected.")
-                else -> VoiceInputState.Error("Voice input stopped.")
+                text.isBlank() -> VoiceInputState.Error(failure ?: VoiceInputFailure.NoSpeech)
+                else -> VoiceInputState.Error(failure ?: VoiceInputFailure.Interrupted)
             }
         active = false
         isFinishingSlow = false
@@ -374,19 +424,19 @@ internal class VoiceTranscriptionController(
         }
     }
 
-    fun interrupt(message: String = "Voice input stopped.") {
+    fun interrupt(reason: VoiceInputFailure = VoiceInputFailure.Interrupted) {
         if (!active || attemptFinished) return
         if (!hasActiveWork && stream == null) {
             discard()
             return
         }
+        failure = reason
+        state = VoiceInputState.Transcribing
         capture?.stop()
         runCatching { stream?.abandon(DictationStopReason.INTERRUPTION) }
         work?.cancel()
         finishingNoticeJob?.cancel()
         isFinishingSlow = false
-        notice = message
-        state = VoiceInputState.Transcribing
     }
 
     fun discard() {
@@ -418,7 +468,7 @@ private class LiveMicrophone(
     private val stream: DictationStream,
     private val audioManager: AudioManager,
     private val onLevel: (Float) -> Unit,
-    private val onInterrupted: () -> Unit,
+    private val onInterrupted: (Exception) -> Unit,
 ) {
     private val stopped = AtomicBoolean(false)
     @Volatile private var recorder: AudioRecord? = null
@@ -501,10 +551,10 @@ private class LiveMicrophone(
                         )
                         stream.feed(buffer) == DictationFeedResult.ACCEPTED
                     }
-                } catch (_: Exception) {
+                } catch (error: Exception) {
                     if (!stopped.get()) {
                         runCatching { stream.abandon(DictationStopReason.FAILURE) }
-                        onInterrupted()
+                        onInterrupted(error)
                     }
                 } finally {
                     stop()
@@ -517,7 +567,6 @@ private class LiveMicrophone(
     suspend fun stopAndDrain() {
         stop()
         readJob?.join()
-        // A reader canceled before dispatch never enters its cleanup block.
         recorder?.release()
         recorder = null
     }

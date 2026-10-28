@@ -41,7 +41,12 @@ impl From<std::io::Error> for TranscriptionError {
 
 impl From<transcribe_rs::TranscribeError> for TranscriptionError {
     fn from(value: transcribe_rs::TranscribeError) -> Self {
-        Self::Transcribe(value.to_string())
+        match value {
+            transcribe_rs::TranscribeError::ModelNotFound(_) => Self::NotDownloaded,
+            transcribe_rs::TranscribeError::Audio(detail) => Self::InvalidAudio(detail),
+            transcribe_rs::TranscribeError::Io(error) => error.into(),
+            error => Self::Transcribe(error.to_string()),
+        }
     }
 }
 
@@ -54,6 +59,22 @@ impl<R> From<ort::Error<R>> for TranscriptionError {
 impl From<rubato::ResamplerConstructionError> for TranscriptionError {
     fn from(value: rubato::ResamplerConstructionError) -> Self {
         Self::InvalidAudio(value.to_string())
+    }
+}
+
+fn voice_error(operation: &str, error: impl Into<TranscriptionError>) -> crate::voice::VoiceError {
+    use crate::voice::VoiceError;
+    match error.into() {
+        TranscriptionError::NotDownloaded => VoiceError::NotDownloaded,
+        TranscriptionError::VadNotDownloaded => VoiceError::VadNotDownloaded,
+        TranscriptionError::StorageFull => VoiceError::StorageFull,
+        TranscriptionError::InvalidAudio(detail) => {
+            VoiceError::InvalidAudio(format!("{operation}: {detail}"))
+        }
+        TranscriptionError::Transcribe(detail) => {
+            VoiceError::ProcessingFailed(format!("{operation}: {detail}"))
+        }
+        TranscriptionError::Io(error) => VoiceError::Io(format!("{operation}: {error}")),
     }
 }
 

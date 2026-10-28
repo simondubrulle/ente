@@ -59,7 +59,9 @@ impl DictationState {
             }
             LiveEvent::Commit { start, end, text } => {
                 if end <= start || start < self.last_commit_end {
-                    return Err(voice::VoiceError::InvalidAudio);
+                    return Err(voice::VoiceError::InvalidAudio(
+                        "Transcript commits must have non-overlapping audio ranges".into(),
+                    ));
                 }
                 self.last_commit_end = end;
                 self.session.observe_recognition(!text.trim().is_empty())?;
@@ -150,21 +152,6 @@ mod tests {
     }
 
     #[test]
-    fn preview_preserves_native_spaces_and_unspaced_scripts() {
-        for (stable, partial, expected) in [
-            ("明", "天", "明天"),
-            ("hello", "world", "hello world"),
-            ("hello ", "world", "hello world"),
-        ] {
-            let mut state = DictationState::new(true);
-            state.session.begin_capture().unwrap();
-            event(&mut state, LiveEvent::ReplaceTranscript(stable.into()));
-            event(&mut state, LiveEvent::Hypothesis(partial.into()));
-            assert_eq!(state.text().to_owned() + &state.hypothesis(), expected);
-        }
-    }
-
-    #[test]
     fn recognized_word_boundaries_survive_preview_and_commit() {
         fn apply_update(state: &mut DictationState, update: voice::RecognitionUpdate) {
             if let Some((start, end, text)) = update.commit {
@@ -175,6 +162,15 @@ mod tests {
         }
 
         for (words, expected) in [
+            (vec!["明", "天", "见", "面"], "明天见面"),
+            (
+                vec!["hello", "world", "again", "today"],
+                "hello world again today",
+            ),
+            (
+                vec!["hello", "world ", "again", "today"],
+                "hello world again today",
+            ),
             (
                 vec!["It", "costs", "$20.", "today."],
                 "It costs $20. today.",

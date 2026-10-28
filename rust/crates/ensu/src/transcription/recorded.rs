@@ -7,6 +7,45 @@ use crate::voice::{Result, VoiceError};
 
 const MAX_RECORDED_SAMPLES: usize = (30 * 60 + 2) * 16_000;
 
+pub(super) fn transcribe_chunks(
+    mut samples: &[f32],
+    mut decode: impl FnMut(&[f32]) -> super::Result<Option<String>>,
+) -> super::Result<Option<String>> {
+    use crate::voice::{MAX_WINDOW_SAMPLES, VOICE_SAMPLE_RATE, transcript_separator};
+
+    let mut text = String::new();
+    while !samples.is_empty() {
+        let end = if samples.len() <= MAX_WINDOW_SAMPLES {
+            samples.len()
+        } else {
+            let limit = MAX_WINDOW_SAMPLES.min(samples.len() - VOICE_SAMPLE_RATE as usize);
+            let start = limit - 2 * VOICE_SAMPLE_RATE as usize;
+            let offset = samples[start..limit]
+                .as_chunks::<{ super::VAD_FRAME_SAMPLES }>()
+                .0
+                .iter()
+                .enumerate()
+                .map(|(index, frame)| {
+                    (
+                        index,
+                        frame.iter().map(|sample| sample * sample).sum::<f32>(),
+                    )
+                })
+                .min_by(|a, b| a.1.total_cmp(&b.1))
+                .map_or(0, |(index, _)| (index + 1) * super::VAD_FRAME_SAMPLES);
+            start + offset
+        };
+        let Some(chunk) = decode(&samples[..end])? else {
+            return Ok(None);
+        };
+        let chunk = chunk.trim();
+        text.push_str(transcript_separator(&text, chunk));
+        text.push_str(chunk);
+        samples = &samples[end..];
+    }
+    Ok(Some(text))
+}
+
 #[derive(Default)]
 pub(super) struct RecordedPcm(Vec<u8>);
 
@@ -41,11 +80,7 @@ impl LiveTranscription {
     ) -> Result<()> {
         self.run_recorded_with(
             || transcriber.live_vad(),
-            |pcm| {
-                transcriber
-                    .transcribe(16_000, pcm)
-                    .map_err(|_| VoiceError::ProcessingFailed)
-            },
+            |pcm| transcriber.transcribe_recording(pcm, || self.queue.is_cancelled()),
             on_event,
         )
     }
@@ -69,9 +104,9 @@ impl LiveTranscription {
             let chunk = self.queue.take();
             let had_chunk = chunk.is_some();
             let mut emit = |frame: &[f32], real: usize| -> Result<()> {
-                let voiced = vad
-                    .is_speech(frame)
-                    .map_err(|_| VoiceError::ProcessingFailed)?;
+                let voiced = vad.is_speech(frame).map_err(|error| {
+                    super::voice_error("Detect speech in recorded audio", error)
+                })?;
                 heard_speech |= voiced;
                 let start = accepted;
                 accepted += real as u64;
@@ -126,6 +161,42 @@ mod tests {
     use transcribe_rs::vad::EnergyVad;
 
     #[test]
+    fn recorded_decoding_bounds_windows_preserves_tails_and_stops_on_cancel() {
+        use crate::voice::MAX_WINDOW_SAMPLES;
+
+        let mut samples = vec![0.25; MAX_WINDOW_SAMPLES * 3 + 1];
+        let quiet = MAX_WINDOW_SAMPLES - 2 * 16000 + 10 * super::super::VAD_FRAME_SAMPLES;
+        samples[quiet..quiet + super::super::VAD_FRAME_SAMPLES].fill(0.0);
+        let mut offset = 0;
+        let mut decoded = 0;
+        let text = transcribe_chunks(&samples, |chunk| {
+            assert!(chunk.len() <= MAX_WINDOW_SAMPLES);
+            assert!(chunk.len() >= 16000);
+            assert_eq!(chunk, &samples[offset..offset + chunk.len()]);
+            if offset == 0 {
+                assert_eq!(chunk.len(), quiet + super::super::VAD_FRAME_SAMPLES);
+            }
+            offset += chunk.len();
+            decoded += 1;
+            Ok(Some(" again ".into()))
+        })
+        .unwrap()
+        .unwrap();
+        assert_eq!(offset, samples.len());
+        assert_eq!(text.split_whitespace().count(), decoded);
+        let mut calls = 0;
+        assert!(
+            transcribe_chunks(&samples, |_| {
+                calls += 1;
+                Ok((calls == 1).then(|| "unfinished".into()))
+            })
+            .unwrap()
+            .is_none()
+        );
+        assert_eq!(calls, 2);
+    }
+
+    #[test]
     fn recorded_capacity_rejects_a_whole_frame_without_overwriting_audio() {
         let mut pcm = RecordedPcm(vec![0; (MAX_RECORDED_SAMPLES - 1) * 2]);
         pcm.push(&[0.25]).unwrap();
@@ -138,19 +209,19 @@ mod tests {
     }
 
     #[test]
-    fn recorded_text_arrives_once_after_close_with_partial_tail() {
-        let stream = LiveTranscription::new(CaptureFormat {
-            sample_rate: 16000,
-            channels: 1,
-        })
-        .unwrap();
-        stream.feed(&[0, 32].repeat(1001)).unwrap();
-        stream.finish();
-        let mut closed = false;
-        let mut commits = Vec::new();
-        let mut covered = 0;
-        stream
-            .run_recorded_with(
+    fn recorded_completion_preserves_the_tail_and_cancellation_suppresses_results() {
+        for cancelled in [false, true] {
+            let stream = LiveTranscription::new(CaptureFormat {
+                sample_rate: 16000,
+                channels: 1,
+            })
+            .unwrap();
+            stream.feed(&[0, 32].repeat(1001)).unwrap();
+            stream.finish();
+            let mut closed = 0;
+            let mut commits = Vec::new();
+            let mut covered = None;
+            let result = stream.run_recorded_with(
                 || {
                     Ok(Box::new(EnergyVad::new(
                         super::super::VAD_FRAME_SAMPLES,
@@ -158,27 +229,37 @@ mod tests {
                     )))
                 },
                 |pcm| {
-                    assert_eq!(pcm.len(), 1001 * 2);
                     assert_eq!(pcm, [0, 32].repeat(1001));
+                    if cancelled {
+                        stream.cancel();
+                    }
                     Ok("dictated words".into())
                 },
                 &mut |event| {
                     match event {
-                        LiveEvent::CaptureClosed => closed = true,
+                        LiveEvent::CaptureClosed => closed += 1,
                         LiveEvent::ReplaceTranscript(text) => {
-                            assert!(closed);
+                            assert_eq!(closed, 1);
                             commits.push(text);
                         }
                         LiveEvent::Hypothesis(_) => panic!("recorded mode must not emit previews"),
-                        LiveEvent::Coverage(end) => covered = end,
+                        LiveEvent::Coverage(end) => covered = Some(end),
                         _ => {}
                     }
                     Ok(LiveControl::Continue)
                 },
-            )
-            .unwrap();
-        assert_eq!(commits, ["dictated words"]);
-        assert_eq!(covered, 1001);
+            );
+            assert_eq!(closed, 1);
+            if cancelled {
+                assert_eq!(result, Err(VoiceError::Cancelled));
+                assert!(commits.is_empty());
+                assert_eq!(covered, None);
+            } else {
+                result.unwrap();
+                assert_eq!(commits, ["dictated words"]);
+                assert_eq!(covered, Some(1001));
+            }
+        }
     }
 
     #[test]
@@ -217,7 +298,6 @@ mod tests {
                     }
                     let control = state.apply(event, || stream.finish_if_empty())?;
                     if idle && state.session.stop_reason() == Some(StopReason::Silence) {
-                        // A native read can finish after closure, before its stop callback.
                         assert!(!capture_closed);
                         assert_eq!(stream.feed(&[0; 3200])?, CaptureFeedResult::Closed);
                         late_buffer = true;
@@ -235,36 +315,5 @@ mod tests {
         assert!(!state.session.incomplete());
         assert_eq!(state.text(), "Complete recorded transcript");
         assert_eq!(stream.submitted_samples(), (audio.len() / 2) as u64);
-    }
-
-    #[test]
-    fn cancellation_during_batch_decode_does_not_publish_text() {
-        let stream = LiveTranscription::new(CaptureFormat {
-            sample_rate: 16000,
-            channels: 1,
-        })
-        .unwrap();
-        stream.feed(&[0, 32].repeat(512)).unwrap();
-        stream.finish();
-        let result = stream.run_recorded_with(
-            || {
-                Ok(Box::new(EnergyVad::new(
-                    super::super::VAD_FRAME_SAMPLES,
-                    0.01,
-                )))
-            },
-            |_| {
-                stream.cancel();
-                Ok("late result".into())
-            },
-            &mut |event| {
-                assert!(!matches!(
-                    event,
-                    LiveEvent::ReplaceTranscript(_) | LiveEvent::Coverage(_)
-                ));
-                Ok(LiveControl::Continue)
-            },
-        );
-        assert_eq!(result, Err(VoiceError::Cancelled));
     }
 }

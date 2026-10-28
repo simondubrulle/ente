@@ -17,6 +17,7 @@ pub fn extract_speech_from_pcm16(
     vad_model_path: impl AsRef<Path>,
     input_sample_rate: u32,
     pcm_le: &[u8],
+    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     if input_sample_rate == 0 {
         return Err(TranscriptionError::InvalidAudio(
@@ -36,13 +37,14 @@ pub fn extract_speech_from_pcm16(
         .map(|chunk| i16::from_le_bytes(*chunk) as f32 / 32768.0)
         .collect::<Vec<_>>();
 
-    extract_speech(vad_model_path, input_sample_rate, &samples)
+    extract_speech(vad_model_path, input_sample_rate, &samples, is_cancelled)
 }
 
 fn extract_speech(
     vad_model_path: impl AsRef<Path>,
     input_sample_rate: u32,
     samples: &[f32],
+    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     if samples.is_empty() {
         return Ok(Vec::new());
@@ -60,13 +62,14 @@ fn extract_speech(
         VAD_ONSET_FRAMES,
     );
 
-    extract_speech_with_vad(input_sample_rate, samples, &mut vad)
+    extract_speech_with_vad(input_sample_rate, samples, &mut vad, is_cancelled)
 }
 
 fn extract_speech_with_vad(
     input_sample_rate: u32,
     samples: &[f32],
     vad: &mut dyn Vad,
+    is_cancelled: &mut impl FnMut() -> bool,
 ) -> Result<Vec<f32>> {
     let mut resampler = FrameResampler::new(
         input_sample_rate as usize,
@@ -88,8 +91,16 @@ fn extract_speech_with_vad(
             Err(error) => vad_error = Some(error),
         }
     };
-    resampler.push(samples, &mut emit);
-    resampler.finish(&mut emit);
+    for chunk in samples.chunks(input_sample_rate as usize) {
+        if is_cancelled() {
+            return Ok(Vec::new());
+        }
+        resampler.push(chunk, &mut emit)?;
+    }
+    if is_cancelled() {
+        return Ok(Vec::new());
+    }
+    resampler.finish(&mut emit)?;
     if let Some(error) = vad_error {
         return Err(error.into());
     }
@@ -143,10 +154,10 @@ impl FrameResampler {
         })
     }
 
-    fn push(&mut self, mut src: &[f32], mut emit: impl FnMut(&[f32])) {
+    fn push(&mut self, mut src: &[f32], mut emit: impl FnMut(&[f32])) -> Result<()> {
         if self.resampler.is_none() {
             self.emit_frames(src, &mut emit);
-            return;
+            return Ok(());
         }
 
         while !src.is_empty() {
@@ -156,27 +167,38 @@ impl FrameResampler {
             src = &src[take..];
 
             if self.in_buf.len() == self.chunk_in {
-                if let Some(resampler) = self.resampler.as_mut()
-                    && let Ok(input) = InterleavedSlice::new(&self.in_buf, 1, self.chunk_in)
-                    && let Ok(out) = resampler.process(&input, None)
-                {
+                if let Some(resampler) = self.resampler.as_mut() {
+                    let input =
+                        InterleavedSlice::new(&self.in_buf, 1, self.chunk_in).map_err(|error| {
+                            TranscriptionError::InvalidAudio(format!(
+                                "Prepare audio resampler input: {error}"
+                            ))
+                        })?;
+                    let out = resampler.process(&input, None).map_err(|error| {
+                        TranscriptionError::Transcribe(format!("Resample recorded audio: {error}"))
+                    })?;
                     self.emit_frames(&out.take_data(), &mut emit);
                 }
                 self.in_buf.clear();
             }
         }
+        Ok(())
     }
 
-    fn finish(&mut self, mut emit: impl FnMut(&[f32])) {
+    fn finish(&mut self, mut emit: impl FnMut(&[f32])) -> Result<()> {
         if let Some(resampler) = self.resampler.as_mut()
             && !self.in_buf.is_empty()
         {
             self.in_buf.resize(self.chunk_in, 0.0);
-            if let Ok(input) = InterleavedSlice::new(&self.in_buf, 1, self.chunk_in)
-                && let Ok(out) = resampler.process(&input, None)
-            {
-                self.emit_frames(&out.take_data(), &mut emit);
-            }
+            let input = InterleavedSlice::new(&self.in_buf, 1, self.chunk_in).map_err(|error| {
+                TranscriptionError::InvalidAudio(format!(
+                    "Prepare final audio resampler input: {error}"
+                ))
+            })?;
+            let out = resampler.process(&input, None).map_err(|error| {
+                TranscriptionError::Transcribe(format!("Resample final recorded audio: {error}"))
+            })?;
+            self.emit_frames(&out.take_data(), &mut emit);
         }
 
         if !self.pending.is_empty() {
@@ -184,6 +206,7 @@ impl FrameResampler {
             emit(&self.pending);
             self.pending.clear();
         }
+        Ok(())
     }
 
     fn emit_frames(&mut self, mut data: &[f32], emit: &mut impl FnMut(&[f32])) {
@@ -208,9 +231,10 @@ mod tests {
     use super::*;
 
     #[test]
-    fn vad_failure_does_not_return_an_apparently_complete_partial_recording() {
+    fn vad_failure_and_cancellation_do_not_return_partial_recordings() {
         struct FailsAfterSpeech {
             frames: usize,
+            fail: bool,
         }
         impl Vad for FailsAfterSpeech {
             fn frame_size(&self) -> usize {
@@ -221,7 +245,7 @@ mod tests {
                 _: &[f32],
             ) -> std::result::Result<bool, transcribe_rs::TranscribeError> {
                 self.frames += 1;
-                if self.frames == 1 {
+                if self.frames == 1 || !self.fail {
                     Ok(true)
                 } else {
                     Err(transcribe_rs::TranscribeError::Inference(
@@ -231,9 +255,27 @@ mod tests {
             }
             fn reset(&mut self) {}
         }
-        let mut vad = FailsAfterSpeech { frames: 0 };
-        assert!(extract_speech_with_vad(16000, &vec![0.2; 1440], &mut vad).is_err());
+        let mut vad = FailsAfterSpeech {
+            frames: 0,
+            fail: true,
+        };
+        assert!(
+            matches!(extract_speech_with_vad(16000, &vec![0.2; 1440], &mut vad, &mut || false), Err(TranscriptionError::Transcribe(detail)) if detail.contains("injected VAD failure"))
+        );
         assert_eq!(vad.frames, 2);
+        let mut vad = FailsAfterSpeech {
+            frames: 0,
+            fail: false,
+        };
+        let mut checks = 0;
+        let speech = extract_speech_with_vad(16000, &vec![0.2; 32000], &mut vad, &mut || {
+            checks += 1;
+            checks > 1
+        })
+        .unwrap();
+        assert!(speech.is_empty());
+        assert_eq!(checks, 2);
+        assert_eq!(vad.frames, 16000 / vad.frame_size());
     }
 
     fn resample(input: &[f32], sample_rate: usize, push_size: usize) -> Vec<f32> {
@@ -245,9 +287,9 @@ mod tests {
             output.extend_from_slice(frame);
         };
         for chunk in input.chunks(push_size) {
-            resampler.push(chunk, &mut emit);
+            resampler.push(chunk, &mut emit).unwrap();
         }
-        resampler.finish(emit);
+        resampler.finish(emit).unwrap();
         output
     }
 

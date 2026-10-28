@@ -546,41 +546,41 @@ mod tests {
     }
 
     #[test]
-    fn serializer_failure_retries_original_and_cleans_staging() {
-        let f = Fixture::new();
-        let result = f.cache.load(&f.source, "runtime-a", true, |plan| {
-            if matches!(plan, LoadPlan::Source { save_to: Some(_) }) {
-                f.loads.borrow_mut().push("failed-save");
-                Err(io::Error::new(
-                    io::ErrorKind::StorageFull,
-                    "injected full disk",
-                ))
-            } else {
-                f.loader(plan)
+    fn failed_cache_load_or_serialization_recovers_from_source() {
+        for cached in [false, true] {
+            let f = Fixture::new();
+            let expected = f.loader(LoadPlan::Source { save_to: None }).unwrap();
+            if cached {
+                assert_eq!(f.load("runtime-a"), expected);
             }
-        });
-        assert!(result.is_ok());
-        assert_eq!(f.loads.take(), ["failed-save", "source"]);
-        assert!(!f.ready().exists());
-        assert_eq!(fs::read_dir(&f.cache.root).unwrap().count(), 1);
-    }
-
-    #[test]
-    fn rejected_hash_valid_graph_rebuilds_from_source() {
-        let f = Fixture::new();
-        let expected = f.load("runtime-a");
-        let actual = f
-            .cache
-            .load(&f.source, "runtime-a", true, |plan| {
-                if matches!(plan, LoadPlan::Cached { .. }) {
-                    Err(invalid_cache())
-                } else {
-                    f.loader(plan)
-                }
-            })
-            .unwrap();
-        assert_eq!(actual, expected);
-        assert_eq!(f.loads.take(), ["build", "build"]);
+            f.loads.take();
+            let mut failed = false;
+            let actual = f
+                .cache
+                .load(&f.source, "runtime-a", true, |plan| match plan {
+                    LoadPlan::Cached { .. } if cached => {
+                        failed = true;
+                        Err(invalid_cache())
+                    }
+                    LoadPlan::Source { save_to: Some(_) } if !cached => {
+                        failed = true;
+                        Err(io::Error::new(
+                            io::ErrorKind::StorageFull,
+                            "injected full disk",
+                        ))
+                    }
+                    _ => f.loader(plan),
+                })
+                .unwrap();
+            assert!(failed);
+            assert_eq!(actual, expected);
+            assert_eq!(f.loads.take(), [if cached { "build" } else { "source" }]);
+            assert_eq!(f.ready().exists(), cached);
+            assert_eq!(
+                fs::read_dir(&f.cache.root).unwrap().count(),
+                if cached { 2 } else { 1 }
+            );
+        }
     }
 
     #[test]

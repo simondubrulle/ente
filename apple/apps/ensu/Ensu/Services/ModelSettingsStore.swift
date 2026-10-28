@@ -26,10 +26,6 @@ enum ChatDeviceCapability: Equatable {
     }
 }
 
-func supportsLiveVoice(totalMemoryBytes: UInt64 = ProcessInfo.processInfo.physicalMemory) -> Bool {
-    totalMemoryBytes > 4 * 1024 * 1024 * 1024
-}
-
 func currentChatDeviceCapability() -> ChatDeviceCapability {
     chatDeviceCapability(totalMemoryBytes: ProcessInfo.processInfo.physicalMemory)
 }

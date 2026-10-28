@@ -12,7 +12,6 @@ class MicrophoneCaptureTest {
             isStopped = { stopped },
             read = { 3200 },
             isInterrupted = {
-                // AudioRecord.stop() clears the route after a successful read.
                 stopped = true
                 true
             },
