@@ -174,6 +174,7 @@ class LlmProvider(
                     }
                 }
             }
+        var completed = false
         try {
             withModelContext {
                 withResources {
@@ -186,10 +187,14 @@ class LlmProvider(
                     }
                 }
             }
-        } catch (error: Throwable) {
-            runCatching { stream.abandon(DictationStopReason.FAILURE) }
-            throw error
+            completed = true
         } finally {
+            if (!completed) {
+                val reason =
+                    if (currentCoroutineContext().isActive) DictationStopReason.FAILURE
+                    else DictationStopReason.INTERRUPTION
+                runCatching { stream.abandon(reason) }
+            }
             exited.set(true)
             cancellation.cancel()
         }

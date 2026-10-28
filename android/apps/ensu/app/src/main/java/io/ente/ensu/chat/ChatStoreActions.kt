@@ -1325,13 +1325,7 @@ internal class ChatStoreActions(
                         it.copy(
                             chat =
                                 it.chat.copy(
-                                    transientAssistantError =
-                                        if (error is ConversationException.CurrentInputTooLarge)
-                                            CURRENT_INPUT_TOO_LARGE_MESSAGE
-                                        else
-                                            (error as? ConversationException.Other)?.detail
-                                                ?: error.message
-                                                ?: "Unable to prepare conversation",
+                                    transientAssistantError = conversationPreparationError(error),
                                     transientAssistantParentId = userMessage.id,
                                 )
                         )
@@ -1344,6 +1338,13 @@ internal class ChatStoreActions(
             if (isActive()) state.update { it.copy(chat = it.chat.copy(preparationStatus = null)) }
         }
     }
+
+    private fun conversationPreparationError(error: Throwable): String =
+        when (error) {
+            is ConversationException.CurrentInputTooLarge -> CURRENT_INPUT_TOO_LARGE_MESSAGE
+            is ConversationException.Other -> error.detail
+            else -> error.message ?: "Unable to prepare conversation"
+        }
 
     private fun finishGeneration(
         sessionId: String,

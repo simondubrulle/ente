@@ -236,6 +236,8 @@ internal class VoiceTranscriptionController(
                 .launch {
                     var ownedCapture: LiveMicrophone? = null
                     var ownedStream: DictationStream? = null
+                    var attemptError: Exception? = null
+                    var completed = false
                     try {
                         if (
                             !withContext(Dispatchers.IO) {
@@ -350,21 +352,26 @@ internal class VoiceTranscriptionController(
                                 }
                             llmProvider.runLiveVoice(activeStream, callback)
                         }
+                        completed = true
                     } catch (error: CancellationException) {
-                        if (token == generation && failure == null)
-                            failure = VoiceInputFailure.Interrupted
                         throw error
+                    } catch (error: AssetDownloadException.Cancelled) {
+                        attemptError = error
+                    } catch (error: DictationException.Cancelled) {
+                        attemptError = error
                     } catch (error: Exception) {
-                        ownedStream?.let { runCatching { it.abandon(DictationStopReason.FAILURE) } }
-                        if (
-                            error !is AssetDownloadException.Cancelled &&
-                                error !is DictationException.Cancelled
-                        )
-                            logFailure(error)
-                        if (token == generation && failure == null) {
-                            failure = voiceInputFailure(error)
-                        }
+                        attemptError = error
+                        logFailure(error)
                     } finally {
+                        attemptError?.let { error ->
+                            ownedStream?.let {
+                                runCatching { it.abandon(DictationStopReason.FAILURE) }
+                            }
+                            if (token == generation && failure == null)
+                                failure = voiceInputFailure(error)
+                        }
+                        if (!completed && token == generation && failure == null)
+                            failure = VoiceInputFailure.Interrupted
                         withContext(NonCancellable) { ownedCapture?.stopAndDrain() }
                         hasActiveWork = false
                         if (token == generation) {
