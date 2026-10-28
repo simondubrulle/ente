@@ -4,7 +4,7 @@ import "package:flutter/material.dart";
 import "package:photos/models/search/hierarchical/hierarchical_search_filter.dart";
 import "package:photos/theme/ente_theme.dart";
 import "package:photos/ui/viewer/gallery/state/search_filter_data_provider.dart";
-import "package:photos/ui/viewer/hierarchicial_search/chip_widgets/hierarchical_filter_chip.dart";
+import "package:photos/ui/viewer/hierarchical_search/chip_widgets/hierarchical_filter_chip.dart";
 import "package:photos/utils/hierarchical_search_util.dart";
 
 class FilterOptionsBottomSheet extends StatefulWidget {

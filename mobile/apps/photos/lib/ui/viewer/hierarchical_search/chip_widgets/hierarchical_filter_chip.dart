@@ -2,9 +2,9 @@ import "package:flutter/material.dart";
 import "package:photos/models/search/hierarchical/face_filter.dart";
 import "package:photos/models/search/hierarchical/hierarchical_search_filter.dart";
 import "package:photos/models/search/hierarchical/only_them_filter.dart";
-import "package:photos/ui/viewer/hierarchicial_search/chip_widgets/face_filter_chip.dart";
-import "package:photos/ui/viewer/hierarchicial_search/chip_widgets/generic_filter_chip.dart";
-import "package:photos/ui/viewer/hierarchicial_search/chip_widgets/only_them_filter_chip.dart";
+import "package:photos/ui/viewer/hierarchical_search/chip_widgets/face_filter_chip.dart";
+import "package:photos/ui/viewer/hierarchical_search/chip_widgets/generic_filter_chip.dart";
+import "package:photos/ui/viewer/hierarchical_search/chip_widgets/only_them_filter_chip.dart";
 
 class HierarchicalFilterChip extends StatelessWidget {
   final HierarchicalSearchFilter filter;
