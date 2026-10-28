@@ -219,8 +219,11 @@ const Page: React.FC = () => {
     });
     const [albumFilter, setAlbumFilter] = useState<AlbumFilter>("ente");
     const [albumSearchQuery, setAlbumSearchQuery] = useState("");
-    const [albumOpenedFromOverview, setAlbumOpenedFromOverview] =
-        useState<number>();
+    const [albumOpenedFromOverview, setAlbumOpenedFromOverview] = useState<{
+        collectionID: number;
+        filter: AlbumFilter;
+        searchQuery: string;
+    }>();
     const [blockingLoad, setBlockingLoad] = useState(false);
     const [peopleSortBy, setPeopleSortBy] =
         useState<PeopleSortBy>("count-desc");
@@ -1668,16 +1671,21 @@ const Page: React.FC = () => {
 
     const handleBackToAlbums = useCallback(() => {
         setCleanupView(undefined);
-        setAlbumSearchQuery("");
+        const origin =
+            albumOpenedFromOverview?.collectionID === collectionSummary?.id
+                ? albumOpenedFromOverview
+                : undefined;
+        const filter = origin?.filter ?? "ente";
+        setAlbumSearchQuery(origin?.searchQuery ?? "");
         setSelected({
             ownCount: 0,
             count: 0,
             collectionID: 0,
             context: undefined,
         });
-        setAlbumFilter("ente");
-        dispatch({ type: "showAlbumOverview", albumFilter: "ente" });
-    }, []);
+        setAlbumFilter(filter);
+        dispatch({ type: "showAlbumOverview", albumFilter: filter });
+    }, [albumOpenedFromOverview, collectionSummary?.id]);
 
     const handleChangeBarMode = (mode: GalleryBarMode) => {
         if (mode == "links") {
@@ -2367,7 +2375,7 @@ const Page: React.FC = () => {
                                 onBackToAlbums={handleBackToAlbums}
                                 showBackToAlbums={
                                     albumOpenedFromOverview !== undefined &&
-                                    albumOpenedFromOverview ===
+                                    albumOpenedFromOverview.collectionID ===
                                         collectionSummary?.id
                                 }
                                 onBackToPeople={handleBackToPeople}
@@ -2441,7 +2449,11 @@ const Page: React.FC = () => {
                             sortBy={collectionsSortBy}
                             onSelectAlbum={(collectionID) => {
                                 handleShowCollectionSummaryWithID(collectionID);
-                                setAlbumOpenedFromOverview(collectionID);
+                                setAlbumOpenedFromOverview({
+                                    collectionID,
+                                    filter: overviewFilter!,
+                                    searchQuery: albumSearchQuery,
+                                });
                             }}
                             onCreateAlbum={() => {
                                 setPostCreateAlbumOp(undefined);
