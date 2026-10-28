@@ -35,7 +35,10 @@ import { AlbumsOverview } from "@/components/gallery/AlbumsOverview";
 import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
-import { PhotosNavigationShell } from "@/components/gallery/PhotosNavigationShell";
+import {
+    PhotosNavigationShell,
+    type PhotosNavigationShellHandle,
+} from "@/components/gallery/PhotosNavigationShell";
 import type { PlaceSelection } from "@/components/gallery/PlacesList";
 import { PublicLinkDetails } from "@/components/gallery/PublicLinkDetails";
 import {
@@ -49,7 +52,6 @@ import {
     type GalleryBarMode,
 } from "@/components/gallery/reducer";
 import { useAlbumNavigationData } from "@/components/gallery/use-album-navigation-data";
-import { Sidebar } from "@/components/sidebar/Sidebar";
 import {
     notifyOthersFilesDialogAttributes,
     notifyUnsupportedSharedFavoritesDialogAttributes,
@@ -168,10 +170,7 @@ import {
     filterSearchableFiles,
     updateSearchCollectionsAndFiles,
 } from "ente-new/photos/services/search";
-import type {
-    SearchOption,
-    SidebarActionID,
-} from "ente-new/photos/services/search/types";
+import type { SearchOption } from "ente-new/photos/services/search/types";
 import {
     initSettings,
     updateMapEnabled,
@@ -291,14 +290,10 @@ const Page: React.FC = () => {
         CollectionOp | undefined
     >(undefined);
     const postCreateAlbumHidden = useRef(false);
-    const [pendingSidebarAction, setPendingSidebarAction] = useState<
-        SidebarActionID | undefined
-    >(undefined);
+    const navigationRef = useRef<PhotosNavigationShellHandle>(null);
 
     const lastAuthenticationForHiddenTimestamp = useRef<number>(0);
 
-    const { show: showSidebar, props: sidebarVisibilityProps } =
-        useModalVisibility();
     const { show: showPeopleConsent, props: peopleConsentVisibilityProps } =
         useModalVisibility();
     const pendingPeopleSearchReset = useRef<(() => void) | undefined>(
@@ -383,16 +378,6 @@ const Page: React.FC = () => {
             onAuthenticateCallback.current = undefined;
         }
     }, []);
-
-    const showSubscriptionSettings = useCallback(() => {
-        setPendingSidebarAction("subscription");
-        showSidebar();
-    }, [showSidebar]);
-
-    const handleSidebarActionHandled = useCallback(
-        () => setPendingSidebarAction(undefined),
-        [],
-    );
 
     const {
         user,
@@ -870,7 +855,6 @@ const Page: React.FC = () => {
             !filteredFiles.length ||
             uploadTypeSelectorView ||
             openCollectionSelector ||
-            sidebarVisibilityProps.open ||
             fixCreationTimeVisibilityProps.open ||
             authenticateUserVisibilityProps.open ||
             albumNameInputVisibilityProps.open ||
@@ -1515,8 +1499,9 @@ const Page: React.FC = () => {
                     personID: searchOption.suggestion.person.id,
                 });
             } else if (type == "sidebarAction") {
-                setPendingSidebarAction(searchOption.suggestion.actionID);
-                showSidebar();
+                navigationRef.current?.showSettings(
+                    searchOption.suggestion.actionID,
+                );
 
                 const shouldExitSearchMode =
                     options?.shouldExitSearchMode ?? true;
@@ -1593,15 +1578,6 @@ const Page: React.FC = () => {
             setCleanupView(view);
         },
         [closeCollectionMap, closeSlideshow],
-    );
-
-    const handleShowLargeFiles = useCallback(
-        () => handleShowCleanupView("large-files"),
-        [handleShowCleanupView],
-    );
-    const handleShowDuplicates = useCallback(
-        () => handleShowCleanupView("duplicates"),
-        [handleShowCleanupView],
     );
 
     const handleDownloadStatusNotificationsShowCollectionSummary = useCallback(
@@ -2200,9 +2176,12 @@ const Page: React.FC = () => {
                     onRemotePull={remotePull}
                 />
                 <PhotosNavigationShell
+                    ref={navigationRef}
                     isFirstLoad={isFirstLoad}
                     isInSearchMode={isInSearchMode}
-                    isSettingsOpen={sidebarVisibilityProps.open}
+                    collectionNameByID={collectionNameByID}
+                    onShowCleanupView={handleShowCleanupView}
+                    onAuthenticateUser={authenticateUser}
                     mode={barMode}
                     isMapView={isMapView}
                     isMapSelected={
@@ -2214,7 +2193,6 @@ const Page: React.FC = () => {
                         if (changed) setIsMapView(false);
                         return changed;
                     }}
-                    onSidebar={showSidebar}
                     onUpload={openUploader}
                     onShowMap={() => {
                         setSelectedPlace(undefined);
@@ -2525,19 +2503,11 @@ const Page: React.FC = () => {
                     onUploadFile={(file) =>
                         dispatch({ type: "uploadFile", file })
                     }
-                    onShowSubscription={showSubscriptionSettings}
+                    onShowSubscription={() =>
+                        navigationRef.current?.showSettings("subscription")
+                    }
                     onShowSessionExpiredDialog={showSessionExpiredDialog}
                     isInHiddenSection={barMode == "hidden-albums"}
-                />
-                <Sidebar
-                    {...sidebarVisibilityProps}
-                    onShowLargeFiles={handleShowLargeFiles}
-                    onShowDuplicates={handleShowDuplicates}
-                    pendingAction={pendingSidebarAction}
-                    onActionHandled={handleSidebarActionHandled}
-                    collectionNameByID={collectionNameByID}
-                    setLoading={setBlockingLoad}
-                    onAuthenticateUser={authenticateUser}
                 />
                 <DesktopWhatsNew />
                 <PeopleConsentDialog
