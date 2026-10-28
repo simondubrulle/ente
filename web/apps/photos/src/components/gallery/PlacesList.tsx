@@ -12,7 +12,7 @@ import log from "ente-base/log";
 import type { EnteFile } from "ente-media/file";
 import { ItemCard, PreviewItemTile } from "ente-new/photos/components/Tiles";
 import { t } from "i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listPlaces } from "../../services/places";
 
 export interface PlaceSelection {
@@ -31,6 +31,7 @@ export const PlacesList = ({
     selectedPlace?: PlaceSelection;
     onSelectPlace: (place: PlaceSelection | undefined) => void;
 }) => {
+    const listRef = useRef<HTMLUListElement>(null);
     const [result, setResult] = useState<{
         files: EnteFile[];
         groups?: Awaited<ReturnType<typeof listPlaces>>;
@@ -50,6 +51,10 @@ export const PlacesList = ({
             cancelled = true;
         };
     }, [files]);
+
+    useEffect(() => {
+        if (listRef.current) listRef.current.scrollTop = 0;
+    }, [searchQuery]);
 
     const currentResult = result?.files === files ? result : undefined;
     const query = searchQuery.trim().toLowerCase();
@@ -95,6 +100,7 @@ export const PlacesList = ({
                 <Typography role="status">{t("no_results")}</Typography>
             ) : (
                 <List
+                    ref={listRef}
                     disablePadding
                     aria-label={t("search_places")}
                     sx={{

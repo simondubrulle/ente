@@ -199,6 +199,11 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
         }
     }, [mode, mobile, mobileDrawerProps.open, collapsed]);
 
+    const isPlacesView = !!placesFiles;
+    useEffect(() => {
+        if (!isPlacesView) setPlacesSearchQuery("");
+    }, [isPlacesView]);
+
     useEffect(() => {
         if (isSearching) {
             listRef.current?.scrollTo(0);
