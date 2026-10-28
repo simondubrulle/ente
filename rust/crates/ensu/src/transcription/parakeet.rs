@@ -2,7 +2,10 @@ use std::path::Path;
 
 use ort::{
     inputs,
-    session::{Session, SessionOutputs, builder::GraphOptimizationLevel},
+    session::{
+        Session, SessionOutputs,
+        builder::{AutoDevicePolicy, GraphOptimizationLevel},
+    },
     value::{DynValue, TensorRef},
 };
 use regex::{Captures, regex};
@@ -117,7 +120,9 @@ impl Parakeet {
 }
 
 fn load_session(path: &Path) -> Result<Session> {
-    Ok(Session::builder()?
+    let environment = super::environment()?;
+    Ok(Session::builder(&environment)?
+        .with_auto_device(AutoDevicePolicy::PreferCPU)?
         .with_optimization_level(GraphOptimizationLevel::Level3)?
         .with_parallel_execution(true)?
         .with_execution_providers([ort::ep::CPU::default().build()])?
