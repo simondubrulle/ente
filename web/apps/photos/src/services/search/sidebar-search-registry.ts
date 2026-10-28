@@ -319,10 +319,6 @@ export const performSidebarAction = async (
     ctx: SidebarActionContext,
 ): Promise<void> => {
     switch (actionID) {
-        case "subscription":
-            ctx.onShowPlanSelector();
-            return Promise.resolve();
-
         case "utility.account":
             ctx.showAccount();
             return Promise.resolve();

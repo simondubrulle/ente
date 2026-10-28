@@ -242,6 +242,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
     const performSidebarAction = useCallback(
         async (actionID: SidebarActionID) => {
             if (actionID !== "utility.export") closeSections();
+            if (actionID === "subscription") {
+                onShowPlanSelector();
+                return;
+            }
             return performSidebarRegistryAction(actionID, {
                 onClose,
                 onShowPlanSelector,
