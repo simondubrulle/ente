@@ -1,3 +1,5 @@
+#[cfg(feature = "account-deletion")]
+pub mod account_deletion;
 #[cfg(feature = "accounts")]
 pub mod accounts;
 #[cfg(feature = "cast")]

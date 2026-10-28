@@ -12,7 +12,7 @@ import log from "ente-base/log";
 import type { EnteFile } from "ente-media/file";
 import { ItemCard, PreviewItemTile } from "ente-new/photos/components/Tiles";
 import { t } from "i18next";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { listPlaces } from "../../services/places";
 
 export interface PlaceSelection {
@@ -22,13 +22,16 @@ export interface PlaceSelection {
 
 export const PlacesList = ({
     files,
+    searchQuery,
     selectedPlace,
     onSelectPlace,
 }: {
     files: EnteFile[];
+    searchQuery: string;
     selectedPlace?: PlaceSelection;
     onSelectPlace: (place: PlaceSelection | undefined) => void;
 }) => {
+    const listRef = useRef<HTMLUListElement>(null);
     const [result, setResult] = useState<{
         files: EnteFile[];
         groups?: Awaited<ReturnType<typeof listPlaces>>;
@@ -49,7 +52,15 @@ export const PlacesList = ({
         };
     }, [files]);
 
+    useEffect(() => {
+        if (listRef.current) listRef.current.scrollTop = 0;
+    }, [searchQuery]);
+
     const currentResult = result?.files === files ? result : undefined;
+    const query = searchQuery.trim().toLowerCase();
+    const matchingGroups = currentResult?.groups?.filter(({ city }) =>
+        `${city.name}, ${city.country}`.toLowerCase().includes(query),
+    );
 
     return (
         <Stack sx={{ flex: 1, minHeight: 0, gap: "8px" }}>
@@ -85,10 +96,11 @@ export const PlacesList = ({
                 </Stack>
             ) : !currentResult.groups ? (
                 <Typography role="alert">{t("generic_error_retry")}</Typography>
-            ) : !currentResult.groups.length ? (
+            ) : !matchingGroups?.length ? (
                 <Typography role="status">{t("no_results")}</Typography>
             ) : (
                 <List
+                    ref={listRef}
                     disablePadding
                     aria-label={t("search_places")}
                     sx={{
@@ -100,7 +112,7 @@ export const PlacesList = ({
                         gap: "8px",
                     }}
                 >
-                    {currentResult.groups.map(({ city, coverFile }) => (
+                    {matchingGroups.map(({ city, coverFile }) => (
                         <ListItem
                             key={`${city.name}-${city.country}-${city.latitude}-${city.longitude}`}
                             disableGutters
