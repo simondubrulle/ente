@@ -42,6 +42,7 @@ class ClusterPage extends StatefulWidget {
   final PersonEntity? personID;
   final String appendTitle;
   final bool showNamingBanner;
+  final VoidCallback? onFilesChanged;
 
   static const GalleryType appBarType = GalleryType.cluster;
   static const GalleryType overlayType = GalleryType.cluster;
@@ -55,6 +56,7 @@ class ClusterPage extends StatefulWidget {
     this.personID,
     this.appendTitle = "",
     this.showNamingBanner = true,
+    this.onFilesChanged,
     super.key,
   });
 
@@ -91,6 +93,7 @@ class _ClusterPageState extends State<ClusterPage> {
         for (var updatedFile in event.updatedFiles) {
           files.remove(updatedFile);
         }
+        widget.onFilesChanged?.call();
         setState(() {});
       }
     });
@@ -100,6 +103,7 @@ class _ClusterPageState extends State<ClusterPage> {
           for (var updatedFile in event.relevantFiles!) {
             files.remove(updatedFile);
           }
+          widget.onFilesChanged?.call();
           setState(() {});
         }
         if (event.type == PeopleEventType.removedFaceFromCluster) {
@@ -107,6 +111,7 @@ class _ClusterPageState extends State<ClusterPage> {
             final int fileID = getFileIdFromFaceId<int>(removedFaceID);
             files.removeWhere((file) => file.uploadedFileID == fileID);
           }
+          widget.onFilesChanged?.call();
           setState(() {});
         }
       }
