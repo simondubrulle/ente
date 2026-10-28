@@ -4,7 +4,6 @@ import log from "ente-base/log";
 import { useEffect } from "react";
 import { WhatsNew } from "./WhatsNew";
 
-/** Desktop changelog dialog, enabled after the gallery's initial sync. */
 export const DesktopWhatsNew: React.FC<{ enabled: boolean }> = ({
     enabled,
 }) => {
