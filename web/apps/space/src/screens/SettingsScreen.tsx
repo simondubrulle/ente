@@ -46,38 +46,6 @@ const dangerColor = "#F63A3A";
 const iconMuted = spaceTextMuted;
 const textLight = spaceTextMuted;
 const supportMailURL = "mailto:space@ente.com";
-const spaceLinks = [
-    {
-        label: "Discord",
-        src: "/images/discord.svg",
-        url: "https://ente.com/discord",
-    },
-    {
-        label: "YouTube",
-        src: "/images/youtube.svg",
-        url: "https://www.youtube.com/@entestudio",
-    },
-    {
-        label: "GitHub",
-        src: "/images/github.svg",
-        url: "https://github.com/ente-io/ente",
-    },
-    {
-        label: "X",
-        src: "/images/new-twitter.svg",
-        url: "https://twitter.com/enteio",
-    },
-    {
-        label: "Mastodon",
-        src: "/images/mastodon.svg",
-        url: "https://fosstodon.org/@ente",
-    },
-    {
-        label: "Reddit",
-        src: "/images/reddit.svg",
-        url: "https://reddit.com/r/enteio",
-    },
-] as const;
 
 interface SettingsScreenProps {
     onLogout: () => Promise<void>;
@@ -95,12 +63,6 @@ interface SettingsRowProps {
     onClick?: () => void;
     trailingOnClick?: () => void;
     toggleState?: boolean | null;
-}
-
-interface SpaceIconProps {
-    label: string;
-    src: string;
-    url: string;
 }
 
 interface ChangeNameSettingsScreenProps {
@@ -289,44 +251,6 @@ const SettingsRow: React.FC<SettingsRowProps> = ({
     );
 };
 
-const SpaceIcon: React.FC<SpaceIconProps> = ({ label, src, url }) => (
-    <Box
-        aria-label={label}
-        component="a"
-        href={url}
-        rel="noopener noreferrer"
-        target="_blank"
-        sx={{
-            alignItems: "center",
-            bgcolor: "transparent",
-            border: 0,
-            borderRadius: "10px",
-            cursor: "pointer",
-            display: "flex",
-            height: spaceTouchTargetSize,
-            justifyContent: "center",
-            p: 0,
-            textDecoration: "none",
-            transition: "background-color 120ms ease",
-            width: spaceTouchTargetSize,
-            "&:active": { bgcolor: spaceSurfaceHover },
-            "&:focus-visible": {
-                outline: `2px solid ${green}`,
-                outlineOffset: 2,
-            },
-            "&:hover": { bgcolor: spaceSurfaceHover },
-        }}
-    >
-        <Box
-            component="img"
-            aria-hidden
-            alt=""
-            src={src}
-            sx={{ display: "block", maxHeight: 24, maxWidth: 24 }}
-        />
-    </Box>
-);
-
 const SettingsEyebrow: React.FC<{ children: React.ReactNode }> = ({
     children,
 }) => (
@@ -416,7 +340,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                 background: spaceAppBackground,
                 color: textBase,
                 display: "grid",
-                minHeight: "100svh",
+                minHeight: "var(--space-page-height, 100svh)",
                 overflowX: "hidden",
                 placeItems: { xs: "stretch", sm: "start center" },
             }}
@@ -428,7 +352,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                     boxSizing: "border-box",
                     display: "flex",
                     flexDirection: "column",
-                    minHeight: "100svh",
+                    minHeight: "var(--space-page-height, 100svh)",
                     mx: "auto",
                     width: "100%",
                     "@media (min-width: 600px)": { maxWidth: 390 },
@@ -440,15 +364,17 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         alignItems: "center",
                         display: "grid",
                         gridTemplateColumns: `${spaceTouchTargetSize}px 1fr ${spaceTouchTargetSize}px`,
-                        height: 56,
-                        px: 2,
+                        height: "calc(68px + var(--space-ios-safe-area-top, 0px))",
+                        pt: "var(--space-ios-safe-area-top, 0px)",
+                        pl: "max(16px, var(--space-ios-safe-area-left, 0px))",
+                        pr: "max(16px, var(--space-ios-safe-area-right, 0px))",
                         width: "100%",
                     }}
                 >
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Back to profile"
+                        aria-label="Back"
                         onClick={onBack}
                         sx={{
                             alignItems: "center",
@@ -501,6 +427,7 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         flexDirection: "column",
                         gap: "8px",
                         mt: "24px",
+                        pb: "48px",
                         px: "14px",
                         width: "100%",
                     }}
@@ -574,27 +501,6 @@ export const SettingsScreen: React.FC<SettingsScreenProps> = ({
                         onClick={() => setLogoutSheetOpen(true)}
                     />
                 </Box>
-
-                <Box sx={{ flex: 1, minHeight: 72 }} />
-
-                <Box
-                    sx={{
-                        alignItems: "center",
-                        display: "flex",
-                        gap: "8px",
-                        justifyContent: "center",
-                        pb: "18px",
-                    }}
-                >
-                    {spaceLinks.map((link) => (
-                        <SpaceIcon
-                            key={link.label}
-                            label={link.label}
-                            src={link.src}
-                            url={link.url}
-                        />
-                    ))}
-                </Box>
             </Box>
             <ConfirmationActionSheet
                 open={logoutSheetOpen}
@@ -659,7 +565,7 @@ export const ChangeNameSettingsScreen: React.FC<
                 background: spaceAppBackground,
                 color: textBase,
                 display: "grid",
-                minHeight: "100svh",
+                minHeight: "var(--space-page-height, 100svh)",
                 overflowX: "hidden",
                 placeItems: { xs: "stretch", sm: "start center" },
             }}
@@ -671,7 +577,7 @@ export const ChangeNameSettingsScreen: React.FC<
                     boxSizing: "border-box",
                     display: "flex",
                     flexDirection: "column",
-                    minHeight: "100svh",
+                    minHeight: "var(--space-page-height, 100svh)",
                     mx: "auto",
                     width: "100%",
                     "@media (min-width: 600px)": { maxWidth: 390 },
@@ -683,15 +589,17 @@ export const ChangeNameSettingsScreen: React.FC<
                         alignItems: "center",
                         display: "grid",
                         gridTemplateColumns: `${spaceTouchTargetSize}px 1fr ${spaceTouchTargetSize}px`,
-                        height: 56,
-                        px: 2,
+                        height: "calc(68px + var(--space-ios-safe-area-top, 0px))",
+                        pt: "var(--space-ios-safe-area-top, 0px)",
+                        pl: "max(16px, var(--space-ios-safe-area-left, 0px))",
+                        pr: "max(16px, var(--space-ios-safe-area-right, 0px))",
                         width: "100%",
                     }}
                 >
                     <Box
                         component="button"
                         type="button"
-                        aria-label="Back to profile settings"
+                        aria-label="Back"
                         onClick={onBack}
                         sx={{
                             alignItems: "center",

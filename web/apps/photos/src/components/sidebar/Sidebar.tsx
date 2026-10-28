@@ -2,15 +2,7 @@ import { Export } from "@/components/Export";
 import { downloadAppDialogAttributes } from "@/components/utils/download";
 import exportService from "@/services/export";
 import { performSidebarAction as performSidebarRegistryAction } from "@/services/search/sidebar-search-registry";
-import {
-    Delete02Icon,
-    Download05Icon,
-    GeometricShapes01Icon,
-    ViewOffSlashIcon,
-} from "@hugeicons/core-free-icons";
-import { HugeiconsIcon } from "@hugeicons/react";
 import CloseIcon from "@mui/icons-material/Close";
-import LockOutlinedIcon from "@mui/icons-material/LockOutlined";
 import {
     Box,
     Dialog,
@@ -25,10 +17,7 @@ import Typography from "@mui/material/Typography";
 import { isDesktop } from "ente-base/app";
 import { LinkButton } from "ente-base/components/LinkButton";
 import { AttributedMiniDialog } from "ente-base/components/MiniDialog";
-import {
-    RowButton,
-    RowButtonEndActivityIndicator,
-} from "ente-base/components/RowButton";
+import { RowButtonEndActivityIndicator } from "ente-base/components/RowButton";
 import { SpacedRow } from "ente-base/components/containers";
 import { SidebarDrawer } from "ente-base/components/mui/SidebarDrawer";
 import { SidebarPanelContext } from "ente-base/components/mui/SidebarDrawerContext";
@@ -43,10 +32,6 @@ import { useBaseContext } from "ente-base/context";
 import log from "ente-base/log";
 import { customAPIHost } from "ente-base/origins";
 import { useUserDetailsSnapshot } from "ente-new/photos/components/utils/use-snapshot";
-import {
-    PseudoCollectionID,
-    type CollectionSummaries,
-} from "ente-new/photos/services/collection-summary";
 import type { SidebarActionID } from "ente-new/photos/services/search/types";
 import {
     hasExceededStorageQuota,
@@ -64,7 +49,6 @@ import {
     type UserDetails,
 } from "ente-new/photos/services/user-details";
 import { usePhotosAppContext } from "ente-new/photos/types/context";
-import { wait } from "ente-utils/promise";
 import { t } from "i18next";
 import React, {
     useCallback,
@@ -78,6 +62,7 @@ import { Trans } from "react-i18next";
 import { FreeUpSpace, type FreeUpSpaceAction } from "./FreeUpSpace";
 import { Help, type HelpAction } from "./Help";
 import { ReferralSettings } from "./ReferralSettings";
+import { SettingsSearch } from "./SettingsSearch";
 import { WatchFolder } from "./WatchFolder";
 import { SubscriptionCard } from "./account/SubscriptionCard";
 import { Account, type AccountAction } from "./accounts/Account";
@@ -87,18 +72,14 @@ import { Preferences, type PreferencesAction } from "./preferences/Preferences";
 import { sidebarTheme } from "./theme";
 
 type SidebarProps = ModalVisibilityProps & {
-    normalCollectionSummaries: CollectionSummaries;
-    uncategorizedCollectionSummaryID: number;
     pendingAction?: SidebarActionID;
     onActionHandled?: (actionID: SidebarActionID) => void;
+    onShowLargeFiles: () => void;
+    onShowDuplicates: () => void;
     onShowPlanSelector: () => void;
-    onShowCollectionSummary: (
-        collectionSummaryID: number,
-        isHiddenCollectionSummary?: boolean,
-    ) => Promise<void>;
     collectionNameByID: Map<number, string>;
     onCloseOverlays: () => void;
-    children?: React.ReactNode;
+    children?: (onRootClose: () => void) => React.ReactNode;
     onAuthenticateUser: () => Promise<boolean>;
 };
 
@@ -107,12 +88,11 @@ export const Sidebar: React.FC<SidebarProps> = ({
     onClose: closeRoot,
     onCloseOverlays,
     children,
-    normalCollectionSummaries,
-    uncategorizedCollectionSummaryID,
     pendingAction,
     onActionHandled,
     onShowPlanSelector,
-    onShowCollectionSummary,
+    onShowLargeFiles,
+    onShowDuplicates,
     collectionNameByID,
     onAuthenticateUser,
 }) => {
@@ -197,6 +177,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         () =>
             showMiniDialog({
                 message: t("logout_message"),
+                kind: "info",
                 continue: {
                     text: t("logout"),
                     color: "critical",
@@ -246,7 +227,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             if (actionID !== "utility.export") closeSections();
             return performSidebarRegistryAction(actionID, {
                 onClose,
-                onShowCollectionSummary,
                 onShowPlanSelector,
                 showAccount,
                 showReferrals,
@@ -256,12 +236,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                 onShowExport: handleShowExport,
                 onLogout: handleLogout,
                 onShowWatchFolder: handleOpenWatchFolder,
-                pseudoIDs: {
-                    uncategorized: uncategorizedCollectionSummaryID,
-                    archive: PseudoCollectionID.archiveItems,
-                    hidden: PseudoCollectionID.hiddenItems,
-                    trash: PseudoCollectionID.trash,
-                },
                 setPendingAccountAction: (a) =>
                     setPendingAccountAction(a as AccountAction | undefined),
                 setPendingPreferencesAction: (a) =>
@@ -281,7 +255,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             handleLogout,
             handleOpenWatchFolder,
             onClose,
-            onShowCollectionSummary,
             onShowPlanSelector,
             handleShowExport,
             showAccount,
@@ -289,7 +262,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
             showHelp,
             showPreferences,
             showReferrals,
-            uncategorizedCollectionSummaryID,
         ],
     );
 
@@ -324,7 +296,10 @@ export const Sidebar: React.FC<SidebarProps> = ({
             onClose={onClose}
             onEnter={pendingAction || hasOpenSection ? undefined : showAccount}
             menu={
-                <>
+                <SettingsSearch
+                    key={String(open)}
+                    onSelect={performSidebarAction}
+                >
                     <UserDetailsSection
                         sidebarOpen={open}
                         {...{
@@ -346,14 +321,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
                             },
                         }}
                     >
-                        <ShortcutSection
-                            onCloseSidebar={onClose}
-                            {...{
-                                normalCollectionSummaries,
-                                uncategorizedCollectionSummaryID,
-                                onShowCollectionSummary,
-                            }}
-                        />
                         <UtilitySection
                             {...{
                                 showExport: handleShowExport,
@@ -371,23 +338,12 @@ export const Sidebar: React.FC<SidebarProps> = ({
                         <ExitSection onLogout={handleLogout} />
                         <InfoSection />
                     </Stack>
-                </>
+                </SettingsSearch>
             }
         >
             <AttributedMiniDialog
                 {...downloadAppDialogProps}
-                sx={(theme) => ({
-                    "& .MuiDialog-paper": { borderRadius: "20px" },
-                    "& .MuiDialog-paper > .MuiStack-root": {
-                        p: "24px 24px 8px",
-                    },
-                    "& .MuiDialogContent-root": { p: "16px 24px 24px" },
-                    "& .MuiDialogTitle-root": theme.typography.h2,
-                    "& .MuiButton-root": {
-                        borderRadius: "12px",
-                        minHeight: 48,
-                    },
-                })}
+                appearance="centered"
             />
             {open && exportVisibilityProps.open && (
                 <Export
@@ -437,13 +393,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
             )}
             {freeUpSpaceVisibilityProps.open && (
                 <FreeUpSpace
+                    onShowLargeFiles={onShowLargeFiles}
+                    onShowDuplicates={onShowDuplicates}
                     {...freeUpSpaceVisibilityProps}
                     onRootClose={onClose}
                     pendingAction={pendingFreeUpSpaceAction}
                     onActionHandled={setPendingFreeUpSpaceAction}
                 />
             )}
-            {children}
+            {children?.(onClose)}
         </RootSidebarDrawer>
     );
 };
@@ -473,7 +431,19 @@ function RootSidebarContents({
     if (!wide) {
         return (
             <>
-                <SidebarDrawer open={open} onClose={onClose} maxWidth="440px">
+                <SidebarDrawer
+                    open={open}
+                    onClose={onClose}
+                    maxWidth="440px"
+                    sx={{
+                        "& .MuiDrawer-paper > .MuiBox-root": {
+                            display: "flex",
+                            flexDirection: "column",
+                            flex: 1,
+                            minHeight: 0,
+                        },
+                    }}
+                >
                     <HeaderSection onCloseSidebar={onClose} />
                     {menu}
                 </SidebarDrawer>
@@ -558,36 +528,10 @@ function RootSidebarContents({
                     >
                         <Box
                             sx={{
-                                overflowY: "auto",
-                                scrollbarWidth: "thin",
-                                scrollbarColor: "transparent transparent",
-                                "&:hover, &:focus-within": {
-                                    scrollbarColor:
-                                        "color-mix(in srgb, var(--mui-palette-text-base) 20%, transparent) transparent",
-                                },
-                                "@supports selector(::-webkit-scrollbar)": {
-                                    scrollbarWidth: "auto",
-                                    scrollbarColor: "auto",
-                                    "&:hover, &:focus-within": {
-                                        scrollbarColor: "auto",
-                                    },
-                                    "&::-webkit-scrollbar": { width: "4px" },
-                                    "&::-webkit-scrollbar-track": {
-                                        bgcolor: "transparent",
-                                    },
-                                    "&::-webkit-scrollbar-thumb": {
-                                        bgcolor: "transparent",
-                                        borderRadius: "4px",
-                                    },
-                                    "&:hover::-webkit-scrollbar-thumb, &:focus-within::-webkit-scrollbar-thumb":
-                                        {
-                                            bgcolor:
-                                                "color-mix(in srgb, var(--mui-palette-text-base) 20%, transparent)",
-                                        },
-                                    "&::-webkit-scrollbar-button": {
-                                        display: "none",
-                                    },
-                                },
+                                display: "flex",
+                                flexDirection: "column",
+                                minHeight: 0,
+                                overflow: "hidden",
                                 "& .MuiDivider-root": {
                                     borderColor: "stroke.muted",
                                 },
@@ -807,122 +751,6 @@ const SubscriptionStatus: React.FC<SubscriptionStatusProps> = ({
                 {message}
             </Typography>
         </Box>
-    );
-};
-
-type ShortcutSectionProps = SectionProps &
-    Pick<
-        SidebarProps,
-        | "normalCollectionSummaries"
-        | "uncategorizedCollectionSummaryID"
-        | "onShowCollectionSummary"
-    >;
-
-const ShortcutSection: React.FC<ShortcutSectionProps> = ({
-    onCloseSidebar,
-    normalCollectionSummaries,
-    uncategorizedCollectionSummaryID,
-    onShowCollectionSummary,
-}) => {
-    const shortcutIconSize = 20;
-
-    const handleOpenUncategorizedSection = () =>
-        void onShowCollectionSummary(uncategorizedCollectionSummaryID).then(
-            onCloseSidebar,
-        );
-
-    const handleOpenTrashSection = () =>
-        void onShowCollectionSummary(PseudoCollectionID.trash).then(
-            onCloseSidebar,
-        );
-
-    const handleOpenArchiveSection = () =>
-        void onShowCollectionSummary(PseudoCollectionID.archiveItems).then(
-            onCloseSidebar,
-        );
-
-    const handleOpenHiddenSection = () =>
-        void onShowCollectionSummary(PseudoCollectionID.hiddenItems, true)
-            // Let focus settle before closing to avoid aria-hidden warnings.
-            .then(() => wait(10))
-            .then(onCloseSidebar);
-
-    const summaryCaption = (summaryID: number) =>
-        normalCollectionSummaries.get(summaryID)?.fileCount.toString();
-
-    return (
-        <Stack
-            sx={(theme) => ({
-                mx: 0.5,
-                gap: 0.5,
-                "&&& > .MuiButton-root": {
-                    bgcolor: theme.colorSchemes.light?.palette.fill.faint,
-                    "&:hover": {
-                        bgcolor: theme.colorSchemes.light?.palette.fill.muted,
-                    },
-                    ...theme.applyStyles("dark", {
-                        bgcolor: theme.colorSchemes.dark?.palette.fill.faint,
-                        "&:hover": {
-                            bgcolor:
-                                theme.colorSchemes.dark?.palette.fill.muted,
-                        },
-                    }),
-                },
-            })}
-        >
-            <RowButton
-                startIcon={
-                    <HugeiconsIcon
-                        icon={GeometricShapes01Icon}
-                        size={shortcutIconSize}
-                        aria-hidden
-                    />
-                }
-                label={t("section_uncategorized")}
-                caption={summaryCaption(uncategorizedCollectionSummaryID)}
-                onClick={handleOpenUncategorizedSection}
-            />
-            <RowButton
-                startIcon={
-                    <HugeiconsIcon
-                        icon={Download05Icon}
-                        size={shortcutIconSize}
-                    />
-                }
-                label={t("section_archive")}
-                caption={summaryCaption(PseudoCollectionID.archiveItems)}
-                onClick={handleOpenArchiveSection}
-            />
-            <RowButton
-                startIcon={
-                    <HugeiconsIcon
-                        icon={ViewOffSlashIcon}
-                        size={shortcutIconSize}
-                    />
-                }
-                label={t("section_hidden")}
-                caption={
-                    <LockOutlinedIcon
-                        sx={{
-                            verticalAlign: "middle",
-                            fontSize: "19px !important",
-                        }}
-                    />
-                }
-                onClick={handleOpenHiddenSection}
-            />
-            <RowButton
-                startIcon={
-                    <HugeiconsIcon
-                        icon={Delete02Icon}
-                        size={shortcutIconSize}
-                    />
-                }
-                label={t("section_trash")}
-                caption={summaryCaption(PseudoCollectionID.trash)}
-                onClick={handleOpenTrashSection}
-            />
-        </Stack>
     );
 };
 

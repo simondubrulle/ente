@@ -1,4 +1,5 @@
 use std::{
+    collections::HashSet,
     fs as disk,
     fs::{File, OpenOptions},
     io::Write,
@@ -24,6 +25,7 @@ use super::{
 
 pub struct Run<'a> {
     pub root: &'a Path,
+    pub hardlinks: bool,
     pub store: &'a Mutex<Store>,
     pub cancel: &'a watch::Receiver<bool>,
     pub report: &'a (dyn Fn(&str) + Sync),
@@ -52,12 +54,7 @@ impl Run<'_> {
         Ok(())
     }
 
-    pub fn temporary(
-        &self,
-        folder: &str,
-        album: i64,
-        file: Option<i64>,
-    ) -> Result<(Location, File)> {
+    fn temporary_name(&self, folder: &str, album: i64, file: Option<i64>) -> Result<Location> {
         self.check_cancel()?;
         let temporary = Temporary {
             location: Location {
@@ -68,13 +65,23 @@ impl Run<'_> {
             file,
         };
         store::lock(self.store)?.temporary(&temporary)?;
-        let path = self.path(&temporary.location)?;
+        Ok(temporary.location)
+    }
+
+    pub fn temporary(
+        &self,
+        folder: &str,
+        album: i64,
+        file: Option<i64>,
+    ) -> Result<(Location, File)> {
+        let temporary = self.temporary_name(folder, album, file)?;
+        let path = self.path(&temporary)?;
         let file = OpenOptions::new()
             .write(true)
             .read(true)
             .create_new(true)
             .open(&path)?;
-        Ok((temporary.location, file))
+        Ok((temporary, file))
     }
 
     pub fn discard(&self, location: &Location) -> Result<()> {
@@ -249,7 +256,7 @@ impl Run<'_> {
                     size: *size,
                     hash: hash.clone(),
                     signature: signature.clone(),
-                    properties: Some(properties),
+                    properties: None,
                     intended_time: None,
                 };
                 store.save_component(&component)?;
@@ -373,11 +380,10 @@ impl Run<'_> {
                             !unrepairable,
                             "missing album contains originals that cannot be repaired"
                         );
-                        fs::create_directory(&destination)?;
+                        disk::create_dir_all(&destination)?;
                     }
-                    fs::sync_move(&source, &destination)?;
                 } else {
-                    fs::create_directory(&destination)?;
+                    disk::create_dir_all(&destination)?;
                     ensure!(
                         disk::read_dir(&destination)?.next().is_none(),
                         super::Conflict(format!(
@@ -385,14 +391,6 @@ impl Run<'_> {
                             destination.display()
                         ))
                     );
-                    fs::sync_parent(&destination)?;
-                    if target.retained {
-                        fs::sync_parent(
-                            destination
-                                .parent()
-                                .context("retained album has no parent")?,
-                        )?;
-                    }
                 }
                 let store = store::lock(self.store)?;
                 let transaction = store.db.unchecked_transaction()?;
@@ -422,9 +420,12 @@ impl Run<'_> {
                     }
                     ensure!(
                         Properties::optional(&path)?.is_none() || owned,
-                        super::Conflict(format!("at {}: unrelated occupant", path.display()))
+                        super::Conflict(format!(
+                            "{} exists and is not part of this export",
+                            path.display()
+                        ))
                     );
-                    fs::create_directory(path.parent().context("publication has no parent")?)?;
+                    disk::create_dir_all(path.parent().context("publication has no parent")?)?;
                     disk::rename(&source, &path)?;
                 } else {
                     let (size, hash) = output.identity();
@@ -433,7 +434,10 @@ impl Run<'_> {
                     if !matches {
                         ensure!(
                             !path.try_exists()? || owned,
-                            super::Conflict(format!("at {}: unrelated occupant", path.display()))
+                            super::Conflict(format!(
+                                "{} exists and is not part of this export",
+                                path.display()
+                            ))
                         );
                         self.clear_action(target)?;
                         self.discard(&temporary)?;
@@ -441,7 +445,6 @@ impl Run<'_> {
                         return Ok(());
                     }
                 }
-                fs::sync_move(&source, &path)?;
                 self.acknowledge(target, &destination, &output, value)?;
             }
             Action::Move {
@@ -461,12 +464,7 @@ impl Run<'_> {
                             || fs::matches(&to, size, &hash, self.cancel)?,
                         super::Conflict(format!("at {}: moved bytes differ", to.display()))
                     );
-                    fs::sync_move(&from, &to)?;
                 } else {
-                    ensure!(
-                        !target.retained || current_media,
-                        "retained original is missing at both move endpoints"
-                    );
                     return self.clear_action(target);
                 }
                 let store = store::lock(self.store)?;
@@ -586,7 +584,6 @@ impl Run<'_> {
     ) -> Result<()> {
         let (temporary, mut file) = self.temporary(&location.folder, target.album, target.file)?;
         file.write_all(&json.bytes)?;
-        file.sync_all()?;
         drop(file);
         let output = Output::Json {
             role: role.clone(),
@@ -791,13 +788,24 @@ impl Run<'_> {
     fn album_target(&self, album: i64, name: &str, retained: bool) -> Result<Pending> {
         let store = store::lock(self.store)?;
         let existing = store.album(album, retained)?;
+        let mut occupied = HashSet::new();
+        if retained && existing.is_none() {
+            let trash = names::check(self.root, "Trash")?;
+            if directory_exists(&trash)? {
+                for entry in disk::read_dir(trash)? {
+                    occupied.insert(names::folded(&entry?.file_name().to_string_lossy()));
+                }
+            }
+        }
         let owner = existing
             .as_ref()
             .map(|album| album.key.clone())
             .unwrap_or_else(|| format!("{}:{album}", if retained { "retained" } else { "active" }));
         if let Some(pending) = store.pending(&owner)? {
             ensure!(pending.action.is_none(), "album has unfinished action");
-            if pending.name == name || retained {
+            if (pending.name == name || retained)
+                && !occupied.contains(&names::folded(&pending.names[0]))
+            {
                 return Ok(pending);
             }
         }
@@ -811,7 +819,7 @@ impl Run<'_> {
         {
             vec![name.to_owned()]
         } else {
-            names::allocate(&store, parent, name, "album", None, &owner)?
+            names::allocate(&store, parent, name, "album", None, &owner, &occupied)?
         };
         let target = Pending {
             owner,
@@ -923,11 +931,6 @@ impl Run<'_> {
             };
             after = id;
             let source: AlbumSource = serde_json::from_str(&source)?;
-            for field in &source.warnings {
-                (self.report)(&format!(
-                    "album {id}: unfamiliar metadata field {field:?}; exporting supported fields"
-                ));
-            }
             if let Err(error) = self.maintain_album(id, &source.name, false, source.metadata) {
                 self.block(id, None, error)?;
             }
@@ -1021,6 +1024,7 @@ impl Run<'_> {
                     None
                 },
                 &owner,
+                &HashSet::new(),
             )?
         };
         let target = Pending {
@@ -1077,12 +1081,6 @@ impl Run<'_> {
                     store::lock(self.store)?.clear_pending(&pending.owner)?;
                 }
             }
-        }
-        for field in &file.warnings {
-            (self.report)(&format!(
-                "file {}: unfamiliar metadata field {field:?}; exporting supported fields",
-                file.id
-            ));
         }
         after = 0;
         loop {
@@ -1211,7 +1209,10 @@ impl Run<'_> {
                     .unwrap_or(false);
                 ensure!(
                     Properties::optional(&path)?.is_none() || owned || renamed,
-                    super::Conflict(format!("at {}: unrelated occupant", path.display()))
+                    super::Conflict(format!(
+                        "{} exists and is not part of this export",
+                        path.display()
+                    ))
                 );
             }
             let location = Location {
@@ -1255,19 +1256,42 @@ impl Run<'_> {
                     }
                 }
             }
-            if !valid {
-                let source = prepared
-                    .components
-                    .iter_mut()
-                    .find(|source| source.role == component.role)
-                    .context("no verified original is available")?;
+            let path = self.path(&destination)?;
+            let mut source = prepared
+                .components
+                .iter_mut()
+                .find(|source| source.role == component.role);
+            let consolidate = self.hardlinks
+                && valid
+                && !same_file::is_same_file(
+                    self.path(&source.as_ref().context("missing original")?.location)?,
+                    &path,
+                )?;
+            if consolidate {
+                let previous = previous.context("missing completed original")?;
+                ensure!(
+                    fs::matches(&path, previous.size, &previous.hash, self.cancel)?,
+                    super::Conflict(format!("at {}: locally changed media", path.display()))
+                );
+            }
+            if !valid || consolidate {
+                let source = source.as_deref_mut().context("missing original")?;
                 let temporary = if source.temporary {
                     source.location.clone()
+                } else if self.hardlinks {
+                    let temporary = self.temporary_name(&album.key, album_id, Some(file.id))?;
+                    let from = self.path(&source.location)?;
+                    let to = self.path(&temporary)?;
+                    disk::hard_link(&from, &to).with_context(|| {
+                        format!("cannot link {} to {}", from.display(), path.display())
+                    })?;
+                    source.verify(self, &to)?;
+                    temporary
                 } else {
                     let (temporary, file) = self.temporary(&album.key, album_id, Some(file.id))?;
                     let mut writer = fs::HashWriter::new(file, self.cancel)?;
                     std::io::copy(&mut File::open(self.path(&source.location)?)?, &mut writer)?;
-                    let (_, size, hash) = writer.finish()?;
+                    let (_, size, hash) = writer.finish();
                     ensure!(
                         size == source.size && hash == source.hash,
                         "local original changed while copying"
@@ -1304,8 +1328,11 @@ impl Run<'_> {
                 || observed != published.properties.as_ref()
                 || renamed
             {
-                published.properties =
-                    Some(fs::set_time(&self.path(&destination)?, intended_time)?);
+                published.properties = Some(if self.hardlinks {
+                    source.context("missing original")?.verify(self, &path)?
+                } else {
+                    fs::set_time(&path, intended_time)?
+                });
             }
             published.intended_time = Some(intended_time);
             published.signature = Some(prepared.signature.clone());
@@ -1437,6 +1464,7 @@ impl Run<'_> {
                 &placement.kind,
                 extensions,
                 &placement.id,
+                &HashSet::new(),
             )?;
             let target = Pending {
                 owner: placement.id,
@@ -1463,6 +1491,45 @@ impl Run<'_> {
             |r| r.get(0),
         )?;
         let components = store::lock(self.store)?.components(&target.owner)?;
+        if !restoring {
+            let mut present = false;
+            for component in &components {
+                present |= Properties::optional(&self.path(&component.location)?)?.is_some();
+            }
+            if !present {
+                for component in &components {
+                    let record = store::lock(self.store)?
+                        .json_record(&target.owner, Some(&component.role))?;
+                    if let Some(record) = record
+                        && let Some(location) = record.location
+                    {
+                        self.start(
+                            target,
+                            Action::Remove {
+                                location,
+                                role: Some(component.role.clone()),
+                            },
+                            &[],
+                        )?;
+                        self.finish_action(target, false, None)?;
+                    }
+                }
+                let store = store::lock(self.store)?;
+                let transaction = store.db.unchecked_transaction()?;
+                store
+                    .db
+                    .execute("DELETE FROM components WHERE placement=?1", [&target.owner])?;
+                store
+                    .db
+                    .execute("DELETE FROM json_records WHERE owner=?1", [&target.owner])?;
+                store
+                    .db
+                    .execute("DELETE FROM placements WHERE id=?1", [&target.owner])?;
+                store.clear_pending(&target.owner)?;
+                transaction.commit()?;
+                return Ok(());
+            }
+        }
         for component in &components {
             let name = target_component(target, &component.role)?;
             let location = Location {
@@ -1495,7 +1562,6 @@ impl Run<'_> {
                 name: format!("metadata/{}.json", component.location.name),
             };
             let mut value = previous.value;
-            value["title"] = Value::String(component.location.name.clone());
             let mut layout: Vec<crate::metadata::Component> =
                 serde_json::from_value(value["ente"]["components"].clone())?;
             for identity in &mut layout {
@@ -1633,7 +1699,6 @@ impl Run<'_> {
             let path = names::check(self.root, &relative)?;
             if directory_exists(&path)? && disk::read_dir(&path)?.next().is_none() {
                 disk::remove_dir(&path)?;
-                fs::sync_parent(&path)?;
             }
         }
         let store = store::lock(self.store)?;

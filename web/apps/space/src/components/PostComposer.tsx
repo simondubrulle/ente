@@ -43,22 +43,23 @@ interface DraftPhoto {
     originalPhoto?: SpaceViewerPhoto;
     edit?: SpacePostPhotoEdit;
     videoEdit?: SpacePostVideoEdit;
+    videoStartTime?: number;
 }
 
 let nextDraftPhotoID = 0;
 const draftPhotos = (files: File[]): DraftPhoto[] =>
     files.map((file) => ({ file, id: nextDraftPhotoID++ }));
 
-export const SpacePostComposer: React.FC<{
+const SpacePostComposer: React.FC<{
     files: File[];
     onClose: () => void;
     onPublish: (
         images: SpaceDraftPostImage[],
         caption: string,
     ) => Promise<void>;
-    onPublished?: () => void;
     profile: SetupProfile;
-}> = ({ files, onClose, onPublish, onPublished, profile }) => {
+}> = ({ files, onClose, onPublish, profile }) => {
+    const router = useSpaceRouter();
     const displayName =
         profile.fullName.trim() || profile.username.trim() || "You";
     const [drafts, setDrafts] = React.useState(() => draftPhotos(files));
@@ -132,13 +133,6 @@ export const SpacePostComposer: React.FC<{
         controllers.forEach((controller, id) =>
             preparingRef.current.set(id, controller),
         );
-        if (pending.some((draft) => isSpaceVideoFile(draft.file))) {
-            void import("utils/video-encoding/web")
-                .then(({ preloadVideoEncoderWeb }) => preloadVideoEncoderWeb())
-                .catch((error: unknown) =>
-                    log.warn("Failed to preload video encoder", error),
-                );
-        }
         void (async () => {
             for (const draft of pending) {
                 if (!isActiveDraft(draft.id)) continue;
@@ -148,8 +142,10 @@ export const SpacePostComposer: React.FC<{
                     signal.throwIfAborted();
                     let photo: SpaceViewerPhoto;
                     let videoEdit: SpacePostVideoEdit | undefined;
+                    let videoStartTime: number | undefined;
                     if (isSpaceVideoFile(draft.file)) {
                         const info = await spaceVideoInfo(draft.file, signal);
+                        videoStartTime = info.startTime;
                         videoEdit = initialSpaceVideoEdit(info.duration);
                         const cover = await spaceVideoCover(
                             draft.file,
@@ -166,8 +162,8 @@ export const SpacePostComposer: React.FC<{
                             video: {
                                 url,
                                 durationMs: info.duration * 1000,
-                                start: videoEdit.start,
-                                end: videoEdit.end,
+                                start: videoStartTime + videoEdit.start,
+                                end: videoStartTime + videoEdit.end,
                                 muted: videoEdit.muted,
                             },
                         };
@@ -205,6 +201,7 @@ export const SpacePostComposer: React.FC<{
                                       photo,
                                       originalPhoto: photo,
                                       videoEdit,
+                                      videoStartTime,
                                   }
                                 : item,
                         ),
@@ -261,12 +258,9 @@ export const SpacePostComposer: React.FC<{
                     exportsRef.current.get(draft.id) == job
                 )
                     exportsRef.current.delete(draft.id);
-                if (
-                    !(
-                        error instanceof DOMException &&
-                        error.name == "AbortError"
-                    )
-                )
+                if (!(
+                    error instanceof DOMException && error.name == "AbortError"
+                ))
                     log.warn("Failed to prepare draft video", error);
             });
         }
@@ -348,8 +342,8 @@ export const SpacePostComposer: React.FC<{
             if (photo.video && videoEdit)
                 photo.video = {
                     ...photo.video,
-                    start: videoEdit.start,
-                    end: videoEdit.end,
+                    start: draft.videoStartTime! + videoEdit.start,
+                    end: draft.videoStartTime! + videoEdit.end,
                     muted: videoEdit.muted,
                 };
             return { ...draft, edit: result.edit, videoEdit, photo };
@@ -429,11 +423,14 @@ export const SpacePostComposer: React.FC<{
                     exportsRef.current.clear();
                     setEditorSnapshot({ drafts, activeIndex });
                 }}
-                onDraftPostExitStart={() => setIsPublishing(true)}
-                onDraftPostExitAnimationStart={() => setIsExiting(true)}
-                onDraftPostPublished={() => {
-                    void clearBrowserBackState("back").then(onPublished);
+                onDraftPostExitStart={async () => {
+                    setIsPublishing(true);
+                    await clearBrowserBackState("back");
+                    if (router.pathname != spaceRoutes.home)
+                        await router.replace(spaceRoutes.home);
+                    window.scrollTo({ top: 0, behavior: "instant" });
                 }}
+                onDraftPostExitAnimationStart={() => setIsExiting(true)}
                 onPublishDraftPost={
                     preparationError || isPreparing || !drafts.length
                         ? undefined
@@ -478,6 +475,7 @@ export const SpacePostComposer: React.FC<{
                             ? {
                                   file: draft.file,
                                   sourceURL: draft.originalPhoto!.video!.url!,
+                                  startTime: draft.videoStartTime!,
                                   duration:
                                       draft.originalPhoto!.video!.durationMs /
                                       1000,
@@ -498,7 +496,6 @@ export const SpacePostComposerHost: React.FC = () => {
         publishPost,
         setPendingPostPhotoFiles,
     } = useSpaceAppState();
-    const router = useSpaceRouter();
     if (!pendingPostPhotoFiles || !profile) return null;
     return (
         <SpacePostComposer
@@ -506,11 +503,6 @@ export const SpacePostComposerHost: React.FC = () => {
             onClose={() => setPendingPostPhotoFiles(null)}
             onPublish={async (images, caption) => {
                 await publishPost(images, caption);
-            }}
-            onPublished={() => {
-                if (router.pathname != spaceRoutes.home)
-                    void router.push(spaceRoutes.home);
-                else window.scrollTo({ top: 0, behavior: "smooth" });
             }}
             profile={profile}
         />

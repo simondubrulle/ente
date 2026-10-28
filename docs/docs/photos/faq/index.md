@@ -37,6 +37,7 @@ Jump to a category:
 - [Why is the latest version not available on F-Droid?](/photos/faq/account-creation#fdroid-delay)
 - [How can I manually setup Ente Photos installation with Obtainium?](/photos/faq/account-creation#manual-obtanium)
 - [How do I update to the latest version?](/photos/faq/account-creation#update-latest)
+- [Why is my language not an option in Ente?](/photos/faq/account-creation#language-not-available)
 
 ### Multi-Device Setup
 
@@ -107,6 +108,7 @@ Jump to a category:
 
 - [How do I delete photos in Ente?](/photos/faq/albums-and-organization#delete-photos)
 - [How do I restore deleted photos?](/photos/faq/albums-and-organization#restore-photos)
+- [If I restore several photos from Trash, will they return to their original albums?](/photos/faq/albums-and-organization#bulk-restore-original-albums)
 - [How do I permanently delete photos or empty trash?](/photos/faq/albums-and-organization#empty-trash)
 - [Can I recover files after 30 days in trash?](/photos/faq/albums-and-organization#recover-after-30-days)
 - [Does trash count against my storage?](/photos/faq/albums-and-organization#trash-storage)
@@ -159,6 +161,9 @@ Jump to a category:
 - [How do I set up watch folders?](/photos/faq/backup-and-sync#set-up-watch-folders)
 - [Can I watch multiple folders at once?](/photos/faq/backup-and-sync#watch-multiple-folders)
 - [What happens if I delete a file from my watched folder?](/photos/faq/backup-and-sync#delete-from-watched-folder)
+- [Why don't metadata changes to a file in my watched folder show up in Ente?](/photos/faq/backup-and-sync#watch-folder-edited-files)
+- [What happens if I rename a file in my watched folder?](/photos/faq/backup-and-sync#rename-in-watched-folder)
+- [Why are my albums empty after I renamed a folder inside a watched folder?](/photos/faq/backup-and-sync#rename-folder-in-watched-folder)
 - [Why are my watch folders not syncing?](/photos/faq/backup-and-sync#watch-folders-not-syncing)
 - [Can I watch folders on a network drive (NAS)?](/photos/faq/backup-and-sync#watch-nas)
 - [How do I stop watching a folder?](/photos/faq/backup-and-sync#stop-watching-folder)
@@ -354,6 +359,7 @@ Jump to a category:
 ### Family Plans
 
 - [Does Ente have Family Plans?](/photos/faq/storage-and-plans#family-plans-faq)
+- [Where do I manage my family plan?](/photos/faq/storage-and-plans#manage-family-plan)
 - [How many family members can I add to my plan?](/photos/faq/storage-and-plans#family-members-limit)
 - [Can family members see each other's photos?](/photos/faq/storage-and-plans#family-privacy)
 - [Can I set storage limits for family members?](/photos/faq/storage-and-plans#family-storage-limits)
@@ -538,6 +544,7 @@ Jump to a category:
 - [Who can create collaborative albums or public links?](/photos/faq/sharing-and-collaboration#who-can-share)
 - [Can I change permissions for collaborators after sharing?](/photos/faq/sharing-and-collaboration#change-permissions)
 - [What happens to shared albums if I cancel my subscription?](/photos/faq/sharing-and-collaboration#cancel-subscription-impact)
+- [Why can't I create a public link after my subscription expires?](/photos/faq/sharing-and-collaboration#expired-subscription-public-links)
 
 ### Security and Privacy
 

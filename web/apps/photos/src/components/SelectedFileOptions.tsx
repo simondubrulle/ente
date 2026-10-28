@@ -58,6 +58,7 @@ interface SelectedFileOptionsProps {
     selectedOwnFileCount: number;
     selectedFavoriteCount: number;
     onClearSelection: () => void;
+    onDelete: () => void;
     onRemoveFilesFromCollection: (collection: Collection) => void;
     onOpenCollectionSelector: (
         attributes: CollectionSelectorAttributes,
@@ -82,6 +83,7 @@ export const SelectedFileOptions: React.FC<SelectedFileOptionsProps> = ({
     selectedOwnFileCount,
     selectedFavoriteCount,
     onClearSelection,
+    onDelete,
     onRemoveFilesFromCollection,
     onOpenCollectionSelector,
     createOnCreateForCollectionOp,
@@ -102,17 +104,6 @@ export const SelectedFileOptions: React.FC<SelectedFileOptionsProps> = ({
     const handleArchive = createFileOpHandler("archive");
     const handleUnarchive = createFileOpHandler("unarchive");
 
-    const handleDelete = () =>
-        showMiniDialog({
-            title: t("trash_files_title"),
-            message: t("trash_files_message"),
-            continue: {
-                text: t("move_to_trash"),
-                color: "critical",
-                action: createFileOpHandler("trash"),
-            },
-        });
-
     const handleRestore = () =>
         onOpenCollectionSelector({
             action: "restore",
@@ -123,6 +114,7 @@ export const SelectedFileOptions: React.FC<SelectedFileOptionsProps> = ({
     const handleDeletePermanently = () =>
         showMiniDialog({
             title: t("delete_files_title"),
+            kind: "warning",
             message: t("delete_files_message"),
             continue: {
                 text: t("delete"),
@@ -226,6 +218,7 @@ export const SelectedFileOptions: React.FC<SelectedFileOptionsProps> = ({
         barMode,
         isInSearchMode,
         collectionSummary,
+        hasOwnFiles: selectedOwnFileCount > 0,
         hasOnlyOwnFiles,
         showAddPerson: !!onShowAssignPersonDialog,
         showEditLocation: !!onEditLocation && hasOnlyOwnFiles,
@@ -263,7 +256,7 @@ export const SelectedFileOptions: React.FC<SelectedFileOptionsProps> = ({
             case "unhide":
                 return <UnhideButton key={action} onClick={handleUnhide} />;
             case "trash":
-                return <DeleteButton key={action} onClick={handleDelete} />;
+                return <DeleteButton key={action} onClick={onDelete} />;
             case "deletePermanently":
                 return (
                     <DeletePermanentlyButton

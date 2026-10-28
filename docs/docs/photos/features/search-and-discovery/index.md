@@ -16,15 +16,19 @@ You can quickly access search using the keyboard shortcut:
 - **Windows/Linux**: `Ctrl + K`
 - **Mac**: `Cmd + K`
 
-This focuses the search bar from anywhere in the app, letting you start searching immediately.
+Close Settings before using this shortcut. It does not open search while Settings is displayed.
 
-### Date search
+On mobile, open **Search** and scroll to **File types** to find **Photos**, **Videos**, **Live**, and file extensions such as **JPG** or **MP4**. These shortcuts search your library; they do not change an album's contents.
 
-Search for photos by specific dates, months, or years. Simply type a date in the search bar:
+### Date search {#date-search}
 
-- "January 2024" - finds all photos from that month
-- "2023" - finds all photos from that year
-- Specific dates like "July 15, 2024"
+Type a date, month, or year in the search bar **without quotation marks**. For example:
+
+- January 2024
+- 2023
+- July 15, 2024
+
+Then select the matching date suggestion under **Moments** on mobile or **Date** on desktop. This searches by date. Selecting a Magic search suggestion instead searches the visual content of your photos.
 
 ### File name search
 

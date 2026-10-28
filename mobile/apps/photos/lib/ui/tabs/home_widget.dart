@@ -101,6 +101,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
   final _selectedAlbums = SelectedAlbums();
   final _selectedFiles = SelectedFiles();
+  final _hasSelectedFilesNotifier = ValueNotifier<bool>(false);
 
   final PageController _pageController = PageController();
   int _selectedTabIndex = 0;
@@ -118,7 +119,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   bool _personSyncTriggered = false;
   bool _collectionsSyncTriggered = false;
   bool _isShowingChangeLog = false;
-  bool _startWithoutAccount = false;
+  bool _startWithoutAccount = localSettings.isLocalGalleryOnboardingPending;
   final isOnSearchTabNotifier = ValueNotifier<bool>(false);
   final ValueNotifier<bool> _isAlbumsSearchActiveNotifier = ValueNotifier<bool>(
     false,
@@ -181,6 +182,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   void initState() {
     _logger.info("initstate");
     super.initState();
+    _selectedFiles.addListener(_selectedFilesListener);
 
     NotificationService.instance
         .initialize(_onDidReceiveNotificationResponse)
@@ -199,7 +201,7 @@ class _HomeWidgetState extends State<HomeWidget> {
       _selectedTabIndex = event.selectedIndex;
       _selectedTabIndexNotifier.value = event.selectedIndex;
 
-      if (event.selectedIndex == 3) {
+      if (event.selectedIndex == searchTabIndex) {
         isOnSearchTabNotifier.value = true;
         unawaited(SemanticSearchService.instance.prepareForInteractiveSearch());
       } else {
@@ -233,6 +235,7 @@ class _HomeWidgetState extends State<HomeWidget> {
       event,
     ) {
       _startWithoutAccount = false;
+      unawaited(localSettings.setLocalGalleryOnboardingPending(false));
       setState(() {});
       _handleMissingRecoveryKey();
       if (!isLocalGalleryMode) {
@@ -248,6 +251,7 @@ class _HomeWidgetState extends State<HomeWidget> {
       _logger.info('logged out, selectTab index to 0');
       _selectedTabIndex = 0;
       _selectedTabIndexNotifier.value = 0;
+      isOnSearchTabNotifier.value = false;
       _startWithoutAccount = false;
       if (mounted) {
         setState(() {});
@@ -383,11 +387,15 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   final Map<Uri, (bool, int)> _linkedPublicAlbums = {};
+  bool get _isGuestViewActive =>
+      AppNavigationService.instance.isGuestViewActive;
+
   Future<void> _handlePublicAlbumLink(Uri uri, String via) async {
     if (!mounted) {
       _logger.warning("Cannot handle public album link - widget not mounted");
       return;
     }
+    if (_isGuestViewActive) return;
     try {
       _logger.info("Handling public album link: via $via");
       final int currentTime = DateTime.now().millisecondsSinceEpoch;
@@ -406,7 +414,7 @@ class _HomeWidgetState extends State<HomeWidget> {
 
       final Collection? collection = await CollectionsService.instance
           .getCollectionFromPublicLink(context, uri);
-      if (!mounted) {
+      if (!mounted || _isGuestViewActive) {
         return;
       }
       if (collection == null) {
@@ -422,6 +430,7 @@ class _HomeWidgetState extends State<HomeWidget> {
         await routeToPage(
           context,
           CollectionPage(CollectionWithThumbnail(collection, null)),
+          useFadeTransition: true,
         );
         return;
       }
@@ -479,7 +488,7 @@ class _HomeWidgetState extends State<HomeWidget> {
                               collection.pubMagicMetadata.asc ?? false,
                             );
                         await dialog.hide();
-                        if (!mounted) return;
+                        if (!mounted || _isGuestViewActive) return;
                         Navigator.of(context).pop();
 
                         if (!mounted) return;
@@ -513,7 +522,7 @@ class _HomeWidgetState extends State<HomeWidget> {
         );
         await dialog.hide();
 
-        if (!mounted) return;
+        if (!mounted || _isGuestViewActive) return;
         await routeToPage(
           context,
           SharedPublicCollectionPage(
@@ -523,7 +532,7 @@ class _HomeWidgetState extends State<HomeWidget> {
           ),
         );
         if (sharedFiles.length == 1) {
-          if (!mounted) return;
+          if (!mounted || _isGuestViewActive) return;
           await routeToPage(
             context,
             DetailPage(
@@ -579,8 +588,14 @@ class _HomeWidgetState extends State<HomeWidget> {
     );
   }
 
+  void _selectedFilesListener() {
+    _hasSelectedFilesNotifier.value = _selectedFiles.files.isNotEmpty;
+  }
+
   @override
   void dispose() {
+    _selectedFiles.removeListener(_selectedFilesListener);
+    _hasSelectedFilesNotifier.dispose();
     _tabChangedEventSubscription.cancel();
     _subscriptionPurchaseEvent.cancel();
     _triggerLogoutEvent.cancel();
@@ -626,7 +641,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   Future<void> _handleSharedMediaStream(List<SharedMediaFile> value) async {
-    if (!mounted || value.isEmpty) {
+    if (!mounted || _isGuestViewActive || value.isEmpty) {
       return;
     }
 
@@ -637,11 +652,12 @@ class _HomeWidgetState extends State<HomeWidget> {
     }
 
     if (await _consumeAndroidMediaViewIntent()) {
+      if (!mounted || _isGuestViewActive) return;
       _scheduleMediaViewFallbackNavigation();
       return;
     }
 
-    if (!mounted) {
+    if (!mounted || _isGuestViewActive) {
       return;
     }
     if (value[0].mimeType != null &&
@@ -673,7 +689,7 @@ class _HomeWidgetState extends State<HomeWidget> {
             );
           },
         ).then((shouldOpenFile) {
-          if (!mounted || shouldOpenFile == null) {
+          if (!mounted || _isGuestViewActive || shouldOpenFile == null) {
             return;
           }
           if (shouldOpenFile) {
@@ -699,7 +715,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   Future<void> _handleInitialSharedMedia(List<SharedMediaFile> value) async {
-    if (!mounted) {
+    if (!mounted || _isGuestViewActive) {
       return;
     }
     if (value.isNotEmpty && _isPublicAlbumUrl(value[0].path)) {
@@ -709,7 +725,7 @@ class _HomeWidgetState extends State<HomeWidget> {
     }
 
     if (await _consumeAndroidMediaViewIntent()) {
-      if (!mounted) {
+      if (!mounted || _isGuestViewActive) {
         return;
       }
       unawaited(
@@ -725,7 +741,7 @@ class _HomeWidgetState extends State<HomeWidget> {
       return;
     }
 
-    if (value.isEmpty || !mounted) {
+    if (value.isEmpty || !mounted || _isGuestViewActive) {
       return;
     }
 
@@ -736,20 +752,22 @@ class _HomeWidgetState extends State<HomeWidget> {
   }
 
   Future<bool> _consumeAndroidMediaViewIntent() async {
-    if (!Platform.isAndroid) {
+    if (!Platform.isAndroid || _isGuestViewActive) {
       return false;
     }
 
     final mediaExtensionAction = await initIntentAction();
-    AppLifecycleService.instance.setMediaExtensionAction(mediaExtensionAction);
+    if (!mounted || _isGuestViewActive) return false;
 
-    if (!_isMediaViewAction(mediaExtensionAction)) {
-      return false;
+    final isMediaView = _isMediaViewAction(mediaExtensionAction);
+    if (isMediaView) {
+      _logger.info("Consuming shared media callback for Android media view");
+      await ReceiveSharingIntent.instance.reset();
+      if (!mounted || _isGuestViewActive) return false;
     }
 
-    _logger.info("Consuming shared media callback for Android media view");
-    await ReceiveSharingIntent.instance.reset();
-    return true;
+    AppLifecycleService.instance.setMediaExtensionAction(mediaExtensionAction);
+    return isMediaView;
   }
 
   bool _isMediaViewAction(MediaExtentionAction action) {
@@ -764,7 +782,9 @@ class _HomeWidgetState extends State<HomeWidget> {
     _mediaViewFallbackNavigationScheduled = true;
     Future<void>.delayed(const Duration(milliseconds: 200), () {
       _mediaViewFallbackNavigationScheduled = false;
-      if (!mounted || ModalRoute.of(context)?.isCurrent != true) {
+      if (!mounted ||
+          _isGuestViewActive ||
+          ModalRoute.of(context)?.isCurrent != true) {
         return;
       }
       unawaited(
@@ -789,7 +809,9 @@ class _HomeWidgetState extends State<HomeWidget> {
         if (_isPublicAlbumDeepLink(initialUri)) {
           await _handlePublicAlbumLink(initialUri, "appLinks.getInitialLink");
         } else {
-          _logger.info("Ignoring deep link: $initialUri");
+          _logger.info(
+            "Ignoring deep link: ${baseUrlForLogging(initialUri.toString())}",
+          );
         }
       } else {
         _logger.info(
@@ -806,7 +828,9 @@ class _HomeWidgetState extends State<HomeWidget> {
           if (_isPublicAlbumDeepLink(uri)) {
             _handlePublicAlbumLink(uri, "appLinks.uriLinkStream");
           } else {
-            _logger.info("Ignoring deep link: $uri");
+            _logger.info(
+              "Ignoring deep link: ${baseUrlForLogging(uri.toString())}",
+            );
           }
         } else {
           _logger.info("No link received in public album link subscription.");
@@ -859,6 +883,7 @@ class _HomeWidgetState extends State<HomeWidget> {
               !Configuration.instance.hasConfiguredAccount() &&
               !localSettings.isAppModeSet;
           if (isStartWithoutAccountFlow) {
+            unawaited(localSettings.setLocalGalleryOnboardingPending(false));
             setState(() {
               _startWithoutAccount = false;
             });
@@ -891,7 +916,7 @@ class _HomeWidgetState extends State<HomeWidget> {
               _isAlbumsSearchActiveNotifier.value = false;
             }
           }
-          if (_selectedTabIndex == 3) {
+          if (_selectedTabIndex == searchTabIndex) {
             if (_shouldSearchTabSearchConsumeBackNotifier.value) {
               Bus.instance.fire(ClearAndUnfocusSearchBar());
               return;
@@ -1067,11 +1092,13 @@ class _HomeWidgetState extends State<HomeWidget> {
               listenable: Listenable.merge([
                 _swipeToSelectInProgressNotifier,
                 _selectedAlbums,
+                _hasSelectedFilesNotifier,
               ]),
               builder: (context, child) {
                 final isPageScrollLocked =
                     _swipeToSelectInProgressNotifier.value ||
-                    _selectedAlbums.albums.isNotEmpty;
+                    _selectedAlbums.albums.isNotEmpty ||
+                    _hasSelectedFilesNotifier.value;
                 return ValueListenableBuilder<int>(
                   valueListenable: _selectedTabIndexNotifier,
                   builder: (context, selectedTabIndex, _) {
@@ -1111,6 +1138,7 @@ class _HomeWidgetState extends State<HomeWidget> {
                           SearchTab(
                             shouldConsumeBackNotifier:
                                 _shouldSearchTabSearchConsumeBackNotifier,
+                            isOnSearchTab: isOnSearchTabNotifier,
                           ),
                         ),
                       ],
@@ -1275,7 +1303,7 @@ class _HomeWidgetState extends State<HomeWidget> {
   void _onDidReceiveNotificationResponse(
     NotificationResponse notificationResponse,
   ) async {
-    if (!mounted) return;
+    if (!mounted || _isGuestViewActive) return;
     final String? payload = notificationResponse.payload;
     if (payload != null) {
       debugPrint('notification payload: $payload');
@@ -1341,6 +1369,7 @@ class _HomeWidgetState extends State<HomeWidget> {
           // ignore: unawaited_futures
           AppNavigationService.instance.pushPage(
             CollectionPage(CollectionWithThumbnail(collection, thumbnail)),
+            useFadeTransition: true,
           );
         }
       }

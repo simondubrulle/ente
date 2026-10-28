@@ -16,7 +16,6 @@ import log from "ente-base/log";
 import { useBrowserBackClose } from "hooks/use-browser-back-close";
 import React from "react";
 import {
-    spaceControlBackground,
     spaceControlBackgroundHover,
     spaceSurface,
     spaceText,
@@ -43,6 +42,7 @@ export interface SpaceEditablePostPhoto {
     video?: {
         file: File;
         sourceURL: string;
+        startTime: number;
         duration: number;
         edit: SpacePostVideoEdit;
     };
@@ -245,8 +245,9 @@ export const SpacePostPhotoEditor: React.FC<{
                     alignItems: "center",
                     display: "grid",
                     gridTemplateColumns: "1fr auto 1fr",
-                    px: "16px",
-                    pt: "max(6px, env(safe-area-inset-top))",
+                    pl: "max(16px, calc(var(--space-ios-safe-area-left, 0px) + 12px))",
+                    pr: "max(16px, var(--space-ios-safe-area-right, 0px))",
+                    pt: "max(calc(6px + var(--space-ios-safe-area-top, 0px)), env(safe-area-inset-top))",
                     pb: "6px",
                     flexShrink: 0,
                 }}
@@ -258,31 +259,18 @@ export const SpacePostPhotoEditor: React.FC<{
                     onClick={onClose}
                     sx={{
                         ...buttonSx,
+                        color: "#C0C0C0",
                         justifySelf: "start",
                         width: 44,
-                        ml: "-8px",
+                        ml: "-12px",
                         p: 0,
                     }}
                 >
-                    <Box
-                        component="span"
-                        sx={{
-                            alignItems: "center",
-                            bgcolor: spaceControlBackground,
-                            borderRadius: "50%",
-                            color: "#E4E4E4",
-                            display: "flex",
-                            height: 32,
-                            justifyContent: "center",
-                            width: 32,
-                        }}
-                    >
-                        <HugeiconsIcon
-                            icon={Cancel01Icon}
-                            size={20}
-                            strokeWidth={1.8}
-                        />
-                    </Box>
+                    <HugeiconsIcon
+                        icon={Cancel01Icon}
+                        size={20}
+                        strokeWidth={1.8}
+                    />
                 </Box>
                 <Box
                     id="space-photo-editor-title"
@@ -370,6 +358,7 @@ export const SpacePostPhotoEditor: React.FC<{
                         key={photo.id}
                         file={photo.video.file}
                         sourceURL={photo.video.sourceURL}
+                        startTime={photo.video.startTime}
                         duration={photo.video.duration}
                         edit={videoEdits[photo.id] ?? photo.video.edit}
                         onChange={(next) =>

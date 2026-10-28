@@ -54,8 +54,6 @@ class FlagService {
     return (flags.internalUser || kDebugMode) && !isDisabled;
   }
 
-  bool get offlineLinkSharing => internalUser;
-
   bool get librarySharing =>
       internalUser || _isServerFlagEnabled(_librarySharingFlag);
 
@@ -106,8 +104,6 @@ class FlagService {
   bool get facesTimeline => true;
   bool get ritualsFlag => true;
 
-  bool get stopStreamProcess => true;
-
   bool get streamEnabledByDefault => _isServerFlagEnabled(_videoStreamingFlag);
 
   bool get previewUploadV2 => _isServerFlagEnabled(_previewUploadV2Flag);
@@ -118,8 +114,6 @@ class FlagService {
 
   bool get isSocialEnabled =>
       internalUser || _isServerFlagEnabled(_commentsFlag);
-
-  bool get enableMemoryShareLink => true;
 
   bool get enableMLInBackground => true;
 

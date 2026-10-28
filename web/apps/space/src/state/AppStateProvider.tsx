@@ -10,6 +10,7 @@ import React, {
 } from "react";
 import type { SpaceLoginCredentials } from "screens/LoginScreen";
 import type { SetupProfile } from "screens/SetupProfileScreen";
+import { clearCommentCounts } from "services/comment-counts";
 import { clearSpaceFeedMemoryCache } from "services/feed-cache";
 import type { PendingSpacePasskeyVerification } from "services/passkey-verification";
 import { logoutRevokedSpaceSession } from "services/persistent-session";
@@ -46,6 +47,7 @@ import {
     failLocalFeedPost,
 } from "utils/local-feed-post";
 import { prepareSpacePostImageFromEdit } from "utils/post-image";
+import { logSpaceImageReadCheck } from "utils/post-image-diagnostics";
 import { spacePostFrameAspectRatio } from "utils/post-photos";
 import { prepareSpaceVideo } from "utils/post-video";
 
@@ -184,11 +186,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 },
             };
             const prepared: PreparedSpacePostMedia[] = [];
-            const videoCount = images.filter((image) => image.video).length;
-            const mediaCounts = {
-                photo: images.length - videoCount,
-                video: videoCount,
-            };
+            const hasVideo = images.some((image) => image.video);
             const session: SpacePostUploadSession = {
                 requestId: crypto.randomUUID(),
                 uploads: [],
@@ -220,23 +218,18 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                 );
                 pending = (async () => {
                     try {
-                        const processingCounts = { photo: 0, video: 0 };
                         for (const [index, image] of images.entries()) {
                             signal.throwIfAborted();
-                            const mediaType = image.video ? "video" : "photo";
-                            const mediaIndex = ++processingCounts[mediaType];
                             if (prepared[index]) continue;
-                            if (videoCount > 0 || images.length >= 3) {
-                                const count = mediaCounts[mediaType];
-                                const processing =
-                                    images.length == 1
-                                        ? "Processing"
-                                        : `Processing ${mediaType}${count > 1 ? ` ${mediaIndex}/${count}` : ""}`;
+                            if (hasVideo) {
                                 setLocalFeedPosts((current) =>
                                     current.map((item) =>
                                         item.id == localPostId &&
                                         item.status == "pending"
-                                            ? { ...item, processing }
+                                            ? {
+                                                  ...item,
+                                                  processing: "Processing",
+                                              }
                                             : item,
                                     ),
                                 );
@@ -257,6 +250,16 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
                                           image.rotationDegrees,
                                       );
                             } catch (error) {
+                                if (!image.video)
+                                    void logSpaceImageReadCheck(
+                                        image.file,
+                                        error,
+                                        {
+                                            requestId: session.requestId,
+                                            attempt,
+                                            item: index + 1,
+                                        },
+                                    ).catch(() => undefined);
                                 const details =
                                     error instanceof Error
                                         ? {
@@ -584,6 +587,7 @@ export const SpaceAppStateProvider: React.FC<React.PropsWithChildren> = ({
         clearCurrentSpaceContext();
         clearSpaceFriendsCache();
         clearSpaceFeedMemoryCache();
+        clearCommentCounts();
         setLocalFeedPosts([]);
         clearSpaceMediaURLCache();
         applyProfile(null);

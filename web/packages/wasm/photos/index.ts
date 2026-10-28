@@ -1,13 +1,24 @@
 import type {
     EncryptedBox,
+    LocationIndex,
     OpenSessionInput,
     Session,
     WrappedRootContactKey,
 } from "./pkg/ente_photos_wasm";
 
-export type { OpenSessionInput, Session } from "./pkg/ente_photos_wasm";
+export type {
+    LocationCityGroup,
+    OpenSessionInput,
+    Session,
+} from "./pkg/ente_photos_wasm";
 
 const wasm = () => import("./pkg/ente_photos_wasm");
+
+export const createLocationIndex = async (
+    cities: Uint8Array,
+    urbanCenters: Uint8Array,
+): Promise<LocationIndex> =>
+    new (await wasm()).LocationIndex(cities, urbanCenters);
 
 export const openSession = async (input: OpenSessionInput): Promise<Session> =>
     (await wasm()).openSession(input);

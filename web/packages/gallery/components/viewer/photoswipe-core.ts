@@ -67,11 +67,7 @@ export interface FileViewerPhotoSwipeDelegate<
     shouldIgnoreKeyboardEvent: (event: KeyboardEvent) => boolean;
     performKeyAction: (
         action:
-            | "delete"
-            | "toggle-archive"
-            | "copy"
-            | "toggle-fullscreen"
-            | "help",
+            "delete" | "toggle-archive" | "copy" | "toggle-fullscreen" | "help",
     ) => void;
 }
 
@@ -237,6 +233,16 @@ export class FileViewerPhotoSwipe<
                 } else {
                     const i = newIndex;
 
+                    // New files can make an empty neighbour navigable. goTo
+                    // emits change before the refresh below, so fill it first.
+                    pswp.mainScroll.itemHolders.forEach((holder, offset) => {
+                        if (!holder.slide)
+                            pswp.setContent(
+                                holder,
+                                pswp.currIndex + offset - 1,
+                            );
+                    });
+
                     pswp.goTo(i);
                     _currentAnnotatedFile = undefined;
                     pswp.refreshSlideContent(i);
@@ -310,8 +316,7 @@ export class FileViewerPhotoSwipe<
         let livePhotoPlayInitial = true;
 
         let livePhotoPlayInitialEndedEvent:
-            | { listener: () => void; video: HTMLVideoElement }
-            | undefined;
+            { listener: () => void; video: HTMLVideoElement } | undefined;
 
         let livePhotoMute = true;
 
@@ -463,8 +468,7 @@ export class FileViewerPhotoSwipe<
         };
 
         let fullscreenUIControlsHideTimer:
-            | ReturnType<typeof setTimeout>
-            | undefined;
+            ReturnType<typeof setTimeout> | undefined;
 
         let areFullscreenUIControlsHiddenByShortcut = false;
 
