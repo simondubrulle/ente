@@ -46,7 +46,10 @@ func TestCollectionHandlersRejectInvalidKeys(t *testing.T) {
 			request.Header.Set("X-Auth-User-ID", "1")
 			recorder := httptest.NewRecorder()
 			router.ServeHTTP(recorder, request)
-			require.Equal(t, http.StatusInternalServerError, recorder.Code, recorder.Body.String())
+			require.Equal(t, http.StatusBadRequest, recorder.Code, recorder.Body.String())
+			var response ente.ApiError
+			require.NoError(t, json.Unmarshal(recorder.Body.Bytes(), &response))
+			require.Equal(t, ente.BadRequest, response.Code)
 		})
 	}
 }

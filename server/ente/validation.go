@@ -1,17 +1,17 @@
 package ente
 
-import (
-	"encoding/base64"
-	"errors"
-)
+import "encoding/base64"
 
 func ValidateBase64Length(value string, size int) error {
-	decoded, err := base64.StdEncoding.DecodeString(value)
+	if len(value) != base64.StdEncoding.EncodedLen(size) {
+		return NewBadRequestWithMessage("invalid length")
+	}
+	decoded, err := base64.StdEncoding.Strict().DecodeString(value)
 	if err != nil {
-		return errors.New("invalid base64")
+		return NewBadRequestWithMessage("invalid base64")
 	}
 	if len(decoded) != size {
-		return errors.New("invalid decoded length")
+		return NewBadRequestWithMessage("invalid length")
 	}
 	return nil
 }

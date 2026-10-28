@@ -72,10 +72,10 @@ func TestKeyAttributeValidation(t *testing.T) {
 			t.Run(field.name+"/"+invalid.name, func(t *testing.T) {
 				request := valid
 				*field.value(&request.KeyAttributes) = invalid.value
-				require.EqualError(t, request.Validate(), invalid.message)
+				assertBadRequestMessage(t, request.Validate(), invalid.message)
 				if field.update {
 					update := testUpdateKeysRequest(request.KeyAttributes)
-					require.EqualError(t, update.Validate(), invalid.message)
+					assertBadRequestMessage(t, update.Validate(), invalid.message)
 				}
 			})
 		}
@@ -102,23 +102,30 @@ func TestRecoveryKeyValidation(t *testing.T) {
 			t.Run(field.name+"/"+invalid.name, func(t *testing.T) {
 				request := valid
 				*field.value(&request) = invalid.value
-				require.EqualError(t, request.Validate(), invalid.message)
+				assertBadRequestMessage(t, request.Validate(), invalid.message)
 				setup := testSetAttributesRequest(request)
-				require.EqualError(t, setup.Validate(), invalid.message)
+				assertBadRequestMessage(t, setup.Validate(), invalid.message)
 			})
 		}
 	}
 }
 
 func invalidBase64Values(size int) []struct{ name, value, message string } {
+	valid := base64.StdEncoding.EncodeToString(make([]byte, size))
 	values := []struct{ name, value, message string }{
-		{"empty", "", "invalid decoded length"},
+		{"empty", "", "invalid length"},
 		{"invalid base64", strings.Repeat("!", base64.StdEncoding.EncodedLen(size)), "invalid base64"},
-		{"short", base64.StdEncoding.EncodeToString(make([]byte, size-1)), "invalid decoded length"},
-		{"long", base64.StdEncoding.EncodeToString(make([]byte, size+1)), "invalid decoded length"},
+		{"short", base64.StdEncoding.EncodeToString(make([]byte, size-1)), "invalid length"},
+		{"long", base64.StdEncoding.EncodeToString(make([]byte, size+1)), "invalid length"},
+		{"carriage return", valid[:4] + "\r" + valid[4:], "invalid length"},
+		{"newline", valid[:4] + "\n" + valid[4:], "invalid length"},
 	}
 	if size%3 != 0 {
-		values = append(values, struct{ name, value, message string }{"missing padding", base64.RawStdEncoding.EncodeToString(make([]byte, size)), "invalid base64"})
+		lastSymbol := strings.IndexByte(valid, '=') - 1
+		values = append(values,
+			struct{ name, value, message string }{"missing padding", base64.RawStdEncoding.EncodeToString(make([]byte, size)), "invalid length"},
+			struct{ name, value, message string }{"padding bits", valid[:lastSymbol] + "B" + valid[lastSymbol+1:], "invalid base64"},
+		)
 	}
 	return values
 }
@@ -174,8 +181,8 @@ func TestUpdateSRPAndKeysRequestValidation(t *testing.T) {
 
 	request.UpdateAttributes.OpsLimit = validArgonOpsLimit
 	require.NoError(t, request.Validate())
-	request.UpdateAttributes.EncryptedKey = "invalid"
-	require.EqualError(t, request.Validate(), "invalid base64")
+	request.UpdateAttributes.EncryptedKey = strings.Repeat("!", base64.StdEncoding.EncodedLen(48))
+	assertBadRequestMessage(t, request.Validate(), "invalid base64")
 }
 
 func assertBadRequestMessage(t *testing.T, err error, wantMessage string) {
