@@ -6,6 +6,7 @@ import {
     CollectionSelector,
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
+import { DesktopWhatsNew } from "@/components/DesktopWhatsNew";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
 import { FileListWithViewer } from "@/components/FileListWithViewer";
 import { FixCreationTime } from "@/components/FixCreationTime";
@@ -16,7 +17,6 @@ import {
     type FileOp,
 } from "@/components/SelectedFileOptions";
 import { Upload } from "@/components/Upload";
-import { WhatsNew } from "@/components/WhatsNew";
 import { AlbumSlideshow } from "@/components/collections/AlbumSlideshow";
 import { CollectionMap } from "@/components/collections/CollectionMap";
 import {
@@ -36,6 +36,7 @@ import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import { PhotosNavigationShell } from "@/components/gallery/PhotosNavigationShell";
+import type { PlaceSelection } from "@/components/gallery/PlacesList";
 import { PublicLinkDetails } from "@/components/gallery/PublicLinkDetails";
 import {
     albumShortcutCollectionID,
@@ -54,7 +55,6 @@ import {
     notifyUnsupportedSharedFavoritesDialogAttributes,
     trashFilesDialogAttributes,
 } from "@/components/utils/dialog-attributes";
-import { shouldShowWhatsNew } from "@/services/changelog";
 import exportService from "@/services/export";
 import { processPendingAlbumJoin } from "@/services/join-album";
 import {
@@ -216,6 +216,11 @@ const Page: React.FC = () => {
     });
     const [albumFilter, setAlbumFilter] = useState<AlbumFilter>("ente");
     const [albumSearchQuery, setAlbumSearchQuery] = useState("");
+    const [albumOpenedFromOverview, setAlbumOpenedFromOverview] = useState<{
+        collectionID: number;
+        filter: AlbumFilter;
+        searchQuery: string;
+    }>();
     const [blockingLoad, setBlockingLoad] = useState(false);
     const [peopleSortBy, setPeopleSortBy] =
         useState<PeopleSortBy>("count-desc");
@@ -299,8 +304,6 @@ const Page: React.FC = () => {
     const pendingPeopleSearchReset = useRef<(() => void) | undefined>(
         undefined,
     );
-    const { show: showWhatsNew, props: whatsNewVisibilityProps } =
-        useModalVisibility();
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
         useModalVisibility();
     const {
@@ -315,6 +318,8 @@ const Page: React.FC = () => {
         show: showEditAlbumDetails,
         props: editAlbumDetailsVisibilityProps,
     } = useModalVisibility();
+    const [selectedPlace, setSelectedPlace] = useState<PlaceSelection>();
+    const [placeSelectionRevision, setPlaceSelectionRevision] = useState(0);
     const [isMapView, setIsMapView] = useState(false);
     const closeCollectionMap = useCallback(() => setIsMapView(false), []);
 
@@ -749,7 +754,6 @@ const Page: React.FC = () => {
                     void remotePull({ silent: true, source: "desktop-focus" });
                     void watcher.checkAccessibility();
                 });
-                if (await shouldShowWhatsNew(electron)) showWhatsNew();
             }
         })();
 
@@ -1540,6 +1544,7 @@ const Page: React.FC = () => {
 
     const handleShowCollectionSummaryWithID = useCallback(
         (collectionSummaryID: number | undefined) => {
+            setAlbumOpenedFromOverview(undefined);
             setIsMapView(false);
             setCleanupView(undefined);
             // Museum deletes collection contents asynchronously; pull on entry.
@@ -1645,16 +1650,21 @@ const Page: React.FC = () => {
 
     const handleBackToAlbums = useCallback(() => {
         setCleanupView(undefined);
-        setAlbumSearchQuery("");
+        const origin =
+            albumOpenedFromOverview?.collectionID === collectionSummary?.id
+                ? albumOpenedFromOverview
+                : undefined;
+        const filter = origin?.filter ?? "ente";
+        setAlbumSearchQuery(origin?.searchQuery ?? "");
         setSelected({
             ownCount: 0,
             count: 0,
             collectionID: 0,
             context: undefined,
         });
-        setAlbumFilter("ente");
-        dispatch({ type: "showAlbumOverview", albumFilter: "ente" });
-    }, []);
+        setAlbumFilter(filter);
+        dispatch({ type: "showAlbumOverview", albumFilter: filter });
+    }, [albumOpenedFromOverview, collectionSummary?.id]);
 
     const handleChangeBarMode = (mode: GalleryBarMode) => {
         if (mode == "links") {
@@ -2129,6 +2139,12 @@ const Page: React.FC = () => {
         <CollectionMap
             collectionSummary={activeCollectionSummary}
             files={activeCollection ? activeCollectionFiles : filteredFiles}
+            selectedPlace={
+                activeCollectionID === PseudoCollectionID.all
+                    ? selectedPlace
+                    : undefined
+            }
+            placeSelectionRevision={placeSelectionRevision}
             mapFileSource={mapFileSource}
             onRemotePull={remotePull}
             onAddSaveGroup={onAddSaveGroup}
@@ -2201,6 +2217,7 @@ const Page: React.FC = () => {
                     onSidebar={showSidebar}
                     onUpload={openUploader}
                     onShowMap={() => {
+                        setSelectedPlace(undefined);
                         handleShowCollectionSummaryWithID(
                             PseudoCollectionID.all,
                         );
@@ -2216,11 +2233,22 @@ const Page: React.FC = () => {
                     onSelectPeople={handleShowPeople}
                     onSelectPerson={handleSelectPerson}
                     galleryNavigation={
-                        isCleanupViewOpen ||
-                        (isMapView &&
-                            activeCollectionID === PseudoCollectionID.all)
+                        isCleanupViewOpen
                             ? undefined
                             : {
+                                  selectedPlace,
+                                  onSelectPlace: (place) => {
+                                      setSelectedPlace(place);
+                                      setPlaceSelectionRevision(
+                                          (revision) => revision + 1,
+                                      );
+                                  },
+                                  placesFiles:
+                                      isMapView &&
+                                      activeCollectionID ===
+                                          PseudoCollectionID.all
+                                          ? filteredFiles
+                                          : undefined,
                                   activeCollectionID:
                                       galleryBarActiveCollectionID,
                                   onSelectCollectionID: selectGalleryCollection,
@@ -2306,6 +2334,11 @@ const Page: React.FC = () => {
                                     onAddSaveGroup,
                                 }}
                                 onBackToAlbums={handleBackToAlbums}
+                                showBackToAlbums={
+                                    albumOpenedFromOverview !== undefined &&
+                                    albumOpenedFromOverview.collectionID ===
+                                        collectionSummary?.id
+                                }
                                 onBackToPeople={handleBackToPeople}
                                 mode={barMode}
                                 shouldHide={isInSearchMode}
@@ -2375,7 +2408,14 @@ const Page: React.FC = () => {
                             filter={overviewFilter!}
                             searchQuery={albumSearchQuery}
                             sortBy={collectionsSortBy}
-                            onSelectAlbum={handleShowCollectionSummaryWithID}
+                            onSelectAlbum={(collectionID) => {
+                                handleShowCollectionSummaryWithID(collectionID);
+                                setAlbumOpenedFromOverview({
+                                    collectionID,
+                                    filter: overviewFilter!,
+                                    searchQuery: albumSearchQuery,
+                                });
+                            }}
                             onCreateAlbum={() => {
                                 setPostCreateAlbumOp(undefined);
                                 postCreateAlbumHidden.current = false;
@@ -2499,7 +2539,7 @@ const Page: React.FC = () => {
                     setLoading={setBlockingLoad}
                     onAuthenticateUser={authenticateUser}
                 />
-                <WhatsNew {...whatsNewVisibilityProps} />
+                <DesktopWhatsNew />
                 <PeopleConsentDialog
                     {...peopleConsentVisibilityProps}
                     onClose={() => {
