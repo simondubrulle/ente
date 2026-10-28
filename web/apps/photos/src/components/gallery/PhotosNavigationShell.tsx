@@ -1,5 +1,6 @@
 import { CreateAlbumDialog } from "@/components/collections/CreateAlbumDialog";
 import { SearchBar, type SearchBarProps } from "@/components/SearchBar";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import { useIsOffline } from "@/components/utils/use-is-offline";
 import { uploadManager } from "@/services/upload-manager";
 import {
@@ -24,6 +25,7 @@ import {
     useTheme,
 } from "@mui/material";
 import { EnteLogo, EnteLogoBox } from "ente-base/components/EnteLogo";
+import { TranslucentLoadingOverlay } from "ente-base/components/loaders";
 import type { ButtonishProps } from "ente-base/components/mui";
 import { FocusVisibleButton } from "ente-base/components/mui/FocusVisibleButton";
 import { NavbarBase } from "ente-base/components/Navbar";
@@ -33,8 +35,15 @@ import { ut } from "ente-base/i18n";
 import { thumbnailGridPadding } from "ente-new/photos/components/utils/thumbnail-grid-layout";
 import { PseudoCollectionID } from "ente-new/photos/services/collection-summary";
 import { isMLSupported } from "ente-new/photos/services/ml";
+import type { SidebarActionID } from "ente-new/photos/services/search/types";
 import { t } from "i18next";
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import {
+    useCallback,
+    useEffect,
+    useImperativeHandle,
+    useState,
+    type ReactNode,
+} from "react";
 
 import type { RemotePullOpts } from ".";
 import {
@@ -65,21 +74,50 @@ type PhotosNavigationShellProps = SearchBarProps & {
     onChangeMode: (mode: GalleryBarMode) => boolean;
 };
 
+export interface PhotosNavigationShellHandle {
+    showSettings: (action?: SidebarActionID) => void;
+}
+
 export const PhotosNavigationShell: React.FC<
     React.PropsWithChildren<
-        PhotosNavigationShellProps & {
+        Omit<PhotosNavigationShellProps, "isSettingsOpen" | "onSidebar"> & {
+            ref?: React.Ref<PhotosNavigationShellHandle>;
             isFirstLoad: boolean;
             alternateHeader: ReactNode;
             galleryNavigation: GalleryNavigation | undefined;
+            collectionNameByID: Map<number, string>;
+            onShowCleanupView: (view: "large-files" | "duplicates") => void;
+            onAuthenticateUser: () => Promise<boolean>;
         }
     >
 > = ({
+    ref,
     isFirstLoad,
     alternateHeader,
     galleryNavigation,
+    collectionNameByID,
+    onShowCleanupView,
+    onAuthenticateUser,
     children,
     ...props
 }) => {
+    const { show: showSidebar, props: sidebarVisibilityProps } =
+        useModalVisibility();
+    const [pendingSidebarAction, setPendingSidebarAction] =
+        useState<SidebarActionID>();
+    const [settingsLoading, setSettingsLoading] = useState(false);
+    const showSettings = useCallback(
+        (action?: SidebarActionID) => {
+            setPendingSidebarAction(action);
+            showSidebar();
+        },
+        [showSidebar],
+    );
+    const handleSidebarActionHandled = useCallback(
+        () => setPendingSidebarAction(undefined),
+        [],
+    );
+    useImperativeHandle(ref, () => ({ showSettings }), [showSettings]);
     const isOffline = useIsOffline();
     const reduceMotion = useMediaQuery("(prefers-reduced-motion: reduce)");
     const [navigationCollapsed, setNavigationCollapsed] = useState(false);
@@ -250,6 +288,8 @@ export const PhotosNavigationShell: React.FC<
                         {alternateHeader == null && (
                             <NormalNavigationRail
                                 {...props}
+                                isSettingsOpen={sidebarVisibilityProps.open}
+                                onSidebar={() => showSettings()}
                                 onShowMap={() => {
                                     props.onShowMap();
                                     setNavigationCollapsed(false);
@@ -334,6 +374,17 @@ export const PhotosNavigationShell: React.FC<
                     </Stack>
                 </Stack>
             </Stack>
+            <Sidebar
+                {...sidebarVisibilityProps}
+                pendingAction={pendingSidebarAction}
+                onActionHandled={handleSidebarActionHandled}
+                onShowLargeFiles={() => onShowCleanupView("large-files")}
+                onShowDuplicates={() => onShowCleanupView("duplicates")}
+                collectionNameByID={collectionNameByID}
+                onAuthenticateUser={onAuthenticateUser}
+                setLoading={setSettingsLoading}
+            />
+            {settingsLoading && <TranslucentLoadingOverlay />}
         </Stack>
     );
 };
