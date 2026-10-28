@@ -207,7 +207,6 @@ const Page: React.FC = () => {
     >();
     const isCleanupViewOpen = cleanupView !== undefined;
     const [isFirstLoad, setIsFirstLoad] = useState(false);
-    const [isWhatsNewReady, setIsWhatsNewReady] = useState(false);
     const [isContextMenuOpen, setIsContextMenuOpen] = useState(false);
     const [suppressContextSelectionBar, setSuppressContextSelectionBar] =
         useState(false);
@@ -771,7 +770,6 @@ const Page: React.FC = () => {
                     void remotePull({ silent: true, source: "desktop-focus" });
                     void watcher.checkAccessibility();
                 });
-                setIsWhatsNewReady(true);
             }
         })();
 
@@ -2583,7 +2581,7 @@ const Page: React.FC = () => {
                         renderSubscriptionDialogs(onRootClose)
                     }
                 </Sidebar>
-                <DesktopWhatsNew enabled={isWhatsNewReady} />
+                <DesktopWhatsNew />
                 <PeopleConsentDialog
                     {...peopleConsentVisibilityProps}
                     onClose={() => {

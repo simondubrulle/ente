@@ -4,14 +4,12 @@ import log from "ente-base/log";
 import { useEffect } from "react";
 import { WhatsNew } from "./WhatsNew";
 
-export const DesktopWhatsNew: React.FC<{ enabled: boolean }> = ({
-    enabled,
-}) => {
+export const DesktopWhatsNew: React.FC = () => {
     const { show, props } = useModalVisibility();
 
     useEffect(() => {
         const electron = globalThis.electron;
-        if (!enabled || !electron) return;
+        if (!electron) return;
 
         let cancelled = false;
 
@@ -26,7 +24,7 @@ export const DesktopWhatsNew: React.FC<{ enabled: boolean }> = ({
         return () => {
             cancelled = true;
         };
-    }, [enabled, show]);
+    }, [show]);
 
-    return <WhatsNew {...props} open={enabled && props.open} />;
+    return <WhatsNew {...props} />;
 };
