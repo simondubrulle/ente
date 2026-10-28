@@ -73,11 +73,9 @@ import { openManageSubscription } from "./accounts/subscription";
 import { Preferences, type PreferencesAction } from "./preferences/Preferences";
 import { sidebarTheme } from "./theme";
 
-export type SidebarPendingAction = SidebarActionID | "subscription";
-
 type SidebarProps = ModalVisibilityProps & {
-    pendingAction?: SidebarPendingAction;
-    onActionHandled?: (actionID: SidebarPendingAction) => void;
+    pendingAction?: SidebarActionID;
+    onActionHandled?: (actionID: SidebarActionID) => void;
     onShowLargeFiles: () => void;
     onShowDuplicates: () => void;
     setLoading: (loading: boolean) => void;
@@ -242,12 +240,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
     ]);
 
     const performSidebarAction = useCallback(
-        async (actionID: SidebarPendingAction) => {
+        async (actionID: SidebarActionID) => {
             if (actionID !== "utility.export") closeSections();
-            if (actionID === "subscription") {
-                onShowPlanSelector();
-                return;
-            }
             return performSidebarRegistryAction(actionID, {
                 onClose,
                 onShowPlanSelector,

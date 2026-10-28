@@ -48,10 +48,7 @@ import {
     type GalleryBarMode,
 } from "@/components/gallery/reducer";
 import { useAlbumNavigationData } from "@/components/gallery/use-album-navigation-data";
-import {
-    Sidebar,
-    type SidebarPendingAction,
-} from "@/components/sidebar/Sidebar";
+import { Sidebar } from "@/components/sidebar/Sidebar";
 import {
     notifyOthersFilesDialogAttributes,
     notifyUnsupportedSharedFavoritesDialogAttributes,
@@ -171,7 +168,10 @@ import {
     filterSearchableFiles,
     updateSearchCollectionsAndFiles,
 } from "ente-new/photos/services/search";
-import type { SearchOption } from "ente-new/photos/services/search/types";
+import type {
+    SearchOption,
+    SidebarActionID,
+} from "ente-new/photos/services/search/types";
 import {
     initSettings,
     updateMapEnabled,
@@ -287,7 +287,7 @@ const Page: React.FC = () => {
     >(undefined);
     const postCreateAlbumHidden = useRef(false);
     const [pendingSidebarAction, setPendingSidebarAction] = useState<
-        SidebarPendingAction | undefined
+        SidebarActionID | undefined
     >(undefined);
 
     const lastAuthenticationForHiddenTimestamp = useRef<number>(0);
