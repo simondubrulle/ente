@@ -1,7 +1,6 @@
 package api
 
 import (
-	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -15,12 +14,10 @@ import (
 	castctrl "github.com/ente/museum/pkg/controller/cast"
 	"github.com/ente/museum/pkg/controller/collections"
 	"github.com/ente/museum/pkg/controller/public"
-	"github.com/ente/museum/pkg/controller/social"
 	"github.com/ente/museum/pkg/middleware"
 	"github.com/ente/museum/pkg/repo"
 	castrepo "github.com/ente/museum/pkg/repo/cast"
 	publicrepo "github.com/ente/museum/pkg/repo/public"
-	socialrepo "github.com/ente/museum/pkg/repo/social"
 	"github.com/ente/museum/pkg/utils/auth"
 	"github.com/gin-gonic/gin"
 	"github.com/patrickmn/go-cache"
@@ -81,14 +78,9 @@ func TestCollectionAppIsolation(t *testing.T) {
 				AccessCtrl: accessCtrl, CollectionRepo: collectionRepo, CastRepo: castRepo,
 				CollectionLinkCtrl: &public.CollectionLinkController{CollectionLinkRepo: linkRepo},
 			}}
-			socialHandler := &SocialHandler{Controller: &social.Controller{
-				CollectionRepo: collectionRepo,
-				CommentsRepo:   &socialrepo.CommentsRepository{DB: db}, ReactionsRepo: &socialrepo.ReactionsRepository{DB: db},
-			}}
 			gin.SetMode(gin.TestMode)
 			router := gin.New()
 			storage := router.Group("/", authMiddleware.TokenAuthMiddleware(nil), middleware.RejectAuthApp())
-			storage.GET("/comments-reactions/counts", socialHandler.Counts)
 			storage.GET("/collections/:collectionID", collectionHandler.GetCollectionByID)
 			storage.DELETE("/collections/v3/:collectionID", collectionHandler.TrashV3)
 			request := func(method, path string, clientApp ente.App) *httptest.ResponseRecorder {
@@ -103,15 +95,6 @@ func TestCollectionAppIsolation(t *testing.T) {
 			if app == ente.Photos {
 				otherApp = ente.Locker
 			}
-			t.Run("counts", func(t *testing.T) {
-				response := request(http.MethodGet, "/comments-reactions/counts", app)
-				require.Equal(t, http.StatusOK, response.Code, response.Body.String())
-				var body struct {
-					Counts []social.CollectionCount `json:"counts"`
-				}
-				require.NoError(t, json.Unmarshal(response.Body.Bytes(), &body))
-				require.ElementsMatch(t, []social.CollectionCount{{CollectionID: owned[app]}, {CollectionID: shared[app]}}, body.Counts)
-			})
 			t.Run("point_access", func(t *testing.T) {
 				for _, ids := range []map[ente.App]int64{owned, shared} {
 					for _, targetApp := range []ente.App{app, otherApp} {

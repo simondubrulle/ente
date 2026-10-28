@@ -83,21 +83,6 @@ func (h *SocialHandler) UnifiedDiff(c *gin.Context) {
 	})
 }
 
-func (h *SocialHandler) Counts(c *gin.Context) {
-	userID := auth.GetUserID(c.Request.Header)
-	app, ok := auth.GetAuthenticatedApp(c)
-	if userID <= 0 || !ok {
-		handler.Error(c, ente.ErrAuthenticationRequired)
-		return
-	}
-	counts, err := h.Controller.CountActiveCollections(c, userID, app)
-	if err != nil {
-		handler.Error(c, stacktrace.Propagate(err, ""))
-		return
-	}
-	c.JSON(http.StatusOK, gin.H{"counts": counts})
-}
-
 func (h *SocialHandler) LatestUpdates(c *gin.Context) {
 	userID := auth.GetUserID(c.Request.Header)
 	if userID <= 0 {

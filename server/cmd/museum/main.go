@@ -678,7 +678,6 @@ func main() {
 
 	storageAPI.GET("/social/diff", socialHandler.UnifiedDiff)
 	storageAPI.GET("/social/anon-profiles", socialHandler.AnonProfiles)
-	storageAPI.GET("/comments-reactions/counts", socialHandler.Counts)
 	storageAPI.GET("/comments-reactions/updated-at", socialHandler.LatestUpdates)
 
 	emergencyCtrl := &emergency.Controller{
