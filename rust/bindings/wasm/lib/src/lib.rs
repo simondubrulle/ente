@@ -8,6 +8,8 @@ pub mod collections;
 pub mod contacts;
 #[cfg(feature = "crypto")]
 pub mod crypto;
+#[cfg(feature = "account-deletion")]
+pub mod deletion;
 #[cfg(feature = "legacy")]
 pub mod legacy;
 #[cfg(feature = "location")]

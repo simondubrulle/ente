@@ -183,10 +183,10 @@ fn generate_frb(target: FrbTarget) -> Result<(), DynError> {
             fs::remove_dir_all(&generated_dir)?;
         }
         generate_frb_package(&package_dir)?;
-        if *app == "auth" {
-            continue;
-        }
-        for name in ["contacts", "legacy"] {
+        for name in ["contacts", "deletion", "legacy"] {
+            if *app == "auth" && name != "deletion" {
+                continue;
+            }
             let types_path = package_dir
                 .join("lib/src/rust/third_party/ente_frb_lib")
                 .join(format!("{name}/types.dart"));

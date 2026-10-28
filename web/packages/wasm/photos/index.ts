@@ -7,6 +7,7 @@ import type {
 } from "./pkg/ente_photos_wasm";
 
 export type {
+    AccountDeletionSummary,
     LocationCityGroup,
     OpenSessionInput,
     Session,
@@ -22,6 +23,20 @@ export const createLocationIndex = async (
 
 export const openSession = async (input: OpenSessionInput): Promise<Session> =>
     (await wasm()).openSession(input);
+
+export const getAccountDeletionSummary = async (session: Session) =>
+    (await wasm()).getAccountDeletionSummary(session);
+
+export const getAccountDeleteChallenge = async (session: Session) =>
+    (await wasm()).getAccountDeleteChallenge(session);
+
+export const deleteAccount = async (
+    session: Session,
+    encryptedChallenge: string,
+    reason: string,
+    feedback?: string,
+) =>
+    (await wasm()).deleteAccount(session, encryptedChallenge, reason, feedback);
 
 export const recoveryKeyMnemonic = async (session: Session) =>
     (await wasm()).authRecoveryKeyMnemonic(session);
