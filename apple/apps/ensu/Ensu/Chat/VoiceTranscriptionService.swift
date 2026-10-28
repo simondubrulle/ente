@@ -32,6 +32,7 @@ final class VoiceTranscriptionService: ObservableObject {
     @Published private(set) var audioLevels = Array(repeating: Float.zero, count: 24)
     @Published private(set) var notice: String?
     @Published private(set) var state: VoiceInputState = .idle
+    @Published private(set) var isFinishingSlow = false
     var onActivityChanged: (@MainActor () -> Void)?
     var onInsert: (@MainActor (DictationInsertion, String) -> Bool)?
     private let provider: LlmProvider
@@ -42,7 +43,7 @@ final class VoiceTranscriptionService: ObservableObject {
     private var stream: DictationStream?
     private var recorder: LivePcmRecorder?
     private var task: Task<Void, Never>?
-    private var finishingWatchdog: Task<Void, Never>?
+    private var finishingNoticeTask: Task<Void, Never>?
     private var attemptFinished = false
     private var insertion: DictationInsertion?
     private var generation = UUID()
@@ -101,6 +102,7 @@ final class VoiceTranscriptionService: ObservableObject {
         generation = UUID()
         self.insertion = insertion
         attemptFinished = false
+        isFinishingSlow = false
         session = DictationSession(live: usesLiveDictation)
         snapshot = session?.snapshot()
         active = true
@@ -168,8 +170,8 @@ final class VoiceTranscriptionService: ObservableObject {
             defer {
                 self.hasActiveTasks = false
                 if self.generation == token {
-                    self.finishingWatchdog?.cancel()
-                    self.finishingWatchdog = nil
+                    self.finishingNoticeTask?.cancel()
+                    self.finishingNoticeTask = nil
                     self.recorder?.stop()
                     self.recorder = nil
                     self.stream = nil
@@ -290,6 +292,7 @@ final class VoiceTranscriptionService: ObservableObject {
                 hasText ? "Voice input stopped." : notice ?? "No speech detected.")
         }
         active = false
+        isFinishingSlow = false
         session = nil
         snapshot = nil
         insertion = nil
@@ -301,19 +304,14 @@ final class VoiceTranscriptionService: ObservableObject {
     private func watchFinalization(_ owner: DictationSession, stream: DictationStream, token: UUID)
     {
         guard token == generation, active, self.stream === stream, owner.snapshot().workerActive,
-            finishingWatchdog == nil
+            finishingNoticeTask == nil
         else { return }
-        finishingWatchdog = Task { @MainActor [weak self] in
+        finishingNoticeTask = Task { @MainActor [weak self] in
             do { try await Task.sleep(for: .seconds(10)) } catch { return }
             guard let self, self.generation == token, self.active, self.stream === stream,
                 owner.snapshot().workerActive
             else { return }
-            self.recorder?.stop()
-            try? stream.abandon(reason: .failure)
-            self.task?.cancel()
-            self.snapshot = owner.snapshot()
-            self.notice =
-                "Finishing took too long. Some speech may be missing. Review the available text while recognition stops."
+            self.isFinishingSlow = true
         }
     }
 
@@ -338,6 +336,8 @@ final class VoiceTranscriptionService: ObservableObject {
         recorder?.stop()
         try? stream?.abandon(reason: .interruption)
         task?.cancel()
+        finishingNoticeTask?.cancel()
+        isFinishingSlow = false
         notice = message
         state = .transcribing
     }
@@ -346,12 +346,13 @@ final class VoiceTranscriptionService: ObservableObject {
         awaitingPermission = false
         startOnForeground = false
         generation = UUID()
-        finishingWatchdog?.cancel()
-        finishingWatchdog = nil
+        finishingNoticeTask?.cancel()
+        finishingNoticeTask = nil
         recorder?.stop()
         try? stream?.abandon(reason: .discard)
         task?.cancel()
         active = false
+        isFinishingSlow = false
         state = .idle
         snapshot = nil
         session = nil
@@ -502,7 +503,10 @@ private final class LiveCaptureDelivery: @unchecked Sendable {
                                 .littleEndian
                         }
                     }
-                    try stream.feed(pcmLe: pcm)
+                    if try stream.feed(pcmLe: pcm) == .closed {
+                        close()
+                        return
+                    }
                 }
             } catch {
                 lock.lock(); let wasAccepting = accepting; accepting = false; lock.unlock()

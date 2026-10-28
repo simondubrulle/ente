@@ -145,6 +145,13 @@ pub struct DictationStream {
     stream: LiveTranscription,
     started: AtomicBool,
 }
+
+#[derive(Debug, Clone, Copy, uniffi::Enum)]
+pub enum DictationFeedResult {
+    Accepted,
+    Closed,
+}
+
 #[uniffi::export]
 impl DictationStream {
     #[uniffi::constructor]
@@ -164,8 +171,11 @@ impl DictationStream {
             started: AtomicBool::new(false),
         }))
     }
-    pub fn feed(&self, pcm_le: &[u8]) -> Result<(), DictationError> {
-        self.stream.feed(pcm_le).map_err(Into::into)
+    pub fn feed(&self, pcm_le: &[u8]) -> Result<DictationFeedResult, DictationError> {
+        Ok(match self.stream.feed(pcm_le)? {
+            voice::CaptureFeedResult::Accepted => DictationFeedResult::Accepted,
+            voice::CaptureFeedResult::Closed => DictationFeedResult::Closed,
+        })
     }
     pub fn stop(&self, reason: DictationStopReason) -> Result<(), DictationError> {
         self.session.lock().session.stop(reason.into())?;
@@ -232,7 +242,7 @@ impl DictationStream {
                 .session
                 .lock()
                 .apply(event, || self.stream.finish_if_empty())?;
-            if immediate && !notified_stop && self.session.lock().session.stop_reason().is_some() {
+            if !notified_stop && self.session.lock().session.stop_reason().is_some() {
                 notified_stop = true;
                 callback.on_capture_closed();
             }

@@ -27,7 +27,7 @@ impl DictationState {
     pub fn hypothesis(&self) -> String {
         format!(
             "{}{}",
-            voice::boundary_separator(&self.text, &self.hypothesis),
+            voice::transcript_separator(&self.text, &self.hypothesis),
             self.hypothesis
         )
     }
@@ -64,7 +64,7 @@ impl DictationState {
                 self.last_commit_end = end;
                 self.session.observe_recognition(!text.trim().is_empty())?;
                 self.text
-                    .push_str(voice::boundary_separator(&self.text, &text));
+                    .push_str(voice::transcript_separator(&self.text, &text));
                 self.text.push_str(&text);
                 self.hypothesis.clear();
             }
@@ -161,6 +161,68 @@ mod tests {
             event(&mut state, LiveEvent::ReplaceTranscript(stable.into()));
             event(&mut state, LiveEvent::Hypothesis(partial.into()));
             assert_eq!(state.text().to_owned() + &state.hypothesis(), expected);
+        }
+    }
+
+    #[test]
+    fn recognized_word_boundaries_survive_preview_and_commit() {
+        fn apply_update(state: &mut DictationState, update: voice::RecognitionUpdate) {
+            if let Some((start, end, text)) = update.commit {
+                event(state, LiveEvent::Commit { start, end, text });
+            }
+            event(state, LiveEvent::Hypothesis(update.hypothesis));
+            event(state, LiveEvent::Coverage(update.covered_through));
+        }
+
+        for (words, expected) in [
+            (
+                vec!["It", "costs", "$20.", "today."],
+                "It costs $20. today.",
+            ),
+            (
+                vec!["The", "change", "is", "-5", "percent."],
+                "The change is -5 percent.",
+            ),
+            (
+                vec!["Say", "\"hello.\"", "Then", "leave."],
+                "Say \"hello.\" Then leave.",
+            ),
+        ] {
+            let mut state = DictationState::new(true);
+            state.session.begin_capture().unwrap();
+            let mut rolling = voice::RollingRecognizer::default();
+            let aligned = || {
+                words
+                    .iter()
+                    .enumerate()
+                    .map(|(i, text)| voice::AlignedWord {
+                        text: (*text).into(),
+                        start: i as u64 * 1000,
+                        end: (i as u64 + 1) * 1000,
+                    })
+                    .collect()
+            };
+            for i in 0..3 {
+                rolling.feed(&vec![0.2; 16000], true).unwrap();
+                event(
+                    &mut state,
+                    LiveEvent::Audio {
+                        start: i * 16000,
+                        end: (i + 1) * 16000,
+                        voiced: true,
+                    },
+                );
+                let request = rolling.next_window().unwrap().unwrap();
+                apply_update(&mut state, rolling.complete(&request, aligned()).unwrap());
+                assert_eq!(state.text().to_owned() + &state.hypothesis(), expected);
+            }
+            assert!(!state.text().is_empty());
+            assert!(!state.hypothesis().is_empty());
+            rolling.finish();
+            let request = rolling.next_window().unwrap().unwrap();
+            apply_update(&mut state, rolling.complete(&request, aligned()).unwrap());
+            assert_eq!(state.text(), expected);
+            assert!(state.hypothesis().is_empty());
         }
     }
 }

@@ -182,6 +182,62 @@ mod tests {
     }
 
     #[test]
+    fn silence_stop_preserves_transcription_when_a_capture_buffer_arrives_late() {
+        use super::super::DictationState;
+        use crate::voice::{CaptureFeedResult, StopReason};
+
+        let stream = LiveTranscription::new(CaptureFormat {
+            sample_rate: 16000,
+            channels: 1,
+        })
+        .unwrap();
+        let mut state = DictationState::new(false);
+        state.session.begin_capture().unwrap();
+        let mut audio = [0, 32].repeat(512);
+        audio.extend(vec![0; (3 * 16000_usize).div_ceil(512) * 512 * 2]);
+        let mut chunks = audio.chunks(1024);
+        let mut capture_closed = false;
+        let mut late_buffer = false;
+        stream
+            .run_recorded_with(
+                || {
+                    Ok(Box::new(EnergyVad::new(
+                        super::super::VAD_FRAME_SAMPLES,
+                        0.01,
+                    )))
+                },
+                |pcm| {
+                    assert_eq!(pcm, audio);
+                    Ok("Complete recorded transcript".into())
+                },
+                &mut |event| {
+                    let idle = matches!(event, LiveEvent::Idle);
+                    if matches!(event, LiveEvent::CaptureClosed) {
+                        capture_closed = true;
+                    }
+                    let control = state.apply(event, || stream.finish_if_empty())?;
+                    if idle && state.session.stop_reason() == Some(StopReason::Silence) {
+                        // A native read can finish after closure, before its stop callback.
+                        assert!(!capture_closed);
+                        assert_eq!(stream.feed(&[0; 3200])?, CaptureFeedResult::Closed);
+                        late_buffer = true;
+                    } else if idle {
+                        stream.feed(chunks.next().unwrap())?;
+                    }
+                    Ok(control)
+                },
+            )
+            .unwrap();
+        state.session.worker_exited(true).unwrap();
+        assert!(late_buffer);
+        assert!(capture_closed);
+        assert_eq!(state.session.stop_reason(), Some(StopReason::Silence));
+        assert!(!state.session.incomplete());
+        assert_eq!(state.text(), "Complete recorded transcript");
+        assert_eq!(stream.submitted_samples(), (audio.len() / 2) as u64);
+    }
+
+    #[test]
     fn cancellation_during_batch_decode_does_not_publish_text() {
         let stream = LiveTranscription::new(CaptureFormat {
             sample_rate: 16000,

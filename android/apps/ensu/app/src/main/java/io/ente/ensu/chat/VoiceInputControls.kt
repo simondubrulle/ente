@@ -26,6 +26,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -63,7 +64,8 @@ internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
             is VoiceInputState.Downloading -> "Downloading"
             VoiceInputState.Preparing,
             VoiceInputState.Idle -> "Preparing"
-            VoiceInputState.Transcribing -> "Transcribing"
+            VoiceInputState.Transcribing ->
+                if (controller.isFinishingSlow) "Still transcribing" else "Transcribing"
             VoiceInputState.Recording ->
                 if (controller.snapshot?.phase == DictationPhase.COUNTDOWN) "Finishing"
                 else "Listening"
@@ -98,6 +100,9 @@ internal fun VoiceInputControls(controller: VoiceTranscriptionController) {
         if (state.isRecording)
             VoiceWaveform(controller.audioLevels, Modifier.weight(1f).height(24.dp))
         else Spacer(Modifier.weight(1f))
+        if (controller.active && !state.isRecording) {
+            TextButton(onClick = controller::discard) { Text("Cancel") }
+        }
     }
 }
 

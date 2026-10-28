@@ -1,7 +1,7 @@
 use std::collections::VecDeque;
 
 use super::{
-    AudioRing, MAX_WINDOW_SAMPLES, Result, VOICE_SAMPLE_RATE, VoiceError, boundary_separator,
+    AudioRing, MAX_WINDOW_SAMPLES, Result, VOICE_SAMPLE_RATE, VoiceError, transcript_separator,
 };
 
 const PRE_SPEECH: u64 = VOICE_SAMPLE_RATE;
@@ -299,7 +299,7 @@ fn alignment_key(text: &str) -> String {
 fn join_words(words: &[AlignedWord]) -> String {
     let mut text = String::new();
     for word in words {
-        text.push_str(boundary_separator(&text, &word.text));
+        text.push_str(transcript_separator(&text, &word.text));
         text.push_str(&word.text);
     }
     text

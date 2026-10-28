@@ -9,7 +9,7 @@ struct VoiceInputControls: View {
         switch service.state {
         case .downloading: return "Downloading"
         case .preparing: return "Preparing"
-        case .transcribing: return "Transcribing"
+        case .transcribing: return service.isFinishingSlow ? "Still transcribing" : "Transcribing"
         case .recording: return service.snapshot?.phase == .countdown ? "Finishing" : "Listening"
         case .error(let message):
             if message.contains("permission") { return "Microphone access" }
@@ -35,6 +35,11 @@ struct VoiceInputControls: View {
                     waveform.frame(height: 24)
                 } else {
                     Spacer(minLength: 0)
+                }
+                if service.active, !service.state.isRecording {
+                    Button("Cancel", action: service.cancel)
+                        .font(EnsuTypography.small)
+                        .foregroundStyle(EnsuColor.textPrimary)
                 }
             }
         }

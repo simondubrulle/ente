@@ -6,7 +6,8 @@ use transcribe_rs::vad::Vad;
 
 use super::{StreamNormalizer, Transcriber};
 use crate::voice::{
-    AlignedWord, CaptureFormat, CaptureQueue, Result, RollingRecognizer, VoiceError,
+    AlignedWord, CaptureFeedResult, CaptureFormat, CaptureQueue, Result, RollingRecognizer,
+    VoiceError,
 };
 
 pub enum LiveEvent {
@@ -53,7 +54,7 @@ impl LiveTranscription {
         })
     }
 
-    pub fn feed(&self, pcm: &[u8]) -> Result<()> {
+    pub fn feed(&self, pcm: &[u8]) -> Result<CaptureFeedResult> {
         self.queue.push(pcm)
     }
     pub fn finish(&self) {

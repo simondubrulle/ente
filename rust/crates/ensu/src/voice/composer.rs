@@ -25,33 +25,113 @@ pub fn utf16_range(text: &str, start: u32, end: u32) -> Result<Range<usize>> {
     Err(VoiceError::InvalidTextRange)
 }
 
-pub fn boundary_separator(left: &str, right: &str) -> &'static str {
-    fn unspaced(c: char) -> bool {
-        matches!(c as u32, 0x3040..=0x30ff | 0x3400..=0x9fff | 0x20000..=0x3134f)
-    }
-    let left_edge = left
-        .chars()
+fn left_edge(text: &str) -> Option<char> {
+    text.chars()
         .rev()
         .find(|c| {
             !regex::regex!(r"\A[\p{M}\p{Join_Control}]\z").is_match(c.encode_utf8(&mut [0; 4]))
         })
-        .or_else(|| left.chars().next());
-    let right_edge = right.chars().next();
-    match (left_edge, right_edge) {
+        .or_else(|| text.chars().next())
+}
+
+// Recognition already supplies word boundaries. Symbols and punctuation belong to
+// those words and must not suppress their separators, including across commits.
+pub(crate) fn transcript_separator(left: &str, right: &str) -> &'static str {
+    fn unspaced(c: char) -> bool {
+        matches!(c as u32, 0x3040..=0x30ff | 0x3400..=0x9fff | 0x20000..=0x3134f)
+    }
+    match (left_edge(left), right.chars().next()) {
         (Some(a), Some(b))
-            if (a.is_alphanumeric()
-                || matches!(
-                    a,
-                    '.' | '!' | '?' | ':' | ';' | ',' | '।' | '॥' | '؟' | '؛' | '،'
-                ))
-                && b.is_alphanumeric()
-                && !unspaced(a)
-                && !unspaced(b) =>
+            if !a.is_whitespace() && !b.is_whitespace() && !unspaced(a) && !unspaced(b) =>
         {
             " "
         }
         _ => "",
     }
+}
+
+pub fn boundary_separator(left: &str, right: &str) -> &'static str {
+    fn opening(c: char) -> bool {
+        matches!(c, '¿' | '¡')
+            || regex::regex!(r"\A[\p{Ps}\p{Pi}]\z").is_match(c.encode_utf8(&mut [0; 4]))
+    }
+    fn closing(c: char) -> bool {
+        matches!(
+            c,
+            '.' | ','
+                | '!'
+                | '?'
+                | ':'
+                | ';'
+                | '…'
+                | '。'
+                | '，'
+                | '！'
+                | '？'
+                | '：'
+                | '；'
+                | '、'
+                | '।'
+                | '॥'
+                | '؟'
+                | '؛'
+                | '،'
+                | '%'
+                | '‰'
+                | '‱'
+                | '٪'
+                | '؉'
+                | '؊'
+                | '°'
+        ) || regex::regex!(r"\A[\p{Pe}\p{Pf}]\z").is_match(c.encode_utf8(&mut [0; 4]))
+    }
+    fn emoji(c: char) -> bool {
+        regex::regex!(r"\A\p{Extended_Pictographic}\z").is_match(c.encode_utf8(&mut [0; 4]))
+    }
+
+    let separator = transcript_separator(left, right);
+    let (Some(a), Some(b)) = (left_edge(left), right.chars().next()) else {
+        return separator;
+    };
+    if separator.is_empty()
+        || opening(a)
+        || closing(b)
+        || emoji(a)
+        || emoji(b)
+        || matches!(a, '#' | '@' | '_' | '/' | '\\' | '-' | '+' | '−')
+    {
+        return "";
+    }
+
+    // A currency prefix attaches to its amount; a trailing currency symbol is
+    // already part of a completed amount and needs a word separator.
+    if regex::regex!(r"\A\p{Sc}\z").is_match(a.encode_utf8(&mut [0; 4]))
+        && !left.rsplit_once(a).is_some_and(|(before, _)| {
+            before
+                .trim_end()
+                .chars()
+                .next_back()
+                .is_some_and(char::is_numeric)
+        })
+    {
+        return "";
+    }
+    if matches!(a, '\'' | '"')
+        && left_edge(left.trim_end_matches(['\'', '"']))
+            .is_none_or(|c| c.is_whitespace() || opening(c))
+    {
+        return "";
+    }
+    if matches!(b, '\'' | '"')
+        && right
+            .trim_start_matches(['\'', '"'])
+            .chars()
+            .next()
+            .is_none_or(|c| c.is_whitespace() || closing(c))
+    {
+        return "";
+    }
+    separator
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -261,5 +341,50 @@ mod tests {
         assert_eq!(boundary_separator("है।", "बैठक"), " ");
         assert_eq!(boundary_separator("نعم؟", "موعد"), " ");
         assert_eq!(boundary_separator("안녕", "친구"), " ");
+        for (draft, dictated, expected) in [
+            ("Charge 20%", "more tomorrow", "Charge 20% more tomorrow"),
+            ("Charge 20‰", "extra", "Charge 20‰ extra"),
+            ("Rotate 90°", "clockwise", "Rotate 90° clockwise"),
+            ("Budget 20€", "today", "Budget 20€ today"),
+            ("Budget 20 €", "today", "Budget 20 € today"),
+            ("نسبة 20٪", "زيادة", "نسبة 20٪ زيادة"),
+            ("Notes (draft)", "hello", "Notes (draft) hello"),
+            ("Budget", "$20.", "Budget $20."),
+            ("Budget €", "20", "Budget €20"),
+            ("Budget -", "20", "Budget -20"),
+            ("Change:", "-5 percent.", "Change: -5 percent."),
+            ("Say", "\"hello.\"", "Say \"hello.\""),
+            (
+                "Say \"hello.\"",
+                "Then leave.",
+                "Say \"hello.\" Then leave.",
+            ),
+            ("Say \"", "hello", "Say \"hello"),
+            ("Notes (", "draft", "Notes (draft"),
+            ("Notes (\"", "draft", "Notes (\"draft"),
+            ("hello", ", world", "hello, world"),
+            ("Notes (draft", ")", "Notes (draft)"),
+            ("Say \"hello", "\"", "Say \"hello\""),
+        ] {
+            let end = draft.encode_utf16().count() as u32;
+            let insert = insertion(end, end, dictated);
+            let (preview, caret) = preview_insertion(draft, &insert.anchor, dictated).unwrap();
+            assert_eq!(preview, expected);
+            let mut text = draft.to_owned();
+            let mut revision = 7;
+            assert_eq!(
+                ComposerTransfer::default()
+                    .apply(&insert, "chat", &mut revision, &mut text, true, false)
+                    .unwrap(),
+                caret
+            );
+            assert_eq!(text, expected);
+            // The same boundary can occur after the inserted text, too.
+            let anchor = insertion(0, 0, draft).anchor;
+            assert_eq!(
+                preview_insertion(dictated, &anchor, draft).unwrap().0,
+                expected
+            );
+        }
     }
 }

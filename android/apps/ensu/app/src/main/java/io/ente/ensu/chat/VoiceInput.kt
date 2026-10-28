@@ -12,6 +12,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import io.ente.ensu.assets.AssetStore
 import io.ente.ensu.bindings.DictationException
+import io.ente.ensu.bindings.DictationFeedResult
 import io.ente.ensu.bindings.DictationInsertion
 import io.ente.ensu.bindings.DictationPhase
 import io.ente.ensu.bindings.DictationSession
@@ -94,7 +95,7 @@ internal class VoiceTranscriptionController(
     private var stream: DictationStream? = null
     private var capture: LiveMicrophone? = null
     private var work: Job? = null
-    private var finishingWatchdog: Job? = null
+    private var finishingNoticeJob: Job? = null
     private var attemptFinished = false
     private var insertion: DictationInsertion? = null
     private var foreground = true
@@ -110,6 +111,9 @@ internal class VoiceTranscriptionController(
         private set
 
     var state: VoiceInputState by mutableStateOf(VoiceInputState.Idle)
+        private set
+
+    var isFinishingSlow by mutableStateOf(false)
         private set
 
     var snapshot: DictationSnapshot? by mutableStateOf(null)
@@ -133,6 +137,7 @@ internal class VoiceTranscriptionController(
         generation++
         initialRecordPending = true
         attemptFinished = false
+        isFinishingSlow = false
         this.insertion = insertion
         session = DictationSession(live = usesLiveDictation)
         snapshot = session?.snapshot()
@@ -289,8 +294,8 @@ internal class VoiceTranscriptionController(
                         withContext(NonCancellable) { ownedCapture?.stopAndDrain() }
                         hasActiveWork = false
                         if (token == generation) {
-                            finishingWatchdog?.cancel()
-                            finishingWatchdog = null
+                            finishingNoticeJob?.cancel()
+                            finishingNoticeJob = null
                             capture = null
                             stream = null
                             attemptFinished = true
@@ -319,6 +324,7 @@ internal class VoiceTranscriptionController(
                 else -> VoiceInputState.Error("Voice input stopped.")
             }
         active = false
+        isFinishingSlow = false
         snapshot = null
         session = null
         insertion = null
@@ -336,10 +342,10 @@ internal class VoiceTranscriptionController(
                 !active ||
                 stream !== finishingStream ||
                 !owner.snapshot().workerActive ||
-                finishingWatchdog != null
+                finishingNoticeJob != null
         )
             return
-        finishingWatchdog = scope.launch {
+        finishingNoticeJob = scope.launch {
             delay(10_000)
             if (
                 token != generation ||
@@ -348,12 +354,7 @@ internal class VoiceTranscriptionController(
                     !owner.snapshot().workerActive
             )
                 return@launch
-            capture?.stop()
-            runCatching { finishingStream.abandon(DictationStopReason.FAILURE) }
-            work?.cancel()
-            snapshot = owner.snapshot()
-            notice =
-                "Finishing took too long. Some speech may be missing. Review the available text while recognition stops."
+            isFinishingSlow = true
         }
     }
 
@@ -382,6 +383,8 @@ internal class VoiceTranscriptionController(
         capture?.stop()
         runCatching { stream?.abandon(DictationStopReason.INTERRUPTION) }
         work?.cancel()
+        finishingNoticeJob?.cancel()
+        isFinishingSlow = false
         notice = message
         state = VoiceInputState.Transcribing
     }
@@ -390,12 +393,13 @@ internal class VoiceTranscriptionController(
         awaitingPermission = false
         startOnForeground = false
         generation++
-        finishingWatchdog?.cancel()
-        finishingWatchdog = null
+        finishingNoticeJob?.cancel()
+        finishingNoticeJob = null
         capture?.stop()
         runCatching { stream?.abandon(DictationStopReason.DISCARD) }
         work?.cancel()
         active = false
+        isFinishingSlow = false
         state = VoiceInputState.Idle
         snapshot = null
         session = null
@@ -467,20 +471,20 @@ private class LiveMicrophone(
             scope.launch(Dispatchers.IO) {
                 val buffer = ByteBuffer.allocateDirect(3200).order(ByteOrder.LITTLE_ENDIAN)
                 try {
-                    while (!stopped.get()) {
-                        buffer.clear()
-                        val read = active.read(buffer, buffer.capacity(), AudioRecord.READ_BLOCKING)
-                        if (stopped.get() && read <= 0) break
-                        if (
-                            read <= 0 ||
-                                audioManager.isMicrophoneMute ||
+                    captureMicrophoneAudio(
+                        isStopped = stopped::get,
+                        read = {
+                            buffer.clear()
+                            active.read(buffer, buffer.capacity(), AudioRecord.READ_BLOCKING)
+                        },
+                        isInterrupted = {
+                            audioManager.isMicrophoneMute ||
                                 (android.os.Build.VERSION.SDK_INT >= 29 &&
                                     active.activeRecordingConfiguration?.isClientSilenced ==
                                         true) ||
                                 (routedDevice != null && active.routedDevice?.id != routedDevice)
-                        ) {
-                            throw IOException("Microphone interrupted")
-                        }
+                        },
+                    ) { read ->
                         routedDevice = active.routedDevice?.id
                         buffer.position(0)
                         buffer.limit(read)
@@ -495,7 +499,7 @@ private class LiveMicrophone(
                                 .toFloat()
                                 .coerceIn(0f, 1f)
                         )
-                        stream.feed(buffer)
+                        stream.feed(buffer) == DictationFeedResult.ACCEPTED
                     }
                 } catch (_: Exception) {
                     if (!stopped.get()) {
@@ -513,10 +517,9 @@ private class LiveMicrophone(
     suspend fun stopAndDrain() {
         stop()
         readJob?.join()
-        if (readJob == null) {
-            recorder?.release()
-            recorder = null
-        }
+        // A reader canceled before dispatch never enters its cleanup block.
+        recorder?.release()
+        recorder = null
     }
 
     fun stop() {
