@@ -629,12 +629,9 @@ export class FileViewerPhotoSwipe<
             const image = content.element;
             if (!(image instanceof HTMLImageElement)) return;
 
-            // Show the transparency grid only once pixels are ready to render.
             void image.decode().then(
                 () => image.classList.add("ente-image-decoded"),
-                () => {
-                    // Failed images retain PhotoSwipe's error handling.
-                },
+                () => undefined,
             );
         });
 
