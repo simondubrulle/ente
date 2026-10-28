@@ -243,6 +243,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         async (actionID: SidebarActionID) => {
             if (actionID !== "utility.export") closeSections();
             if (actionID === "subscription") {
+                showAccount();
                 onShowPlanSelector();
                 return;
             }
