@@ -6,11 +6,9 @@ import {
     CollectionSelector,
     type CollectionSelectorAttributes,
 } from "@/components/CollectionSelector";
-import { FamilyManagement } from "@/components/FamilyManagement";
 import type { FileListHeaderOrFooter } from "@/components/FileList";
 import { FileListWithViewer } from "@/components/FileListWithViewer";
 import { FixCreationTime } from "@/components/FixCreationTime";
-import { PlanSelector } from "@/components/PlanSelector";
 import { QuickLinkCreatedNotification } from "@/components/QuickLinkCreatedNotification";
 import {
     SelectedFileOptions,
@@ -50,7 +48,10 @@ import {
     type GalleryBarMode,
 } from "@/components/gallery/reducer";
 import { useAlbumNavigationData } from "@/components/gallery/use-album-navigation-data";
-import { Sidebar } from "@/components/sidebar/Sidebar";
+import {
+    Sidebar,
+    type SidebarPendingAction,
+} from "@/components/sidebar/Sidebar";
 import {
     notifyOthersFilesDialogAttributes,
     notifyUnsupportedSharedFavoritesDialogAttributes,
@@ -170,10 +171,7 @@ import {
     filterSearchableFiles,
     updateSearchCollectionsAndFiles,
 } from "ente-new/photos/services/search";
-import type {
-    SearchOption,
-    SidebarActionID,
-} from "ente-new/photos/services/search/types";
+import type { SearchOption } from "ente-new/photos/services/search/types";
 import {
     initSettings,
     updateMapEnabled,
@@ -289,7 +287,7 @@ const Page: React.FC = () => {
     >(undefined);
     const postCreateAlbumHidden = useRef(false);
     const [pendingSidebarAction, setPendingSidebarAction] = useState<
-        SidebarActionID | undefined
+        SidebarPendingAction | undefined
     >(undefined);
 
     const lastAuthenticationForHiddenTimestamp = useRef<number>(0);
@@ -301,12 +299,6 @@ const Page: React.FC = () => {
     const pendingPeopleSearchReset = useRef<(() => void) | undefined>(
         undefined,
     );
-    const { show: showPlanSelector, props: planSelectorVisibilityProps } =
-        useModalVisibility();
-    const {
-        show: showFamilyManagement,
-        props: familyManagementVisibilityProps,
-    } = useModalVisibility();
     const { show: showWhatsNew, props: whatsNewVisibilityProps } =
         useModalVisibility();
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
@@ -387,18 +379,10 @@ const Page: React.FC = () => {
         }
     }, []);
 
-    const closeSidebarOverlays = useCallback(() => {
-        planSelectorVisibilityProps.onClose();
-        familyManagementVisibilityProps.onClose();
-    }, [
-        planSelectorVisibilityProps.onClose,
-        familyManagementVisibilityProps.onClose,
-    ]);
-
-    const handleSidebarClose = useCallback(() => {
-        closeSidebarOverlays();
-        sidebarVisibilityProps.onClose();
-    }, [closeSidebarOverlays, sidebarVisibilityProps.onClose]);
+    const showSubscriptionSettings = useCallback(() => {
+        setPendingSidebarAction("subscription");
+        showSidebar();
+    }, [showSidebar]);
 
     const handleSidebarActionHandled = useCallback(
         () => setPendingSidebarAction(undefined),
@@ -883,7 +867,6 @@ const Page: React.FC = () => {
             uploadTypeSelectorView ||
             openCollectionSelector ||
             sidebarVisibilityProps.open ||
-            planSelectorVisibilityProps.open ||
             fixCreationTimeVisibilityProps.open ||
             authenticateUserVisibilityProps.open ||
             albumNameInputVisibilityProps.open ||
@@ -2136,23 +2119,6 @@ const Page: React.FC = () => {
         return <div></div>;
     }
 
-    const renderSubscriptionDialogs = (onRootClose = handleSidebarClose) => (
-        <>
-            <PlanSelector
-                {...planSelectorVisibilityProps}
-                setLoading={(v) => setBlockingLoad(v)}
-                onManageFamily={showFamilyManagement}
-            />
-            {familyManagementVisibilityProps.open && (
-                <FamilyManagement
-                    {...familyManagementVisibilityProps}
-                    onRootClose={onRootClose}
-                    onShowPlanSelector={showPlanSelector}
-                />
-            )}
-        </>
-    );
-
     const selectGalleryCollection =
         barMode == "links"
             ? (collectionID: number) =>
@@ -2192,7 +2158,6 @@ const Page: React.FC = () => {
                 onDrop={setDragAndDropFiles}
             >
                 {blockingLoad && <TranslucentLoadingOverlay />}
-                {!sidebarVisibilityProps.open && renderSubscriptionDialogs()}
                 <CollectionSelector
                     open={openCollectionSelector}
                     onClose={handleCloseCollectionSelector}
@@ -2520,27 +2485,20 @@ const Page: React.FC = () => {
                     onUploadFile={(file) =>
                         dispatch({ type: "uploadFile", file })
                     }
-                    onShowPlanSelector={showPlanSelector}
+                    onShowSubscription={showSubscriptionSettings}
                     onShowSessionExpiredDialog={showSessionExpiredDialog}
                     isInHiddenSection={barMode == "hidden-albums"}
                 />
                 <Sidebar
                     {...sidebarVisibilityProps}
-                    onClose={handleSidebarClose}
                     onShowLargeFiles={handleShowLargeFiles}
                     onShowDuplicates={handleShowDuplicates}
                     pendingAction={pendingSidebarAction}
                     onActionHandled={handleSidebarActionHandled}
-                    onShowPlanSelector={showPlanSelector}
                     collectionNameByID={collectionNameByID}
-                    onCloseOverlays={closeSidebarOverlays}
+                    setLoading={setBlockingLoad}
                     onAuthenticateUser={authenticateUser}
-                >
-                    {(onRootClose) =>
-                        sidebarVisibilityProps.open &&
-                        renderSubscriptionDialogs(onRootClose)
-                    }
-                </Sidebar>
+                />
                 <WhatsNew {...whatsNewVisibilityProps} />
                 <PeopleConsentDialog
                     {...peopleConsentVisibilityProps}
