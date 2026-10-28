@@ -171,16 +171,16 @@ func (repo *FileRepository) CreateMetaFile(
 		return nil, stacktrace.Propagate(err, "")
 	}
 	var file ente.File = ente.File{
-		ID:                 fileID,
-		UpdationTime:       metaFile.UpdationTime,
-		OwnerID:            metaFile.OwnerID,
-		Metadata:           metaFile.Metadata,
+		ID:                  fileID,
+		UpdationTime:        metaFile.UpdationTime,
+		OwnerID:             metaFile.OwnerID,
+		Metadata:            metaFile.Metadata,
 		PublicMagicMetadata: metaFile.PublicMagicMetadata,
-		MagicMetadata:      metaFile.MagicMetadata,
-		EncryptedKey:       metaFile.EncryptedKey,
-		KeyDecryptionNonce: metaFile.KeyDecryptionNonce,
-		Info:               info,
-		CollectionID:       metaFile.CollectionID,
+		MagicMetadata:       metaFile.MagicMetadata,
+		EncryptedKey:        metaFile.EncryptedKey,
+		KeyDecryptionNonce:  metaFile.KeyDecryptionNonce,
+		Info:                info,
+		CollectionID:        metaFile.CollectionID,
 	}
 	return &file, stacktrace.Propagate(err, "")
 }
