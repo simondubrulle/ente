@@ -109,6 +109,14 @@ func TestValidateCollectionKeyRejectsInvalidBase64(t *testing.T) {
 	}
 }
 
+func TestValidateCollectionKeyRejectsLineBreaks(t *testing.T) {
+	key := b64OfLen(encryptedCollectionKeyLen)
+	err := validateOwnedCollectionKey(key[:4]+"\r\n"+key[4:], b64OfLen(secretboxNonceBytes))
+	if err == nil {
+		t.Fatal("validateOwnedCollectionKey() error = nil, want error")
+	}
+}
+
 func TestCollectionControllerRejectsInvalidCollectionKeysBeforeRepoAccess(t *testing.T) {
 	controller := CollectionController{}
 	ctx := testGinContext()

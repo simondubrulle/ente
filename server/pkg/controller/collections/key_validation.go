@@ -3,7 +3,6 @@ package collections
 import (
 	"encoding/base64"
 	"errors"
-	"strconv"
 
 	"github.com/ente/museum/ente"
 )
@@ -18,14 +17,14 @@ const (
 )
 
 func validateOwnedCollectionKey(encryptedKey string, keyDecryptionNonce string) error {
-	if err := validateBase64DecodedLength(encryptedKey, encryptedCollectionKeyLen, "encryptedKey"); err != nil {
+	if err := validateBase64DecodedLength(encryptedKey, encryptedCollectionKeyLen); err != nil {
 		return err
 	}
-	return validateBase64DecodedLength(keyDecryptionNonce, secretboxNonceBytes, "keyDecryptionNonce")
+	return validateBase64DecodedLength(keyDecryptionNonce, secretboxNonceBytes)
 }
 
 func validateSealedCollectionKey(encryptedKey string) error {
-	return validateBase64DecodedLength(encryptedKey, sealedCollectionKeyLen, "encryptedKey")
+	return validateBase64DecodedLength(encryptedKey, sealedCollectionKeyLen)
 }
 
 func validateCollectionFileItems(files []ente.CollectionFileItem) error {
@@ -40,16 +39,9 @@ func validateCollectionFileItems(files []ente.CollectionFileItem) error {
 	return nil
 }
 
-func validateBase64DecodedLength(value string, expected int, field string) error {
+func validateBase64DecodedLength(value string, expected int) error {
 	if len(value) != base64.StdEncoding.EncodedLen(expected) {
-		return errors.New(field + " must decode to " + strconv.Itoa(expected) + " bytes")
+		return errors.New("invalid encoded length")
 	}
-	decoded, err := base64.StdEncoding.DecodeString(value)
-	if err != nil {
-		return errors.New(field + " must be valid base64")
-	}
-	if len(decoded) != expected {
-		return errors.New(field + " must decode to " + strconv.Itoa(expected) + " bytes")
-	}
-	return nil
+	return ente.ValidateBase64Length(value, expected)
 }

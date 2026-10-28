@@ -15,7 +15,20 @@ import (
 	usercontroller "github.com/ente/museum/pkg/controller/user"
 	"github.com/ente/museum/pkg/repo"
 	"github.com/gin-gonic/gin"
+	"github.com/stretchr/testify/require"
 )
+
+func TestSetRecoveryKeyRejectsInvalidAttributes(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	recorder := httptest.NewRecorder()
+	ctx, _ := gin.CreateTestContext(recorder)
+	ctx.Request = httptest.NewRequest(http.MethodPut, "/users/recovery-key", strings.NewReader(`{}`))
+	ctx.Request.Header.Set("Content-Type", "application/json")
+
+	(&UserHandler{}).SetRecoveryKey(ctx)
+
+	require.Equal(t, http.StatusInternalServerError, recorder.Code)
+}
 
 func TestGetPublicKeyHandlerUsesEmailLookup(t *testing.T) {
 	handler, db := setupUserHandlerTest(t)
