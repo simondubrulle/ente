@@ -7,8 +7,8 @@ import 'package:locker/services/authenticated_session.dart';
 import 'package:locker/services/collections/collections_service.dart';
 import 'package:locker/services/favorites_service.dart';
 import 'package:locker/services/files/offline/offline_file_storage.dart';
-import 'package:locker/src/rust/third_party/ente_frb_lib/deletion.dart'
-    as deletion;
+import 'package:locker/src/rust/third_party/ente_frb_lib/account_deletion.dart'
+    as account_deletion;
 import 'package:logging/logging.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -50,18 +50,18 @@ class Configuration extends BaseConfiguration
 
   @override
   Future<AccountDeletionSummary?> getDeletionSummary() =>
-      deletion.getDeletionSummary(session: authenticatedSession());
+      account_deletion.getDeletionSummary(session: authenticatedSession());
 
   @override
   Future<String> getDeleteChallenge() =>
-      deletion.getDeleteChallenge(session: authenticatedSession());
+      account_deletion.getDeleteChallenge(session: authenticatedSession());
 
   @override
   Future<void> deleteAccount({
     required String encryptedChallenge,
     required String reason,
     String? feedback,
-  }) => deletion.deleteAccount(
+  }) => account_deletion.deleteAccount(
     session: authenticatedSession(),
     encryptedChallenge: encryptedChallenge,
     reason: reason,

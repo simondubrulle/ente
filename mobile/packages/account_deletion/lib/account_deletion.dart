@@ -1,4 +1,4 @@
-export 'package:ente_frb/deletion.dart';
+export 'package:ente_frb/account_deletion.dart';
 
 export 'src/account_deletion_host.dart';
 export 'src/account_deletion_settings.dart';

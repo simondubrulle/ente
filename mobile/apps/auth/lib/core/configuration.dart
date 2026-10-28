@@ -3,8 +3,8 @@ import 'dart:typed_data';
 
 import 'package:ente_account_deletion/account_deletion.dart';
 import 'package:ente_auth/services/authenticated_session.dart';
-import 'package:ente_auth/src/rust/third_party/ente_frb_lib/deletion.dart'
-    as deletion;
+import 'package:ente_auth/src/rust/third_party/ente_frb_lib/account_deletion.dart'
+    as account_deletion;
 import 'package:ente_base/models/database.dart';
 import 'package:ente_configuration/base_configuration.dart';
 import 'package:ente_crypto_api/ente_crypto_api.dart';
@@ -88,18 +88,18 @@ class Configuration extends BaseConfiguration
 
   @override
   Future<AccountDeletionSummary?> getDeletionSummary() =>
-      deletion.getDeletionSummary(session: authenticatedSession());
+      account_deletion.getDeletionSummary(session: authenticatedSession());
 
   @override
   Future<String> getDeleteChallenge() =>
-      deletion.getDeleteChallenge(session: authenticatedSession());
+      account_deletion.getDeleteChallenge(session: authenticatedSession());
 
   @override
   Future<void> deleteAccount({
     required String encryptedChallenge,
     required String reason,
     String? feedback,
-  }) => deletion.deleteAccount(
+  }) => account_deletion.deleteAccount(
     session: authenticatedSession(),
     encryptedChallenge: encryptedChallenge,
     reason: reason,

@@ -183,8 +183,8 @@ fn generate_frb(target: FrbTarget) -> Result<(), DynError> {
             fs::remove_dir_all(&generated_dir)?;
         }
         generate_frb_package(&package_dir)?;
-        for name in ["contacts", "deletion", "legacy"] {
-            if *app == "auth" && name != "deletion" {
+        for name in ["account_deletion", "contacts", "legacy"] {
+            if *app == "auth" && name != "account_deletion" {
                 continue;
             }
             let types_path = package_dir

@@ -1,3 +1,5 @@
+#[cfg(feature = "account-deletion")]
+pub mod account_deletion;
 #[cfg(feature = "accounts")]
 pub mod accounts;
 #[cfg(feature = "cast")]
@@ -8,8 +10,6 @@ pub mod collections;
 pub mod contacts;
 #[cfg(feature = "crypto")]
 pub mod crypto;
-#[cfg(feature = "account-deletion")]
-pub mod deletion;
 #[cfg(feature = "legacy")]
 pub mod legacy;
 #[cfg(feature = "location")]
