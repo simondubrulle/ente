@@ -74,7 +74,7 @@ func (c *Controller) UnifiedDiff(ctx *gin.Context, req UnifiedDiffRequest) ([]so
 	return comments, reactions, moreComments, moreReactions, nil
 }
 
-func (c *Controller) CountActiveCollections(ctx context.Context, userID int64) ([]CollectionCount, error) {
+func (c *Controller) CountActiveCollections(ctx context.Context, userID int64, app ente.App) ([]CollectionCount, error) {
 	ownedMap, err := c.CollectionRepo.GetCollectionIDsOwnedByUser(userID)
 	if err != nil {
 		return nil, stacktrace.Propagate(err, "")
@@ -92,6 +92,10 @@ func (c *Controller) CountActiveCollections(ctx context.Context, userID int64) (
 			continue
 		}
 		collectionIDs = append(collectionIDs, id)
+	}
+	collectionIDs, err = c.CollectionRepo.FilterNonDeletedCollectionIDs(collectionIDs, app)
+	if err != nil {
+		return nil, stacktrace.Propagate(err, "")
 	}
 	if len(collectionIDs) == 0 {
 		return nil, nil
