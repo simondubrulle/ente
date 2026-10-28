@@ -1,8 +1,17 @@
 mod audio;
-mod text;
+mod graph_cache;
+mod live;
+mod normalize;
+mod recorded;
+mod session;
 mod transcriber;
+mod vad;
 
+pub use live::{LiveControl, LiveEvent, LiveTranscription};
+pub(crate) use normalize::{StreamNormalizer, VAD_FRAME_SAMPLES};
+pub use session::DictationState;
 pub use transcriber::Transcriber;
+pub(crate) use vad::SileroV4Vad;
 
 #[derive(Debug, thiserror::Error)]
 pub enum TranscriptionError {
@@ -32,6 +41,12 @@ impl From<std::io::Error> for TranscriptionError {
 
 impl From<transcribe_rs::TranscribeError> for TranscriptionError {
     fn from(value: transcribe_rs::TranscribeError) -> Self {
+        Self::Transcribe(value.to_string())
+    }
+}
+
+impl<R> From<ort::Error<R>> for TranscriptionError {
+    fn from(value: ort::Error<R>) -> Self {
         Self::Transcribe(value.to_string())
     }
 }

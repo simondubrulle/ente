@@ -8,6 +8,15 @@ import org.junit.Test
 
 class ChatDeviceCapabilityTest {
     @Test
+    fun liveVoiceRequiresMoreThanFourGiB() {
+        val limit = 4L * 1024 * 1024 * 1024
+        for (bytes in listOf(null, -1L, 0L, 4_000_000_000L, limit)) {
+            assertFalse(supportsLiveVoice(bytes))
+        }
+        for (bytes in listOf(limit + 1, 8_000_000_000L)) assertTrue(supportsLiveVoice(bytes))
+    }
+
+    @Test
     fun minimumRamBlocksOnlyKnownReadingsBelowTheFloor() {
         val belowMinimum = chatDeviceCapability(1_599_999_999L)
         assertFalse(belowMinimum.isChatSupported())

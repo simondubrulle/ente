@@ -1,9 +1,5 @@
 package io.ente.ensu.chat
 
-import android.Manifest
-import android.content.pm.PackageManager
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
@@ -36,28 +32,22 @@ import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import io.ente.ensu.assets.AssetStore
 import io.ente.ensu.designsystem.EnsuColor
 import io.ente.ensu.designsystem.EnsuSpacing
 import io.ente.ensu.device.ChatDeviceCapability
-import io.ente.ensu.llm.LlmProvider
-import kotlinx.coroutines.Job
 
 @Composable
-fun ChatView(
+internal fun ChatView(
     chatState: ChatState,
-    assetStore: AssetStore,
-    llmProvider: LlmProvider,
+    voiceController: VoiceTranscriptionController,
+    onOpenVoiceInput: (androidx.compose.ui.text.input.TextFieldValue) -> Unit,
     isDrawerOpen: Boolean,
     onMessageChange: (String) -> Unit,
     onSend: () -> Unit,
@@ -74,7 +64,6 @@ fun ChatView(
     onDismissUnsupportedDeviceDialog: () -> Unit,
     onOverflowTrim: () -> Unit,
     onOverflowCancel: () -> Unit,
-    onVoiceInputJob: (Job) -> Unit,
     onOpenPacks: () -> Unit,
     onOpenNotes: () -> Unit,
     hasSeenSourceIntroduction: Boolean,
@@ -82,28 +71,13 @@ fun ChatView(
     onRetrySources: () -> Unit,
 ) {
     val density = LocalDensity.current
-    val context = LocalContext.current
     var inputBarHeightDp by remember { mutableStateOf(0.dp) }
-    val latestMessageText by rememberUpdatedState(chatState.messageText)
-    val latestOnMessageChange by rememberUpdatedState(onMessageChange)
     val sessionKey = chatState.currentSessionId ?: "new-session"
     var introductionSeen by
         remember(hasSeenSourceIntroduction) { mutableStateOf(hasSeenSourceIntroduction) }
-    val latestSessionKey by rememberUpdatedState(sessionKey)
     val unsupportedCapability =
         chatState.deviceCapability as? ChatDeviceCapability.UnsupportedLowMemory
     val isChatUnsupported = unsupportedCapability != null
-    var pendingVoiceSessionKey by remember { mutableStateOf<String?>(null) }
-    val voiceController =
-        rememberVoiceTranscriptionController(
-            assetStore = assetStore,
-            llmProvider = llmProvider,
-            onVoiceInputJob = onVoiceInputJob,
-            onTranscript = { transcript ->
-                latestOnMessageChange(appendVoiceTranscript(latestMessageText, transcript))
-            },
-        )
-
     val editingMessage by
         remember(chatState.editingMessageId, chatState.messages) {
             derivedStateOf {
@@ -112,30 +86,6 @@ fun ChatView(
                 }
             }
         }
-    val canStartVoiceInput =
-        !chatState.isGenerating &&
-            !chatState.isDownloading &&
-            chatState.isModelDownloaded &&
-            !isChatUnsupported &&
-            editingMessage == null
-    val latestCanStartVoiceInput by rememberUpdatedState(canStartVoiceInput)
-
-    val microphonePermissionLauncher =
-        rememberLauncherForActivityResult(contract = ActivityResultContracts.RequestPermission()) {
-            granted ->
-            val requestedSessionKey = pendingVoiceSessionKey
-            pendingVoiceSessionKey = null
-            if (granted) {
-                if (requestedSessionKey != null) {
-                    voiceController.startRecording {
-                        latestSessionKey == requestedSessionKey && latestCanStartVoiceInput
-                    }
-                }
-            } else {
-                voiceController.onPermissionDenied()
-            }
-        }
-
     val showDownloadOnboarding by
         remember(
             chatState.isModelDownloaded,
@@ -200,11 +150,6 @@ fun ChatView(
             }
             wasDrawerOpen = false
         }
-    }
-
-    LaunchedEffect(sessionKey) {
-        pendingVoiceSessionKey = null
-        voiceController.cancelActiveVoiceInput()
     }
 
     if (showIntroduction) {
@@ -290,7 +235,8 @@ fun ChatView(
                                 inputBarHeightDp = with(density) { coords.size.height.toDp() }
                             }
                 )
-            } else if (chatState.isModelStateKnown && !showDownloadOnboarding) {
+            } else if (chatState.isModelStateKnown) {
+                val voicePreview = voiceController.composerPreview(chatState.messageText)
                 MessageInput(
                     modifier =
                         Modifier.fillMaxWidth()
@@ -299,7 +245,7 @@ fun ChatView(
                             .onGloballyPositioned { coords ->
                                 inputBarHeightDp = with(density) { coords.size.height.toDp() }
                             },
-                    messageText = chatState.messageText,
+                    messageText = voicePreview?.text ?: chatState.messageText,
                     attachments = chatState.attachments,
                     supportsImageAttachments = chatState.supportsImageAttachments,
                     editingMessage = editingMessage,
@@ -318,30 +264,12 @@ fun ChatView(
                     onAttachmentSelected = onAttachmentSelected,
                     onRemoveAttachment = onRemoveAttachment,
                     onCancelEdit = onCancelEdit,
-                    voiceInputState = voiceController.state,
-                    onVoiceInput = {
-                        if (voiceController.state.isRecording) {
-                            voiceController.stopAndTranscribe()
-                        } else {
-                            val hasMicrophonePermission =
-                                ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.RECORD_AUDIO,
-                                ) == PackageManager.PERMISSION_GRANTED
-                            if (canStartVoiceInput && hasMicrophonePermission) {
-                                val requestedSessionKey = sessionKey
-                                voiceController.startRecording {
-                                    latestSessionKey == requestedSessionKey &&
-                                        latestCanStartVoiceInput
-                                }
-                            } else if (canStartVoiceInput) {
-                                pendingVoiceSessionKey = sessionKey
-                                microphonePermissionLauncher.launch(
-                                    Manifest.permission.RECORD_AUDIO
-                                )
-                            }
-                        }
+                    voiceController = voiceController,
+                    onVoiceInput = { value ->
+                        onOpenVoiceInput(value)
+                        focusManager.clearFocus()
                     },
+                    voiceCaret = voicePreview?.caretUtf16?.toInt() ?: voiceController.composerCaret,
                     focusRequestId = focusRequestId,
                 )
             }
@@ -397,16 +325,4 @@ fun ChatView(
             )
         }
     }
-}
-
-private fun appendVoiceTranscript(currentText: String, transcript: String): String {
-    val cleaned = transcript.trim()
-    if (cleaned.isBlank()) {
-        return currentText
-    }
-    val trimmedDraft = currentText.trimEnd()
-    if (trimmedDraft.isBlank()) {
-        return cleaned
-    }
-    return "$trimmedDraft $cleaned"
 }

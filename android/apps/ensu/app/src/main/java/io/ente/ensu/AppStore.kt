@@ -1,13 +1,16 @@
 package io.ente.ensu
 
 import android.content.Context
+import android.icu.text.BreakIterator
 import io.ente.ensu.assets.AssetStore
 import io.ente.ensu.bindings.ConfigDefaults
+import io.ente.ensu.bindings.DictationInsertion
 import io.ente.ensu.chat.Attachment
 import io.ente.ensu.chat.AttachmentStoreActions
 import io.ente.ensu.chat.ChatMessage
 import io.ente.ensu.chat.ChatRepository
 import io.ente.ensu.chat.ChatStoreActions
+import io.ente.ensu.chat.VoiceTranscriptionController
 import io.ente.ensu.device.AndroidDeviceCapabilityProvider
 import io.ente.ensu.device.ChatDeviceCapability
 import io.ente.ensu.knowledge.KnowledgeProvider
@@ -21,6 +24,8 @@ import io.ente.ensu.logging.LogLevel
 import io.ente.ensu.notes.NotesStore
 import io.ente.ensu.settings.DeveloperSettingsState
 import io.ente.ensu.settings.SessionPreferencesDataStore
+import java.util.Locale
+import java.util.UUID
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -84,6 +89,60 @@ class AppStore(
             awaitKnowledgeReady = knowledgeStore::awaitReady,
         )
 
+    private var composerRevision = 0uL
+    private var emptyComposerId = UUID.randomUUID().toString()
+    internal val voiceController: VoiceTranscriptionController =
+        VoiceTranscriptionController(
+            context.applicationContext,
+            assetStore,
+            llmProvider,
+            logRepository,
+            ::trackVoiceInput,
+        ) { insertion, transcript ->
+            val chat = _state.value.chat
+            runCatching {
+                    val result =
+                        insertion.apply(
+                            chat.currentSessionId ?: emptyComposerId,
+                            composerRevision,
+                            chat.messageText,
+                            transcript,
+                            true,
+                            false,
+                        )
+                    chatActions.updateMessageText(result.text)
+                    composerRevision = result.revision
+                    voiceController.composerCaret = result.caretUtf16.toInt()
+                    true
+                }
+                .getOrDefault(false)
+        }
+
+    internal fun openVoiceInput(
+        text: String,
+        selectionStart: Int,
+        selectionEnd: Int,
+        isComposing: Boolean,
+    ) {
+        val chat = _state.value.chat
+        if (isComposing || chat.isGenerating || chat.isDownloading || chat.editingMessageId != null)
+            return
+        if (chat.messageText != text || !voiceController.canOpen) return
+        if (selectionStart !in 0..selectionEnd || selectionEnd > text.length) return
+        val characters = BreakIterator.getCharacterInstance(Locale.ROOT).apply { setText(text) }
+        if (!characters.isBoundary(selectionStart) || !characters.isBoundary(selectionEnd)) return
+        voiceController.open(
+            DictationInsertion(
+                chat.currentSessionId ?: emptyComposerId,
+                composerRevision,
+                selectionStart.toUInt(),
+                selectionEnd.toUInt(),
+            )
+        )
+    }
+
+    fun dispose() = voiceController.dispose()
+
     fun bootstrap(scope: CoroutineScope) {
         notesStore.bootstrap(scope)
         chatActions.setScope(scope)
@@ -100,11 +159,15 @@ class AppStore(
         modelSettingsActions.setChatActive(active)
     }
 
-    fun setAppForeground(active: Boolean) = modelSettingsActions.setAppForeground(active)
+    fun setAppForeground(active: Boolean) {
+        voiceController.setForeground(active)
+        modelSettingsActions.setAppForeground(active)
+    }
 
     fun setPickerPending(pending: Boolean) = modelSettingsActions.setPickerPending(pending)
 
     fun handleMemoryPressure() {
+        voiceController.interrupt("Voice input paused because memory is low.")
         chatActions.cancelSessionSummary()
         modelSettingsActions.handleMemoryPressure()
     }
@@ -173,21 +236,43 @@ class AppStore(
 
     fun createNewSession(): String = chatActions.createNewSession()
 
-    fun startNewSessionDraft() = chatActions.startNewSessionDraft()
+    fun startNewSessionDraft() {
+        voiceController.discard()
+        emptyComposerId = UUID.randomUUID().toString()
+        composerRevision++
+        chatActions.startNewSessionDraft()
+    }
 
-    fun selectSession(sessionId: String) = chatActions.selectSession(sessionId)
+    fun selectSession(sessionId: String) {
+        voiceController.discard()
+        composerRevision++
+        chatActions.selectSession(sessionId)
+    }
 
-    fun deleteSession(sessionId: String) = chatActions.deleteSession(sessionId)
+    fun deleteSession(sessionId: String) {
+        if (sessionId == _state.value.chat.currentSessionId) voiceController.discard()
+        chatActions.deleteSession(sessionId)
+    }
 
     fun persistSelectedSession(scope: CoroutineScope, sessionId: String?) =
         chatActions.persistSelectedSession(scope, sessionId)
 
-    fun updateMessageText(value: String) = chatActions.updateMessageText(value)
+    fun updateMessageText(value: String) {
+        if (value != _state.value.chat.messageText) {
+            composerRevision++
+            voiceController.composerCaret = null
+        }
+        chatActions.updateMessageText(value)
+    }
 
     fun updateBranchSelection(messageId: String, selectedIndex: Int) =
         chatActions.updateBranchSelection(messageId, selectedIndex)
 
-    fun beginEditing(messageId: String) = chatActions.beginEditing(messageId)
+    fun beginEditing(messageId: String) {
+        voiceController.discard()
+        composerRevision++
+        chatActions.beginEditing(messageId)
+    }
 
     fun cancelEditing() = chatActions.cancelEditing()
 
@@ -232,7 +317,12 @@ class AppStore(
 
     fun retryAssistantMessage(messageId: String) = chatActions.retryAssistantMessage(messageId)
 
-    fun sendMessage() = chatActions.sendMessage()
+    fun sendMessage() {
+        if (voiceController.active) return
+        voiceController.composerCaret = null
+        composerRevision++
+        chatActions.sendMessage()
+    }
 
     fun confirmOverflowTrim() = chatActions.confirmOverflowTrim()
 

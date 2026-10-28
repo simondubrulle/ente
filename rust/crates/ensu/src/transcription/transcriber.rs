@@ -3,31 +3,105 @@ use std::sync::{Mutex, MutexGuard, PoisonError};
 
 use transcribe_rs::onnx::Quantization;
 use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity};
+use transcribe_rs::{OrtAccelerator, get_ort_accelerator};
 
+use super::graph_cache::{GRAPHS, GraphCache, LoadPlan, SOURCES};
 use crate::transcription::audio::extract_speech_from_pcm16;
-use crate::transcription::text::filter_transcription_output;
 use crate::transcription::{Result, TranscriptionError};
 
 pub struct Transcriber {
     model_dir: PathBuf,
     vad_model_path: PathBuf,
     loaded: Mutex<Option<ParakeetModel>>,
+    graph_cache: Option<GraphCache>,
 }
 
 impl Transcriber {
+    pub(crate) fn live_vad(&self) -> crate::voice::Result<Box<dyn transcribe_rs::vad::Vad>> {
+        super::SileroV4Vad::new(&self.vad_model_path)
+            .map(|vad| Box::new(vad) as Box<dyn transcribe_rs::vad::Vad>)
+            .map_err(|_| crate::voice::VoiceError::ProcessingFailed)
+    }
+
+    pub(crate) fn transcribe_window(
+        &self,
+        samples: &[f32],
+    ) -> crate::voice::Result<Vec<crate::voice::AlignedWord>> {
+        use crate::voice::{AlignedWord, MAX_WINDOW_SAMPLES, VoiceError};
+        if samples.is_empty()
+            || samples.len() > MAX_WINDOW_SAMPLES
+            || samples.iter().any(|s| !s.is_finite())
+        {
+            return Err(VoiceError::InvalidAudio);
+        }
+        let mut loaded = self.lock();
+        let model = ensure_loaded(
+            &mut loaded,
+            &self.model_dir,
+            self.graph_cache.as_ref(),
+            true,
+        )
+        .map_err(|_| VoiceError::ProcessingFailed)?;
+        let result = model
+            .transcribe_with(
+                samples,
+                &ParakeetParams {
+                    timestamp_granularity: Some(TimestampGranularity::Word),
+                    ..Default::default()
+                },
+            )
+            .map_err(|_| VoiceError::ProcessingFailed)?;
+        result
+            .segments
+            .ok_or(VoiceError::UnstableTranscript)?
+            .into_iter()
+            .map(|word| {
+                if !word.start.is_finite()
+                    || !word.end.is_finite()
+                    || word.end < word.start
+                    || word.start * 16000.0 > samples.len() as f32
+                {
+                    return Err(VoiceError::UnstableTranscript);
+                }
+                Ok(AlignedWord {
+                    text: word.text,
+                    start: (word.start.max(0.0) * 16000.0).round() as u64,
+                    end: ((word.end.max(0.0) * 16000.0).round() as u64).min(samples.len() as u64),
+                })
+            })
+            .collect()
+    }
+
     pub fn new(model_dir: impl Into<PathBuf>, vad_model_path: impl Into<PathBuf>) -> Self {
         Self {
             model_dir: model_dir.into(),
             vad_model_path: vad_model_path.into(),
             loaded: Mutex::new(None),
+            graph_cache: None,
         }
+    }
+
+    pub fn with_cache(
+        model_dir: impl Into<PathBuf>,
+        vad_model_path: impl Into<PathBuf>,
+        cache_directory: impl Into<PathBuf>,
+        device_identity: String,
+    ) -> Self {
+        let mut transcriber = Self::new(model_dir, vad_model_path);
+        transcriber.graph_cache = Some(GraphCache::new(cache_directory.into(), device_identity));
+        transcriber
     }
 
     pub fn load_model(&self) -> Result<()> {
         if !self.model_dir.is_dir() {
             return Err(TranscriptionError::NotDownloaded);
         }
-        ensure_loaded(&mut self.lock(), &self.model_dir)?;
+        ensure_loaded(
+            &mut self.lock(),
+            &self.model_dir,
+            self.graph_cache.as_ref(),
+            true,
+        )?;
         Ok(())
     }
 
@@ -52,7 +126,12 @@ impl Transcriber {
         }
 
         let mut loaded = self.lock();
-        let model = ensure_loaded(&mut loaded, &self.model_dir)?;
+        let model = ensure_loaded(
+            &mut loaded,
+            &self.model_dir,
+            self.graph_cache.as_ref(),
+            false,
+        )?;
         let result = model.transcribe_with(
             &speech,
             &ParakeetParams {
@@ -61,7 +140,7 @@ impl Transcriber {
             },
         )?;
 
-        Ok(filter_transcription_output(&result.text))
+        Ok(result.text.trim().to_owned())
     }
 
     fn lock(&self) -> MutexGuard<'_, Option<ParakeetModel>> {
@@ -72,9 +151,82 @@ impl Transcriber {
 fn ensure_loaded<'a>(
     loaded: &'a mut Option<ParakeetModel>,
     model_dir: &Path,
+    cache: Option<&GraphCache>,
+    may_build: bool,
 ) -> Result<&'a mut ParakeetModel> {
     match loaded {
         Some(model) => Ok(model),
-        slot => Ok(slot.insert(ParakeetModel::load(model_dir, &Quantization::Int8)?)),
+        slot => {
+            for name in SOURCES {
+                if !model_dir.join(name).is_file() {
+                    return Err(TranscriptionError::NotDownloaded);
+                }
+            }
+            let cache = cache.filter(|_| {
+                get_ort_accelerator() == OrtAccelerator::CpuOnly
+                    || OrtAccelerator::available() == [OrtAccelerator::CpuOnly]
+            });
+            let result = if let Some(cache) = cache {
+                let configuration = format!(
+                    "{};cpu;parallel=true;intra=auto;threads={}",
+                    ort::info(),
+                    std::thread::available_parallelism()
+                        .map(std::num::NonZeroUsize::get)
+                        .unwrap_or(1)
+                );
+                cache.load(model_dir, &configuration, may_build, |plan| {
+                    load_plan(model_dir, plan)
+                })
+            } else {
+                load_plan(model_dir, LoadPlan::Source { save_to: None })
+            };
+            Ok(slot.insert(result?))
+        }
+    }
+}
+
+fn load_plan(model_dir: &Path, plan: LoadPlan<'_>) -> Result<ParakeetModel> {
+    use ort::session::builder::GraphOptimizationLevel;
+    let directory = match plan {
+        LoadPlan::Source { save_to: None } => model_dir,
+        LoadPlan::Cached { directory } => directory,
+        LoadPlan::Source {
+            save_to: Some(directory),
+        } => {
+            for name in GRAPHS {
+                let session = ort::session::Session::builder()?
+                    .with_optimization_level(GraphOptimizationLevel::Level3)?
+                    .with_optimized_model_path(directory.join(name))?
+                    .with_parallel_execution(true)?
+                    .with_execution_providers([ort::ep::CPU::default().build()])?
+                    .commit_from_file(model_dir.join(name))?;
+                drop(session);
+            }
+            directory
+        }
+    };
+    Ok(ParakeetModel::load(directory, &Quantization::Int8)?)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn missing_quantized_graph_never_falls_back_to_full_precision() {
+        let directory = tempfile::tempdir().unwrap();
+        for name in [
+            "encoder-model.onnx",
+            "decoder_joint-model.onnx",
+            "nemo128.onnx",
+            "vocab.txt",
+        ] {
+            std::fs::write(directory.path().join(name), b"not a model").unwrap();
+        }
+        let transcriber = Transcriber::new(directory.path(), directory.path().join("vad.onnx"));
+        assert!(matches!(
+            transcriber.load_model(),
+            Err(TranscriptionError::NotDownloaded)
+        ));
     }
 }

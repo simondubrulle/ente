@@ -947,6 +947,9 @@ internal class ChatStoreActions(
                             systemPrompt = normalSystemPrompt,
                         )
 
+                    if (normalHistorySelection.currentInputTooLarge) {
+                        throw ConversationException.CurrentInputTooLarge()
+                    }
                     if (
                         normalHistorySelection.wasTrimmed &&
                             overflowBypassMessageId != userMessage.id
@@ -1086,6 +1089,18 @@ internal class ChatStoreActions(
             throw err
         } catch (_: LlmException.Cancelled) {
             interrupted = true
+        } catch (_: ConversationException.CurrentInputTooLarge) {
+            if (isActive() && !stopRequested) {
+                state.update {
+                    it.copy(
+                        chat =
+                            it.chat.copy(
+                                transientAssistantError = CURRENT_INPUT_TOO_LARGE_MESSAGE,
+                                transientAssistantParentId = userMessage.id,
+                            )
+                    )
+                }
+            }
         } catch (err: ModelMemoryUnavailable) {
             if (isActive() && !stopRequested) {
                 state.update {
@@ -1326,9 +1341,12 @@ internal class ChatStoreActions(
                             chat =
                                 it.chat.copy(
                                     transientAssistantError =
-                                        (error as? ConversationException.Other)?.detail
-                                            ?: error.message
-                                            ?: "Unable to prepare conversation",
+                                        if (error is ConversationException.CurrentInputTooLarge)
+                                            CURRENT_INPUT_TOO_LARGE_MESSAGE
+                                        else
+                                            (error as? ConversationException.Other)?.detail
+                                                ?: error.message
+                                                ?: "Unable to prepare conversation",
                                     transientAssistantParentId = userMessage.id,
                                 )
                         )
@@ -1843,6 +1861,7 @@ internal class ChatStoreActions(
         val inputTokens: Int,
         val inputBudget: Int,
         val wasTrimmed: Boolean,
+        val currentInputTooLarge: Boolean,
     )
 
     private data class GenerationLimits(
@@ -1914,6 +1933,7 @@ internal class ChatStoreActions(
                 inputTokens,
                 inputBudget,
                 inputTokens > inputBudget,
+                systemTokens + promptTokens > inputBudget,
             )
         }
 
@@ -1944,7 +1964,13 @@ internal class ChatStoreActions(
             )
         }
 
-        return HistorySelection(selected, inputTokens, inputBudget, inputTokens > inputBudget)
+        return HistorySelection(
+            selected,
+            inputTokens,
+            inputBudget,
+            inputTokens > inputBudget,
+            false,
+        )
     }
 
     private fun resolveGenerationLimits(contextLength: Int): GenerationLimits {
@@ -2091,6 +2117,9 @@ internal class ChatStoreActions(
     }
 
     companion object {
+        private const val CURRENT_INPUT_TOO_LARGE_MESSAGE =
+            "This message is too long for the model, even without earlier messages. " +
+                "Shorten it or split it into smaller messages. Your full text is still available to edit or copy."
         private const val MEDIA_MARKER = "<__media__>"
         private const val OVERFLOW_SAFETY_TOKENS = 256
         private const val IMAGE_TOKEN_ESTIMATE = 768

@@ -3,13 +3,12 @@ use std::time::Duration;
 
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Resampler, WindowFunction};
-use transcribe_rs::vad::{SileroVad, SmoothedVad, Vad};
+use transcribe_rs::vad::{SmoothedVad, Vad};
 
-use crate::transcription::{Result, TranscriptionError};
+use crate::transcription::{Result, SileroV4Vad, TranscriptionError};
 
 const TARGET_SAMPLE_RATE: usize = 16_000;
 const RESAMPLER_CHUNK_SIZE: usize = 1024;
-const VAD_THRESHOLD: f32 = 0.5;
 const VAD_PREFILL_FRAMES: usize = 3;
 const VAD_HANGOVER_FRAMES: usize = 10;
 const VAD_ONSET_FRAMES: usize = 2;
@@ -53,7 +52,7 @@ fn extract_speech(
     if !vad_model_path.is_file() {
         return Err(TranscriptionError::VadNotDownloaded);
     }
-    let silero = SileroVad::new(vad_model_path, VAD_THRESHOLD)?;
+    let silero = SileroV4Vad::new(vad_model_path)?;
     let mut vad = SmoothedVad::new(
         Box::new(silero),
         VAD_PREFILL_FRAMES,
@@ -61,31 +60,39 @@ fn extract_speech(
         VAD_ONSET_FRAMES,
     );
 
+    extract_speech_with_vad(input_sample_rate, samples, &mut vad)
+}
+
+fn extract_speech_with_vad(
+    input_sample_rate: u32,
+    samples: &[f32],
+    vad: &mut dyn Vad,
+) -> Result<Vec<f32>> {
     let mut resampler = FrameResampler::new(
         input_sample_rate as usize,
         TARGET_SAMPLE_RATE,
-        Duration::from_millis(30),
+        Duration::from_secs_f64(vad.frame_size() as f64 / TARGET_SAMPLE_RATE as f64),
     )?;
     let mut speech = Vec::new();
-
-    resampler.push(samples, |frame| {
-        if let Ok(true) = vad.is_speech(frame) {
-            let prefill = vad.drain_prefill();
-            if !prefill.is_empty() {
-                speech.extend_from_slice(&prefill);
-            }
-            speech.extend_from_slice(frame);
+    let mut vad_error = None;
+    let mut emit = |frame: &[f32]| {
+        if vad_error.is_some() {
+            return;
         }
-    });
-    resampler.finish(|frame| {
-        if let Ok(true) = vad.is_speech(frame) {
-            let prefill = vad.drain_prefill();
-            if !prefill.is_empty() {
-                speech.extend_from_slice(&prefill);
+        match vad.is_speech(frame) {
+            Ok(true) => {
+                speech.extend_from_slice(&vad.drain_prefill());
+                speech.extend_from_slice(frame);
             }
-            speech.extend_from_slice(frame);
+            Ok(false) => {}
+            Err(error) => vad_error = Some(error),
         }
-    });
+    };
+    resampler.push(samples, &mut emit);
+    resampler.finish(&mut emit);
+    if let Some(error) = vad_error {
+        return Err(error.into());
+    }
     vad.reset();
 
     let min_samples = TARGET_SAMPLE_RATE * 5 / 4;
@@ -199,6 +206,35 @@ mod tests {
     use std::f32::consts::TAU;
 
     use super::*;
+
+    #[test]
+    fn vad_failure_does_not_return_an_apparently_complete_partial_recording() {
+        struct FailsAfterSpeech {
+            frames: usize,
+        }
+        impl Vad for FailsAfterSpeech {
+            fn frame_size(&self) -> usize {
+                480
+            }
+            fn is_speech(
+                &mut self,
+                _: &[f32],
+            ) -> std::result::Result<bool, transcribe_rs::TranscribeError> {
+                self.frames += 1;
+                if self.frames == 1 {
+                    Ok(true)
+                } else {
+                    Err(transcribe_rs::TranscribeError::Inference(
+                        "injected VAD failure".into(),
+                    ))
+                }
+            }
+            fn reset(&mut self) {}
+        }
+        let mut vad = FailsAfterSpeech { frames: 0 };
+        assert!(extract_speech_with_vad(16000, &vec![0.2; 1440], &mut vad).is_err());
+        assert_eq!(vad.frames, 2);
+    }
 
     fn resample(input: &[f32], sample_rate: usize, push_size: usize) -> Vec<f32> {
         let mut resampler =

@@ -20,6 +20,16 @@ private actor ModelOperationBarrier {
 
 @MainActor
 final class ModelMemoryCoordinationTests: XCTestCase {
+    func testLiveVoiceRequiresMoreThanFourGiB() {
+        let limit: UInt64 = 4 * 1024 * 1024 * 1024
+        for bytes: UInt64 in [0, 4_000_000_000, limit] {
+            XCTAssertFalse(supportsLiveVoice(totalMemoryBytes: bytes))
+        }
+        for bytes: UInt64 in [limit + 1, 8_000_000_000] {
+            XCTAssertTrue(supportsLiveVoice(totalMemoryBytes: bytes))
+        }
+    }
+
     func testMinimumRamBlocksOnlyKnownReadingsBelowTheFloor() {
         XCTAssertFalse(chatDeviceCapability(totalMemoryBytes: 1_599_999_999).isChatSupported)
         XCTAssertTrue(chatDeviceCapability(totalMemoryBytes: 1_600_000_000).isChatSupported)
