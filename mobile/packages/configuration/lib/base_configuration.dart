@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io' as io;
 
-import 'package:bip39/bip39.dart' as bip39;
 import 'package:ente_base/models/database.dart';
 import 'package:ente_base/models/key_attributes.dart';
 import 'package:ente_base/models/key_gen_result.dart';
@@ -57,6 +56,10 @@ abstract class BaseConfiguration {
   EnteAppIdentity get appIdentity;
 
   List<String> get secureStorageKeys;
+
+  String recoveryKeyToMnemonic(String recoveryKeyHex);
+
+  String recoveryKeyFromMnemonicOrHex(String recoveryKeyMnemonicOrHex);
 
   List<String> get lockScreenSecureStorageKeys => const [];
 
@@ -238,25 +241,7 @@ abstract class BaseConfiguration {
   }
 
   Future<void> recover(String recoveryKey) async {
-    if (recoveryKey.contains(' ')) {
-      final split = recoveryKey.split(' ');
-      if (split.length != mnemonicKeyWordCount) {
-        String wordThatIsFollowedByEmptySpaceInSplit = '';
-        for (int i = 0; i < split.length; i++) {
-          final String word = split[i];
-          if (word.isEmpty) {
-            wordThatIsFollowedByEmptySpaceInSplit =
-                '\n\nExtra space after word at position $i';
-            break;
-          }
-        }
-        throw AssertionError(
-          '\nRecovery code should have $mnemonicKeyWordCount words, '
-          'found ${split.length} words instead.$wordThatIsFollowedByEmptySpaceInSplit',
-        );
-      }
-      recoveryKey = bip39.mnemonicToEntropy(recoveryKey);
-    }
+    recoveryKey = recoveryKeyFromMnemonicOrHex(recoveryKey);
     final attributes = getKeyAttributes();
     Uint8List masterKey;
     try {

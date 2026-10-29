@@ -3,7 +3,6 @@ import 'dart:convert';
 import "dart:io";
 
 import 'package:backup_exclusion/backup_exclusion.dart';
-import 'package:bip39/bip39.dart' as bip39;
 import 'package:ente_account_deletion/account_deletion.dart';
 import 'package:ente_contacts/contacts.dart';
 import "package:ente_crypto/ente_crypto.dart";
@@ -58,6 +57,8 @@ import 'package:photos/services/sync/sync_service.dart';
 import 'package:photos/services/video_preview_service.dart';
 import 'package:photos/src/rust/third_party/ente_frb_lib/account_deletion.dart'
     as account_deletion;
+import 'package:photos/src/rust/third_party/ente_frb_lib/recovery.dart'
+    as recovery;
 import 'package:photos/utils/validator_util.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import "package:tuple/tuple.dart";
@@ -490,16 +491,9 @@ class Configuration implements LockScreenHost, AccountDeletionHost {
   }
 
   Future<void> recover(String recoveryKey) async {
-    // Legacy users will have recoveryKey in the form of a hex string, while
-    // newer users will have it as a mnemonic code
-    if (recoveryKey.contains(' ')) {
-      if (recoveryKey.split(' ').length != mnemonicKeyWordCount) {
-        throw AssertionError(
-          'recovery code should have $mnemonicKeyWordCount words',
-        );
-      }
-      recoveryKey = bip39.mnemonicToEntropy(recoveryKey);
-    }
+    recoveryKey = recovery.recoveryKeyFromMnemonicOrHex(
+      recoveryKeyMnemonicOrHex: recoveryKey,
+    );
     final attributes = getKeyAttributes();
     Uint8List masterKey;
     try {

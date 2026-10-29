@@ -7,7 +7,6 @@ environment:
   flutter: ">=1.17.0"
 
 dependencies:
-  bip39: 1.0.6
   ente_base:
     path: ../../packages/base
   ente_crypto_api:
