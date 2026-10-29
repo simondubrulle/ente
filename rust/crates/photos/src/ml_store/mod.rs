@@ -254,6 +254,19 @@ mod tests {
         }
     }
 
+    #[cfg(unix)]
+    pub(super) fn degrade_clip_index_through_a_failed_compaction(
+        directory: &TempDir,
+        store: &MlStore,
+    ) {
+        store.put_clip(&clips(0..70)).unwrap();
+        let log = index_path(directory, Index::Clip);
+        fs::remove_file(&log).unwrap();
+        fs::create_dir(&log).unwrap();
+        store.delete_clip(&(0..65).collect::<Vec<_>>()).unwrap();
+        fs::remove_dir(&log).unwrap();
+    }
+
     pub(super) fn lose_index_files(store: &MlStore, path: &Path) {
         store.release().unwrap();
         VecDb::purge(path).unwrap();
