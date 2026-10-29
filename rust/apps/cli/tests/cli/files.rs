@@ -624,7 +624,8 @@ fn file_lists_handle_size_and_date_boundaries() {
         json!([
             file(
                 1,
-                json!({"title": "Beach.jpg", "fileType": 0, "creationTime": 1_700_000_000_000_000i64}),
+                json!({"title": "Beach.jpg", "fileType": 0, "creationTime": 1_700_000_000_000_000i64,
+                    "latitude": 1.0, "longitude": 2.0}),
                 json!({}),
                 Some(1126),
             ),
@@ -642,7 +643,8 @@ fn file_lists_handle_size_and_date_boundaries() {
             ),
             file(
                 4,
-                json!({"title": "Holiday.JPG", "fileType": 0, "creationTime": 1_262_304_000_000_000i64}),
+                json!({"title": "Holiday.JPG", "fileType": 0, "creationTime": 1_262_304_000_000_000i64,
+                    "latitude": 0.0, "longitude": 0.0}),
                 json!({"editedTime": 1_710_028_800_000_000i64}),
                 Some(1126),
             ),
@@ -679,6 +681,7 @@ fn file_lists_handle_size_and_date_boundaries() {
         (vec!["--since", "2024-06-01"], vec![2, 3]),
         (vec!["--before", "2024-06-01"], vec![1, 4, 5]),
         (vec!["--since", "2024-03-10T01:00:00+01:00"], vec![2, 3, 4]),
+        (vec!["--no-location"], vec![2, 3, 4, 5]),
         (vec!["--min-size", "5MB"], vec![2]),
         (vec!["--max-size", "5MB"], vec![1, 2, 4, 5]),
         (vec!["--min-size", "1.1KB"], vec![2, 5]),
@@ -701,7 +704,8 @@ fn file_lists_handle_size_and_date_boundaries() {
     ]));
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut lines = stdout.lines();
-    assert!(lines.nth(1).unwrap().starts_with("2 "));
+    assert!(lines.next().unwrap().contains("SIZE"));
+    assert!(lines.next().unwrap().starts_with("2 "));
     assert!(String::from_utf8_lossy(&output.stderr).contains("Showing first 1"));
     let output = success(home.run(&["--offline", "photos", "file", "view", "1"]));
     assert!(String::from_utf8_lossy(&output.stdout).contains("1.1 KB (1126 bytes)"));
