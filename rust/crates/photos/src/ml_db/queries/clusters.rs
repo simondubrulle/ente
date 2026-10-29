@@ -31,6 +31,7 @@ const UPSERT_FACE_CLUSTER: &str = r#"
     VALUES (?, ?)
     ON CONFLICT (face_id) DO UPDATE SET
         cluster_id = excluded.cluster_id
+    WHERE face_clusters.cluster_id IS NOT excluded.cluster_id
 "#;
 const UPSERT_CLUSTER_SUMMARY: &str = r#"
     INSERT INTO cluster_summary (cluster_id, avg, count)
