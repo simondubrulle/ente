@@ -462,8 +462,6 @@ const decryptFileToLockerItem = async (
                 ? fromInfoTypeWireValue(info.type)
                 : undefined;
         if (infoType) {
-            // A malformed item is caught below and skipped individually in
-            // both active collections and trash, including cached reloads.
             const data = infoDataSchemas[infoType].parse(info?.data);
             return {
                 id: record.id,
