@@ -1,5 +1,7 @@
+#[cfg(not(target_arch = "wasm32"))]
+use ente_core::Session;
 use ente_core::{
-    Session, b64,
+    b64,
     crypto::{self, Header, Key, blob},
     http,
 };
