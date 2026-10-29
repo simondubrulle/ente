@@ -192,14 +192,26 @@ async fn two_factor_recovery_preserves_secret_encoding() {
             .create_async()
             .await;
 
+        let envelope = TwoFactorRecoveryResponse {
+            encrypted_secret: b64::encode(&encrypted.encrypted_data),
+            secret_decryption_nonce: b64::encode(encrypted.nonce.as_bytes()),
+        };
+        assert!(matches!(
+            recover_two_factor(
+                &client,
+                factor,
+                "recovery-session",
+                &envelope,
+                &hex::encode(crypto::Key::generate().as_bytes()),
+            )
+            .await,
+            Err(Error::IncorrectRecoveryKey)
+        ));
         recover_two_factor(
             &client,
             factor,
             "recovery-session",
-            &TwoFactorRecoveryResponse {
-                encrypted_secret: b64::encode(&encrypted.encrypted_data),
-                secret_decryption_nonce: b64::encode(encrypted.nonce.as_bytes()),
-            },
+            &envelope,
             &recovery_key_hex,
         )
         .await
