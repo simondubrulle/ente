@@ -71,10 +71,14 @@ class CollectionApiClient {
     bool hasMore = true;
     final List<EnteFile> updatedFiles = [];
     final List<EnteFile> deletedFiles = [];
-    int latestUpdatedAtTime = 0;
+    int latestUpdatedAtTime = sinceTime;
     final collectionKey = CryptoHelper.instance.getCollectionKey(collection);
     while (hasMore) {
-      final diff = await _getDiff(collection.id, collectionKey, sinceTime);
+      final diff = await _getDiff(
+        collection.id,
+        collectionKey,
+        latestUpdatedAtTime,
+      );
       updatedFiles.addAll(diff.updatedFiles);
       deletedFiles.addAll(diff.deletedFiles);
       latestUpdatedAtTime = max(latestUpdatedAtTime, diff.latestUpdatedAtTime);
