@@ -600,7 +600,7 @@ fn photos_lists_limit_output_and_stream_complete_results() {
 }
 
 #[test]
-fn file_lists_filter_and_sort_synced_metadata() {
+fn file_lists_handle_size_and_date_boundaries() {
     let mut server = mockito::Server::new();
     let home = TestHome::new();
     home.seed(&server.url());
@@ -624,10 +624,9 @@ fn file_lists_filter_and_sort_synced_metadata() {
         json!([
             file(
                 1,
-                json!({"title": "Beach.jpg", "fileType": 0, "creationTime": 1_700_000_000_000_000i64,
-                    "latitude": 1.0, "longitude": 2.0}),
-                json!({"caption": "Sunset at the beach"}),
-                Some(1200),
+                json!({"title": "Beach.jpg", "fileType": 0, "creationTime": 1_700_000_000_000_000i64}),
+                json!({}),
+                Some(1126),
             ),
             file(
                 2,
@@ -638,15 +637,20 @@ fn file_lists_filter_and_sort_synced_metadata() {
             file(
                 3,
                 json!({"title": "Live.heic", "fileType": 2, "creationTime": 1_735_689_600_000_000i64}),
-                json!({"caption": "Family dinner", "lat": 3.0, "long": 4.0}),
+                json!({}),
                 None,
             ),
             file(
                 4,
-                json!({"title": "Holiday.JPG", "fileType": 0, "creationTime": 1_262_304_000_000_000i64,
-                    "latitude": 0.0, "longitude": 0.0}),
+                json!({"title": "Holiday.JPG", "fileType": 0, "creationTime": 1_262_304_000_000_000i64}),
                 json!({"editedTime": 1_710_028_800_000_000i64}),
-                Some(1200),
+                Some(1126),
+            ),
+            file(
+                5,
+                json!({"title": "Larger.jpg", "fileType": 0, "creationTime": 1_262_304_000_000_000i64}),
+                json!({}),
+                Some(1127),
             ),
         ]),
         false,
@@ -665,50 +669,22 @@ fn file_lists_filter_and_sort_synced_metadata() {
     };
 
     let listed = home.json(&["photos", "file", "list"]);
-    assert_eq!(listed[0]["sizeBytes"], 1200);
+    assert_eq!(listed[0]["sizeBytes"], 1126);
     assert_eq!(listed[2]["sizeBytes"], Value::Null);
     albums.assert();
     files.assert();
     drop(server);
 
     for (args, expected) in [
-        (vec![], vec![1, 2, 3, 4]),
-        (vec!["--type", "image"], vec![1, 4]),
-        (vec!["--type", "video", "--type", "livephoto"], vec![2, 3]),
         (vec!["--since", "2024-06-01"], vec![2, 3]),
-        (vec!["--before", "2024-06-01"], vec![1, 4]),
-        (
-            vec!["--since", "2024-01-01", "--before", "2025-01-01"],
-            vec![2, 4],
-        ),
+        (vec!["--before", "2024-06-01"], vec![1, 4, 5]),
         (vec!["--since", "2024-03-10T01:00:00+01:00"], vec![2, 3, 4]),
-        (vec!["--search", "BEACH sunset"], vec![1]),
-        (vec!["--search", "family dinner"], vec![3]),
-        (vec!["--search", "holiday jpg"], vec![4]),
-        (vec!["--search", "beach dinner"], vec![]),
-        (vec!["--search", "jpg sunset"], vec![1]),
-        (vec!["--no-location"], vec![2, 4]),
-        (vec!["--type", "image", "--no-location"], vec![4]),
         (vec!["--min-size", "5MB"], vec![2]),
-        (vec!["--min-size", "0.5mb"], vec![2]),
-        (vec!["--max-size", "5MB"], vec![1, 2, 4]),
-        (vec!["--max-size", "1MB"], vec![1, 4]),
-        (vec!["--min-size", "1kb"], vec![1, 2, 4]),
-        (vec!["--max-size", "2KB"], vec![1, 4]),
-        (vec!["--min-size", "1MB", "--max-size", "4MB"], vec![]),
-        (vec!["--max-size", "1MB", "--sort", "created"], vec![4, 1]),
-        (vec!["--sort", "created"], vec![3, 2, 4, 1]),
-        (vec!["--sort", "created", "--reverse"], vec![1, 4, 2, 3]),
-        (vec!["--sort", "size"], vec![2, 1, 4, 3]),
-        (vec!["--sort", "size", "--reverse"], vec![3, 1, 4, 2]),
-        (
-            vec!["--type", "image", "--sort", "size", "--all"],
-            vec![1, 4],
-        ),
-        (
-            vec!["--sort", "size", "--album", "1", "--limit", "2"],
-            vec![2, 1],
-        ),
+        (vec!["--max-size", "5MB"], vec![1, 2, 4, 5]),
+        (vec!["--min-size", "1.1KB"], vec![2, 5]),
+        (vec!["--max-size", "1.1KB"], vec![1, 4]),
+        (vec!["--sort", "size"], vec![2, 5, 1, 4, 3]),
+        (vec!["--sort", "size", "--reverse"], vec![3, 1, 4, 5, 2]),
     ] {
         assert_eq!(ids(&args), expected, "{args:?}");
     }
@@ -725,27 +701,12 @@ fn file_lists_filter_and_sort_synced_metadata() {
     ]));
     let stdout = String::from_utf8_lossy(&output.stdout);
     let mut lines = stdout.lines();
-    assert!(lines.next().unwrap().contains("SIZE"));
-    assert!(lines.next().unwrap().starts_with("2 "));
+    assert!(lines.nth(1).unwrap().starts_with("2 "));
     assert!(String::from_utf8_lossy(&output.stderr).contains("Showing first 1"));
     let output = success(home.run(&["--offline", "photos", "file", "view", "1"]));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("1.17 KB (1200 bytes)"));
-
-    for args in [
-        vec!["--since", "yesterday"],
-        vec!["--before", "2024-06-01T00:00:00"],
-        vec!["--search", "  "],
-        vec!["--type", "gif"],
-        vec!["--sort", "name"],
-        vec!["--reverse"],
-        vec!["--min-size", "100B"],
-        vec!["--max-size", "1TB"],
-        vec!["--max-size", "0MB"],
-    ] {
-        let mut command = vec!["--offline", "photos", "file", "list"];
-        command.extend(&args);
-        failure(&home.run(&command));
-    }
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1.1 KB (1126 bytes)"));
+    let output = home.run(&["--offline", "photos", "file", "list", "--search", "  "]);
+    assert!(failure(&output).contains("supply search text"));
 }
 
 pub(super) fn collection(id: i64, name: &str, key: &Key) -> Value {

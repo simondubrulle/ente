@@ -619,7 +619,7 @@ pub struct FileQuery {
     #[arg(
         long,
         value_name = "SIZE",
-        value_parser = crate::admin::parse_file_size,
+        value_parser = min_file_size,
         help = "Include files of at least this size, e.g. 100MB",
         long_help = "Include files whose sizeBytes is at least SIZE. Accepts KB, MB and GB, case-insensitive, using powers of 1024; fractions are allowed, such as 1.5GB. Files with an unknown size are left out."
     )]
@@ -627,7 +627,7 @@ pub struct FileQuery {
     #[arg(
         long,
         value_name = "SIZE",
-        value_parser = crate::admin::parse_file_size,
+        value_parser = max_file_size,
         help = "Include files of at most this size, e.g. 1.5GB",
         long_help = "Include files whose sizeBytes is at most SIZE. Accepts KB, MB and GB, case-insensitive, using powers of 1024; fractions are allowed, such as 1.5GB. Files with an unknown size are left out."
     )]
@@ -664,6 +664,14 @@ fn nonempty_search(text: &str) -> Result<String, String> {
     } else {
         Ok(text.to_owned())
     }
+}
+
+fn min_file_size(input: &str) -> Result<u64, String> {
+    crate::admin::parse_file_size(input).map(|bytes| bytes.ceil() as u64)
+}
+
+fn max_file_size(input: &str) -> Result<u64, String> {
+    crate::admin::parse_file_size(input).map(|bytes| bytes as u64)
 }
 
 const ACCOUNT_HELP: &str = "Reads accounts stored on this device without network access.
@@ -995,7 +1003,7 @@ pub struct SubscriptionArgs {
     pub target: AdminTarget,
     #[arg(long, conflicts_with_all = ["storage", "expires"], help = "Set 100 TB of storage and another 100 years")]
     pub no_limit: bool,
-    #[arg(long, value_name = "SIZE", value_parser = crate::admin::parse_size, help = "Storage limit, e.g. 500GB or 1.5TB")]
+    #[arg(long, value_name = "SIZE", value_parser = crate::admin::parse_storage, help = "Storage limit, e.g. 500GB or 1.5TB")]
     pub storage: Option<i64>,
     #[arg(long, value_name = "WHEN", value_parser = crate::admin::parse_date, help = "Expiry date or timestamp")]
     pub expires: Option<i64>,
