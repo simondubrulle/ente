@@ -5,7 +5,7 @@ use std::ops::Range;
 use super::fill::decode_centroid;
 use super::{CLUSTER_CENTROID_DIMENSIONS, Error, MlStore, Result};
 use crate::face_clustering::{
-    ClusterMean, Face, IncrementalFace, cluster_incrementally, recluster,
+    ClusterMean, Face, IncrementalFace, cluster_incrementally, new_cluster_id, recluster,
 };
 use crate::ml_db::vector_encoding::{decode_evector, encode_evector};
 use crate::ml_db::{ClusterSummary, try_file_id_from_face_id};
@@ -168,26 +168,29 @@ impl MlStore {
         distance_threshold: f64,
     ) -> Result<HashMap<String, String>> {
         check_distance_threshold(distance_threshold)?;
-        let faces = self
-            .db
-            .get_face_embedding_rows_for_faces(face_ids)?
-            .into_iter()
-            .filter_map(|(face_id, embedding)| {
-                let embedding: Vec<f32> = decode_evector(&embedding)
-                    .ok()?
-                    .into_iter()
-                    .map(|value| value as f32)
-                    .collect();
-                let creation_time = try_file_id_from_face_id(&face_id)
-                    .and_then(|file_id| file_creation_times.get(&file_id).copied());
-                is_clusterable(&embedding).then_some(Face {
+        let mut faces = Vec::new();
+        let mut unclusterable_face_ids = Vec::new();
+        for (face_id, embedding) in self.db.get_face_embedding_rows_for_faces(face_ids)? {
+            let embedding = decode_evector(&embedding)
+                .ok()
+                .map(|values| values.into_iter().map(|value| value as f32).collect())
+                .filter(|embedding: &Vec<f32>| is_clusterable(embedding));
+            match embedding {
+                Some(embedding) => faces.push(Face {
+                    creation_time: try_file_id_from_face_id(&face_id)
+                        .and_then(|file_id| file_creation_times.get(&file_id).copied()),
                     face_id,
                     embedding,
-                    creation_time,
-                })
-            })
-            .collect();
-        let clustering = recluster(faces, distance_threshold);
+                }),
+                None => unclusterable_face_ids.push(face_id),
+            }
+        }
+        let mut clustering = recluster(faces, distance_threshold);
+        clustering.assignments.extend(
+            unclusterable_face_ids
+                .into_iter()
+                .map(|face_id| (face_id, new_cluster_id())),
+        );
         match self.assign_face_clusters(&clustering.assignments, &summaries(&clustering.means)) {
             Ok(()) => {}
             Err(Error::Index(error)) => {
@@ -594,8 +597,9 @@ mod tests {
     }
 
     #[test]
-    fn reclustering_leaves_faces_without_a_valid_embedding_in_place() {
+    fn reclustering_moves_faces_without_a_valid_embedding_into_their_own_clusters() {
         let (_directory, store) = open();
+        store.fill_cluster_centroid_index(false).unwrap();
         seed(&store, &[(1, 0.0), (2, 0.0)]);
         let mut invalid = face(3, 0.0);
         invalid.embedding[5] = f64::NAN;
@@ -610,9 +614,23 @@ mod tests {
 
         let mut moved: Vec<&String> = assignments.keys().collect();
         moved.sort();
-        assert_eq!(moved, face_ids([1, 2]).iter().collect::<Vec<_>>());
-        assert_eq!(cluster_of(&store, 3).as_deref(), Some("p"));
-        assert_eq!(cluster_of(&store, 4).as_deref(), Some("p"));
+        assert_eq!(moved, face_ids(1..=4).iter().collect::<Vec<_>>());
+        assert_eq!(
+            groups(&store),
+            [face_ids([1, 2]), face_ids([3]), face_ids([4])]
+        );
+        assert!(store.db().get_face_ids_for_cluster("p").unwrap().is_empty());
+        for file_id in [3, 4] {
+            let cluster_id = cluster_of(&store, file_id).unwrap();
+            assert!(
+                store
+                    .db()
+                    .get_cluster_to_cluster_summary(std::slice::from_ref(&cluster_id))
+                    .unwrap()
+                    .is_empty()
+            );
+            assert!(!store.contains(Index::ClusterCentroid, &cluster_id).unwrap());
+        }
         assert!(
             store
                 .recluster_faces(&face_id_list([9]), &times([9]), THRESHOLD)
