@@ -1,5 +1,3 @@
-//! Duplicate detection and removal planning, independent of storage and UI.
-
 use std::collections::{HashMap, HashSet};
 
 pub struct Collection {
@@ -7,8 +5,7 @@ pub struct Collection {
     pub owner_id: i64,
 }
 
-/// A file's membership in one collection. Hashes must be normalized, including
-/// the `image:video` hash for Live Photos uploaded by legacy clients.
+// Hashes must be normalized, including `image:video` for legacy Live Photos.
 pub struct File {
     pub id: i64,
     pub collection_id: i64,
@@ -19,7 +16,6 @@ pub struct File {
 
 #[derive(Debug, PartialEq, Eq)]
 pub struct Item {
-    /// Index of the first eligible occurrence in the input files.
     pub file_index: usize,
     pub collection_ids: Vec<i64>,
 }
@@ -27,14 +23,12 @@ pub struct Item {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Group {
     pub items: Vec<Item>,
-    /// Estimate based on the first known nonzero size in the group. Live Photo
-    /// ZIP sizes can vary between clients even when their content hashes match.
+    // Live Photo ZIP sizes can vary despite matching hashes, so use the first
+    // known nonzero size to estimate savings.
     pub item_size: u64,
 }
 
-/// Find distinct owned files with matching hashes in owned, non-hidden albums.
-/// The caller supplies only non-hidden collections. Groups, files and album
-/// memberships preserve input order; clients may sort items for display.
+// The caller must exclude hidden collections. Results preserve input order.
 pub fn find_duplicates(user_id: i64, collections: &[Collection], files: &[File]) -> Vec<Group> {
     let allowed: HashSet<_> = collections
         .iter()
@@ -98,14 +92,11 @@ pub struct Addition {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct RemovalPlan {
-    /// Complete every album addition successfully before trashing any files.
+    // Complete every album addition successfully before trashing any files.
     pub additions: Vec<Addition>,
     pub trash_ids: Vec<i64>,
 }
 
-/// Plan removal of selected duplicate groups. Retain the first item with a
-/// caption, then the first with edits, otherwise the first item. Input order
-/// breaks ties (the web client uses its locale's album-name ordering).
 pub fn plan_removal(groups: &[Vec<Duplicate>]) -> RemovalPlan {
     let mut plan = RemovalPlan::default();
     let mut by_collection = HashMap::<i64, usize>::new();
