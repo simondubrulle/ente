@@ -1,10 +1,12 @@
-import { generateKey } from "ente-base/crypto";
+import { decryptBox, generateKey } from "ente-base/crypto";
 import { CollectionSubType, type Collection } from "ente-media/collection";
 import type { EnteFile } from "ente-media/file";
 import { ItemVisibility } from "ente-media/file-metadata";
 import {
+    bindCollectionKeyOpener,
     hideFiles,
     movePendingRemovalActionsToUncategorized,
+    unbindCollectionKeyOpener,
 } from "ente-new/photos/services/collection";
 import {
     savedCollectionFiles,
@@ -17,9 +19,7 @@ vi.mock("ente-accounts/services/user", () => ({
     ensureLocalUser: () => ({ id: 1 }),
 }));
 vi.mock("ente-new/photos/services/account-keys", () => ({
-    ensureMasterKeyFromSession: () => {
-        throw new Error("Creation attempted");
-    },
+    ensureMasterKeyFromSession: () => Promise.resolve(masterKey),
 }));
 vi.mock("ente-new/photos/services/photos-fdb", () => ({
     savedCollections: vi.fn(),
@@ -34,19 +34,43 @@ vi.mock("ente-base/origins", () => ({
 }));
 
 const fetchMock = vi.fn();
-beforeEach(() => {
+let masterKey: string;
+beforeEach(async () => {
+    masterKey = await generateKey();
+    bindCollectionKeyOpener(({ encryptedKey, keyDecryptionNonce }) =>
+        decryptBox(
+            { encryptedData: encryptedKey, nonce: keyDecryptionNonce! },
+            masterKey,
+        ),
+    );
     vi.stubGlobal("window", {});
     vi.stubGlobal("fetch", fetchMock);
-    fetchMock.mockImplementation((url: string) => {
+    fetchMock.mockImplementation((url: string, request: RequestInit) => {
         if (url.endsWith("/collection-actions/pending-remove")) {
             return Promise.resolve(
                 Response.json({ actions: [{ collectionID: 10, fileID: 100 }] }),
+            );
+        }
+        if (url.endsWith("/collections")) {
+            return Promise.resolve(
+                Response.json({
+                    collection: {
+                        ...(JSON.parse(request.body as string) as Record<
+                            string,
+                            unknown
+                        >),
+                        id: 40,
+                        owner: { id: 1 },
+                        updationTime: 1,
+                    },
+                }),
             );
         }
         return Promise.resolve(new Response(null, { status: 200 }));
     });
 });
 afterEach(() => {
+    unbindCollectionKeyOpener();
     vi.unstubAllGlobals();
     vi.resetAllMocks();
 });
@@ -99,22 +123,15 @@ test.each([
         vi.mocked(savedCollections).mockResolvedValue(collections);
         vi.mocked(savedCollectionFiles).mockResolvedValue([file]);
 
-        const result =
-            flow == "hide"
-                ? hideFiles([file])
-                : movePendingRemovalActionsToUncategorized(collections);
+        await (flow == "hide"
+            ? hideFiles([file])
+            : movePendingRemovalActionsToUncategorized(collections));
 
-        if (!hasOwned) {
-            await expect(result).rejects.toThrow("Creation attempted");
-            expect(
-                fetchMock.mock.calls.some(([url]) =>
-                    (url as string).endsWith("/collections/move-files"),
-                ),
-            ).toBe(false);
-            return;
-        }
-
-        await result;
+        expect(
+            fetchMock.mock.calls.filter(([url]) =>
+                (url as string).endsWith("/collections"),
+            ),
+        ).toHaveLength(hasOwned ? 0 : 1);
         const move = fetchMock.mock.calls.find(([url]) =>
             (url as string).endsWith("/collections/move-files"),
         )!;
@@ -122,7 +139,7 @@ test.each([
             JSON.parse((move[1] as RequestInit).body as string),
         ).toMatchObject({
             fromCollectionID: source.id,
-            toCollectionID: oldestOwned.id,
+            toCollectionID: hasOwned ? oldestOwned.id : 40,
             files: [{ id: file.id }],
         });
     },
