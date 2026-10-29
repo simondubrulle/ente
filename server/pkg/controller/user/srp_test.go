@@ -73,12 +73,24 @@ func TestVerifySRPSessionRejectsAnotherAccountAndEnabledEmailMFA(t *testing.T) {
 	targetB := new(big.Int).Mul(targetClient.Multiplier, verifierDifference)
 	targetB.Add(targetB, new(big.Int).SetBytes(b)).Mod(targetB, params.N)
 	targetClient.SetB(targetB.FillBytes(make([]byte, params.NLengthBits/8)))
+	storedSession, err := controller.UserAuthRepo.GetSrpSessionEntity(ctx, session.SessionID)
+	require.NoError(t, err)
+	serverKey, err := convertStringToBytes(storedSession.ServerKey)
+	require.NoError(t, err)
+	sessionA, err := convertStringToBytes(storedSession.SRP_A)
+	require.NoError(t, err)
+	targetServer := srp.NewServer(params, targetVerifier, serverKey)
+	require.NotNil(t, targetServer)
+	targetServer.SetA(sessionA)
+	targetM1 := targetClient.ComputeM1()
+	_, err = targetServer.CheckM1(targetM1)
+	require.NoError(t, err)
 	response, err := controller.VerifySRPSession(ctx, ente.VerifySRPSessionRequest{
-		SessionID: session.SessionID, SRPUserID: targetSRPID, SRPM1: convertBytesToString(targetClient.ComputeM1()),
+		SessionID: session.SessionID, SRPUserID: targetSRPID, SRPM1: convertBytesToString(targetM1),
 	})
 	require.ErrorIs(t, err, ente.ErrInvalidPassword)
 	require.Nil(t, response)
-	storedSession, err := controller.UserAuthRepo.GetSrpSessionEntity(ctx, session.SessionID)
+	storedSession, err = controller.UserAuthRepo.GetSrpSessionEntity(ctx, session.SessionID)
 	require.NoError(t, err)
 	require.False(t, storedSession.IsVerified)
 	var tokens int
