@@ -95,7 +95,7 @@ impl GraphCache {
         };
         let recipe = digest_bytes(
             format!(
-                "schema={SCHEMA};upstream=efc66111;ort-api={};os={};arch={};device={};{runtime_configuration}",
+                "schema={SCHEMA};backend=ensu-parakeet-v1;ort-api={};os={};arch={};device={};{runtime_configuration}",
                 ort::MINOR_VERSION,
                 std::env::consts::OS,
                 std::env::consts::ARCH,

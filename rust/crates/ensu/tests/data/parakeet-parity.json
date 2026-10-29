@@ -1,0 +1,1156 @@
+{
+  "reference_revision": "efc66111d519a434e28d51d94740008a7ce29360",
+  "runtime": "ort 2.0.0-rc.13 default CPU runtime; ORT Build Info: git-branch=rel-1.28.0, git-commit-id=da9b5e3, fp8-kv-cache=1, build type=Release",
+  "model_archive_sha256": "43d37191602727524a7d8c6da0eef11c4ba24320f5b4730f1a2497befc2efa77",
+  "models": {
+    "encoder-model.int8.onnx": "6139d2fa7e1b086097b277c7149725edbab89cc7c7ae64b23c741be4055aff09",
+    "nemo128.onnx": "a9fde1486ebfcc08f328d75ad4610c67835fea58c73ba57e3209a6f6cf019e9f",
+    "decoder_joint-model.int8.onnx": "eea7483ee3d1a30375daedc8ed83e3960c91b098812127a0d99d1c8977667a70",
+    "vocab.txt": "d58544679ea4bc6ac563d1f545eb7d474bd6cfa467f0a6e2c1dc1c7d37e3c35d"
+  },
+  "cases": [
+    {
+      "file": "jfk_full.pcm",
+      "samples": 176000,
+      "text": "And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.",
+      "words": [
+        {
+          "end": 0.4699999690055847,
+          "start": 0.1499999761581421,
+          "text": "And"
+        },
+        {
+          "end": 0.9499999284744263,
+          "start": 0.4699999690055847,
+          "text": "so,"
+        },
+        {
+          "end": 1.1899999380111694,
+          "start": 0.9499999284744263,
+          "text": "my"
+        },
+        {
+          "end": 1.6699999570846558,
+          "start": 1.1899999380111694,
+          "text": "fellow"
+        },
+        {
+          "end": 3.2699999809265137,
+          "start": 1.6699999570846558,
+          "text": "Americans,"
+        },
+        {
+          "end": 3.989999771118164,
+          "start": 3.2699999809265137,
+          "text": "ask"
+        },
+        {
+          "end": 5.190000057220459,
+          "start": 3.989999771118164,
+          "text": "not"
+        },
+        {
+          "end": 5.589999675750732,
+          "start": 5.190000057220459,
+          "text": "what"
+        },
+        {
+          "end": 5.909999847412109,
+          "start": 5.589999675750732,
+          "text": "your"
+        },
+        {
+          "end": 6.46999979019165,
+          "start": 5.909999847412109,
+          "text": "country"
+        },
+        {
+          "end": 6.710000038146973,
+          "start": 6.46999979019165,
+          "text": "can"
+        },
+        {
+          "end": 6.949999809265137,
+          "start": 6.710000038146973,
+          "text": "do"
+        },
+        {
+          "end": 7.269999980926514,
+          "start": 6.949999809265137,
+          "text": "for"
+        },
+        {
+          "end": 8.069999694824219,
+          "start": 7.269999980926514,
+          "text": "you."
+        },
+        {
+          "end": 8.630000114440918,
+          "start": 8.069999694824219,
+          "text": "Ask"
+        },
+        {
+          "end": 8.869999885559082,
+          "start": 8.630000114440918,
+          "text": "what"
+        },
+        {
+          "end": 9.1899995803833,
+          "start": 8.869999885559082,
+          "text": "you"
+        },
+        {
+          "end": 9.429999351501465,
+          "start": 9.1899995803833,
+          "text": "can"
+        },
+        {
+          "end": 9.670000076293945,
+          "start": 9.429999351501465,
+          "text": "do"
+        },
+        {
+          "end": 9.829999923706055,
+          "start": 9.670000076293945,
+          "text": "for"
+        },
+        {
+          "end": 10.069999694824219,
+          "start": 9.829999923706055,
+          "text": "your"
+        },
+        {
+          "end": 10.600000381469727,
+          "start": 10.069999694824219,
+          "text": "country."
+        }
+      ],
+      "sha256": "a29462b8ebd467318000e683b9117ade46230d3255ed2024e7db894abd9b38c9",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.",
+          "speech_samples": 143360,
+          "speech_sha256": "8564ae4ff7e28edc2178d7c7ea175c59ea5f8cce83483cc27ff2eeb35a20d2fd"
+        },
+        {
+          "rate": 44100,
+          "text": "And so, my fellow Americans, ask not what your country can do for you. Ask what you can do for your country.",
+          "speech_samples": 142848,
+          "speech_sha256": "93e1734f8ec94bdd0da7146ec255a8c3834ca1eda0a1ff9efd767c21dedabb41"
+        },
+        {
+          "rate": 48000,
+          "text": "And so, my fellow Americans, ask not what your country can do for you, ask what you can do for your country.",
+          "speech_samples": 145920,
+          "speech_sha256": "d1873c5fcff8e6ca7206b3ce1aa0bce4f2e685b83fe20544765de93820657718"
+        }
+      ]
+    },
+    {
+      "file": "jfk_opening.pcm",
+      "samples": 128000,
+      "text": "And so, my fellow Americans, ask not what your country can do for you.",
+      "words": [
+        {
+          "end": 0.4699999690055847,
+          "start": 0.1499999761581421,
+          "text": "And"
+        },
+        {
+          "end": 0.9499999284744263,
+          "start": 0.4699999690055847,
+          "text": "so,"
+        },
+        {
+          "end": 1.1899999380111694,
+          "start": 0.9499999284744263,
+          "text": "my"
+        },
+        {
+          "end": 1.6699999570846558,
+          "start": 1.1899999380111694,
+          "text": "fellow"
+        },
+        {
+          "end": 3.18999981880188,
+          "start": 1.6699999570846558,
+          "text": "Americans,"
+        },
+        {
+          "end": 3.9099998474121094,
+          "start": 3.18999981880188,
+          "text": "ask"
+        },
+        {
+          "end": 5.109999656677246,
+          "start": 3.9099998474121094,
+          "text": "not"
+        },
+        {
+          "end": 5.589999675750732,
+          "start": 5.109999656677246,
+          "text": "what"
+        },
+        {
+          "end": 5.909999847412109,
+          "start": 5.589999675750732,
+          "text": "your"
+        },
+        {
+          "end": 6.389999866485596,
+          "start": 5.909999847412109,
+          "text": "country"
+        },
+        {
+          "end": 6.710000038146973,
+          "start": 6.389999866485596,
+          "text": "can"
+        },
+        {
+          "end": 6.949999809265137,
+          "start": 6.710000038146973,
+          "text": "do"
+        },
+        {
+          "end": 7.269999980926514,
+          "start": 6.949999809265137,
+          "text": "for"
+        },
+        {
+          "end": 7.880000114440918,
+          "start": 7.269999980926514,
+          "text": "you."
+        }
+      ],
+      "sha256": "176ee248c76689839883ff3c14efb8e5486d13f4fed81f2e1a2f369e71f7a157",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "And so, my fellow Americans, ask not what your country can do for you.",
+          "speech_samples": 101376,
+          "speech_sha256": "ab5e1d6b804c479d262136235b4530e52d177f18ff27d2a8c74f9b676b5d2a69"
+        },
+        {
+          "rate": 44100,
+          "text": "And so, my fellow Americans, ask not what your country can do for you.",
+          "speech_samples": 99328,
+          "speech_sha256": "03d9d42e603a14b6b0e6ce5f6fa174910ae4e18f85c4e124bc9ec20b3d3f86c2"
+        },
+        {
+          "rate": 48000,
+          "text": "And so, my fellow Americans, ask not what your country can do for you.",
+          "speech_samples": 99840,
+          "speech_sha256": "4e24048292cd893cded09587e1687cbc50ddf546ee588e41da2dcf487b0056e2"
+        }
+      ]
+    },
+    {
+      "file": "jfk_overlap.pcm",
+      "samples": 112000,
+      "text": "Not what your country can do for you. Ask what you can do for your country.",
+      "words": [
+        {
+          "end": 1.1899999380111694,
+          "start": 0.1499999761581421,
+          "text": "Not"
+        },
+        {
+          "end": 1.5899999141693115,
+          "start": 1.1899999380111694,
+          "text": "what"
+        },
+        {
+          "end": 1.9099998474121094,
+          "start": 1.5899999141693115,
+          "text": "your"
+        },
+        {
+          "end": 2.4700000286102295,
+          "start": 1.9099998474121094,
+          "text": "country"
+        },
+        {
+          "end": 2.7100000381469727,
+          "start": 2.4700000286102295,
+          "text": "can"
+        },
+        {
+          "end": 2.9499998092651367,
+          "start": 2.7100000381469727,
+          "text": "do"
+        },
+        {
+          "end": 3.18999981880188,
+          "start": 2.9499998092651367,
+          "text": "for"
+        },
+        {
+          "end": 4.069999694824219,
+          "start": 3.18999981880188,
+          "text": "you."
+        },
+        {
+          "end": 4.630000114440918,
+          "start": 4.069999694824219,
+          "text": "Ask"
+        },
+        {
+          "end": 4.949999809265137,
+          "start": 4.630000114440918,
+          "text": "what"
+        },
+        {
+          "end": 5.190000057220459,
+          "start": 4.949999809265137,
+          "text": "you"
+        },
+        {
+          "end": 5.429999828338623,
+          "start": 5.190000057220459,
+          "text": "can"
+        },
+        {
+          "end": 5.670000076293945,
+          "start": 5.429999828338623,
+          "text": "do"
+        },
+        {
+          "end": 5.829999923706055,
+          "start": 5.670000076293945,
+          "text": "for"
+        },
+        {
+          "end": 6.069999694824219,
+          "start": 5.829999923706055,
+          "text": "your"
+        },
+        {
+          "end": 6.519999980926514,
+          "start": 6.069999694824219,
+          "text": "country."
+        }
+      ],
+      "sha256": "e4bf4775256f924dc949a830782d9f29406e67ae712fb4723e550ce9945a809f",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "What your country can do for you Ask what you can do for your country",
+          "speech_samples": 82944,
+          "speech_sha256": "c084c87d1c87b88ef33cc9a1ae1accfb8bf652a3793f580fa3d7b529c1dea17c"
+        },
+        {
+          "rate": 44100,
+          "text": "Not what your country can do for you. Ask what you can do for your country.",
+          "speech_samples": 96768,
+          "speech_sha256": "49096f2469baf644b132ab26180eb0dae13df85e4584aaaf721dcc43c7e454d6"
+        },
+        {
+          "rate": 48000,
+          "text": "What your country can do for you, ask what you can do for your country.",
+          "speech_samples": 86528,
+          "speech_sha256": "fce7d69357fa1085684e658fb17aac00294b8409abc0fd7c8af74c09c9996b74"
+        }
+      ]
+    },
+    {
+      "file": "jfk_padded.pcm",
+      "samples": 96000,
+      "text": "And so, my fellow Americans, ask not.",
+      "words": [
+        {
+          "end": 0.9499999284744263,
+          "start": 0.5499999523162842,
+          "text": "And"
+        },
+        {
+          "end": 1.4299999475479126,
+          "start": 0.9499999284744263,
+          "text": "so,"
+        },
+        {
+          "end": 1.6699999570846558,
+          "start": 1.4299999475479126,
+          "text": "my"
+        },
+        {
+          "end": 2.1499998569488525,
+          "start": 1.6699999570846558,
+          "text": "fellow"
+        },
+        {
+          "end": 3.75,
+          "start": 2.1499998569488525,
+          "text": "Americans,"
+        },
+        {
+          "end": 4.389999866485596,
+          "start": 3.75,
+          "text": "ask"
+        },
+        {
+          "end": 5.880000114440918,
+          "start": 4.389999866485596,
+          "text": "not."
+        }
+      ],
+      "sha256": "333faaee030c07153fa5fa5bde4a5cd714092398bf4bd3facb503f4876693c55",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "And so, my fellow Americans, ask not",
+          "speech_samples": 59904,
+          "speech_sha256": "0d20774db54dd7f0c4e73b47dbc59c23660219eb39be5525b85f2dd1da99936b"
+        },
+        {
+          "rate": 44100,
+          "text": "And so, my fellow Americans, ask not!",
+          "speech_samples": 58880,
+          "speech_sha256": "4501808119c0f1b1831c18187a0269d0224fa3f08d723b1839bdd8ce248ccbb9"
+        },
+        {
+          "rate": 48000,
+          "text": "And so, my fellow Americans, ask not",
+          "speech_samples": 57344,
+          "speech_sha256": "a50ece230bd6caf3416edb8b32bda53af3bc1324bfa24ddb01f484262abb7ae4"
+        }
+      ]
+    },
+    {
+      "file": "jfk_short.pcm",
+      "samples": 12800,
+      "text": "And so",
+      "words": [
+        {
+          "end": 0.3100000023841858,
+          "start": 0.1499999761581421,
+          "text": "And"
+        },
+        {
+          "end": 0.36000001430511475,
+          "start": 0.3100000023841858,
+          "text": "so"
+        }
+      ],
+      "sha256": "a9bedfe56d9a24cc86b37e91ee91fe74999fbadb7ff07f530f77a65dedf26c28",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "And so.",
+          "speech_samples": 20000,
+          "speech_sha256": "a6e0f73e4f88f3369b2153a9f5e7513f7be47719107f1e17bee1fa3db2699fda"
+        },
+        {
+          "rate": 44100,
+          "text": "And so",
+          "speech_samples": 20000,
+          "speech_sha256": "1b4c106c50d994f02c0a4f2921779ab34afe843aeec2333774671cbaca578148"
+        },
+        {
+          "rate": 48000,
+          "text": "",
+          "speech_samples": 20000,
+          "speech_sha256": "3a1541bcdb107e3b9b309a97520981743c55dc81455d1581f8be3dcbe16fdca8"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-128104-0000.pcm",
+      "samples": 93680,
+      "text": "mister Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.",
+      "words": [
+        {
+          "end": 0.6299999952316284,
+          "start": 0.1499999761581421,
+          "text": "mister"
+        },
+        {
+          "end": 1.3499999046325684,
+          "start": 0.6299999952316284,
+          "text": "Quilter"
+        },
+        {
+          "end": 1.5099999904632568,
+          "start": 1.3499999046325684,
+          "text": "is"
+        },
+        {
+          "end": 1.5899999141693115,
+          "start": 1.5099999904632568,
+          "text": "the"
+        },
+        {
+          "end": 2.1499998569488525,
+          "start": 1.5899999141693115,
+          "text": "apostle"
+        },
+        {
+          "end": 2.2300000190734863,
+          "start": 2.1499998569488525,
+          "text": "of"
+        },
+        {
+          "end": 2.3899998664855957,
+          "start": 2.2300000190734863,
+          "text": "the"
+        },
+        {
+          "end": 2.7100000381469727,
+          "start": 2.3899998664855957,
+          "text": "middle"
+        },
+        {
+          "end": 3.2699999809265137,
+          "start": 2.7100000381469727,
+          "text": "classes,"
+        },
+        {
+          "end": 3.429999828338623,
+          "start": 3.2699999809265137,
+          "text": "and"
+        },
+        {
+          "end": 3.5899999141693115,
+          "start": 3.429999828338623,
+          "text": "we"
+        },
+        {
+          "end": 3.75,
+          "start": 3.5899999141693115,
+          "text": "are"
+        },
+        {
+          "end": 4.069999694824219,
+          "start": 3.75,
+          "text": "glad"
+        },
+        {
+          "end": 4.230000019073486,
+          "start": 4.069999694824219,
+          "text": "to"
+        },
+        {
+          "end": 4.630000114440918,
+          "start": 4.230000019073486,
+          "text": "welcome"
+        },
+        {
+          "end": 4.869999885559082,
+          "start": 4.630000114440918,
+          "text": "his"
+        },
+        {
+          "end": 5.639999866485596,
+          "start": 4.869999885559082,
+          "text": "gospel."
+        }
+      ],
+      "sha256": "156e1e1821700d4c4ad31a63e6d901a5088d5ee155fafd02a9d0d2de37f771e6",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "mister Quilter is the apostle of the Middle Classes, and we are glad to welcome his gospel.",
+          "speech_samples": 83456,
+          "speech_sha256": "07870c198e8c0d9ca7f1f913646b1169e09a9db5ad4e636e0b5b41e40a7e3955"
+        },
+        {
+          "rate": 44100,
+          "text": "Mr. Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.",
+          "speech_samples": 84480,
+          "speech_sha256": "1a6d6687ef01f23df4db80f5b686362adeee4a2a4a41cb843abfcdebc83afb6a"
+        },
+        {
+          "rate": 48000,
+          "text": "mister Quilter is the apostle of the middle classes, and we are glad to welcome his gospel.",
+          "speech_samples": 83968,
+          "speech_sha256": "d5753656f90fedd32b0571e5da7a69395f35934808f7a6c9625239c93c7e2330"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-128104-0001.pcm",
+      "samples": 77040,
+      "text": "Nor is mister Quilter's manner less interesting than his matter.",
+      "words": [
+        {
+          "end": 0.6299999952316284,
+          "start": 0.22999998927116394,
+          "text": "Nor"
+        },
+        {
+          "end": 0.8700000047683716,
+          "start": 0.6299999952316284,
+          "text": "is"
+        },
+        {
+          "end": 1.1899999380111694,
+          "start": 0.8700000047683716,
+          "text": "mister"
+        },
+        {
+          "end": 1.9900000095367432,
+          "start": 1.1899999380111694,
+          "text": "Quilter's"
+        },
+        {
+          "end": 2.3899998664855957,
+          "start": 1.9900000095367432,
+          "text": "manner"
+        },
+        {
+          "end": 2.7100000381469727,
+          "start": 2.3899998664855957,
+          "text": "less"
+        },
+        {
+          "end": 3.2699999809265137,
+          "start": 2.7100000381469727,
+          "text": "interesting"
+        },
+        {
+          "end": 3.509999990463257,
+          "start": 3.2699999809265137,
+          "text": "than"
+        },
+        {
+          "end": 3.75,
+          "start": 3.509999990463257,
+          "text": "his"
+        },
+        {
+          "end": 4.680000305175781,
+          "start": 3.75,
+          "text": "matter."
+        }
+      ],
+      "sha256": "bca0b38f0be340f804ab1d522f4d2a1b339f3cb237913347d1af0847ae48160e",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "Nor is mister Quilter's manner less interesting than his matter.",
+          "speech_samples": 68096,
+          "speech_sha256": "392720d41ca4e5be5c31b135d4bb2eb5bbfbf28269d548877e31cd04ea20553d"
+        },
+        {
+          "rate": 44100,
+          "text": "Nor is Mr. Quilter's manner less interesting than his matter.",
+          "speech_samples": 67584,
+          "speech_sha256": "5f162b7f1bc5feb2f71101ea5504fc3b50f819a9c515ee20f139dd8748910ff8"
+        },
+        {
+          "rate": 48000,
+          "text": "Nor is mister Quilter's manner less interesting than his matter.",
+          "speech_samples": 67584,
+          "speech_sha256": "8c9470665e2098762e18a6e2bcd1813d34f91a63cd2c3553535162be8070e34d"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-128104-0010.pcm",
+      "samples": 89600,
+      "text": "near the fire, and the ornaments Fred brought home from India on the mantle board.",
+      "words": [
+        {
+          "end": 0.4699999690055847,
+          "start": 0.0,
+          "text": "near"
+        },
+        {
+          "end": 0.6299999952316284,
+          "start": 0.4699999690055847,
+          "text": "the"
+        },
+        {
+          "end": 1.2699999809265137,
+          "start": 0.6299999952316284,
+          "text": "fire,"
+        },
+        {
+          "end": 1.5899999141693115,
+          "start": 1.2699999809265137,
+          "text": "and"
+        },
+        {
+          "end": 1.75,
+          "start": 1.5899999141693115,
+          "text": "the"
+        },
+        {
+          "end": 2.3899998664855957,
+          "start": 1.75,
+          "text": "ornaments"
+        },
+        {
+          "end": 2.7899999618530273,
+          "start": 2.3899998664855957,
+          "text": "Fred"
+        },
+        {
+          "end": 3.109999895095825,
+          "start": 2.7899999618530273,
+          "text": "brought"
+        },
+        {
+          "end": 3.3499999046325684,
+          "start": 3.109999895095825,
+          "text": "home"
+        },
+        {
+          "end": 3.509999990463257,
+          "start": 3.3499999046325684,
+          "text": "from"
+        },
+        {
+          "end": 3.989999771118164,
+          "start": 3.509999990463257,
+          "text": "India"
+        },
+        {
+          "end": 4.150000095367432,
+          "start": 3.989999771118164,
+          "text": "on"
+        },
+        {
+          "end": 4.309999942779541,
+          "start": 4.150000095367432,
+          "text": "the"
+        },
+        {
+          "end": 4.789999961853027,
+          "start": 4.309999942779541,
+          "text": "mantle"
+        },
+        {
+          "end": 5.240000247955322,
+          "start": 4.789999961853027,
+          "text": "board."
+        }
+      ],
+      "sha256": "ae31d7a39145aa312418aed3b926efabec7c1a7a72673ffe9b798ea7bff375be",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "near the fire, and the ornaments Fred brought home from India on the mantle board.",
+          "speech_samples": 77824,
+          "speech_sha256": "27c6464fdab301066108c280a56c73db435430af1523926ac3471c92e15d3059"
+        },
+        {
+          "rate": 44100,
+          "text": "near the fire, and the ornaments Fred brought home from India on the mantle board.",
+          "speech_samples": 78336,
+          "speech_sha256": "fd6b4ed3b4a72daa3f5b06490cc5570df657e4be2efc2d19d8339e48d546b487"
+        },
+        {
+          "rate": 48000,
+          "text": "near the fire, and the ornaments Fred brought home from India on the mantle board.",
+          "speech_samples": 77824,
+          "speech_sha256": "a49116bb8b8d2ab8bf297cfb1ec2ef870d25e630193198f914796850fb1a517b"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-135031-0005.pcm",
+      "samples": 74000,
+      "text": "I begged Ruggedo long ago to send him away, but he would not do so.",
+      "words": [
+        {
+          "end": 0.22999998927116394,
+          "start": 0.0,
+          "text": "I"
+        },
+        {
+          "end": 0.7099999785423279,
+          "start": 0.22999998927116394,
+          "text": "begged"
+        },
+        {
+          "end": 1.5899999141693115,
+          "start": 0.7099999785423279,
+          "text": "Ruggedo"
+        },
+        {
+          "end": 1.8299999237060547,
+          "start": 1.5899999141693115,
+          "text": "long"
+        },
+        {
+          "end": 2.069999933242798,
+          "start": 1.8299999237060547,
+          "text": "ago"
+        },
+        {
+          "end": 2.2300000190734863,
+          "start": 2.069999933242798,
+          "text": "to"
+        },
+        {
+          "end": 2.4700000286102295,
+          "start": 2.2300000190734863,
+          "text": "send"
+        },
+        {
+          "end": 2.629999876022339,
+          "start": 2.4700000286102295,
+          "text": "him"
+        },
+        {
+          "end": 3.0299999713897705,
+          "start": 2.629999876022339,
+          "text": "away,"
+        },
+        {
+          "end": 3.18999981880188,
+          "start": 3.0299999713897705,
+          "text": "but"
+        },
+        {
+          "end": 3.3499999046325684,
+          "start": 3.18999981880188,
+          "text": "he"
+        },
+        {
+          "end": 3.509999990463257,
+          "start": 3.3499999046325684,
+          "text": "would"
+        },
+        {
+          "end": 3.75,
+          "start": 3.509999990463257,
+          "text": "not"
+        },
+        {
+          "end": 3.989999771118164,
+          "start": 3.75,
+          "text": "do"
+        },
+        {
+          "end": 4.440000057220459,
+          "start": 3.989999771118164,
+          "text": "so."
+        }
+      ],
+      "sha256": "519872f29413f32f001b3f3f427f60a85b76a61751caeb4de22db0d409ad4484",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "I begged Ruggado long ago to send him away, but he would not do so.",
+          "speech_samples": 68608,
+          "speech_sha256": "1447444e2cbdef0441c923c763f098878fa79b8996779741124c24f6b2739fda"
+        },
+        {
+          "rate": 44100,
+          "text": "I begged Ruggedo long ago to send him away, but he would not do so.",
+          "speech_samples": 67584,
+          "speech_sha256": "5ac798a76654e173ad207578cea9ee04b86d1159d53d3ea63cbafd08d7c11aba"
+        },
+        {
+          "rate": 48000,
+          "text": "I begged Ruggedo long ago to send him away, but he would not do so.",
+          "speech_samples": 67072,
+          "speech_sha256": "4635e40ae1159fd113f8b363841775473a843998b134510a183b0d8fc628f48f"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-141231-0000.pcm",
+      "samples": 74400,
+      "text": "A man said to the universe, Sir, I exist.",
+      "words": [
+        {
+          "end": 0.4699999690055847,
+          "start": 0.22999998927116394,
+          "text": "A"
+        },
+        {
+          "end": 0.8700000047683716,
+          "start": 0.4699999690055847,
+          "text": "man"
+        },
+        {
+          "end": 1.2699999809265137,
+          "start": 0.8700000047683716,
+          "text": "said"
+        },
+        {
+          "end": 1.4299999475479126,
+          "start": 1.2699999809265137,
+          "text": "to"
+        },
+        {
+          "end": 1.5899999141693115,
+          "start": 1.4299999475479126,
+          "text": "the"
+        },
+        {
+          "end": 2.629999876022339,
+          "start": 1.5899999141693115,
+          "text": "universe,"
+        },
+        {
+          "end": 3.3499999046325684,
+          "start": 2.629999876022339,
+          "text": "Sir,"
+        },
+        {
+          "end": 3.669999837875366,
+          "start": 3.3499999046325684,
+          "text": "I"
+        },
+        {
+          "end": 4.440000057220459,
+          "start": 3.669999837875366,
+          "text": "exist."
+        }
+      ],
+      "sha256": "f186e2e3324e58b6f20dd392b68415bc5df9c33fa72e528a145c563e4ce2f749",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "A man said to the universe, Sir, I exist.",
+          "speech_samples": 59392,
+          "speech_sha256": "890d0049e56bc2b9d4b0ea8081a11b6508bd7e697dd34535355e9d4ed382243c"
+        },
+        {
+          "rate": 44100,
+          "text": "A man said to the universe, Sir, I exist.",
+          "speech_samples": 60928,
+          "speech_sha256": "e4d03dd9b1ab812f50e50b94cea01b7e64c1b1ac5bed14f6e866a359313ec89d"
+        },
+        {
+          "rate": 48000,
+          "text": "A man said to the universe, Sir, I exist.",
+          "speech_samples": 59904,
+          "speech_sha256": "bbc86aaf9791292b51c77492771793f00ee55f58c42de776fb735c3b0ed295a9"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-141231-0020.pcm",
+      "samples": 69120,
+      "text": "Just thrust and parry and victory to the stronger.",
+      "words": [
+        {
+          "end": 0.7099999785423279,
+          "start": 0.1499999761581421,
+          "text": "Just"
+        },
+        {
+          "end": 1.2699999809265137,
+          "start": 0.7099999785423279,
+          "text": "thrust"
+        },
+        {
+          "end": 1.5099999904632568,
+          "start": 1.2699999809265137,
+          "text": "and"
+        },
+        {
+          "end": 2.2300000190734863,
+          "start": 1.5099999904632568,
+          "text": "parry"
+        },
+        {
+          "end": 2.4700000286102295,
+          "start": 2.2300000190734863,
+          "text": "and"
+        },
+        {
+          "end": 3.0299999713897705,
+          "start": 2.4700000286102295,
+          "text": "victory"
+        },
+        {
+          "end": 3.18999981880188,
+          "start": 3.0299999713897705,
+          "text": "to"
+        },
+        {
+          "end": 3.2699999809265137,
+          "start": 3.18999981880188,
+          "text": "the"
+        },
+        {
+          "end": 4.119999885559082,
+          "start": 3.2699999809265137,
+          "text": "stronger."
+        }
+      ],
+      "sha256": "7b9195c0286ecbab0447002131e3964cb0fccab8e83ca8dccf0475adc7e03ac3",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "Just thrust and parry and victory to the stronger.",
+          "speech_samples": 58368,
+          "speech_sha256": "969b46b7c5680605fdb103cae57bdb6eabf6c3335d356d39129acc257fd0a53e"
+        },
+        {
+          "rate": 44100,
+          "text": "Just thrust and parry and victory to the stronger.",
+          "speech_samples": 58368,
+          "speech_sha256": "2776a0e09cd3da5c8795290d93fe1056110ff8bdd5037035cdfa352f936f75b6"
+        },
+        {
+          "rate": 48000,
+          "text": "Just thrust and parry and victory to the stronger.",
+          "speech_samples": 57344,
+          "speech_sha256": "8f14cc6e9b2a9db0d6b8d214420d4d6560ea8e2ab80da4f1d20502ddb77bc7a9"
+        }
+      ]
+    },
+    {
+      "file": "librispeech_1272-141231-0032.pcm",
+      "samples": 71680,
+      "text": "Then the powerful twists that thrust to the side. In and under the guard,",
+      "words": [
+        {
+          "end": 0.7099999785423279,
+          "start": 0.22999998927116394,
+          "text": "Then"
+        },
+        {
+          "end": 0.8700000047683716,
+          "start": 0.7099999785423279,
+          "text": "the"
+        },
+        {
+          "end": 1.2699999809265137,
+          "start": 0.8700000047683716,
+          "text": "powerful"
+        },
+        {
+          "end": 1.6699999570846558,
+          "start": 1.2699999809265137,
+          "text": "twists"
+        },
+        {
+          "end": 1.9099998474121094,
+          "start": 1.6699999570846558,
+          "text": "that"
+        },
+        {
+          "end": 2.309999942779541,
+          "start": 1.9099998474121094,
+          "text": "thrust"
+        },
+        {
+          "end": 2.4700000286102295,
+          "start": 2.309999942779541,
+          "text": "to"
+        },
+        {
+          "end": 2.629999876022339,
+          "start": 2.4700000286102295,
+          "text": "the"
+        },
+        {
+          "end": 3.109999895095825,
+          "start": 2.629999876022339,
+          "text": "side."
+        },
+        {
+          "end": 3.3499999046325684,
+          "start": 3.109999895095825,
+          "text": "In"
+        },
+        {
+          "end": 3.509999990463257,
+          "start": 3.3499999046325684,
+          "text": "and"
+        },
+        {
+          "end": 3.669999837875366,
+          "start": 3.509999990463257,
+          "text": "under"
+        },
+        {
+          "end": 3.8299999237060547,
+          "start": 3.669999837875366,
+          "text": "the"
+        },
+        {
+          "end": 4.360000133514404,
+          "start": 3.8299999237060547,
+          "text": "guard,"
+        }
+      ],
+      "sha256": "601e5f1a2c7454c159a5c29fe903a2999ddac0d73db15f80719c0484d92a6a63",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "Then the powerful twists that thrust it aside. In and under the guard,",
+          "speech_samples": 63488,
+          "speech_sha256": "cb3f41ea6b8318198624a57e9b3af78030456e30d107e4c7bdd8d094be1079f7"
+        },
+        {
+          "rate": 44100,
+          "text": "Then the powerful twist that thrust it aside. In and under the guard.",
+          "speech_samples": 63488,
+          "speech_sha256": "d56c66adff5c2656c2898ddd9ee4347d96f8f183261c1efd9d9cb5229b11c100"
+        },
+        {
+          "rate": 48000,
+          "text": "then the powerful twists that thrust it aside. In and under the guard,",
+          "speech_samples": 63488,
+          "speech_sha256": "5d0c2a61882441567d958590fefd1fc5c5d61bf28f4699d414abf3c799a8e96b"
+        }
+      ]
+    },
+    {
+      "file": "silence.pcm",
+      "samples": 16000,
+      "text": "",
+      "words": [],
+      "sha256": "0c92bddb4e96f3ea9ec9f0f64a668255a6c15527ac09f6f119cafde60c7c4a39",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "rate": 44100,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "rate": 48000,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    },
+    {
+      "file": "single_sample.pcm",
+      "samples": 1,
+      "text": "",
+      "words": [],
+      "sha256": "96a296d224f285c67bee93c30f8a309157f0daa35dc5b87e410b78630a09cfc7",
+      "legacy": [
+        {
+          "rate": 16000,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "rate": 44100,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        },
+        {
+          "rate": 48000,
+          "text": "",
+          "speech_samples": 0,
+          "speech_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+        }
+      ]
+    }
+  ],
+  "vad_sha256": "a35ebf52fd3ce5f1469b2a36158dba761bc47b973ea3382b3186ca15b1f5af28",
+  "legacy_reference_commit": "717d7444c1d75d4fe41d68d31f456959d01c50f2",
+  "platform": "macOS aarch64 CPU"
+}
