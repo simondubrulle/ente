@@ -64,7 +64,7 @@ mod tests {
 
         let groups: Vec<(MemoryKind, Vec<i64>)> = memories
             .iter()
-            .map(|memory| (memory.kind, memory.file_ids.clone()))
+            .map(|memory| (memory.kind.clone(), memory.file_ids.clone()))
             .collect();
         assert_eq!(
             groups,

@@ -1,4 +1,5 @@
 use ente_exif::DateTime;
+use ente_location::Coordinate;
 
 use super::calendar::{LocalDate, MICROS_PER_SECOND};
 use super::input::MemoryFile;
@@ -7,8 +8,10 @@ use super::input::MemoryFile;
 pub(super) struct Photo {
     pub(super) id: i64,
     pub(super) creation_time: i64,
+    pub(super) local_time: i64,
     pub(super) date: LocalDate,
     pub(super) collection_id: Option<i64>,
+    pub(super) location: Option<Coordinate>,
 }
 
 pub(super) fn prepare(files: &[MemoryFile]) -> Vec<Photo> {
@@ -31,8 +34,12 @@ impl Photo {
         Self {
             id: file.id,
             creation_time: file.creation_time,
+            local_time,
             date: LocalDate::of_local_time(local_time),
             collection_id: file.collection_id,
+            location: file
+                .location
+                .filter(|location| location.latitude != 0.0 || location.longitude != 0.0),
         }
     }
 }
