@@ -353,6 +353,7 @@ class DownloadManagerCore {
                                 );
                             }
 
+                            // A network read can contain several encrypted chunks.
                             while (data.length > decryptionChunkSize) {
                                 const decryptedData = await decryptStreamChunk(
                                     data.slice(0, decryptionChunkSize),
@@ -366,6 +367,7 @@ class DownloadManagerCore {
                             }
 
                             if (done) {
+                                // Only EOF proves that a short remainder is the final chunk.
                                 if (!data.length)
                                     throw new Error(
                                         "Missing final encrypted chunk",
