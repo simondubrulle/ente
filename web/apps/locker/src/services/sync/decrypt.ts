@@ -12,7 +12,7 @@ import {
     openCollectionKey,
     type Session,
 } from "ente-locker-wasm";
-import type { z } from "zod";
+import { z } from "zod";
 import { ensureAuthenticatedSession } from "../authenticated-session";
 import { fromInfoTypeWireValue } from "../info-type-wire";
 import {
@@ -38,6 +38,36 @@ export interface LockerTrashData {
 }
 
 const COLLECTION_PAYLOAD_VERSION = 1;
+
+// Mobile metadata can omit empty fields or encode them as null. Normalize
+// these while rejecting non-string values before they reach item views.
+const itemText = z
+    .string()
+    .nullish()
+    .transform((value) => value ?? "");
+const optionalItemText = z
+    .string()
+    .nullish()
+    .transform((value) => value ?? undefined);
+const infoDataSchemas = {
+    note: z.object({ title: itemText, content: itemText }),
+    accountCredential: z.object({
+        name: itemText,
+        username: optionalItemText,
+        password: optionalItemText,
+        notes: optionalItemText,
+    }),
+    physicalRecord: z.object({
+        name: itemText,
+        location: optionalItemText,
+        notes: optionalItemText,
+    }),
+    emergencyContact: z.object({
+        name: itemText,
+        contactDetails: itemText,
+        notes: optionalItemText,
+    }),
+};
 
 const collectionTextDecoder = new TextDecoder();
 
@@ -425,19 +455,20 @@ const decryptFileToLockerItem = async (
         }
 
         const info = pubMagicMetadata?.info as
-            { type?: string; data?: Record<string, unknown> } | undefined;
+            { type?: string; data?: unknown } | undefined;
 
         const infoType =
             typeof info?.type === "string"
                 ? fromInfoTypeWireValue(info.type)
                 : undefined;
-        const infoData = info?.data;
-
-        if (infoType && infoData) {
+        if (infoType) {
+            // A malformed item is caught below and skipped individually in
+            // both active collections and trash, including cached reloads.
+            const data = infoDataSchemas[infoType].parse(info?.data);
             return {
                 id: record.id,
                 type: infoType,
-                data: infoData as unknown as LockerItem["data"],
+                data,
                 collectionID: record.collectionID,
                 collectionIDs: [record.collectionID],
                 ownerID: record.ownerID ?? collectionOwnerID,
