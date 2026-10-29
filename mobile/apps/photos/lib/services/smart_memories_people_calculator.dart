@@ -259,7 +259,11 @@ class PeopleMemoriesCalculator {
         final creationDateTime = DateTime.fromMicrosecondsSinceEpoch(
           file.creationTime!,
         );
-        if (currentTime.difference(creationDateTime).inDays < 365) {
+        if (TimeMemoriesCalculator._calendarDayDifference(
+              creationDateTime,
+              currentTime,
+            ) <
+            365) {
           longAgo = false;
           break;
         }
