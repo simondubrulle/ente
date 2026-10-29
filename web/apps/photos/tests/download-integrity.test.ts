@@ -13,7 +13,6 @@ import { FileType } from "ente-media/file-type";
 import { Buffer } from "node:buffer";
 import { beforeAll, describe, expect, test, vi } from "vitest";
 
-// Exercise the real cryptography without needing a browser Comlink worker.
 vi.mock("ente-base/crypto", () => import("ente-base/crypto/libsodium"));
 vi.mock("ente-base/log", () => ({
     default: { info: vi.fn(), error: vi.fn() },

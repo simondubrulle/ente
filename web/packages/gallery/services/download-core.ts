@@ -353,8 +353,6 @@ class DownloadManagerCore {
                                 );
                             }
 
-                            // Keep the last chunk until EOF, even if it is full-size,
-                            // so its authenticated final tag can be checked.
                             while (data.length > decryptionChunkSize) {
                                 const decryptedData = await decryptStreamChunk(
                                     data.slice(0, decryptionChunkSize),

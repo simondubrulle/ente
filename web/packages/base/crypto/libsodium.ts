@@ -282,14 +282,12 @@ export const initChunkDecryption = async (
     return { pullState, decryptionChunkSize };
 };
 
-/** If supplied, isFinalChunk must match the authenticated final tag. */
 export const decryptStreamChunk = async (
     data: Uint8Array,
     pullState: SodiumStateAddress,
     isFinalChunk?: boolean,
 ): Promise<Uint8Array<ArrayBuffer>> => {
     await sodium.ready;
-    // The sodium typings omit the false returned on authentication failure.
     const pullResult = sodium.crypto_secretstream_xchacha20poly1305_pull(
         pullState,
         data,
