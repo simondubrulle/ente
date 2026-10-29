@@ -195,8 +195,6 @@ test.each(
                     : { title: "Healthy file" },
         );
 
-        // The encrypted bad records remain persisted. Reopening must still
-        // show the healthy items in both the vault and trash.
         for (let load = 0; load < 2; load++) {
             const result = await loadPersistedLockerState();
             expect(result.collections).toHaveLength(2);

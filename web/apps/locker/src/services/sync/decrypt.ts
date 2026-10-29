@@ -39,8 +39,6 @@ export interface LockerTrashData {
 
 const COLLECTION_PAYLOAD_VERSION = 1;
 
-// Mobile metadata can omit empty fields or encode them as null. Normalize
-// these while rejecting non-string values before they reach item views.
 const itemText = z
     .string()
     .nullish()
