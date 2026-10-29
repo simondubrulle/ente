@@ -253,7 +253,7 @@ const (
 
 	NotFoundError ErrorCode = "NOT_FOUND"
 
-	FamiliySizeLimitExceeded ErrorCode = "FAMILY_SIZE_LIMIT_EXCEEDED"
+	FamilySizeLimitExceeded ErrorCode = "FAMILY_SIZE_LIMIT_EXCEEDED"
 
 	UserSignupIncomplete ErrorCode = "USER_SIGNUP_INCOMPLETE"
 

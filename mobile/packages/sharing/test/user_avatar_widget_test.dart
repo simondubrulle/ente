@@ -5,7 +5,7 @@ import 'package:ente_configuration/base_configuration.dart';
 import 'package:ente_contacts/contacts.dart';
 import 'package:ente_sharing/models/user.dart';
 import 'package:ente_sharing/resolved_user_builder.dart';
-import 'package:ente_sharing/user_avator_widget.dart';
+import 'package:ente_sharing/user_avatar_widget.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
