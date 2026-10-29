@@ -176,7 +176,7 @@ async fn two_factor_recovery_preserves_secret_encoding() {
         let remove = server
             .mock("POST", "/users/two-factor/remove")
             .match_body(Matcher::Json(serde_json::json!({
-                "sessionId": "recovery-session",
+                "sessionID": "recovery-session",
                 "secret": secret,
                 "twoFactorType": factor,
             })))

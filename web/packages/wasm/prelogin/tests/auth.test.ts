@@ -103,7 +103,7 @@ test("recovers TOTP and passkey through Rust with the existing wire format", asy
                     expect(request.method).toBe("POST");
                     expect(url.pathname).toBe("/users/two-factor/remove");
                     expect(await request.json()).toStrictEqual({
-                        sessionId: "recovery-session",
+                        sessionID: "recovery-session",
                         twoFactorType: factor,
                         secret,
                     });

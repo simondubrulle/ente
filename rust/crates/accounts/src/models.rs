@@ -343,6 +343,7 @@ pub struct TwoFactorRecoveryResponse {
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct RemoveTwoFactorRequest {
+    #[serde(rename = "sessionID")]
     pub session_id: String,
     pub secret: String,
     pub two_factor_type: TwoFactorType,
