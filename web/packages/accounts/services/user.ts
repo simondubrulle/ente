@@ -434,9 +434,6 @@ export const getRecoverTwoFactor = async (
     const response = TwoFactorRecoveryResponse.parse(
         await getTwoFactorRecovery(client, twoFactorType, sessionID),
     );
-    if (client !== (await getAccountsClient())) {
-        throw namedError("session_expired", "Server endpoint changed");
-    }
     return { client, response };
 };
 

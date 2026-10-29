@@ -908,9 +908,6 @@ class UserService {
         sessionId: sessionID,
         twoFactorType: type,
       );
-      if (client != _getAccountsClient()) {
-        throw const AccountsError.sessionExpired();
-      }
       await dialog.hide();
       if (!context.mounted) return;
       // ignore: unawaited_futures
