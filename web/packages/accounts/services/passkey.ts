@@ -15,7 +15,7 @@ import {
     publicRequestHeaders,
 } from "ente-base/http";
 import { apiURL } from "ente-base/origins";
-import { accountsNavigationURL } from "ente-base/safe-navigation";
+import { httpOrHTTPSURL } from "ente-base/safe-navigation";
 import { z } from "zod";
 import { unstashRedirect } from "./redirect";
 
@@ -37,7 +37,7 @@ export const passkeyVerificationRedirectURL = (
         redirect,
         ...recoverOption,
     });
-    const url = accountsNavigationURL(accountsURL);
+    const url = httpOrHTTPSURL(accountsURL);
     url.pathname = `${url.pathname.replace(/\/$/, "")}/passkeys/verify`;
     url.search = params.toString();
     url.hash = "";
@@ -55,7 +55,7 @@ export const openPasskeyVerificationURL = ({
     passkeySessionID,
     url,
 }: OpenPasskeyVerificationURLOptions) => {
-    const destination = accountsNavigationURL(url).href;
+    const destination = httpOrHTTPSURL(url).href;
 
     // The finish page ignores redirects whose session id does not match the
     // inflight value saved here.
@@ -83,7 +83,7 @@ export const openAccountsManagePasskeysPage = async (
         await getAccountsTokenAndURL();
     const params = new URLSearchParams({ token });
 
-    const url = accountsNavigationURL(accountsURL);
+    const url = httpOrHTTPSURL(accountsURL);
     url.pathname = `${url.pathname.replace(/\/$/, "")}/passkeys`;
     url.search = params.toString();
     url.hash = "";
