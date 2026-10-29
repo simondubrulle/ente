@@ -1,4 +1,4 @@
-import { buildEnvAccountsOrigin, isDevBuild } from "./env";
+import { buildEnvAccountsOrigin } from "./env";
 
 /** Parse an absolute server-supplied URL before using it as a destination. */
 export const trustedNavigationURL = (
@@ -23,9 +23,8 @@ export const trustedNavigationURL = (
 };
 
 /**
- * Trust the client build's Accounts origin, never an API-selected origin.
- * Both hosted origins are needed during the legacy passkey RP migration.
- * Local HTTP requires an explicit build override and a development build.
+ * Use the configured Accounts origin, or the hosted origins for current and
+ * legacy passkeys. Local HTTP is allowed only when explicitly configured.
  */
 export const accountsNavigationURL = (value: string): URL =>
     trustedNavigationURL(
@@ -33,5 +32,5 @@ export const accountsNavigationURL = (value: string): URL =>
         buildEnvAccountsOrigin
             ? [new URL(buildEnvAccountsOrigin).origin]
             : ["https://accounts.ente.com", "https://accounts.ente.io"],
-        isDevBuild && !!buildEnvAccountsOrigin,
+        !!buildEnvAccountsOrigin,
     );
