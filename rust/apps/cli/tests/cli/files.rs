@@ -693,6 +693,8 @@ fn file_lists_filter_and_sort_synced_metadata() {
         (vec!["--min-size", "0.5mb"], vec![2]),
         (vec!["--max-size", "5MB"], vec![1, 2, 4]),
         (vec!["--max-size", "1MB"], vec![1, 4]),
+        (vec!["--min-size", "1kb"], vec![1, 2, 4]),
+        (vec!["--max-size", "2KB"], vec![1, 4]),
         (vec!["--min-size", "1MB", "--max-size", "4MB"], vec![]),
         (vec!["--max-size", "1MB", "--sort", "created"], vec![4, 1]),
         (vec!["--sort", "created"], vec![3, 2, 4, 1]),
@@ -727,7 +729,7 @@ fn file_lists_filter_and_sort_synced_metadata() {
     assert!(lines.next().unwrap().starts_with("2 "));
     assert!(String::from_utf8_lossy(&output.stderr).contains("Showing first 1"));
     let output = success(home.run(&["--offline", "photos", "file", "view", "1"]));
-    assert!(String::from_utf8_lossy(&output.stdout).contains("1200 bytes"));
+    assert!(String::from_utf8_lossy(&output.stdout).contains("1.17 KB (1200 bytes)"));
 
     for args in [
         vec!["--since", "yesterday"],
@@ -736,7 +738,8 @@ fn file_lists_filter_and_sort_synced_metadata() {
         vec!["--type", "gif"],
         vec!["--sort", "name"],
         vec!["--reverse"],
-        vec!["--min-size", "100KB"],
+        vec!["--min-size", "100B"],
+        vec!["--max-size", "1TB"],
         vec!["--max-size", "0MB"],
     ] {
         let mut command = vec!["--offline", "photos", "file", "list"];

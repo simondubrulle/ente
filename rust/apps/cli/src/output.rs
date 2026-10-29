@@ -315,7 +315,7 @@ pub fn file(file: &FileView) -> Result<()> {
             "Size",
             file.size_bytes
                 .and_then(|bytes| i64::try_from(bytes).ok())
-                .map(storage_size),
+                .map(file_size),
         ),
         ("Hash", file.hash.as_deref().map(escape_controls)),
     ] {
@@ -366,11 +366,29 @@ pub fn admin_user(details: &UserDetails, as_json: bool) -> Result<()> {
 }
 
 pub fn storage_size(bytes: i64) -> String {
-    for (unit, divisor) in [
-        ("TB", 1024_i64.pow(4)),
-        ("GB", 1024_i64.pow(3)),
-        ("MB", 1024_i64.pow(2)),
-    ] {
+    scaled_size(
+        bytes,
+        &[
+            ("TB", 1024_i64.pow(4)),
+            ("GB", 1024_i64.pow(3)),
+            ("MB", 1024_i64.pow(2)),
+        ],
+    )
+}
+
+fn file_size(bytes: i64) -> String {
+    scaled_size(
+        bytes,
+        &[
+            ("GB", 1024_i64.pow(3)),
+            ("MB", 1024_i64.pow(2)),
+            ("KB", 1024_i64),
+        ],
+    )
+}
+
+fn scaled_size(bytes: i64, units: &[(&str, i64)]) -> String {
+    for &(unit, divisor) in units {
         if bytes >= divisor {
             let size = format!("{:.2}", bytes as f64 / divisor as f64);
             return format!(
