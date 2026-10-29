@@ -68,7 +68,8 @@ class UserService {
   final _logger = Logger((UserService).toString());
   final _config = Configuration.instance;
   late SharedPreferences _preferences;
-  ({String origin, AccountsClient client})? _accountsClient;
+  AccountsClient? _accountsClient;
+  String? _accountsClientOrigin;
   StreamSubscription<UserLoggedOutEvent>? _loggedOutEventSubscription;
   StreamSubscription<SignedInEvent>? _signedInEventSubscription;
 
@@ -877,7 +878,7 @@ class UserService {
 
   AccountsClient _getAccountsClient() {
     final origin = endpointConfig.endpoint;
-    if (_accountsClient?.origin != origin) {
+    if (_accountsClient == null || _accountsClientOrigin != origin) {
       final services = ServiceLocator.instance;
       final client = accounts.createAccountsClient(
         config: AccountsClientConfig(
@@ -889,9 +890,10 @@ class UserService {
                   as String,
         ),
       );
-      _accountsClient = (origin: origin, client: client);
+      _accountsClient = client;
+      _accountsClientOrigin = origin;
     }
-    return _accountsClient!.client;
+    return _accountsClient!;
   }
 
   Future<void> recoverTwoFactor(

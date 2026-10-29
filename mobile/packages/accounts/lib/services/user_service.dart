@@ -59,7 +59,8 @@ class UserService {
   late BaseConfiguration _config;
   late BaseHomePage _homePage;
   late CreateAccountsClient _createAccountsClient;
-  ({String origin, AccountsClient client})? _accountsClient;
+  AccountsClient? _accountsClient;
+  String? _accountsClientOrigin;
   InstallSourceHandler? _installSourceHandler;
 
   UserService._privateConstructor();
@@ -943,7 +944,7 @@ class UserService {
 
   AccountsClient _getAccountsClient() {
     final origin = _config.getHttpEndpoint();
-    if (_accountsClient?.origin != origin) {
+    if (_accountsClient == null || _accountsClientOrigin != origin) {
       final headers = _enteDio.options.headers;
       final client = _createAccountsClient(
         config: AccountsClientConfig(
@@ -953,9 +954,10 @@ class UserService {
           userAgent: headers[HttpHeaders.userAgentHeader] as String,
         ),
       );
-      _accountsClient = (origin: origin, client: client);
+      _accountsClient = client;
+      _accountsClientOrigin = origin;
     }
-    return _accountsClient!.client;
+    return _accountsClient!;
   }
 
   Future<void> recoverTwoFactor(
