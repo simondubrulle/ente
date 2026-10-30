@@ -33,8 +33,8 @@ use crate::{
 
 static IMAGE_DECODER_HOOKS_INIT: Once = Once::new();
 
-const MAX_DECODE_PIXELS: u64 = 64_000_000;
-const MAX_DECODE_ALLOC_BYTES: u64 = 384 * 1024 * 1024;
+const MAX_DECODE_PIXELS: u64 = 210_000_000;
+const MAX_DECODE_ALLOC_BYTES: u64 = 512 * 1024 * 1024;
 
 fn ensure_within_decode_pixel_cap(width: u32, height: u32) -> image::ImageResult<()> {
     if u64::from(width) * u64::from(height) > MAX_DECODE_PIXELS {
@@ -626,13 +626,19 @@ mod tests {
         ensure_within_decode_pixel_cap(20_000, 1_000).unwrap();
         ensure_within_decode_pixel_cap(8_064, 6_024).unwrap();
         ensure_within_decode_pixel_cap(8_000, 8_000).unwrap();
-        assert!(ensure_within_decode_pixel_cap(8_000, 8_001).is_err());
+        ensure_within_decode_pixel_cap(21_000, 10_000).unwrap();
+        assert!(ensure_within_decode_pixel_cap(21_000, 10_001).is_err());
         assert!(ensure_within_decode_pixel_cap(u32::MAX, u32::MAX).is_err());
     }
 
     #[test]
     fn rejects_images_exceeding_the_pixel_cap() {
-        let bytes = header_only_png(80_000, 1_000, ::png::ColorType::Rgb, ::png::BitDepth::Eight);
+        let bytes = header_only_png(
+            300_000,
+            1_000,
+            ::png::ColorType::Grayscale,
+            ::png::BitDepth::Eight,
+        );
 
         assert!(matches!(
             decode_image_from_bytes(&bytes),
@@ -643,8 +649,8 @@ mod tests {
     #[test]
     fn rejects_decoder_output_exceeding_the_alloc_cap() {
         let bytes = header_only_png(
-            8_000,
-            6_600,
+            9_000,
+            7_600,
             ::png::ColorType::Rgba,
             ::png::BitDepth::Sixteen,
         );
@@ -657,7 +663,7 @@ mod tests {
 
     #[test]
     fn rejects_tiffs_exceeding_the_pixel_cap() {
-        let bytes = header_only_gray_tiff(80_000, 1_000);
+        let bytes = header_only_gray_tiff(220_000, 1_000, 500);
 
         assert!(matches!(
             decode_tiff_from_bytes(&bytes),
@@ -671,7 +677,7 @@ mod tests {
 
     #[test]
     fn rejects_over_cap_tiff_output_as_too_large() {
-        let bytes = header_only_rgba16_tiff(8_000, 6_600);
+        let bytes = header_only_rgba16_tiff(9_000, 7_600);
 
         assert!(matches!(
             decode_tiff_from_bytes(&bytes),
@@ -685,7 +691,7 @@ mod tests {
 
     #[test]
     fn rejects_over_cap_planar_tiff_as_too_large() {
-        let bytes = planar_rgba16_header_only_tiff(8_000, 6_600);
+        let bytes = planar_rgba16_header_only_tiff(9_000, 7_600, 3_800);
 
         assert!(matches!(
             decode_image_from_bytes(&bytes),
@@ -709,19 +715,25 @@ mod tests {
         bytes
     }
 
-    fn header_only_gray_tiff(width: u32, height: u32) -> Vec<u8> {
+    fn header_only_gray_tiff(width: u32, height: u32, rows_per_strip: u32) -> Vec<u8> {
+        let strips = height / rows_per_strip;
+        let strip_bytes = width * rows_per_strip;
         let ifd_offset = 8u32;
-        let ifd_bytes = 2 + 7 * 12 + 4;
-        let strip_offset = ifd_offset + ifd_bytes as u32;
+        let ifd_bytes = 2 + 9 * 12 + 4;
+        let strip_offsets_offset = ifd_offset + ifd_bytes;
+        let strip_counts_offset = strip_offsets_offset + strips * 4;
+        let strip_offset = strip_counts_offset + strips * 4;
 
-        let entries: [(u16, u16, u32, u32); 7] = [
+        let entries: [(u16, u16, u32, u32); 9] = [
             (256, 4, 1, width),
             (257, 4, 1, height),
             (258, 3, 1, 8),
             (259, 3, 1, 1),
             (262, 3, 1, 1),
-            (273, 4, 1, strip_offset),
-            (279, 4, 1, width * height),
+            (273, 4, strips, strip_offsets_offset),
+            (277, 3, 1, 1),
+            (278, 4, 1, rows_per_strip),
+            (279, 4, strips, strip_counts_offset),
         ];
 
         let mut bytes = Vec::new();
@@ -736,6 +748,12 @@ mod tests {
             bytes.extend_from_slice(&value.to_le_bytes());
         }
         bytes.extend_from_slice(&0u32.to_le_bytes());
+        for strip in 0..strips {
+            bytes.extend_from_slice(&(strip_offset + strip * strip_bytes).to_le_bytes());
+        }
+        for _ in 0..strips {
+            bytes.extend_from_slice(&strip_bytes.to_le_bytes());
+        }
         bytes
     }
 
@@ -775,23 +793,27 @@ mod tests {
         bytes
     }
 
-    fn planar_rgba16_header_only_tiff(width: u32, height: u32) -> Vec<u8> {
+    fn planar_rgba16_header_only_tiff(width: u32, height: u32, rows_per_strip: u32) -> Vec<u8> {
+        let strips_per_plane = height / rows_per_strip;
+        let strips = 4 * strips_per_plane;
+        let strip_bytes = width * rows_per_strip * 2;
         let ifd_offset = 8u32;
-        let ifd_bytes = 2 + 10 * 12 + 4;
+        let ifd_bytes = 2 + 11 * 12 + 4;
         let bits_offset = ifd_offset + ifd_bytes;
         let strip_offsets_offset = bits_offset + 8;
-        let strip_counts_offset = strip_offsets_offset + 16;
-        let strip_offset = strip_counts_offset + 16;
+        let strip_counts_offset = strip_offsets_offset + strips * 4;
+        let strip_offset = strip_counts_offset + strips * 4;
 
-        let entries: [(u16, u16, u32, u32); 10] = [
+        let entries: [(u16, u16, u32, u32); 11] = [
             (256, 4, 1, width),
             (257, 4, 1, height),
             (258, 3, 4, bits_offset),
             (259, 3, 1, 1),
             (262, 3, 1, 2),
-            (273, 4, 4, strip_offsets_offset),
+            (273, 4, strips, strip_offsets_offset),
             (277, 3, 1, 4),
-            (279, 4, 4, strip_counts_offset),
+            (278, 4, 1, rows_per_strip),
+            (279, 4, strips, strip_counts_offset),
             (284, 3, 1, 2),
             (338, 3, 1, 0),
         ];
@@ -811,12 +833,11 @@ mod tests {
         for _ in 0..4 {
             bytes.extend_from_slice(&16u16.to_le_bytes());
         }
-        for _ in 0..4 {
-            bytes.extend_from_slice(&strip_offset.to_le_bytes());
+        for strip in 0..strips {
+            bytes.extend_from_slice(&(strip_offset + strip * strip_bytes).to_le_bytes());
         }
-        let plane_bytes = width * height * 2;
-        for _ in 0..4 {
-            bytes.extend_from_slice(&plane_bytes.to_le_bytes());
+        for _ in 0..strips {
+            bytes.extend_from_slice(&strip_bytes.to_le_bytes());
         }
         bytes
     }
