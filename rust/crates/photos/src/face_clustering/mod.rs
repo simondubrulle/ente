@@ -104,7 +104,16 @@ pub(crate) fn new_cluster_id() -> String {
     format!("{CLUSTER_ID_PREFIX}{suffix}")
 }
 
-fn distance(a: &[f32], b: &[f32]) -> f64 {
+pub(crate) fn normalized_mean(embeddings: &[Vec<f32>]) -> Option<Vec<f32>> {
+    let (first, rest) = embeddings.split_first()?;
+    let mut sum = first.clone();
+    for embedding in rest {
+        add_scaled(&mut sum, embedding, 1.0);
+    }
+    Some(normalized(scaled(sum, 1.0 / embeddings.len() as f64)))
+}
+
+pub(crate) fn distance(a: &[f32], b: &[f32]) -> f64 {
     1.0 - dot(a, b)
 }
 
@@ -180,7 +189,7 @@ mod tests {
 
     use super::{
         CLUSTER_ID_LENGTH, CLUSTER_ID_PREFIX, Clustering, Face, IncrementalFace, dot,
-        new_cluster_id, newest_first, recluster,
+        new_cluster_id, newest_first, normalized_mean, recluster,
     };
 
     pub(super) fn direction(degrees: f32) -> Vec<f32> {
@@ -297,6 +306,17 @@ mod tests {
         let tiny = f32::EPSILON / 4.0;
         let a = [1.0, tiny, 0.0, 0.0, tiny, 0.0, 0.0, 0.0];
         assert_eq!(dot(&a, &[1.0; 8]), 1.0 + f64::from(tiny));
+    }
+
+    #[test]
+    fn normalized_mean_averages_then_scales_to_unit_length() {
+        let mean = normalized_mean(&[vec![3.0, 0.0], vec![0.0, 4.0], vec![3.0, 4.0]]).unwrap();
+        assert_close(&mean, &[0.6, 0.8]);
+    }
+
+    #[test]
+    fn normalized_mean_of_no_embeddings_is_none() {
+        assert_eq!(normalized_mean(&[]), None);
     }
 
     #[test]

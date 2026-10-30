@@ -122,6 +122,26 @@ ente photos file list --country JP --type video
 
 The first time you use places, the CLI downloads about 7 MB of location data from Ente (`assets.ente.com`) and keeps it with the account's local data. After that, places work with `--offline`. The location data is adapted from [GeoNames](https://www.geonames.org/) and the European Commission Joint Research Centre's [GHS-UCDB R2024A](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), both under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and from [Natural Earth](https://www.naturalearthdata.com/), which is in the public domain.
 
+## Check storage and file count
+
+```sh
+ente photos usage
+```
+
+```
+Email   alice@example.com
+Total   20 GB
+Used    3.61 GB
+Free    16.39 GB
+Plan    10 GB
+Status  active
+Bonus   10 GB
+Files   339
+Family  none
+```
+
+`Total` is the plan plus bonuses such as referrals, `Used` and `Files` are what Photos holds, and `Status` says whether the plan is active or expired. In a family the plan and total are the family admin's, and `Family` lists its members, followed by the shared totals and your own limit when the admin has set one.
+
 ## Read as JSON
 
 Lists return arrays and `view` returns one object. IDs are strings; timestamps are RFC 3339 strings in UTC.
@@ -133,11 +153,12 @@ Lists return arrays and `view` returns one object. IDs are strings; timestamps a
 | `file download`            | `id`, `output`, `bytes`                                                                                                                                                                                                                                                          |
 | `place list`               | `name`, `country`, `countryCode`, `latitude` and `longitude` (the city's position), `fileCount`                                                                                                                                                                                  |
 | `place list --countries`   | `name`, `code`, `fileCount`                                                                                                                                                                                                                                                      |
+| `usage`                    | `email`, `planExpiresAt`, `planActive`, `totalBytes`, `usedBytes`, `freeBytes`, `planBytes`, `bonusBytes`; nullable `files`, `family` (`usedBytes`, `storageBytes`, `members`: `email`, `status`, `admin`, `usedBytes`, `storageLimitBytes`)                                     |
 | `export`                   | See [Automation](./automation.md#export-summary)                                                                                                                                                                                                                                 |
 
 ## Read offline
 
-`album list`, `album view`, `file list`, `file view` and `place list` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Places also need the location data that an earlier online `place list`, `--place` or `--country` downloaded. Export and download need the network.
+`album list`, `album view`, `file list`, `file view` and `place list` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Places also need the location data that an earlier online `place list`, `--place` or `--country` downloaded. Export, download and usage need the network.
 
 ## Limits
 
