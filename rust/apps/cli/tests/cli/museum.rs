@@ -959,7 +959,7 @@ pub(super) async fn create_account(origin: &str, email: &str) -> AuthenticatedAc
     let client =
         AccountsClient::new(AccountsClientConfig::new("io.ente.photos").with_origin(origin))
             .unwrap();
-    client.send_otp(email, "signup").await.unwrap();
+    client.send_otp(email, "signup", false).await.unwrap();
     let response = client
         .verify_email(email, HARDCODED_OTT, Some("testAccount"))
         .await
