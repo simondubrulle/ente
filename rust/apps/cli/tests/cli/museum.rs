@@ -394,6 +394,250 @@ fn file_lists_filter_and_sort_server_metadata() -> TestResult {
     })
 }
 
+#[test]
+fn places_group_files_by_city_and_country() -> TestResult {
+    Museum::run_async(|origin| async move {
+        let email = format!("places-{}@example.org", Uuid::new_v4());
+        let account = create_account(&origin, &email).await;
+        let home = TestHome::new();
+        login(&home, "photos", &email, &["--host", &origin]);
+        let (trips, trips_key) = create_album(&origin, &account, "Trips", "album").await;
+        let (family, family_key) = create_album(&origin, &account, "Family", "album").await;
+        let mut uploaded = Vec::new();
+        for (album, key, title, location) in [
+            (trips, &trips_key, "Tram.jpg", Some((38.7223, -9.1393))),
+            (trips, &trips_key, "Square.jpg", Some((38.7253, -9.1500))),
+            (trips, &trips_key, "Bridge.jpg", Some((41.1496, -8.6110))),
+            (family, &family_key, "Canal.jpg", Some((52.3731, 4.8922))),
+            (family, &family_key, "Ocean.jpg", Some((30.0, -40.0))),
+            (family, &family_key, "Home.jpg", None),
+            (
+                family,
+                &family_key,
+                "Promenade.jpg",
+                Some((43.7102, 7.2620)),
+            ),
+            (trips, &trips_key, "Gondola.jpg", Some((45.4408, 12.3155))),
+            (family, &family_key, "Market.jpg", Some((6.6018, 3.3515))),
+            (trips, &trips_key, "Bus.jpg", Some((51.5074, -0.1278))),
+        ] {
+            let created = 1_700_000_000_000_000i64 + uploaded.len() as i64 * 10_000_000_000_000;
+            let mut metadata = json!({"title": title, "fileType": 0, "creationTime": created});
+            if let Some((latitude, longitude)) = location {
+                metadata["latitude"] = json!(latitude);
+                metadata["longitude"] = json!(longitude);
+            }
+            uploaded.push(upload_fixture(&origin, &account, album, key, &[1; 100], metadata).await);
+        }
+        let Ok(
+            [
+                (tram, _),
+                (square, _),
+                (bridge, _),
+                (canal, canal_key),
+                _,
+                (unplaced, unplaced_key),
+                (promenade, _),
+                (gondola, _),
+                (market, _),
+                (bus, _),
+            ],
+        ) = <[(i64, Key); 10]>::try_from(uploaded)
+        else {
+            unreachable!()
+        };
+
+        home.json(&["photos", "file", "list"]);
+        assert!(
+            failure(&home.run(&["--offline", "photos", "place", "list"]))
+                .contains("location data has not been downloaded; run the command online first")
+        );
+
+        let output = success(home.run(&["photos", "place", "list"]));
+        assert!(String::from_utf8_lossy(&output.stderr).contains("Downloading location data."));
+        let table = String::from_utf8(output.stdout).unwrap();
+        let rows = table
+            .lines()
+            .map(|line| line.split_whitespace().collect::<Vec<_>>())
+            .collect::<Vec<_>>();
+        assert_eq!(rows[0], ["CITY", "COUNTRY", "FILES"]);
+        assert_eq!(rows[1], ["Lisbon", "Portugal", "2"]);
+        assert_eq!(rows.len(), 8, "{table}");
+
+        let amsterdam = json!({"name": "Amsterdam", "country": "The Netherlands", "countryCode": "NL",
+            "latitude": 52.37403, "longitude": 4.88969, "fileCount": 1});
+        let lagos = json!({"name": "Lagos", "country": "Nigeria", "countryCode": "NG",
+            "latitude": 6.45407, "longitude": 3.39467, "fileCount": 1});
+        let nice = json!({"name": "Nice", "country": "France", "countryCode": "FR",
+            "latitude": 43.70313, "longitude": 7.26608, "fileCount": 1});
+        assert_eq!(
+            home.json(&["photos", "place", "list"]),
+            json!([
+                {"name": "Lisbon", "country": "Portugal", "countryCode": "PT",
+                    "latitude": 38.72509, "longitude": -9.1498, "fileCount": 2},
+                amsterdam,
+                lagos,
+                {"name": "London", "country": "United Kingdom", "countryCode": "GB",
+                    "latitude": 51.50853, "longitude": -0.12574, "fileCount": 1},
+                nice,
+                {"name": "Porto", "country": "Portugal", "countryCode": "PT",
+                    "latitude": 41.1485, "longitude": -8.61097, "fileCount": 1},
+                {"name": "Venice", "country": "Italy", "countryCode": "IT",
+                    "latitude": 45.43713, "longitude": 12.33265, "fileCount": 1},
+            ])
+        );
+        assert_eq!(
+            home.json(&["photos", "place", "list", "--album", "Family"]),
+            json!([amsterdam, lagos, nice])
+        );
+        let countries = home.json(&["photos", "place", "list", "--countries"]);
+        assert_eq!(
+            countries,
+            json!([
+                {"name": "Portugal", "code": "PT", "fileCount": 3},
+                {"name": "France", "code": "FR", "fileCount": 1},
+                {"name": "Nigeria", "code": "NG", "fileCount": 1},
+                {"name": "The Netherlands", "code": "NL", "fileCount": 1},
+                {"name": "United Kingdom", "code": "GB", "fileCount": 1},
+            ])
+        );
+        assert_eq!(
+            home.json(&["--offline", "photos", "place", "list", "--countries"]),
+            countries
+        );
+        for (args, first) in [(vec![], "Lisbon"), (vec!["--countries"], "Portugal")] {
+            let mut command = vec!["photos", "place", "list", "--limit", "1", "--json"];
+            command.extend(args);
+            let output = success(home.run(&command));
+            let listed: Value = serde_json::from_slice(&output.stdout).unwrap();
+            assert_eq!(listed.as_array().unwrap().len(), 1);
+            assert_eq!(listed[0]["name"], first);
+            assert!(String::from_utf8_lossy(&output.stderr).contains("Showing first 1 results"));
+        }
+        assert_eq!(
+            home.json(&["photos", "place", "list", "--all"])
+                .as_array()
+                .unwrap()
+                .len(),
+            7
+        );
+
+        let ids = |args: &[&str]| {
+            let mut command = vec!["photos", "file", "list"];
+            command.extend(args);
+            home.json(&command)
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|file| file["id"].as_str().unwrap().parse::<i64>().unwrap())
+                .collect::<Vec<_>>()
+        };
+        for (args, expected) in [
+            (
+                vec!["--place", "LISB", "--sort", "created"],
+                vec![square, tram],
+            ),
+            (
+                vec!["--place", "lísbon", "--sort", "created"],
+                vec![square, tram],
+            ),
+            (vec!["--place", "porto"], vec![bridge]),
+            (vec!["--place", "nice"], vec![promenade]),
+            (
+                vec!["--place", "ice", "--sort", "created"],
+                vec![gondola, promenade],
+            ),
+            (vec!["--album", "Trips", "--place", "nice"], vec![gondola]),
+            (
+                vec!["--country", "portugal", "--sort", "created"],
+                vec![bridge, square, tram],
+            ),
+            (vec!["--country", "nether"], vec![canal]),
+            (
+                vec!["--country", "pt", "--sort", "created"],
+                vec![bridge, square, tram],
+            ),
+            (vec!["--country", "NL"], vec![canal]),
+            (vec!["--country", "uk"], vec![bus]),
+            (vec!["--country", "GB"], vec![bus]),
+            (vec!["--country", "niger"], vec![]),
+            (vec!["--country", "nige"], vec![market]),
+            (
+                vec!["--place", "lisbon", "--country", "netherlands"],
+                vec![],
+            ),
+            (vec!["--album", "Family", "--place", "lisbon"], vec![]),
+            (vec!["--place", "lisbon", "--no-location"], vec![]),
+        ] {
+            assert_eq!(ids(&args), expected, "{args:?}");
+        }
+        let output = success(home.run(&[
+            "--offline",
+            "photos",
+            "file",
+            "list",
+            "--place",
+            "amsterdam",
+            "--json",
+        ]));
+        assert!(output.stderr.is_empty());
+        let offline: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(offline.as_array().unwrap().len(), 1);
+        assert_eq!(offline[0]["id"], json!(canal.to_string()));
+        assert!(
+            failure(&home.run(&["photos", "file", "list", "--country", "xx"]))
+                .contains("no country has the code \"xx\"")
+        );
+
+        export::edit_file(
+            &origin,
+            &account,
+            unplaced,
+            &unplaced_key,
+            1,
+            json!({"editedTime": i64::MAX}),
+        )
+        .await;
+        assert!(
+            failure(&home.run(&["photos", "file", "list"])).contains("file results are incomplete")
+        );
+        assert_eq!(ids(&["--search", "Tram"]), [tram]);
+        assert_eq!(
+            ids(&["--place", "lisbon", "--sort", "created"]),
+            [square, tram]
+        );
+        assert_eq!(
+            ids(&["--country", "pt", "--sort", "created"]),
+            [bridge, square, tram]
+        );
+
+        export::edit_file(
+            &origin,
+            &account,
+            canal,
+            &canal_key,
+            1,
+            json!({"editedName": 42}),
+        )
+        .await;
+        let output = home.run(&["photos", "place", "list", "--json"]);
+        let error = failure(&output);
+        assert!(error.contains(&format!("file {canal}:")), "{error}");
+        assert!(error.contains("place results are incomplete"), "{error}");
+        let partial: Value = serde_json::from_slice(&output.stdout).unwrap();
+        assert_eq!(
+            partial
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|city| city["name"].as_str().unwrap())
+                .collect::<Vec<_>>(),
+            ["Lisbon", "Lagos", "London", "Nice", "Porto", "Venice"]
+        );
+        Ok(())
+    })
+}
+
 async fn exercise(origin: String) -> TestResult {
     let alice_email = format!("alice-{}@example.org", Uuid::new_v4());
     let bob_email = format!("bob-{}@example.org", Uuid::new_v4());

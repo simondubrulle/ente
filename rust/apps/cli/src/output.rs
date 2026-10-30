@@ -4,6 +4,7 @@ use anyhow::{Context, Result, bail};
 use chrono::{DateTime, SecondsFormat};
 use dialoguer::console::{Alignment, measure_text_width, pad_str};
 use ente_accounts::admin::{Subscription, User, UserDetails};
+use ente_location::{CityMatch, CountryGroup};
 use ente_photos::{
     collections::{Collection, Visibility},
     files::File,
@@ -125,6 +126,48 @@ impl FileView {
             size_bytes: file.size,
             visibility: file.visibility.map(Visibility::name),
         })
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CityView {
+    name: String,
+    country: String,
+    country_code: String,
+    latitude: f32,
+    longitude: f32,
+    file_count: usize,
+}
+
+impl From<CityMatch> for CityView {
+    fn from(group: CityMatch) -> Self {
+        Self {
+            name: group.city.name,
+            country: group.city.country_name,
+            country_code: group.city.country_code.to_string(),
+            latitude: group.city.latitude as f32,
+            longitude: group.city.longitude as f32,
+            file_count: group.coordinate_indices.len(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryView {
+    name: String,
+    code: String,
+    file_count: usize,
+}
+
+impl CountryView {
+    pub fn new(name: &str, group: &CountryGroup) -> Self {
+        Self {
+            name: name.to_owned(),
+            code: group.country.to_string(),
+            file_count: group.coordinate_indices.len(),
+        }
     }
 }
 
@@ -275,6 +318,48 @@ pub fn files(
                     .map(|bytes| bytes.to_string())
                     .unwrap_or_default(),
                 file.album_ids.join(","),
+            ]
+        },
+    )
+}
+
+pub fn cities(
+    cities: impl Iterator<Item = CityView>,
+    args: &ListArgs,
+    as_json: bool,
+) -> Result<()> {
+    list(
+        cities.map(Ok),
+        args,
+        as_json,
+        ["CITY", "COUNTRY", "FILES"],
+        "No places.",
+        |city| {
+            [
+                escape_controls(&city.name),
+                escape_controls(&city.country),
+                city.file_count.to_string(),
+            ]
+        },
+    )
+}
+
+pub fn countries(
+    countries: impl Iterator<Item = CountryView>,
+    args: &ListArgs,
+    as_json: bool,
+) -> Result<()> {
+    list(
+        countries.map(Ok),
+        args,
+        as_json,
+        ["COUNTRY", "CODE", "FILES"],
+        "No places.",
+        |country| {
+            [
+                escape_controls(&country.name),
+                country.code,
+                country.file_count.to_string(),
             ]
         },
     )
