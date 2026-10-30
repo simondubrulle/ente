@@ -1,1 +1,0 @@
-- Fixed missing spaces before numbers, currency amounts and some non-English words in voice transcripts.
