@@ -5,6 +5,7 @@ use ort::{
     session::{Session, SessionOutputs, builder::GraphOptimizationLevel},
     value::{DynValue, TensorRef},
 };
+use regex::{Captures, regex};
 
 use super::{Result, TranscriptionError};
 
@@ -230,11 +231,11 @@ fn render(emissions: &[Emission], vocabulary: &[String]) -> Transcript {
             word.end = end;
         }
     }
-    transcript.text = transcript
-        .text
-        .split_whitespace()
-        .collect::<Vec<_>>()
-        .join(" ");
+    transcript.text = regex!(r"\A\s|\s\B|(\s)\b")
+        .replace_all(&transcript.text, |captures: &Captures<'_>| {
+            if captures.get(1).is_some() { " " } else { "" }
+        })
+        .into_owned();
     for word in &mut transcript.words {
         word.start = (word.start - 0.25).max(0.0);
         word.end = (word.end - 0.25).max(0.0);
@@ -328,5 +329,32 @@ mod tests {
         assert_eq!(continuation.words.len(), 1);
         assert_eq!(continuation.words[0].text, "Hello世界!");
         assert_eq!(continuation.words[0].end, 7.0 * FRAME_SECONDS + 0.05 - 0.25);
+    }
+
+    #[test]
+    fn text_drops_spaces_before_non_word_tokens_without_changing_words() {
+        let vocabulary = vec![
+            "▁cost".into(),
+            "▁$".into(),
+            "5".into(),
+            "▁".into(),
+            ",".into(),
+            "▁¿".into(),
+            "qué".into(),
+        ];
+        let emissions: Vec<_> = (0..vocabulary.len())
+            .map(|token| Emission {
+                token,
+                frame: token,
+            })
+            .collect();
+        let transcript = render(&emissions, &vocabulary);
+        assert_eq!(transcript.text, "cost$5,¿qué");
+        let words: Vec<_> = transcript
+            .words
+            .iter()
+            .map(|word| word.text.as_str())
+            .collect();
+        assert_eq!(words, ["cost", "$5,", "¿qué"]);
     }
 }
