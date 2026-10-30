@@ -425,6 +425,16 @@ impl MlStore {
         Ok(self.inner.distances_to_person_averages(&requests)?)
     }
 
+    pub fn max_similarities_to_persons(
+        &self,
+        cluster_id: String,
+        person_ids: Vec<String>,
+    ) -> Result<HashMap<String, f64>, MlDbError> {
+        Ok(self
+            .inner
+            .max_similarities_to_persons(&cluster_id, &person_ids.into_iter().collect())?)
+    }
+
     pub fn clear_all(&self) -> Result<(), MlDbError> {
         Ok(self.inner.clear_all()?)
     }

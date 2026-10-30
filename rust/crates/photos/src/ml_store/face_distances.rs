@@ -7,7 +7,7 @@ use ente_core::crypto::random_bytes;
 use super::clustering::clusterable_embedding;
 use super::fill::decode_centroid;
 use super::{MlStore, Result};
-use crate::face_clustering::{distance, weighted_sum};
+use crate::face_clustering::{distance, dot, weighted_sum};
 
 const SAMPLE_OFFSET_BYTES: usize = size_of::<u64>();
 
@@ -111,6 +111,35 @@ impl MlStore {
             );
         }
         Ok(distances)
+    }
+
+    pub fn max_similarities_to_persons(
+        &self,
+        cluster_id: &str,
+        person_ids: &HashSet<String>,
+    ) -> Result<HashMap<String, f64>> {
+        let Some(average) = self
+            .cluster_centroids(&[cluster_id.to_owned()])?
+            .remove(cluster_id)
+        else {
+            return Ok(HashMap::new());
+        };
+        let mut cluster_to_person = self.db.get_cluster_id_to_person_id()?;
+        cluster_to_person.retain(|_, person_id| person_ids.contains(person_id));
+        let cluster_ids: Vec<String> = cluster_to_person.keys().cloned().collect();
+        let centroids = self.cluster_centroids(&cluster_ids)?;
+        let mut similarities: HashMap<String, f64> = HashMap::new();
+        for (cluster_id, person_id) in cluster_to_person {
+            let Some(centroid) = centroids.get(&cluster_id) else {
+                continue;
+            };
+            let similarity = dot(&average, centroid);
+            similarities
+                .entry(person_id)
+                .and_modify(|best| *best = best.max(similarity))
+                .or_insert(similarity);
+        }
+        Ok(similarities)
     }
 
     fn sample_embeddings(
@@ -322,6 +351,25 @@ mod tests {
             .collect()
     }
 
+    fn similarities(
+        store: &MlStore,
+        cluster_id: &str,
+        person_ids: &[&str],
+    ) -> HashMap<String, f64> {
+        let person_ids = person_ids.iter().map(ToString::to_string).collect();
+        store
+            .max_similarities_to_persons(cluster_id, &person_ids)
+            .unwrap()
+    }
+
+    fn assert_similarities(actual: &HashMap<String, f64>, expected: &[(&str, f64)]) {
+        assert_eq!(actual.len(), expected.len());
+        for (person_id, expected) in expected {
+            let actual = actual[*person_id];
+            assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+        }
+    }
+
     #[test]
     fn median_distance_is_the_upper_middle_of_all_pairwise_distances() {
         let person = vectors(&[0.0]);
@@ -522,5 +570,66 @@ mod tests {
         assert!(result[2].is_none());
         assert_eq!(result[3], Some(Vec::new()));
         assert!(result[4].is_none());
+    }
+
+    #[test]
+    fn similarity_is_the_closest_cluster_of_each_requested_person() {
+        let (_directory, store) = open();
+        put_summaries(
+            &store,
+            &[
+                ("seed", 0.0, 1),
+                ("far", 60.0, 1),
+                ("near", 30.0, 1),
+                ("right_angle", 90.0, 1),
+                ("unrequested", 10.0, 1),
+            ],
+        );
+        assign_to_person(&store, "closest_second", &["far", "near"]);
+        assign_to_person(&store, "other", &["right_angle"]);
+        assign_to_person(&store, "not_requested", &["unrequested"]);
+
+        let result = similarities(&store, "seed", &["closest_second", "other", "no_clusters"]);
+
+        let expected = [
+            ("closest_second", 30.0_f64.to_radians().cos()),
+            ("other", 0.0),
+        ];
+        assert_similarities(&result, &expected);
+    }
+
+    #[test]
+    fn similarity_includes_the_cluster_itself_when_a_requested_person_owns_it() {
+        let (_directory, store) = open();
+        put_summaries(&store, &[("seed", 0.0, 1), ("other", 90.0, 1)]);
+        assign_to_person(&store, "person", &["seed", "other"]);
+
+        let result = similarities(&store, "seed", &["person"]);
+
+        assert_similarities(&result, &[("person", 1.0)]);
+    }
+
+    #[test]
+    fn similarities_are_empty_without_a_usable_average_for_the_cluster() {
+        let (_directory, store) = open();
+        put_summaries(&store, &[("a", 0.0, 1)]);
+        put_unusable_summary(&store, "unusable");
+        assign_to_person(&store, "person", &["a"]);
+
+        assert!(similarities(&store, "missing", &["person"]).is_empty());
+        assert!(similarities(&store, "unusable", &["person"]).is_empty());
+    }
+
+    #[test]
+    fn similarity_skips_person_clusters_without_a_usable_average() {
+        let (_directory, store) = open();
+        put_summaries(&store, &[("seed", 0.0, 1), ("usable", 60.0, 1)]);
+        put_unusable_summary(&store, "unusable");
+        assign_to_person(&store, "person", &["no_summary", "unusable", "usable"]);
+        assign_to_person(&store, "unusable_only", &["no_summary", "unusable"]);
+
+        let result = similarities(&store, "seed", &["person", "unusable_only"]);
+
+        assert_similarities(&result, &[("person", 0.5)]);
     }
 }

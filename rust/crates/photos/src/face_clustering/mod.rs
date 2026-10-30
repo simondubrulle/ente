@@ -126,7 +126,7 @@ pub(crate) fn distance(a: &[f32], b: &[f32]) -> f64 {
     1.0 - dot(a, b)
 }
 
-fn dot(a: &[f32], b: &[f32]) -> f64 {
+pub(crate) fn dot(a: &[f32], b: &[f32]) -> f64 {
     debug_assert_eq!(a.len(), b.len());
     let (a_chunks, a_rest) = a.as_chunks::<SIMD_LANES>();
     let (b_chunks, b_rest) = b.as_chunks::<SIMD_LANES>();

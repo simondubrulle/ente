@@ -26,4 +26,9 @@ abstract class FaceDistances {
   Stream<List<(String, double)>?> distancesToPersons(
     List<(String, List<String>)> personFaces,
   );
+
+  Future<Map<String, double>> maxSimilaritiesToPersons(
+    String clusterID,
+    Set<String> personIDs,
+  );
 }
