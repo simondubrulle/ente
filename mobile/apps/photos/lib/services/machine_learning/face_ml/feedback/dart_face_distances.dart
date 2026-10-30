@@ -1,4 +1,4 @@
-import "dart:math" show Random;
+import "dart:math" show Random, max;
 
 import "package:ente_pure_utils/ente_pure_utils.dart";
 import "package:flutter/foundation.dart";
@@ -221,6 +221,48 @@ class DartFaceDistances implements FaceDistances {
           (entry.key, 1 - personAvg.dot(entry.value)),
       ];
     }
+  }
+
+  @override
+  Future<Map<String, double>> maxSimilaritiesToPersons(
+    String clusterID,
+    Set<String> personIDs,
+  ) async {
+    final allClusterSummary = await _mlDataDB.getAllClusterSummary();
+    final clusterEmbeddingData = allClusterSummary[clusterID]?.$1;
+    if (clusterEmbeddingData == null) {
+      return {};
+    }
+    final Vector clusterEmbedding = Vector.fromList(
+      EVector.fromBuffer(clusterEmbeddingData).values,
+      dtype: DType.float32,
+    );
+
+    final clusterToPerson = await _mlDataDB.getClusterIDToPersonID();
+    clusterToPerson.removeWhere((_, personID) => !personIDs.contains(personID));
+    allClusterSummary.removeWhere(
+      (key, value) => !clusterToPerson.containsKey(key),
+    );
+    final Map<String, Vector> allClusterEmbeddings = allClusterSummary.map(
+      (key, value) => MapEntry(
+        key,
+        Vector.fromList(
+          EVector.fromBuffer(value.$1).values,
+          dtype: DType.float32,
+        ),
+      ),
+    );
+
+    final Map<String, double> personToMaxSimilarity = {};
+    for (final entry in allClusterEmbeddings.entries) {
+      final personID = clusterToPerson[entry.key]!;
+      final similarity = clusterEmbedding.dot(entry.value);
+      personToMaxSimilarity[personID] = max(
+        personToMaxSimilarity[personID] ?? double.negativeInfinity,
+        similarity,
+      );
+    }
+    return personToMaxSimilarity;
   }
 
   Future<Vector?> _getPersonAvg(String personID) async {

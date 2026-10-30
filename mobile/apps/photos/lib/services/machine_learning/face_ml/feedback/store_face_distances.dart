@@ -75,6 +75,17 @@ class StoreFaceDistances implements FaceDistances {
     }
   }
 
+  @override
+  Future<Map<String, double>> maxSimilaritiesToPersons(
+    String clusterID,
+    Set<String> personIDs,
+  ) async {
+    return (await _mlDataDB.store).maxSimilaritiesToPersons(
+      clusterId: clusterID,
+      personIds: personIDs.toList(growable: false),
+    );
+  }
+
   Future<List<List<(String, double)>>> _suggestByMedian(
     List<rust.MedianQuery> queries, {
     required int sampleSize,
