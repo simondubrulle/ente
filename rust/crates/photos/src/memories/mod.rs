@@ -1,21 +1,30 @@
 mod calendar;
 mod filler;
+mod geo;
 mod input;
 mod on_this_day;
 mod output;
 mod photo;
+mod places;
 mod rng;
 mod selector;
 mod time;
+mod trips;
 
 use std::collections::HashSet;
 
 pub use calendar::LocalDate;
-pub use input::{MemoriesRequest, MemoryFile, Period, PhotoSignals};
-pub use output::{Memory, MemoryKind, TimeMemory};
+pub use input::{
+    CachedTrip, CityLookup, MemoriesRequest, MemoryFile, Period, PhotoSignals, ShownTrip,
+};
+pub use output::{
+    BaseLocation, BaseMemory, Memory, MemoryKind, SmartMemories, TimeMemory, TripMemory,
+};
 
 use photo::Photo;
+use places::Places;
 use selector::Selector;
+use trips::TripHistory;
 
 const UPDATE_FREQUENCY_DAYS: i64 = 3;
 const MAX_MEMORY_ITEMS: usize = 100;
@@ -25,16 +34,35 @@ pub fn compute_smart_memories(
     request: &MemoriesRequest,
     periods: &[Period],
     signals: Option<&dyn PhotoSignals>,
-) -> Vec<Vec<Memory>> {
+    cities: Option<&dyn CityLookup>,
+) -> SmartMemories {
     let photos = photo::prepare(&request.files);
     let excluded_collection_ids: HashSet<i64> =
         request.excluded_collection_ids.iter().copied().collect();
+    let located = geo::located(&photos);
+    let places = Places::new(&located, cities);
+    let analysis = periods
+        .first()
+        .map(|period| trips::analyze(&located, period.now, &places));
+    let mut trip_history = TripHistory::new(&request.shown_trips, &request.cached_trips);
     let mut selector = Selector::new(signals, request.seed);
-    periods
+    let periods = periods
         .iter()
         .map(|&period| {
             let mut memories =
                 on_this_day::memories(&photos, period, &excluded_collection_ids, &mut selector);
+            if let Some(analysis) = &analysis {
+                let trip_memories = trips::memories(
+                    analysis,
+                    &trip_history,
+                    period,
+                    request,
+                    &places,
+                    &mut selector,
+                );
+                trip_history.record(&trip_memories);
+                memories.extend(trip_memories);
+            }
             let time_memories = time::memories(
                 &unused_photos(&photos, &memories),
                 &photos,
@@ -46,7 +74,24 @@ pub fn compute_smart_memories(
             memories.extend(filler_memories);
             memories
         })
-        .collect()
+        .collect();
+    let base_locations = analysis
+        .map(|analysis| {
+            analysis
+                .bases
+                .into_iter()
+                .map(|base| BaseLocation {
+                    file_ids: base.members.iter().map(|member| member.photo.id).collect(),
+                    location: base.location,
+                    is_current: base.is_current,
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+    SmartMemories {
+        periods,
+        base_locations,
+    }
 }
 
 pub fn compute_simple_memories(request: &MemoriesRequest, period: Period) -> Vec<Memory> {
@@ -82,6 +127,7 @@ fn unused_photos<'p>(
 #[cfg(test)]
 mod tests {
     use ente_exif::DateTime;
+    use ente_location::Coordinate;
 
     use super::{
         MemoriesRequest, Memory, MemoryFile, MemoryKind, Period, TimeMemory,
@@ -101,6 +147,19 @@ mod tests {
             local_date_time: None,
             utc_offset_seconds: 0,
             collection_id: None,
+            location: None,
+        }
+    }
+
+    pub(super) fn located_file(
+        id: i64,
+        creation_time: i64,
+        (latitude, longitude): (f64, f64),
+    ) -> MemoryFile {
+        MemoryFile {
+            creation_time,
+            location: Some(Coordinate::new(latitude, longitude)),
+            ..file(id, "1970-01-01T00:00:00")
         }
     }
 
@@ -124,7 +183,7 @@ mod tests {
     }
 
     fn kinds(memories: &[Memory]) -> Vec<MemoryKind> {
-        memories.iter().map(|memory| memory.kind).collect()
+        memories.iter().map(|memory| memory.kind.clone()).collect()
     }
 
     fn library() -> Vec<MemoryFile> {
@@ -145,8 +204,8 @@ mod tests {
     fn request() -> MemoriesRequest {
         MemoriesRequest {
             files: library(),
-            excluded_collection_ids: Vec::new(),
             seed: 3,
+            ..MemoriesRequest::default()
         }
     }
 
@@ -156,7 +215,9 @@ mod tests {
             &request(),
             &[period("2026-10-30T09:00:00"), period("2026-11-02T09:00:00")],
             None,
-        );
+            None,
+        )
+        .periods;
 
         let current = &periods[0];
         assert_eq!(
@@ -218,8 +279,7 @@ mod tests {
                     )
                 })
                 .collect(),
-            excluded_collection_ids: Vec::new(),
-            seed: 0,
+            ..MemoriesRequest::default()
         };
 
         let memories = compute_simple_memories(&request, period("2026-10-28T09:00:00"));

@@ -305,7 +305,7 @@ mod tests {
 
         let memories = time_memories(&files, "2026-10-29T09:00:00");
 
-        let kinds: Vec<MemoryKind> = memories.iter().map(|memory| memory.kind).collect();
+        let kinds: Vec<MemoryKind> = memories.iter().map(|memory| memory.kind.clone()).collect();
         assert_eq!(kinds, [day(2022, 10, 30, None), day(2019, 11, 1, Some(7))]);
         assert_eq!(memories[0].file_ids.len(), 6);
         assert_eq!(
@@ -349,7 +349,7 @@ mod tests {
                 years_ago,
             })
         };
-        let kinds: Vec<MemoryKind> = memories.iter().map(|memory| memory.kind).collect();
+        let kinds: Vec<MemoryKind> = memories.iter().map(|memory| memory.kind.clone()).collect();
         assert_eq!(
             kinds,
             [

@@ -1,8 +1,23 @@
+use ente_location::Coordinate;
+
 use super::MAX_MEMORY_ITEMS;
 use super::calendar::LocalDate;
 use super::photo::Photo;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
+pub struct SmartMemories {
+    pub periods: Vec<Vec<Memory>>,
+    pub base_locations: Vec<BaseLocation>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BaseLocation {
+    pub file_ids: Vec<i64>,
+    pub location: Coordinate,
+    pub is_current: bool,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub struct Memory {
     pub kind: MemoryKind,
     pub file_ids: Vec<i64>,
@@ -10,11 +25,28 @@ pub struct Memory {
     pub last_date_to_show: i64,
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub enum MemoryKind {
     OnThisDay,
+    Trip(TripMemory),
+    Base(BaseMemory),
     Time(TimeMemory),
     Filler { years_ago: i32 },
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct TripMemory {
+    pub location: Coordinate,
+    pub location_name: Option<String>,
+    pub year: i32,
+    pub key: String,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct BaseMemory {
+    pub location: Coordinate,
+    pub location_name: Option<String>,
+    pub is_current: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
