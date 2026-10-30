@@ -88,7 +88,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::Signals;
-    use crate::memories::input::{ClipVectors, MlInputs, PhotoSignals};
+    use crate::memories::input::{ClipVectors, MlInputs, PeopleInputs, PhotoSignals};
     use crate::ml_store::Result;
 
     struct Clip;
@@ -113,6 +113,7 @@ mod tests {
         let ml = MlInputs {
             clip: &Clip,
             face_weights: HashMap::from([(1, 12)]),
+            people: PeopleInputs::default(),
         };
 
         let signals = Signals::load(&ml).unwrap();

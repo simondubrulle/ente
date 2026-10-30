@@ -28,11 +28,64 @@ pub struct Memory {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MemoryKind {
     OnThisDay,
+    People(PeopleMemory),
     Trip(TripMemory),
     Base(BaseMemory),
     Clip(ClipMemoryType),
     Time(TimeMemory),
     Filler { years_ago: i32 },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PeopleMemory {
+    pub person_id: String,
+    pub is_unnamed_cluster: bool,
+    pub memory_type: PeopleMemoryType,
+    pub activity: Option<PeopleActivity>,
+    pub birthday: Option<Birthday>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum PeopleMemoryType {
+    YouAndThem,
+    DoingSomethingTogether,
+    Spotlight,
+    LastTimeYouSawThem,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+pub enum PeopleActivity {
+    Admiring,
+    Embracing,
+    Party,
+    Hiking,
+    Feast,
+    Selfies,
+    Posing,
+    Background,
+    Sports,
+    Roadtrip,
+}
+
+impl PeopleActivity {
+    pub const ALL: [Self; 10] = [
+        Self::Admiring,
+        Self::Embracing,
+        Self::Party,
+        Self::Hiking,
+        Self::Feast,
+        Self::Selfies,
+        Self::Posing,
+        Self::Background,
+        Self::Sports,
+        Self::Roadtrip,
+    ];
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct Birthday {
+    pub is_upcoming: bool,
+    pub new_age: i32,
 }
 
 #[derive(Clone, Debug, PartialEq)]

@@ -5,6 +5,7 @@ mod geo;
 mod input;
 mod on_this_day;
 mod output;
+mod people;
 mod photo;
 mod places;
 mod rng;
@@ -19,15 +20,16 @@ use std::collections::HashSet;
 
 pub use calendar::LocalDate;
 pub use input::{
-    CachedTrip, CityLookup, ClipVectors, MemoriesRequest, MemoryFile, MlInputs, Period,
-    ShownClipMemory, ShownTrip,
+    CachedTrip, CityLookup, ClipVectors, MemoriesRequest, MemoryFile, MemoryPerson, MlInputs,
+    PeopleInputs, Period, ShownClipMemory, ShownPerson, ShownTrip, UnnamedCluster,
 };
 pub use output::{
-    BaseLocation, BaseMemory, ClipMemoryType, Memory, MemoryKind, SmartMemories, TimeMemory,
-    TripMemory,
+    BaseLocation, BaseMemory, Birthday, ClipMemoryType, Memory, MemoryKind, PeopleActivity,
+    PeopleMemory, PeopleMemoryType, SmartMemories, TimeMemory, TripMemory,
 };
 
 use input::PhotoSignals;
+use people::People;
 use photo::Photo;
 use places::Places;
 use selector::Selector;
@@ -56,6 +58,10 @@ pub fn compute_smart_memories(
         .map(|period| trips::analyze(&located, period.now, &places));
     let mut trip_history = TripHistory::new(&request.shown_trips, &request.cached_trips);
     let signals = ml.map(Signals::load).transpose()?;
+    let people = ml
+        .zip(signals.as_ref())
+        .map(|(ml, signals)| People::new(&photos, request, &ml.people, signals))
+        .transpose()?;
     let mut selector = Selector::new(
         signals.as_ref().map(|signals| signals as &dyn PhotoSignals),
         request.seed,
@@ -64,6 +70,9 @@ pub fn compute_smart_memories(
     for &period in periods {
         let mut memories =
             on_this_day::memories(&photos, period, &excluded_collection_ids, &mut selector);
+        if let Some(people) = &people {
+            memories.extend(people.memories(period, &mut selector)?);
+        }
         if let Some(analysis) = &analysis {
             let trip_memories = trips::memories(
                 analysis,

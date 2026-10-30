@@ -80,7 +80,7 @@ mod tests {
     use crate::memories::calendar::MICROS_PER_DAY;
     use crate::memories::tests::{files_on, micros, period};
     use crate::memories::{
-        ClipMemoryType, ClipVectors, MemoriesRequest, Memory, MemoryKind, MlInputs,
+        ClipMemoryType, ClipVectors, MemoriesRequest, Memory, MemoryKind, MlInputs, PeopleInputs,
         ShownClipMemory, compute_smart_memories,
     };
     use crate::ml_store::Result;
@@ -136,6 +136,7 @@ mod tests {
         let ml = MlInputs {
             clip,
             face_weights: HashMap::new(),
+            people: PeopleInputs::default(),
         };
         compute_smart_memories(request, &[period(NOW)], Some(&ml), None)
             .unwrap()
