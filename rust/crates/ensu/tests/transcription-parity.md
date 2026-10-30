@@ -28,7 +28,24 @@ export CARGO_BUILD_BUILD_DIR="$scratch_dir/build"
 cd "$scratch_dir/workspace/rust"
 ```
 
-Cargo compilation outputs and tempfile-created optimized graphs now go to scratch. These commands reuse your existing package caches and ort's runtime-binary download cache under their normal configuration; they do not relocate those shared caches.
+Cargo compilation outputs and tempfile-created optimized graphs now go to scratch. These commands reuse your existing package caches under their normal configuration; they do not relocate those shared caches.
+
+Host builds with `transcription` require a supplied ONNX Runtime library. The crate does not download a runtime. Android uses Ente's packaged AAR, and iOS links Ente's XCFramework through SPM. For this macOS arm64 test, download the same checksum-pinned `ort-1.28.1-r1` package used by Photos:
+
+```sh
+ort_asset="onnxruntime-coreml-macos-arm64-1.28.1-r1.tar.gz"
+mkdir -p "$scratch_dir/ort"
+curl --fail --location \
+  "https://github.com/ente/ort-packaging/releases/download/ort-1.28.1-r1/$ort_asset" \
+  --output "$scratch_dir/$ort_asset"
+printf '%s  %s\n' \
+  '12890a871d0e658dd064be187fa63d27c6b692e69f94d4750532fd8f4d179c1e' \
+  "$scratch_dir/$ort_asset" | shasum -a 256 -c -
+tar -xzf "$scratch_dir/$ort_asset" -C "$scratch_dir/ort"
+export ORT_LIB_PATH="$scratch_dir/ort"
+export ORT_PREFER_DYNAMIC_LINK=1
+export DYLD_LIBRARY_PATH="$ORT_LIB_PATH${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+```
 
 Download [Ensu's model archive](https://models.ente.com/parakeet-v3-int8.tar.gz), verify SHA-256 `43d37191602727524a7d8c6da0eef11c4ba24320f5b4730f1a2497befc2efa77`, and extract it into `$scratch_dir/models`. The archive contains a `parakeet-tdt-0.6b-v3-int8` directory. Then prepare and run:
 
@@ -42,7 +59,7 @@ cargo +1.99 test --locked -p ente-ensu --features transcription --lib \
   real_model_text_and_word_timestamps_match_reference -- --ignored --nocapture
 ```
 
-The test is ignored by default so ordinary unit tests need neither downloads nor model inference. Use the same runtime and platform as the reference: changing them can change recognition or resampler fingerprints even with identical model files. These checks do not establish physical-device behavior or exhaust the model's supported languages.
+The model test is ignored by default. Ordinary unit tests built with `transcription` still require the supplied runtime, but do not need the model or corpus downloads. The full suite also passes against the original goldens using Ente's exact `1.28.1-r1` macOS arm64 CPU package; the old backend's public-API harness matches those goldens with the same library. Other runtime or platform changes can change recognition or resampler fingerprints even with identical model files. These checks do not establish physical-device behavior or exhaust the model's supported languages.
 
 ## Regenerate reference outputs
 
