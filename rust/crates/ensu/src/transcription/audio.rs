@@ -1,9 +1,9 @@
 use std::path::Path;
 use std::time::Duration;
 
+use super::vad::{SpeechGate, Vad};
 use rubato::audioadapter_buffers::direct::InterleavedSlice;
 use rubato::{Fft, FixedSync, Resampler, WindowFunction};
-use transcribe_rs::vad::{SmoothedVad, Vad};
 
 use crate::transcription::{Result, SileroV4Vad, TranscriptionError};
 
@@ -56,7 +56,7 @@ fn extract_speech(
         return Err(TranscriptionError::VadNotDownloaded);
     }
     let silero = SileroV4Vad::new(vad_model_path, 0.5)?;
-    let mut vad = SmoothedVad::new(
+    let mut vad = SpeechGate::new(
         Box::new(silero),
         VAD_PREFILL_FRAMES,
         VAD_HANGOVER_FRAMES,
@@ -94,7 +94,7 @@ fn extract_speech_with_vad(
     resampler.push(samples, &mut emit)?;
     resampler.finish(&mut emit)?;
     if let Some(error) = vad_error {
-        return Err(error.into());
+        return Err(error);
     }
     vad.reset();
 
@@ -231,15 +231,12 @@ mod tests {
             fn frame_size(&self) -> usize {
                 480
             }
-            fn is_speech(
-                &mut self,
-                _: &[f32],
-            ) -> std::result::Result<bool, transcribe_rs::TranscribeError> {
+            fn is_speech(&mut self, _: &[f32]) -> Result<bool> {
                 self.frames += 1;
                 if self.frames == 1 {
                     Ok(true)
                 } else {
-                    Err(transcribe_rs::TranscribeError::Inference(
+                    Err(TranscriptionError::Transcribe(
                         "injected VAD failure".into(),
                     ))
                 }

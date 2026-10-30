@@ -2,6 +2,7 @@ mod audio;
 mod graph_cache;
 mod live;
 mod normalize;
+mod parakeet;
 mod recorded;
 mod session;
 mod text;
@@ -40,17 +41,6 @@ impl From<std::io::Error> for TranscriptionError {
             Self::StorageFull
         } else {
             Self::Io(err)
-        }
-    }
-}
-
-impl From<transcribe_rs::TranscribeError> for TranscriptionError {
-    fn from(value: transcribe_rs::TranscribeError) -> Self {
-        match value {
-            transcribe_rs::TranscribeError::ModelNotFound(_) => Self::NotDownloaded,
-            transcribe_rs::TranscribeError::Audio(detail) => Self::InvalidAudio(detail),
-            transcribe_rs::TranscribeError::Io(error) => error.into(),
-            error => Self::Transcribe(error.to_string()),
         }
     }
 }
