@@ -4,28 +4,27 @@ Source code for the Ensu iOS app.
 
 ## Building from source
 
-1. Install [Xcode](https://developer.apple.com/xcode/), [Rust](https://www.rust-lang.org/tools/install), [Node.js 24](https://nodejs.org/), and CMake (e.g. `brew install cmake`).
+1. Install [Xcode](https://developer.apple.com/xcode/), [Rust](https://www.rust-lang.org/tools/install), and CMake (e.g. `brew install cmake`).
 
 2. Generate the Swift bindings:
 
-    ```sh
-    node .github/scripts/ensu-codegen.mjs
-    ```
-
-    Run this from the repository root. The helper uses Photos' checksum-pinned Ente ONNX Runtime installer to supply the host library needed by the binding generator. Xcode links the packaged iOS XCFramework when building the app.
+   ```sh
+   cd rust
+   cargo codegen native
+   ```
 
 3. Open `Ensu.xcodeproj` in Xcode and run the `Ensu` scheme.
 
-That's it. Apart from generating the bindings, this is a normal iOS project. Xcode compiles and statically links the Rust libraries automatically when building the app.
+That's it. Apart from the `cargo codegen`, this is a normal iOS project. Xcode compiles and statically links the Rust libraries automatically when building the app.
 
 > [!NOTE]
 >
-> Re-run the helper whenever the UniFFI-exported surface under `rust/bindings/uniffi/` changes. Internal Rust changes (function bodies, private helpers) are picked up by the normal Xcode build.
+> Re-run `cargo codegen native` whenever the UniFFI-exported surface under `rust/bindings/uniffi/` changes. Internal Rust changes (function bodies, private helpers) are picked up by the normal Xcode build.
 >
 > From anywhere in the repo:
 >
 > ```sh
-> (cd "$(git rev-parse --show-toplevel)" && node .github/scripts/ensu-codegen.mjs)
+> (cd "$(git rev-parse --show-toplevel)/rust" && cargo codegen native)
 > ```
 
 ## Terminal builds

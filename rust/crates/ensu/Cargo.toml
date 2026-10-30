@@ -41,7 +41,7 @@ llama-cpp-2 = { version = "=0.1.158", features = ["mtmd"] }
 [target.'cfg(all(target_os = "android", target_arch = "aarch64"))'.dependencies]
 llama-cpp-2 = { version = "=0.1.158", features = ["dynamic-backends", "mtmd"] }
 
-[target.'cfg(target_os = "android")'.dependencies]
+[target.'cfg(not(target_os = "ios"))'.dependencies]
 ort = { workspace = true, features = ["load-dynamic"], optional = true }
 
 # The iOS app links Ente's custom ONNX Runtime XCFramework via SPM, so ort-sys

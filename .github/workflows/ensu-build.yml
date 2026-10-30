@@ -334,14 +334,8 @@ jobs:
                   sudo apt-get update
                   sudo apt-get install -y libvulkan-dev glslc spirv-headers
 
-            - name: Setup Node.js
-              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-              with:
-                  node-version: 24
-
-            - name: Generate native bindings
-              run: node .github/scripts/ensu-codegen.mjs
-              working-directory: .
+            - run: cargo codegen native
+              working-directory: rust
 
             - name: Setup signing keys
               env:
@@ -435,14 +429,8 @@ jobs:
               with:
                   ref: ${{ needs.build-metadata.outputs.commit_sha }}
 
-            - name: Setup Node.js
-              uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1
-              with:
-                  node-version: 24
-
-            - name: Generate native bindings
-              run: node .github/scripts/ensu-codegen.mjs
-              working-directory: .
+            - run: cargo codegen native
+              working-directory: rust
 
             - name: Import Apple Distribution certificate
               uses: Apple-Actions/import-codesign-certs@77ba2a2a8f5cfc8c405ebf3159f767c323e238f9 # v7.1.0

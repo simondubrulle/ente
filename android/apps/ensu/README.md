@@ -6,28 +6,27 @@ To know more about Ente, see [our main README](../../../README.md) or visit [ent
 
 ## Building from source
 
-1. Install [Android Studio](https://developer.android.com/studio), [Rust](https://www.rust-lang.org/tools/install), [Node.js 24](https://nodejs.org/), and CMake (e.g. `brew install cmake`).
+1. Install [Android Studio](https://developer.android.com/studio), [Rust](https://www.rust-lang.org/tools/install), and CMake (e.g. `brew install cmake`).
 
 2. Generate the Kotlin bindings:
 
-    ```sh
-    node .github/scripts/ensu-codegen.mjs
-    ```
-
-    Run this from the repository root. The helper uses Photos' checksum-pinned Ente ONNX Runtime installer to supply the host library needed by the binding generator. Gradle uses the packaged Android AAR when cross-compiling the app.
+   ```sh
+   cd rust
+   cargo codegen native
+   ```
 
 3. Open `android/` in Android Studio and run Ensu's `app` module. If the Android NDK is missing, Android Studio will prompt to install it.
 
-That's it. Apart from generating the bindings, this is a normal Android project. Gradle cross-compiles the Rust libraries to JNI `.so` files automatically when building the app.
+That's it. Apart from the `cargo codegen`, this is a normal Android project. Gradle cross-compiles the Rust libraries to JNI `.so` files automatically when building the app.
 
 > [!NOTE]
 >
-> Re-run the helper whenever the UniFFI-exported surface under `rust/bindings/uniffi/` changes. Internal Rust changes (function bodies, private helpers) are picked up by the normal Gradle build.
+> Re-run `cargo codegen native` whenever the UniFFI-exported surface under `rust/bindings/uniffi/` changes. Internal Rust changes (function bodies, private helpers) are picked up by the normal Gradle build.
 >
 > From anywhere in the repo:
 >
 > ```sh
-> (cd "$(git rev-parse --show-toplevel)" && node .github/scripts/ensu-codegen.mjs)
+> (cd "$(git rev-parse --show-toplevel)/rust" && cargo codegen native)
 > ```
 
 ## Terminal builds
