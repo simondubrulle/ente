@@ -58,26 +58,10 @@ pub async fn run(command: PhotosCommand, selected: Option<&str>, options: &Optio
         PhotosCommand::Api(_) | PhotosCommand::Export(_) | PhotosCommand::Usage => unreachable!(),
         PhotosCommand::Album { command } => album(command, &replica, options),
         PhotosCommand::File { album, command } => {
-            file(
-                command,
-                album.as_deref(),
-                &session,
-                &mut replica,
-                &home.path,
-                options,
-            )
-            .await
+            file(command, album.as_deref(), &session, &mut replica, options).await
         }
         PhotosCommand::Place { album, command } => {
-            place(
-                command,
-                album.as_deref(),
-                &session,
-                &mut replica,
-                &home.path,
-                options,
-            )
-            .await
+            place(command, album.as_deref(), &session, &mut replica, options).await
         }
     }
 }
@@ -182,13 +166,12 @@ async fn file(
     album: Option<&str>,
     session: &Session,
     replica: &mut Replica<'_>,
-    home: &Path,
     options: &Options,
 ) -> Result<()> {
     let (album_id, mut incomplete) = sync_files(album, session, replica, options).await?;
     let placed = match &command {
         FileCommand::List { query, .. } if query.place.is_some() || query.country.is_some() => {
-            let index = places::open(home, options.offline).await?;
+            let index = places::open(options.offline).await?;
             let located = located(replica, album_id, |_, _| {})?;
             Some(places::matching(&index, query, &located)?)
         }
@@ -306,12 +289,11 @@ async fn place(
     album: Option<&str>,
     session: &Session,
     replica: &mut Replica<'_>,
-    home: &Path,
     options: &Options,
 ) -> Result<()> {
     let (album_id, mut incomplete) = sync_files(album, session, replica, options).await?;
     let PlaceCommand::List { countries, list } = command;
-    let index = places::open(home, options.offline).await?;
+    let index = places::open(options.offline).await?;
     let located = located(replica, album_id, |id, error| {
         eprintln!("file {id}: {error:#}");
         incomplete = true;

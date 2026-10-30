@@ -688,6 +688,44 @@ fn places_group_files_by_city_and_country() -> TestResult {
     })
 }
 
+#[test]
+fn accounts_share_one_location_download() -> TestResult {
+    Museum::run_async(|origin| async move {
+        let home = TestHome::new();
+        let accounts = ["first", "second"];
+        for name in accounts {
+            let email = format!("places-{name}-{}@example.org", Uuid::new_v4());
+            create_account(&origin, &email).await;
+            login(
+                &home,
+                "photos",
+                &email,
+                &["--host", &origin, "--account", name],
+            );
+        }
+        let commands = accounts.map(|name| {
+            home.command(&["photos", "place", "list", "--account", name])
+                .spawn()
+                .unwrap()
+        });
+        let downloads = commands
+            .into_iter()
+            .map(|command| success(command.wait_with_output().unwrap()))
+            .filter(|output| {
+                String::from_utf8_lossy(&output.stderr).contains("Downloading location data.")
+            })
+            .count();
+        assert_eq!(downloads, 1);
+        assert!(
+            home.dir
+                .path()
+                .join("assets/location/v2/cities.bin")
+                .is_file()
+        );
+        Ok(())
+    })
+}
+
 async fn exercise(origin: String) -> TestResult {
     let alice_email = format!("alice-{}@example.org", Uuid::new_v4());
     let bob_email = format!("bob-{}@example.org", Uuid::new_v4());

@@ -1,4 +1,4 @@
-use std::{collections::HashSet, path::Path};
+use std::collections::HashSet;
 
 use anyhow::{Context, Result, ensure};
 use ente_location::{Coordinate, CountryCode, normalize_search_text};
@@ -6,18 +6,25 @@ use ente_photos::{files::File, location::LocationIndex};
 
 use crate::{
     args::{FileQuery, ListArgs},
+    home,
     output::{self, CityView, CountryView},
 };
 
-pub async fn open(home: &Path, offline: bool) -> Result<LocationIndex> {
-    let root = home.join("assets");
-    if !LocationIndex::is_downloaded(&root) {
+pub async fn open(offline: bool) -> Result<LocationIndex> {
+    let root = home::application_home()?.join("assets");
+    let _download = if LocationIndex::is_downloaded(&root) {
+        None
+    } else {
         ensure!(
             !offline,
             "location data has not been downloaded; run the command online first"
         );
-        eprintln!("Downloading location data.");
-    }
+        let lock = home::lock_assets()?;
+        if !LocationIndex::is_downloaded(&root) {
+            eprintln!("Downloading location data.");
+        }
+        Some(lock)
+    };
     LocationIndex::open(&root)
         .await
         .context("cannot load location data")

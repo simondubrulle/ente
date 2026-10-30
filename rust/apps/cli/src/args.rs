@@ -688,7 +688,7 @@ Groups files by their location and lists the most files first. Files without a l
 or whose location matches no city (or with --countries, no country), are not counted.
 --country uses the groups --countries shows, which can differ from a city's country:
 photos in French Guiana count under France.
-On first use, downloads about 7 MB of location data and keeps it with the account's local data.
+On first use, downloads about 7 MB of location data and keeps it in the CLI home for all accounts.
 With --json, returns an array. City fields: name, country, countryCode (strings);
 latitude, longitude of the city (numbers); fileCount (integer). With --countries: name, code (strings); fileCount (integer).";
 
