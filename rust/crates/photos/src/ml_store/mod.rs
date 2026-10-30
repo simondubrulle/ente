@@ -1,3 +1,4 @@
+mod cluster_averages;
 mod clustering;
 mod fill;
 mod index;
@@ -12,6 +13,7 @@ use ente_vecdb::{VecDb, VecDbError};
 
 use crate::ml_db::MlDb;
 
+pub use cluster_averages::MeanSuggestion;
 pub use clustering::{
     ClusteredBucket, FaceClusteringPlan, FaceClusteringRequest, FaceClusteringRun,
 };
@@ -161,15 +163,16 @@ impl MlStore {
 #[cfg(test)]
 mod tests {
     use std::cell::{Cell, RefCell};
+    use std::collections::HashMap;
     use std::fs;
     use std::path::{Path, PathBuf};
 
     use ente_vecdb::{OpenCost, SearchParams, VecDb};
     use tempfile::TempDir;
 
-    use super::{FillOutcome, FillReport, FillState, Index, MlStore};
-    use crate::ml_db::vector_encoding::encode_evector;
-    use crate::ml_db::{CLIP_EMBEDDING_DIMENSIONS, ClipEmbedding, ClusterSummary};
+    use super::{CLUSTER_CENTROID_DIMENSIONS, FillOutcome, FillReport, FillState, Index, MlStore};
+    use crate::ml_db::vector_encoding::{decode_evector, encode_evector};
+    use crate::ml_db::{CLIP_EMBEDDING_DIMENSIONS, ClipEmbedding, ClusterSummary, FaceRow};
 
     pub(super) const DB_FILE: &str = "ente.ml.db";
 
@@ -226,6 +229,65 @@ mod tests {
             count: 1,
         };
         (cluster_id.to_string(), summary)
+    }
+
+    pub(super) fn embedding(degrees: f64) -> Vec<f64> {
+        let mut values = vec![0.0; CLUSTER_CENTROID_DIMENSIONS];
+        let radians = degrees.to_radians();
+        values[0] = radians.cos();
+        values[1] = radians.sin();
+        values
+    }
+
+    pub(super) fn face(file_id: i64, degrees: f64) -> FaceRow {
+        FaceRow {
+            file_id,
+            face_id: format!("{file_id}_0"),
+            detection_json: "{}".to_string(),
+            embedding: embedding(degrees),
+            score: 0.9,
+            blur: 300.0,
+            is_sideways: false,
+            image_height: 100,
+            image_width: 100,
+            ml_version: 1,
+        }
+    }
+
+    pub(super) fn seed(store: &MlStore, faces: &[(i64, f64)]) {
+        let rows: Vec<FaceRow> = faces
+            .iter()
+            .map(|&(file_id, degrees)| face(file_id, degrees))
+            .collect();
+        store.db().bulk_insert_faces(&rows).unwrap();
+    }
+
+    pub(super) fn assign(store: &MlStore, assignments: &[(i64, &str)]) {
+        let assignments: HashMap<String, String> = assignments
+            .iter()
+            .map(|&(file_id, cluster_id)| (format!("{file_id}_0"), cluster_id.to_string()))
+            .collect();
+        store
+            .db()
+            .update_face_id_to_cluster_id(&assignments)
+            .unwrap();
+    }
+
+    pub(super) fn summary_of(store: &MlStore, cluster_id: &str) -> (Vec<f64>, i64) {
+        let summary = store
+            .db()
+            .get_cluster_to_cluster_summary(&[cluster_id.to_string()])
+            .unwrap()
+            .remove(cluster_id)
+            .unwrap();
+        (decode_evector(&summary.avg).unwrap(), summary.count)
+    }
+
+    pub(super) fn assert_direction(actual: &[f64], degrees: f64) {
+        let expected = embedding(degrees);
+        for (actual, expected) in actual.iter().zip(&expected) {
+            assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
+        }
     }
 
     pub(super) fn nearest(store: &MlStore, index: Index, query: &[f32]) -> String {

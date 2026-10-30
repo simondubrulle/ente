@@ -7,7 +7,7 @@ pub use ente_photos::ml_db::{
     FaceWithoutEmbedding, FdStatus, PreviewInfo,
 };
 use ente_photos::ml_store;
-pub use ente_photos::ml_store::{FillOutcome, FillState, Index};
+pub use ente_photos::ml_store::{FillOutcome, FillState, Index, MeanSuggestion};
 use flutter_rust_bridge::frb;
 
 use super::vecdb_api::{
@@ -102,6 +102,13 @@ pub struct _EmbeddingVector {
 pub struct _ClusterSummary {
     pub avg: Vec<u8>,
     pub count: i64,
+}
+
+#[frb(mirror(MeanSuggestion))]
+pub struct _MeanSuggestion {
+    pub cluster_id: String,
+    pub distance: f64,
+    pub person_cluster_id: String,
 }
 
 #[frb(mirror(FdStatus))]
@@ -312,6 +319,61 @@ impl MlStore {
         Ok(self
             .inner
             .recluster_faces(&face_ids, &file_creation_times, distance_threshold)?)
+    }
+
+    pub fn refresh_cluster_averages(
+        &self,
+        cluster_face_counts: HashMap<String, i64>,
+        ignored_cluster_ids: Vec<String>,
+        min_cluster_size: i64,
+    ) -> Result<HashSet<String>, MlDbError> {
+        let ignored_cluster_ids = ignored_cluster_ids.into_iter().collect();
+        Ok(self.inner.refresh_cluster_averages(
+            &cluster_face_counts,
+            &ignored_cluster_ids,
+            min_cluster_size,
+        )?)
+    }
+
+    pub fn search_cluster_centroids(
+        &self,
+        cluster_ids: Vec<String>,
+        allowed_cluster_ids: Vec<String>,
+        limit: u32,
+        max_distance: f32,
+    ) -> Result<Vec<Vec<VecDbMatch>>, MlDbError> {
+        Ok(self
+            .inner
+            .search_cluster_centroids(
+                &cluster_ids,
+                allowed_cluster_ids,
+                limit as usize,
+                max_distance,
+            )?
+            .into_iter()
+            .map(to_api_matches)
+            .collect())
+    }
+
+    pub fn suggest_clusters_by_mean(
+        &self,
+        person_cluster_ids: Vec<String>,
+        candidate_cluster_ids: Vec<String>,
+        max_distance: f64,
+        ignored_by_person_cluster: HashMap<String, Vec<String>>,
+    ) -> Result<Vec<MeanSuggestion>, MlDbError> {
+        let ignored_by_person_cluster = ignored_by_person_cluster
+            .into_iter()
+            .map(|(person_cluster_id, cluster_ids)| {
+                (person_cluster_id, cluster_ids.into_iter().collect())
+            })
+            .collect();
+        Ok(self.inner.suggest_clusters_by_mean(
+            &person_cluster_ids,
+            &candidate_cluster_ids,
+            max_distance,
+            &ignored_by_person_cluster,
+        )?)
     }
 
     pub fn clear_all(&self) -> Result<(), MlDbError> {

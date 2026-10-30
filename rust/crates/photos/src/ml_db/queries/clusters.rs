@@ -313,11 +313,11 @@ impl MlDb {
         &self,
         cluster_ids: &[String],
     ) -> Result<HashMap<String, ClusterSummary>> {
-        let sql = format!(
+        self.read_chunked_in(
             "SELECT * FROM cluster_summary WHERE cluster_id IN ({})",
-            bind_placeholders(cluster_ids.len())
-        );
-        self.read_all(&sql, params_from_iter(cluster_ids), read_cluster_summary)
+            cluster_ids,
+            read_cluster_summary,
+        )
     }
 
     pub fn count_cluster_summaries(&self) -> Result<i64> {
