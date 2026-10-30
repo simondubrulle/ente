@@ -174,6 +174,37 @@ const CLIP_MEMORY_TYPES: [(&str, &str); 48] = [
     ),
 ];
 
+const PEOPLE_ACTIVITIES: [(&str, &str); 10] = [
+    (
+        "Admiring",
+        "Photo of two people admiring or looking at each other in a loving but non-intimate and non-physical way",
+    ),
+    (
+        "Embracing",
+        "Photo of people hugging or embracing each other lovingly, without inappropriately kissing or other intimate actions",
+    ),
+    ("Party", "Photo of people celebrating together"),
+    (
+        "Hiking",
+        "Photo of people hiking or walking together in nature",
+    ),
+    ("Feast", "Photo of people having a big feast together"),
+    (
+        "Selfies",
+        "Happy and nostalgic selfie with people, clearly taken from the front camera of a phone",
+    ),
+    (
+        "Posing",
+        "Photo of people posing together in a funny manner for the camera",
+    ),
+    (
+        "Background",
+        "Photo of people with an absolutely stunning or interesting background",
+    ),
+    ("Sports", "Photo of people joyfully playing sports together"),
+    ("Roadtrip", "Photo of people on a road trip together"),
+];
+
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
     std::env::var_os("ORT_DYLIB_PATH").context("set ORT_DYLIB_PATH to an ONNX Runtime library")?;
@@ -190,14 +221,18 @@ async fn main() -> Result<()> {
         quantize(&result.embedding).with_context(|| format!("quantize {text:?}"))
     };
     let nostalgia = embed(NOSTALGIA)?;
-    let mut clip_memory_types = Vec::with_capacity(CLIP_MEMORY_TYPES.len());
-    for (name, query) in CLIP_MEMORY_TYPES {
-        clip_memory_types.push((name, embed(query)?));
-    }
+    let embed_all = |queries: &[(&'static str, &str)]| -> Result<Vec<(&'static str, Vec<i8>)>> {
+        queries
+            .iter()
+            .map(|(name, query)| Ok((*name, embed(query)?)))
+            .collect()
+    };
+    let clip_memory_types = embed_all(&CLIP_MEMORY_TYPES)?;
+    let people_activities = embed_all(&PEOPLE_ACTIVITIES)?;
 
     let path = manifest_dir.join(OUTPUT);
-    std::fs::write(&path, render(&nostalgia, &clip_memory_types)?)
-        .with_context(|| format!("write {}", path.display()))?;
+    let source = render(&nostalgia, &clip_memory_types, &people_activities)?;
+    std::fs::write(&path, source).with_context(|| format!("write {}", path.display()))?;
     let rustfmt = Command::new("rustfmt")
         .args(["--edition", "2024"])
         .arg(&path)
@@ -227,9 +262,13 @@ fn quantize(embedding: &[f32]) -> Result<Vec<i8>> {
         .collect())
 }
 
-fn render(nostalgia: &[i8], clip_memory_types: &[(&str, Vec<i8>)]) -> Result<String> {
+fn render(
+    nostalgia: &[i8],
+    clip_memory_types: &[(&str, Vec<i8>)],
+    people_activities: &[(&str, Vec<i8>)],
+) -> Result<String> {
     let mut source = String::from(
-        "use super::output::ClipMemoryType;\n\
+        "use super::output::{ClipMemoryType, PeopleActivity};\n\
          use crate::ml_db::CLIP_EMBEDDING_DIMENSIONS;\n\n\
          pub(super) type TextEmbedding = [i8; CLIP_EMBEDDING_DIMENSIONS];\n\n",
     );
@@ -238,14 +277,10 @@ fn render(nostalgia: &[i8], clip_memory_types: &[(&str, Vec<i8>)]) -> Result<Str
         "pub(super) static NOSTALGIA: TextEmbedding = {};\n",
         array(nostalgia)
     )?;
-    source.push_str(
-        "impl ClipMemoryType {\n    pub(super) fn embedding(self) -> &'static TextEmbedding {\n        match self {\n",
-    );
-    for (name, _) in clip_memory_types {
-        writeln!(source, "Self::{name} => &{},", static_name(name))?;
-    }
-    source.push_str("}\n}\n}\n");
-    for (name, embedding) in clip_memory_types {
+    render_embedding_lookup(&mut source, "ClipMemoryType", clip_memory_types)?;
+    source.push('\n');
+    render_embedding_lookup(&mut source, "PeopleActivity", people_activities)?;
+    for (name, embedding) in clip_memory_types.iter().chain(people_activities) {
         writeln!(
             source,
             "\nstatic {}: TextEmbedding = {};",
@@ -254,6 +289,22 @@ fn render(nostalgia: &[i8], clip_memory_types: &[(&str, Vec<i8>)]) -> Result<Str
         )?;
     }
     Ok(source)
+}
+
+fn render_embedding_lookup(
+    source: &mut String,
+    type_name: &str,
+    embeddings: &[(&str, Vec<i8>)],
+) -> Result<()> {
+    writeln!(
+        source,
+        "impl {type_name} {{\n    pub(super) fn embedding(self) -> &'static TextEmbedding {{\n        match self {{"
+    )?;
+    for (name, _) in embeddings {
+        writeln!(source, "Self::{name} => &{},", static_name(name))?;
+    }
+    source.push_str("}\n}\n}\n");
+    Ok(())
 }
 
 fn array(values: &[i8]) -> String {

@@ -2,7 +2,10 @@ use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
 use std::convert::Infallible;
 
+use ente_location::Coordinate;
+
 use super::calendar::MICROS_PER_MINUTE;
+use super::geo::distance_km;
 use super::input::PhotoSignals;
 use super::photo::{Photo, sort_chronologically};
 use super::rng::Rng;
@@ -10,6 +13,7 @@ use crate::ml_store::Result;
 
 const DEFAULT_SELECTION_SIZE: usize = 10;
 const TOP_MATCHES: usize = 50;
+const TOP_SCORES_PERCENT: usize = 30;
 const MINIMUM_TIME_GAP: i64 = 10 * MICROS_PER_MINUTE;
 const NEAR_DUPLICATE_SIMILARITY: f32 = 0.80;
 const FACE_WEIGHT_SCORE: f64 = 1000.0;
@@ -24,6 +28,12 @@ enum Spread {
     None,
     OverTime,
     AcrossYears,
+}
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BucketPick {
+    Best,
+    FarthestOfTheBest,
 }
 
 #[derive(Clone, Copy)]
@@ -89,6 +99,10 @@ impl<'s> Selector<'s> {
 
     pub(super) fn shuffle<T>(&mut self, items: &mut [T]) {
         self.rng.shuffle(items);
+    }
+
+    pub(super) fn below(&mut self, bound: usize) -> usize {
+        self.rng.below(bound)
     }
 
     pub(super) fn sample_across_years<'p>(
@@ -198,6 +212,58 @@ impl<'s> Selector<'s> {
     }
 }
 
+pub(super) fn best_for_person<'p>(
+    mut photos: Vec<&'p Photo>,
+    signals: &dyn PhotoSignals,
+) -> Result<Vec<&'p Photo>> {
+    sort_chronologically(&mut photos);
+    if photos.len() > DEFAULT_SELECTION_SIZE {
+        let candidates = photos
+            .iter()
+            .map(|&photo| Candidate {
+                photo,
+                score: signals.nostalgia(photo.id).map_or(0.0, f64::from),
+            })
+            .collect();
+        photos = ranked_over_time(
+            candidates,
+            DEFAULT_SELECTION_SIZE,
+            BucketPick::FarthestOfTheBest,
+            signals,
+        )?;
+        sort_chronologically(&mut photos);
+    }
+    photos.reverse();
+    Ok(photos)
+}
+
+pub(super) fn first_distinct_and_spaced<'p>(
+    photos: &[&'p Photo],
+    minimum_distinct: usize,
+    limit: usize,
+    signals: &dyn PhotoSignals,
+) -> Result<Vec<&'p Photo>> {
+    let mut distinct = Vec::new();
+    let mut spaced = Vec::with_capacity(limit);
+    let mut skipped = 0;
+    for &photo in photos {
+        if spaced.len() == limit {
+            break;
+        }
+        if photos.len() - skipped > minimum_distinct
+            && is_near_duplicate(photo, &distinct, signals)?
+        {
+            skipped += 1;
+            continue;
+        }
+        distinct.push(photo);
+        if !is_too_close(photo, &spaced) {
+            spaced.push(photo);
+        }
+    }
+    Ok(spaced)
+}
+
 fn ranked<'p>(
     photos: &[&'p Photo],
     size: usize,
@@ -214,7 +280,7 @@ fn ranked<'p>(
         .collect();
     match spread {
         Spread::None => ranked_flat(candidates, size, signals),
-        Spread::OverTime => ranked_over_time(candidates, size, signals),
+        Spread::OverTime => ranked_over_time(candidates, size, BucketPick::Best, signals),
         Spread::AcrossYears => ranked_across_years(candidates, size, signals),
     }
 }
@@ -248,6 +314,7 @@ fn ranked_flat<'p>(
 fn ranked_over_time<'p>(
     candidates: Vec<Candidate<'p>>,
     size: usize,
+    pick: BucketPick,
     signals: &dyn PhotoSignals,
 ) -> Result<Vec<&'p Photo>> {
     if is_single_moment(&candidates, |candidate| candidate.photo.creation_time) {
@@ -256,6 +323,9 @@ fn ranked_over_time<'p>(
     let mut selected: Vec<&Photo> = Vec::with_capacity(size);
     for mut bucket in time_buckets(&candidates, size, |candidate| candidate.photo.creation_time) {
         sort_by_score(&mut bucket);
+        if pick == BucketPick::FarthestOfTheBest {
+            keep_top_scores(&mut bucket, signals);
+        }
         let mut distinct: Vec<Candidate> = Vec::new();
         for &candidate in &bucket {
             if !is_near_duplicate(candidate.photo, &selected, signals)? {
@@ -267,10 +337,15 @@ fn ranked_over_time<'p>(
         } else {
             distinct
         };
-        if let Some(winner) = pool
+        let spaced: Vec<Candidate> = pool
             .into_iter()
-            .find(|candidate| !is_too_close(candidate.photo, &selected))
-        {
+            .filter(|candidate| !is_too_close(candidate.photo, &selected))
+            .collect();
+        let winner = match pick {
+            BucketPick::Best => spaced.first(),
+            BucketPick::FarthestOfTheBest => farthest_from(&spaced, &selected),
+        };
+        if let Some(winner) = winner {
             selected.push(winner.photo);
         }
     }
@@ -293,6 +368,43 @@ fn ranked_over_time<'p>(
         }
     }
     Ok(selected)
+}
+
+fn keep_top_scores(bucket: &mut Vec<Candidate>, signals: &dyn PhotoSignals) {
+    let scored = bucket
+        .iter()
+        .filter(|candidate| signals.nostalgia(candidate.photo.id).is_some())
+        .count();
+    if scored * 2 >= bucket.len() {
+        bucket.truncate((bucket.len() * TOP_SCORES_PERCENT / 100).max(1));
+    }
+}
+
+fn farthest_from<'c, 'p>(
+    candidates: &'c [Candidate<'p>],
+    selected: &[&Photo],
+) -> Option<&'c Candidate<'p>> {
+    let selected_locations: Vec<Coordinate> =
+        selected.iter().filter_map(|photo| photo.location).collect();
+    if selected_locations.is_empty() {
+        return candidates.first();
+    }
+    let mut farthest = candidates.first();
+    let mut farthest_distance = -1.0;
+    for candidate in candidates {
+        let Some(location) = candidate.photo.location else {
+            continue;
+        };
+        let distance = selected_locations
+            .iter()
+            .map(|&selected_location| distance_km(location, selected_location))
+            .fold(f64::INFINITY, f64::min);
+        if distance > farthest_distance {
+            farthest = Some(candidate);
+            farthest_distance = distance;
+        }
+    }
+    farthest
 }
 
 fn ranked_across_years<'p>(
@@ -415,7 +527,9 @@ fn is_near_duplicate(
 mod tests {
     use std::collections::{HashMap, HashSet};
 
-    use super::Selector;
+    use ente_location::Coordinate;
+
+    use super::{Selector, best_for_person, first_distinct_and_spaced};
     use crate::memories::input::{MemoryFile, PhotoSignals};
     use crate::memories::photo::{Photo, prepare};
     use crate::memories::tests::{file, micros};
@@ -557,6 +671,85 @@ mod tests {
         }
         assert_eq!(selected, pick(5));
         assert_ne!(selected, pick(6));
+    }
+
+    fn hundred_days_with_a_few_locations() -> Vec<MemoryFile> {
+        let mut files = daily(1, "2024-01-01T12:00:00", 100);
+        for (id, latitude) in [(10, 1.0), (15, 80.0), (18, 40.0), (19, 1.0), (20, 1.0)] {
+            files[id - 1].location = Some(Coordinate::new(latitude, 10.0));
+        }
+        files
+    }
+
+    #[test]
+    fn person_picks_favour_new_places_among_the_top_scores_of_each_period_newest_first() {
+        let photos = prepare(&hundred_days_with_a_few_locations());
+        let signals = Signals {
+            nostalgia: (1..=100).map(|id| (id, id as f32 / 1000.0)).collect(),
+            ..Signals::default()
+        };
+
+        let selected = best_for_person(photos.iter().collect(), &signals).unwrap();
+
+        assert_eq!(ids(&selected), [100, 90, 80, 70, 60, 50, 40, 30, 18, 10]);
+    }
+
+    #[test]
+    fn person_picks_consider_a_whole_period_when_most_of_it_has_no_score() {
+        let photos = prepare(&hundred_days_with_a_few_locations());
+        let signals = Signals {
+            nostalgia: (1..=100)
+                .filter(|id| !(15..=20).contains(id))
+                .map(|id| (id, id as f32 / 1000.0))
+                .collect(),
+            ..Signals::default()
+        };
+
+        let selected = best_for_person(photos.iter().collect(), &signals).unwrap();
+
+        assert_eq!(ids(&selected), [100, 90, 80, 70, 60, 50, 40, 30, 15, 10]);
+    }
+
+    #[test]
+    fn small_person_sets_are_kept_whole_newest_first() {
+        let photos = prepare(&daily(1, "2024-01-01T12:00:00", 3));
+
+        let selected = best_for_person(photos.iter().collect(), &Signals::default()).unwrap();
+
+        assert_eq!(ids(&selected), [3, 2, 1]);
+    }
+
+    #[test]
+    fn near_duplicates_go_until_only_the_minimum_remains() {
+        let photos = prepare(&daily(1, "2024-01-01T12:00:00", 4));
+        let photos: Vec<&Photo> = photos.iter().collect();
+        let signals = Signals {
+            near_duplicates: HashSet::from([(1, 2), (1, 3), (1, 4)]),
+            ..Signals::default()
+        };
+
+        let kept = first_distinct_and_spaced(&photos, 2, 10, &signals).unwrap();
+
+        assert_eq!(ids(&kept), [1, 4]);
+    }
+
+    #[test]
+    fn photos_within_ten_minutes_of_a_kept_one_go_and_the_limit_ends_the_pass() {
+        let start = micros("2024-01-01T12:00:00");
+        let files: Vec<MemoryFile> = [0, 5, 10, 12, 20, 30]
+            .into_iter()
+            .map(|minutes| MemoryFile {
+                creation_time: start + minutes * 60_000_000,
+                ..file(minutes, "1970-01-01T00:00:00")
+            })
+            .collect();
+        let photos = prepare(&files);
+        let photos: Vec<&Photo> = photos.iter().collect();
+        let signals = Signals::default();
+
+        let kept = first_distinct_and_spaced(&photos, 2, 3, &signals).unwrap();
+
+        assert_eq!(ids(&kept), [0, 10, 20]);
     }
 
     #[test]
