@@ -5,7 +5,6 @@ pub struct Collection {
     pub owner_id: i64,
 }
 
-// Hashes must be normalized, including `image:video` for legacy Live Photos.
 pub struct File {
     pub id: i64,
     pub collection_id: i64,
@@ -23,12 +22,9 @@ pub struct Item {
 #[derive(Debug, PartialEq, Eq)]
 pub struct Group {
     pub items: Vec<Item>,
-    // Live Photo ZIP sizes can vary despite matching hashes, so use the first
-    // known nonzero size to estimate savings.
     pub item_size: u64,
 }
 
-// The caller must exclude hidden collections. Results preserve input order.
 pub fn find_duplicates(user_id: i64, collections: &[Collection], files: &[File]) -> Vec<Group> {
     let allowed: HashSet<_> = collections
         .iter()
@@ -92,7 +88,6 @@ pub struct Addition {
 
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct RemovalPlan {
-    // Complete every album addition successfully before trashing any files.
     pub additions: Vec<Addition>,
     pub trash_ids: Vec<i64>,
 }
@@ -113,8 +108,6 @@ pub fn plan_removal(groups: &[Vec<Duplicate>]) -> RemovalPlan {
             })
             .or_else(|| {
                 items.iter().find(|item| {
-                    // Match editedName ?? editedTime: an explicitly empty name
-                    // takes precedence over an edited timestamp.
                     item.edited_name.as_ref().map_or_else(
                         || item.edited_time.is_some_and(|time| time != 0),
                         |name| !name.is_empty(),
@@ -330,8 +323,6 @@ mod tests {
     #[test]
     fn detection_and_removal_preserve_every_album_membership_combination() {
         let collections: Vec<_> = (11..=13).map(|id| Collection { id, owner_id: 1 }).collect();
-        // Each of three distinct copies can belong to any nonempty subset of
-        // three albums. Applying the plan must leave one copy in every album.
         for first in 1..8 {
             for second in 1..8 {
                 for third in 1..8 {

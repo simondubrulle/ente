@@ -120,7 +120,6 @@ export const removeSelectedDuplicateGroups = async (
 
     const collections = await savedNormalCollections();
     const collectionsByID = new Map(collections.map((c) => [c.id, c]));
-    // Complete every album addition before trashing any duplicates.
     for (const { collectionId, fileIds } of plan.additions) {
         await addToCollection(
             collectionsByID.get(collectionId)!,

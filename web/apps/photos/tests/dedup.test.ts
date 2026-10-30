@@ -90,7 +90,6 @@ describe("deduceDuplicates through Rust WASM", () => {
                 isSelected: true,
             },
         ]);
-        // The locale-sorted first item is the fallback retained copy in Rust.
         await removeSelectedDuplicateGroups(groups, vi.fn(), vi.fn());
         expect(addToCollection).toHaveBeenCalledExactlyOnceWith(
             expect.objectContaining({ id: 11 }),
@@ -177,7 +176,6 @@ describe("removeSelectedDuplicateGroups", () => {
         async (caption) => {
             const group = duplicateGroup();
             const retained = group.items[1]!.file;
-            // Cached records bypass the metadata schema and can predate normalization.
             Object.assign(retained.pubMagicMetadata!.data, { caption });
             const refresh = vi.fn();
 
