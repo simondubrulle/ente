@@ -1,7 +1,9 @@
 import type {
     EncryptedBox,
+    FindDuplicatesInput,
     LocationIndex,
     OpenSessionInput,
+    PlanDuplicateRemovalInput,
     Session,
     WrappedRootContactKey,
 } from "./pkg/ente_photos_wasm";
@@ -14,6 +16,12 @@ export type {
 } from "./pkg/ente_photos_wasm";
 
 const wasm = () => import("./pkg/ente_photos_wasm");
+
+export const findDuplicates = async (input: FindDuplicatesInput) =>
+    (await wasm()).photosFindDuplicates(input);
+
+export const planDuplicateRemoval = async (input: PlanDuplicateRemovalInput) =>
+    (await wasm()).photosPlanDuplicateRemoval(input);
 
 export const createLocationIndex = async (
     cities: Uint8Array,
@@ -40,11 +48,6 @@ export const deleteAccount = async (
 
 export const recoveryKeyMnemonic = async (session: Session) =>
     (await wasm()).authRecoveryKeyMnemonic(session);
-
-export const encryptBoxWithRecoveryKey = async (
-    session: Session,
-    dataB64: string,
-) => (await wasm()).authEncryptWithRecoveryKey(session, dataB64);
 
 export const generateKey = async () => (await wasm()).cryptoGenerateKey();
 

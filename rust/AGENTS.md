@@ -4,11 +4,11 @@
 
 - All code must be tested end to end.
 - Unit tests are fine and encouraged for broader coverage, but correctness of a unit in isolation is not enough. `crates/test-support/` allows testing code in `crates/` against a local Ente setup (Museum, object storage, and database). Where UX is involved, exposing the feature through the CLI and driving it in a CLI test is also an option.
-- If a committed test would need an inordinate amount of scaffolding, the code must still be tested end to end at the time of writing. Clearly communicate the exception and what was tested to the developer and in the PR.
+- If a committed test would need an inordinate amount of scaffolding, manually test the behavior before opening the PR. Clearly communicate what was tested and any remaining gaps to the developer and in the PR.
 
 ## Shared code
 
-- Over time, we want all clients to use the same solid and tested Rust core. When moving functionality into Rust, also expose it through the CLI. Eventually, anything a customer can do in any of our apps, they and their agents should be able to do through the CLI. This includes lab projects like Ensu and Space, and toys like Paste.
+- Over time, we want all clients to use the same solid and tested Rust core. When moving functionality into Rust, also expose it through the CLI. CLI exposure can follow in a separate PR. Eventually, anything a customer can do in any of our apps, they and their agents should be able to do through the CLI. This includes lab projects like Ensu and Space, and toys like Paste.
 - Design idiomatic Rust APIs first, then adapt them to each client language. The shape of a JavaScript or Dart caller should not dictate the shared Rust API.
 - Keep `ente-core` small, with shared primitives and protocol mechanisms. Product behavior belongs in the product crates. A new crate should represent a meaningful boundary, not just provide a home for a helper. Call out changes to core to the developer.
 - `Session` is the shared authenticated context. Pass `&Session` to domain functions. Do not accumulate product methods on it or add another context type or service factory around it.

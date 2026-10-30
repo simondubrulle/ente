@@ -30,7 +30,7 @@ class _RecoveryPageState extends State<RecoveryPage> {
     final dialog = createProgressDialog(context, "Decrypting...");
     await dialog.show();
     try {
-      await widget.config.recover(_recoveryKey.text.trim());
+      await UserService.instance.recoverAccount(_recoveryKey.text.trim());
       await dialog.hide();
       if (!mounted) {
         return;

@@ -1,8 +1,8 @@
-import 'package:ente_base/models/two_factor.dart';
+import 'package:ente_base/models/accounts.dart';
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
 import 'package:flutter/material.dart';
-import 'package:photos/core/configuration.dart';
+import 'package:photos/services/account/user_service.dart';
 import "package:photos/ui/account/onboarding_page_scaffold.dart";
 import 'package:photos/ui/account/password_entry_page.dart';
 import "package:photos/ui/components/alert_bottom_sheet.dart";
@@ -105,7 +105,9 @@ class _RecoveryPageState extends State<RecoveryPage> {
     final dialog = createProgressDialog(context, context.strings.decrypting);
     await dialog.show();
     try {
-      await Configuration.instance.recover(_recoveryKeyController.text.trim());
+      await UserService.instance.recoverAccount(
+        _recoveryKeyController.text.trim(),
+      );
       await dialog.hide();
       if (!mounted) return;
       showShortToast(context, context.strings.recoverySuccessful);
@@ -127,7 +129,6 @@ class _RecoveryPageState extends State<RecoveryPage> {
       final errMessage = e == const AccountsError.malformedRecoveryKey()
           ? context.strings.invalidRecoveryKey
           : context.strings.incorrectRecoveryKeyBody;
-      if (!mounted) return;
       // ignore: unawaited_futures
       showAlertBottomSheet(
         context,
