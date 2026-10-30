@@ -107,6 +107,21 @@ ente photos file list --type video --min-size 500MB
 
 A file must match every filter you pass. `--sort created` lists the newest files first and `--sort size` the largest first; add `--reverse` for the opposite order. Files with an unknown size sort as the smallest, and ties keep ID order. Without `--sort`, files are listed by ID.
 
+## Find files by place
+
+```sh
+ente photos place list
+ente photos place list --countries --album Holidays
+ente photos file list --place lisbon
+ente photos file list --country JP --type video
+```
+
+`place list` shows the cities where your files were taken, with the number of files in each, most first. `--countries` lists countries instead. Places come from each file's location; files without one are not counted. Locations that match no city or country in the dataset are omitted from that list, so city and country totals can differ. Country filters use the groups shown by `place list --countries`, which can differ from a city's country. For example, photos in French Guiana count under France.
+
+`--place` keeps files taken in a city whose name contains the given text. When one of the cities `place list` shows for the same `--album` has exactly that name, only cities with that name match, so `--place nice` leaves out Venice. `--country` takes a two-letter code such as `PT`, or a full English country name, which matches only that country, so `--country niger` leaves out Nigeria; other text matches every country whose name contains it. `UK` also works for the United Kingdom, whose code is `GB`, and an unknown two-letter code is an error. Both ignore case and accent marks, and combine with the other filters. Type letters such as ł or ø as `place list` shows them: `--place wrocław` finds Wrocław, but `--place wroclaw` does not.
+
+The first time you use places, the CLI downloads about 7 MB of location data from Ente (`assets.ente.com`) and keeps it in the CLI home, where all your accounts share it. After that, places work with `--offline`. The location data is adapted from [GeoNames](https://www.geonames.org/) and the European Commission Joint Research Centre's [GHS-UCDB R2024A](https://doi.org/10.2905/1a338be6-7eaf-480c-9664-3a8ade88cbcd), both under [CC BY 4.0](https://creativecommons.org/licenses/by/4.0/), and from [Natural Earth](https://www.naturalearthdata.com/), which is in the public domain.
+
 ## Check storage and file count
 
 ```sh
@@ -136,12 +151,14 @@ Lists return arrays and `view` returns one object. IDs are strings; timestamps a
 | `album list`, `album view` | `id`, `name`, `type` (`album`, `folder`, `favorites`, `uncategorized`, `defaultHidden`, `quicklink`), `visibility` (`visible`, `archived`, `hidden`), `ownerId`, `updatedAt`                                                                                                     |
 | `file list`, `file view`   | `id`, `name`, `type` (`image`, `video`, `livephoto`), `ownerId`, `albumIds`, `createdAt`, `updatedAt`; nullable `modifiedAt`, `location` (`latitude`, `longitude`), `caption`, `hash`, `dateTime`, `offsetTime`, `visibility`, `durationSeconds`, `width`, `height`, `sizeBytes` |
 | `file download`            | `id`, `output`, `bytes`                                                                                                                                                                                                                                                          |
-| `usage`                    | `email`, `planExpiresAt`, `planActive`, `totalBytes`, `usedBytes`, `freeBytes`, `planBytes`, `bonusBytes`; nullable `files`, `family` (`usedBytes`, `storageBytes`, `members`: `email`, `status`, `admin`, `usedBytes`, `storageLimitBytes`)                        |
+| `place list`               | `name`, `country`, `countryCode`, `latitude` and `longitude` (the city's position), `fileCount`                                                                                                                                                                                  |
+| `place list --countries`   | `name`, `code`, `fileCount`                                                                                                                                                                                                                                                      |
+| `usage`                    | `email`, `planExpiresAt`, `planActive`, `totalBytes`, `usedBytes`, `freeBytes`, `planBytes`, `bonusBytes`; nullable `files`, `family` (`usedBytes`, `storageBytes`, `members`: `email`, `status`, `admin`, `usedBytes`, `storageLimitBytes`)                                     |
 | `export`                   | See [Automation](./automation.md#export-summary)                                                                                                                                                                                                                                 |
 
 ## Read offline
 
-`album list`, `album view`, `file list` and `file view` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Export, download and usage need the network.
+`album list`, `album view`, `file list`, `file view` and `place list` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Places also need the location data that an earlier online `place list`, `--place` or `--country` downloaded. Export, download and usage need the network.
 
 ## Limits
 
