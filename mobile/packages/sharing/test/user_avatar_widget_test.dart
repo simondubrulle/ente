@@ -109,10 +109,6 @@ class _TestConfiguration extends BaseConfiguration {
       throw UnimplementedError();
 
   @override
-  String recoveryKeyFromMnemonicOrHex(String recoveryKeyMnemonicOrHex) =>
-      throw UnimplementedError();
-
-  @override
   String? getEmail() => 'me@test.test';
 
   @override

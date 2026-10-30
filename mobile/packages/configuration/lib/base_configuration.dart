@@ -55,8 +55,6 @@ abstract class BaseConfiguration {
 
   String recoveryKeyToMnemonic(String recoveryKeyHex);
 
-  String recoveryKeyFromMnemonicOrHex(String recoveryKeyMnemonicOrHex);
-
   List<String> get lockScreenSecureStorageKeys => const [];
 
   Future<void> init(List<EnteBaseDatabase> dbs) async {

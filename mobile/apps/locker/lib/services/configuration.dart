@@ -75,12 +75,6 @@ class Configuration extends BaseConfiguration
       recovery.recoveryKeyToMnemonic(recoveryKeyHex: recoveryKeyHex);
 
   @override
-  String recoveryKeyFromMnemonicOrHex(String recoveryKeyMnemonicOrHex) =>
-      recovery.recoveryKeyFromMnemonicOrHex(
-        recoveryKeyMnemonicOrHex: recoveryKeyMnemonicOrHex,
-      );
-
-  @override
   Future<void> logout({bool autoLogout = false}) async {
     CollectionService.instance.clearCache();
     FavoritesService.instance.clearCache();
