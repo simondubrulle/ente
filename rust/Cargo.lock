@@ -3068,6 +3068,7 @@ dependencies = [
  "ente-legacy",
  "ente-location",
  "ente-locker",
+ "ente-photos",
  "js-sys",
  "log",
  "md-5 0.11.0",
