@@ -145,9 +145,7 @@ impl AccountsClient {
         password: String,
         srp_user_id: String,
     ) -> Result<SignupKeys, AccountsError> {
-        let keys =
-            auth::generate_keys_with_strength(&password, auth::KeyDerivationStrength::Sensitive)?;
-        let srp = auth::generate_srp_setup_with_login_key(&keys.login_key, &srp_user_id)?;
+        let (keys, srp) = signup::generate_keys(&password, &srp_user_id)?;
         Ok(SignupKeys {
             key_attributes: keys.key_attributes,
             master_key: keys.private_key_attributes.key.into_string(),

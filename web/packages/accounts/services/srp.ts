@@ -65,10 +65,7 @@ export type SRPSetupAttributes = z.infer<typeof SRPSetupAttributes>;
 
 export const generateSRPSetupAttributes = async (
     kek: string,
-): Promise<SRPSetupAttributes> => {
-    const srpUserID = uuidv4();
-    return { srpUserID, ...(await generateSRPSetup(kek, srpUserID)) };
-};
+): Promise<SRPSetupAttributes> => generateSRPSetup(kek, uuidv4());
 
 export const setupSRP = async (srpSetupAttributes: SRPSetupAttributes) => {
     const token = await ensureAuthToken();

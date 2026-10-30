@@ -6,7 +6,7 @@ import {
     saveKeyAttributes,
     updateSavedLocalUser,
 } from "ente-accounts/services/accounts-db";
-import { generateAccountKeys } from "ente-accounts/services/crypto";
+import { generateSignupKeys as rustGenerateSignupKeys } from "ente-accounts/services/crypto";
 import { generateInteractiveKeyAttributes } from "ente-accounts/services/key-attributes";
 import { namedError } from "ente-base/error";
 import { authenticatedRequestHeaders, ensureOk } from "ente-base/http";
@@ -32,6 +32,7 @@ import {
     type AccountsClient,
 } from "ente-prelogin-wasm";
 import { nullToUndefined } from "ente-utils/transform";
+import { v4 as uuidv4 } from "uuid";
 import { z } from "zod";
 import { getAccountsClient, withAccountsClient } from "./accounts-client";
 import { clearInflightPasskeySessionID } from "./passkey";
@@ -113,22 +114,13 @@ export const getTwoFactorStatus = async () => {
     return z.object({ status: z.boolean() }).parse(await res.json()).status;
 };
 
-export interface GenerateKeysAndAttributesResult {
-    masterKey: string;
-    kek: string;
-    keyAttributes: KeyAttributes;
-}
-
-export const generateKeysAndAttributes = async (
-    password: string,
-): Promise<GenerateKeysAndAttributesResult> =>
-    z
-        .object({
-            masterKey: z.string(),
-            kek: z.string(),
-            keyAttributes: RemoteKeyAttributes,
-        })
-        .parse(await generateAccountKeys(password));
+export const generateSignupKeys = async (password: string) => {
+    const generated = await rustGenerateSignupKeys(password, uuidv4());
+    return {
+        ...generated,
+        keyAttributes: RemoteKeyAttributes.parse(generated.keyAttributes),
+    };
+};
 
 export const putUserKeyAttributes = async (keyAttributes: KeyAttributes) => {
     const token = await ensureAuthToken();

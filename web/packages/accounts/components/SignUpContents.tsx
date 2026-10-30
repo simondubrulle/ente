@@ -7,10 +7,9 @@ import {
     stashSRPSetupAttributes,
 } from "ente-accounts/services/accounts-db";
 import { saveMasterKeyInSessionAndSafeStore } from "ente-accounts/services/prelogin-session";
-import { generateSRPSetupAttributes } from "ente-accounts/services/srp";
 import {
     generateAndSaveInteractiveKeyAttributes,
-    generateKeysAndAttributes,
+    generateSignupKeys,
     sendOTT,
 } from "ente-accounts/services/user";
 import {
@@ -118,10 +117,10 @@ export const SignUpContents: React.FC<SignUpContentsProps> = ({
 
                 await sendOTT(email, "signup");
                 replaceSavedLocalUser({ email });
-                const { masterKey, kek, keyAttributes } =
-                    await generateKeysAndAttributes(password);
+                const { masterKey, keyAttributes, srp } =
+                    await generateSignupKeys(password);
                 saveOriginalKeyAttributes(keyAttributes);
-                stashSRPSetupAttributes(await generateSRPSetupAttributes(kek));
+                stashSRPSetupAttributes(srp);
                 await generateAndSaveInteractiveKeyAttributes(
                     password,
                     keyAttributes,

@@ -1,5 +1,5 @@
 export {
     deriveKey,
-    generateAccountKeys,
     generateInteractiveKeyAttributes,
+    generateSignupKeys,
 } from "ente-prelogin-wasm";

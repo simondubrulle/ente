@@ -4,7 +4,7 @@ import * as kdf from "./kdf";
 
 export class KDFWorker {
     deriveKey = kdf.deriveKey;
-    generateAccountKeys = kdf.generateAccountKeys;
+    generateSignupKeys = kdf.generateSignupKeys;
     generateInteractiveKeyAttributes = kdf.generateInteractiveKeyAttributes;
 }
 

@@ -16,13 +16,10 @@ import { deriveKey } from "ente-accounts/services/crypto";
 import { saveMasterKeyInSessionAndSafeStore } from "ente-accounts/services/prelogin-session";
 import { getPreloginRecoveryKeyMnemonic } from "ente-accounts/services/recovery-key";
 import { appHomeRoute } from "ente-accounts/services/redirect";
-import {
-    completePendingSignup,
-    generateSRPSetupAttributes,
-} from "ente-accounts/services/srp";
+import { completePendingSignup } from "ente-accounts/services/srp";
 import {
     generateAndSaveInteractiveKeyAttributes,
-    generateKeysAndAttributes,
+    generateSignupKeys,
     unlockAccountWithKEK,
 } from "ente-accounts/services/user";
 import { LoadingIndicator } from "ente-base/components/loaders";
@@ -86,14 +83,11 @@ const Page: React.FC = () => {
                         kek,
                     ));
                 } else {
-                    const generated = await generateKeysAndAttributes(password);
+                    const generated = await generateSignupKeys(password);
                     ({ masterKey, keyAttributes } = generated);
-                    const setup = await generateSRPSetupAttributes(
-                        generated.kek,
-                    );
                     saveOriginalKeyAttributes(keyAttributes);
                     saveKeyAttributes(keyAttributes);
-                    stashSRPSetupAttributes(setup);
+                    stashSRPSetupAttributes(generated.srp);
                     saveIsFirstLogin();
                 }
                 await completePendingSignup(userEmail, await ensureAuthToken());

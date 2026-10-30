@@ -1,26 +1,31 @@
 use crate::accounts::Error as AccountsError;
-use ente_accounts::auth;
+use ente_accounts::{auth, signup};
 use ente_core::b64;
 use serde::Serialize;
 use tsify::Tsify;
 use wasm_bindgen::prelude::*;
 
-#[derive(Serialize)]
+#[derive(Serialize, Tsify)]
 #[serde(rename_all = "camelCase")]
-struct GeneratedAccountKeys {
+pub struct GeneratedSignupKeys {
     master_key: String,
-    kek: String,
+    #[tsify(type = "unknown")]
     key_attributes: auth::KeyAttributes,
+    srp: GeneratedSrpSetup,
 }
 
-#[wasm_bindgen(js_name = authGenerateAccountKeys, unchecked_return_type = "unknown")]
-pub fn auth_generate_account_keys(password: &str) -> Result<JsValue, AccountsError> {
-    let keys = auth::generate_keys_with_strength(password, auth::KeyDerivationStrength::Sensitive)?;
-    serde_wasm_bindgen::to_value(&GeneratedAccountKeys {
+#[wasm_bindgen(js_name = authGenerateSignupKeys)]
+pub fn auth_generate_signup_keys(
+    password: &str,
+    srp_user_id: &str,
+) -> Result<<GeneratedSignupKeys as Tsify>::JsType, AccountsError> {
+    let (keys, srp) = signup::generate_keys(password, srp_user_id)?;
+    GeneratedSignupKeys {
         master_key: keys.private_key_attributes.key.to_string(),
-        kek: b64::encode(&keys.key_encryption_key),
         key_attributes: keys.key_attributes,
-    })
+        srp: GeneratedSrpSetup::new(srp_user_id, srp),
+    }
+    .into_js()
     .map_err(Into::into)
 }
 
@@ -44,9 +49,22 @@ pub fn auth_generate_interactive_key_attributes(
 #[derive(Serialize, Tsify)]
 #[serde(rename_all = "camelCase")]
 pub struct GeneratedSrpSetup {
+    #[serde(rename = "srpUserID")]
+    pub srp_user_id: String,
     pub srp_salt: String,
     pub srp_verifier: String,
     pub login_sub_key: String,
+}
+
+impl GeneratedSrpSetup {
+    fn new(srp_user_id: &str, generated: auth::GeneratedSrpSetup) -> Self {
+        Self {
+            srp_user_id: srp_user_id.to_string(),
+            srp_salt: b64::encode(&generated.srp_salt),
+            srp_verifier: b64::encode(&generated.srp_verifier),
+            login_sub_key: b64::encode(&generated.login_sub_key),
+        }
+    }
 }
 
 #[wasm_bindgen(js_name = authDeriveKek)]
@@ -68,13 +86,9 @@ pub fn auth_generate_srp_setup(
     let kek =
         b64::decode(kek_b64).map_err(|e| ente_accounts::Error::Decode(format!("kek: {e}")))?;
     let generated = auth::generate_srp_setup(&kek, srp_user_id)?;
-    GeneratedSrpSetup {
-        srp_salt: b64::encode(&generated.srp_salt),
-        srp_verifier: b64::encode(&generated.srp_verifier),
-        login_sub_key: b64::encode(&generated.login_sub_key),
-    }
-    .into_js()
-    .map_err(Into::into)
+    GeneratedSrpSetup::new(srp_user_id, generated)
+        .into_js()
+        .map_err(Into::into)
 }
 
 #[wasm_bindgen(js_name = authRecoveryKeyToMnemonic)]

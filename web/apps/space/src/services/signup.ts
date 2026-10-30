@@ -10,13 +10,10 @@ import {
     stashSRPSetupAttributes,
     unstashReferralSource,
 } from "ente-accounts/services/accounts-db";
-import {
-    completePendingSignup,
-    generateSRPSetupAttributes,
-} from "ente-accounts/services/srp";
+import { completePendingSignup } from "ente-accounts/services/srp";
 import {
     generateAndSaveInteractiveKeyAttributes,
-    generateKeysAndAttributes,
+    generateSignupKeys,
     sendOTT,
     unlockAccountWithKey,
     verifyEmail,
@@ -52,10 +49,10 @@ export const beginSpaceSignup = async ({
     await sendOTT(cleanedEmail, "signup");
     replaceSavedLocalUser({ email: cleanedEmail });
 
-    const { masterKey, kek, keyAttributes } =
-        await generateKeysAndAttributes(password);
+    const { masterKey, keyAttributes, srp } =
+        await generateSignupKeys(password);
     saveOriginalKeyAttributes(keyAttributes);
-    stashSRPSetupAttributes(await generateSRPSetupAttributes(kek));
+    stashSRPSetupAttributes(srp);
     await generateAndSaveInteractiveKeyAttributes(
         password,
         keyAttributes,

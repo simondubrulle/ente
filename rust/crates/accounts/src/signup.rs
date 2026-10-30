@@ -9,9 +9,8 @@ use zeroize::ZeroizeOnDrop;
 use crate::{
     AccountSecrets, AccountsClient, AuthenticatedAccount, Error, KeyAttributes, Result,
     auth::{
-        GeneratedSrpSetup, KeyDerivationStrength, SrpAttributes, SrpSession, decrypt_keys_only,
-        derive_kek, generate_keys_with_strength, generate_srp_setup_with_login_key,
-        get_recovery_key,
+        self, GeneratedSrpSetup, KeyDerivationStrength, KeyGenResult, SrpAttributes, SrpSession,
+        decrypt_keys_only, derive_kek, generate_srp_setup_with_login_key, get_recovery_key,
     },
     models::{AuthResponse, SetupSrpRequest},
 };
@@ -36,6 +35,23 @@ struct PreparedKeys {
     srp_user_id: Uuid,
     srp_salt: Vec<u8>,
     srp_verifier: Vec<u8>,
+}
+
+pub fn generate_keys(
+    password: &str,
+    srp_user_id: &str,
+) -> Result<(KeyGenResult, GeneratedSrpSetup)> {
+    generate_keys_with_strength(password, srp_user_id, KeyDerivationStrength::Sensitive)
+}
+
+fn generate_keys_with_strength(
+    password: &str,
+    srp_user_id: &str,
+    strength: KeyDerivationStrength,
+) -> Result<(KeyGenResult, GeneratedSrpSetup)> {
+    let keys = auth::generate_keys_with_strength(password, strength)?;
+    let srp = generate_srp_setup_with_login_key(&keys.login_key, srp_user_id)?;
+    Ok((keys, srp))
 }
 
 impl Signup {
@@ -87,10 +103,9 @@ impl Signup {
         if remote.has_set_keys || remote.key_attributes.is_some() {
             return Err(Error::AccountAlreadyExists);
         }
-        let generated = generate_keys_with_strength(password, strength)?;
         let srp_user_id = Uuid::new_v4();
-        let srp =
-            generate_srp_setup_with_login_key(&generated.login_key, &srp_user_id.to_string())?;
+        let (generated, srp) =
+            generate_keys_with_strength(password, &srp_user_id.to_string(), strength)?;
         let mut prepared = self.clone();
         prepared.keys = Some(PreparedKeys {
             master_key: b64::decode(&generated.private_key_attributes.key)?,

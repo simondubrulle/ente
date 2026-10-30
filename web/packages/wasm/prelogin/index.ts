@@ -102,8 +102,8 @@ export const unlockAccountWithMasterKey = async (
 ): Promise<unknown> =>
     (await wasm()).unlockAccountWithMasterKey(response, masterKey);
 
-export const generateAccountKeys = async (password: string): Promise<unknown> =>
-    (await wasm()).authGenerateAccountKeys(password);
+export const generateSignupKeys = async (password: string, srpUserID: string) =>
+    (await wasm()).authGenerateSignupKeys(password, srpUserID);
 
 export const generateInteractiveKeyAttributes = async (
     password: string,

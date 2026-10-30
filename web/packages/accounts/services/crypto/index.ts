@@ -48,10 +48,12 @@ export const deriveKey = (
               worker.deriveKey(password, saltB64, opsLimit, memLimit),
           );
 
-export const generateAccountKeys = (password: string): Promise<unknown> =>
+export const generateSignupKeys = (password: string, srpUserID: string) =>
     inWorker()
-        ? kdf.generateAccountKeys(password)
-        : withKDFWorker((worker) => worker.generateAccountKeys(password));
+        ? kdf.generateSignupKeys(password, srpUserID)
+        : withKDFWorker((worker) =>
+              worker.generateSignupKeys(password, srpUserID),
+          );
 
 export const generateInteractiveKeyAttributes = (
     password: string,
