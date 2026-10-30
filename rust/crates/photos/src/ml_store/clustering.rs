@@ -171,11 +171,7 @@ impl MlStore {
         let mut faces = Vec::new();
         let mut unclusterable_face_ids = Vec::new();
         for (face_id, embedding) in self.db.get_face_embedding_rows_for_faces(face_ids)? {
-            let embedding = decode_evector(&embedding)
-                .ok()
-                .map(|values| values.into_iter().map(|value| value as f32).collect())
-                .filter(|embedding: &Vec<f32>| is_clusterable(embedding));
-            match embedding {
+            match clusterable_embedding(&embedding) {
                 Some(embedding) => faces.push(Face {
                     creation_time: try_file_id_from_face_id(&face_id)
                         .and_then(|file_id| file_creation_times.get(&file_id).copied()),
@@ -225,12 +221,19 @@ fn check_distance_threshold(distance_threshold: f64) -> Result<()> {
     }
 }
 
-fn is_clusterable(embedding: &[f32]) -> bool {
+pub(super) fn is_clusterable(embedding: &[f32]) -> bool {
     embedding.len() == CLUSTER_CENTROID_DIMENSIONS
         && embedding.iter().all(|value| value.is_finite())
 }
 
-fn summaries(means: &HashMap<String, ClusterMean>) -> HashMap<String, ClusterSummary> {
+pub(super) fn clusterable_embedding(embedding: &[u8]) -> Option<Vec<f32>> {
+    decode_evector(embedding)
+        .ok()
+        .map(|values| values.into_iter().map(|value| value as f32).collect())
+        .filter(|embedding: &Vec<f32>| is_clusterable(embedding))
+}
+
+pub(super) fn summaries(means: &HashMap<String, ClusterMean>) -> HashMap<String, ClusterSummary> {
     means
         .iter()
         .map(|(cluster_id, mean)| {
@@ -250,54 +253,14 @@ mod tests {
     use std::fs;
 
     use super::{ClusteredBucket, FaceClusteringPlan, FaceClusteringRequest, FaceClusteringRun};
-    use crate::ml_db::vector_encoding::{decode_evector, encode_evector};
-    use crate::ml_db::{ClusterSummary, FaceRow};
-    use crate::ml_store::tests::{index_path, meta, open};
-    use crate::ml_store::{CLUSTER_CENTROID_DIMENSIONS, Error, Index, MlStore};
+    use crate::ml_db::ClusterSummary;
+    use crate::ml_db::vector_encoding::encode_evector;
+    use crate::ml_store::tests::{
+        assert_direction, assign, embedding, face, index_path, meta, open, seed, summary_of,
+    };
+    use crate::ml_store::{Error, Index, MlStore};
 
     const THRESHOLD: f64 = 0.24;
-
-    fn embedding(degrees: f64) -> Vec<f64> {
-        let mut values = vec![0.0; CLUSTER_CENTROID_DIMENSIONS];
-        let radians = degrees.to_radians();
-        values[0] = radians.cos();
-        values[1] = radians.sin();
-        values
-    }
-
-    fn face(file_id: i64, degrees: f64) -> FaceRow {
-        FaceRow {
-            file_id,
-            face_id: format!("{file_id}_0"),
-            detection_json: "{}".to_string(),
-            embedding: embedding(degrees),
-            score: 0.9,
-            blur: 300.0,
-            is_sideways: false,
-            image_height: 100,
-            image_width: 100,
-            ml_version: 1,
-        }
-    }
-
-    fn seed(store: &MlStore, faces: &[(i64, f64)]) {
-        let rows: Vec<FaceRow> = faces
-            .iter()
-            .map(|&(file_id, degrees)| face(file_id, degrees))
-            .collect();
-        store.db().bulk_insert_faces(&rows).unwrap();
-    }
-
-    fn assign(store: &MlStore, assignments: &[(i64, &str)]) {
-        let assignments: HashMap<String, String> = assignments
-            .iter()
-            .map(|&(file_id, cluster_id)| (format!("{file_id}_0"), cluster_id.to_string()))
-            .collect();
-        store
-            .db()
-            .update_face_id_to_cluster_id(&assignments)
-            .unwrap();
-    }
 
     fn request(file_ids: impl IntoIterator<Item = i64>) -> FaceClusteringRequest {
         FaceClusteringRequest {
@@ -347,23 +310,6 @@ mod tests {
             .db()
             .get_cluster_id_for_face_id(&format!("{file_id}_0"))
             .unwrap()
-    }
-
-    fn summary_of(store: &MlStore, cluster_id: &str) -> (Vec<f64>, i64) {
-        let summary = store
-            .db()
-            .get_cluster_to_cluster_summary(&[cluster_id.to_string()])
-            .unwrap()
-            .remove(cluster_id)
-            .unwrap();
-        (decode_evector(&summary.avg).unwrap(), summary.count)
-    }
-
-    fn assert_direction(actual: &[f64], degrees: f64) {
-        let expected = embedding(degrees);
-        for (actual, expected) in actual.iter().zip(&expected) {
-            assert!((actual - expected).abs() < 1e-5, "{actual} != {expected}");
-        }
     }
 
     #[test]
