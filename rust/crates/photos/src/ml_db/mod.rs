@@ -37,6 +37,24 @@ pub struct MlDb {
     db: Database,
 }
 
+const CLEAR_NON_PET_TABLES: [&str; 8] = [
+    schema::DELETE_FACES,
+    schema::DELETE_FACE_CLUSTERS,
+    schema::DELETE_CLUSTER_PERSON,
+    schema::DELETE_CLUSTER_SUMMARY,
+    schema::DELETE_CLUSTER_CENTROID_VECTOR_ID_MAPPING,
+    schema::DELETE_NOT_PERSON_FEEDBACK,
+    schema::DELETE_CLIP_EMBEDDINGS,
+    schema::DELETE_FILE_DATA,
+];
+
+const CLEAR_PET_TABLES: [&str; 4] = [
+    schema::DELETE_PET_FACES,
+    schema::DELETE_PET_BODIES,
+    schema::DELETE_PET_FACE_VECTOR_ID_MAPPING,
+    schema::DELETE_PET_BODY_VECTOR_ID_MAPPING,
+];
+
 impl MlDb {
     pub fn open(path: impl AsRef<Path>) -> Result<Self> {
         Ok(Self {
@@ -56,25 +74,20 @@ impl MlDb {
     }
 
     pub fn clear_non_pet_tables(&self) -> Result<()> {
-        self.execute_statements([
-            schema::DELETE_FACES,
-            schema::DELETE_FACE_CLUSTERS,
-            schema::DELETE_CLUSTER_PERSON,
-            schema::DELETE_CLUSTER_SUMMARY,
-            schema::DELETE_CLUSTER_CENTROID_VECTOR_ID_MAPPING,
-            schema::DELETE_NOT_PERSON_FEEDBACK,
-            schema::DELETE_CLIP_EMBEDDINGS,
-            schema::DELETE_FILE_DATA,
-        ])
+        self.execute_statements(CLEAR_NON_PET_TABLES)
     }
 
     pub fn clear_pet_tables(&self) -> Result<()> {
-        self.execute_statements([
-            schema::DELETE_PET_FACES,
-            schema::DELETE_PET_BODIES,
-            schema::DELETE_PET_FACE_VECTOR_ID_MAPPING,
-            schema::DELETE_PET_BODY_VECTOR_ID_MAPPING,
-        ])
+        self.execute_statements(CLEAR_PET_TABLES)
+    }
+
+    pub(crate) fn clear_all_tables(&self) -> Result<()> {
+        self.execute_statements(
+            CLEAR_NON_PET_TABLES
+                .into_iter()
+                .chain(CLEAR_PET_TABLES)
+                .chain([schema::DELETE_ML_STORE_META]),
+        )
     }
 }
 
