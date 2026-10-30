@@ -41,11 +41,6 @@ export const deleteAccount = async (
 export const recoveryKeyMnemonic = async (session: Session) =>
     (await wasm()).authRecoveryKeyMnemonic(session);
 
-export const encryptBoxWithRecoveryKey = async (
-    session: Session,
-    dataB64: string,
-) => (await wasm()).authEncryptWithRecoveryKey(session, dataB64);
-
 export const generateKey = async () => (await wasm()).cryptoGenerateKey();
 
 export const encryptBox = async (dataB64: string, keyB64: string) =>

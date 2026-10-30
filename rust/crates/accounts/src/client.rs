@@ -55,6 +55,13 @@ impl AccountsClient {
         self.api.set_auth(auth_token.map(Auth::User));
     }
 
+    pub fn with_auth_token(&self, auth_token: String) -> Self {
+        Self {
+            api: self.api.with_auth(Auth::User(auth_token)),
+            client_package: self.client_package.clone(),
+        }
+    }
+
     pub fn client_package(&self) -> &str {
         &self.client_package
     }
@@ -91,22 +98,34 @@ impl AccountsClient {
                 .json()
                 .await
         })
-        .await?;
+        .await
+        .map_err(|error| match error.status_code() {
+            Some(404) => Error::SrpNotConfigured,
+            _ => error.into(),
+        })?;
         Ok(response.attributes)
     }
 
-    pub(crate) async fn login_with_srp(
+    pub async fn login_with_srp(
         &self,
         password: &str,
         srp_attrs: &SrpAttributes,
     ) -> Result<(AuthResponse, SecretVec)> {
-        let creds = auth::derive_srp_credentials(password, srp_attrs)?;
-        let srp_salt = b64::decode(&srp_attrs.srp_salt)?;
-        let mut srp_session = SrpSession::new(
-            &srp_attrs.srp_user_id.to_string(),
-            &srp_salt,
-            &creds.login_key,
+        let kek = auth::derive_kek(
+            password,
+            &srp_attrs.kek_salt,
+            srp_attrs.mem_limit,
+            srp_attrs.ops_limit,
         )?;
+        let response = self.verify_srp(srp_attrs, &kek).await?;
+        Ok((response, kek))
+    }
+
+    pub async fn verify_srp(&self, srp_attrs: &SrpAttributes, kek: &[u8]) -> Result<AuthResponse> {
+        let login_key = auth::derive_srp_login_key(kek)?;
+        let srp_salt = b64::decode(&srp_attrs.srp_salt)?;
+        let mut srp_session =
+            SrpSession::new(&srp_attrs.srp_user_id.to_string(), &srp_salt, &login_key)?;
         let a_pub = srp_session.public_a();
 
         let session = self
@@ -125,7 +144,7 @@ impl AccountsClient {
             .verify_m2(&server_proof)
             .map_err(|_| Error::Srp("Server proof verification failed".to_string()))?;
 
-        Ok((auth_response, creds.kek))
+        Ok(auth_response)
     }
 
     pub async fn create_srp_session(
@@ -178,10 +197,11 @@ impl AccountsClient {
             .await?)
     }
 
-    pub async fn send_otp(&self, email: &str, purpose: &str) -> Result<()> {
+    pub async fn send_otp(&self, email: &str, purpose: &str, mobile: bool) -> Result<()> {
         let request = SendOtpRequest {
             email: email.to_string(),
             purpose: purpose.to_string(),
+            mobile,
         };
         self.api
             .post("/users/ott")
@@ -189,7 +209,28 @@ impl AccountsClient {
             .send()
             .await?
             .error_for_code()
-            .await?;
+            .await
+            .map_err(|error| match error {
+                http::Error::Api {
+                    status: 404,
+                    ref code,
+                    ..
+                } if code == "USER_NOT_REGISTERED" => Error::NotRegistered,
+                http::Error::Api {
+                    status: 409,
+                    ref code,
+                    ..
+                } if code == "USER_ALREADY_REGISTERED" => Error::AlreadyRegistered,
+                http::Error::Api {
+                    status: 404,
+                    ref code,
+                    ..
+                } if code == "USER_SIGNUP_INCOMPLETE" => Error::SignupIncomplete,
+                _ if purpose == "change" && error.status_code() == Some(403) => {
+                    Error::EmailAlreadyInUse
+                }
+                _ => error.into(),
+            })?;
         Ok(())
     }
 
@@ -378,14 +419,19 @@ impl AccountsClient {
     }
 
     pub async fn enable_two_factor(&self, request: &EnableTwoFactorRequest) -> Result<()> {
-        self.api
+        match self
+            .api
             .post("/users/two-factor/enable")
             .json(request)
             .send()
             .await?
             .error_for_code()
-            .await?;
-        Ok(())
+            .await
+        {
+            Ok(_) => Ok(()),
+            Err(error) if error.status_code() == Some(401) => Err(Error::IncorrectTotp),
+            Err(error) => Err(error.into()),
+        }
     }
 
     pub async fn disable_two_factor(&self) -> Result<()> {
@@ -441,7 +487,7 @@ impl AccountsClient {
                 },
             ),
         ];
-        Ok(http::retry(|| async {
+        http::retry(|| async {
             self.api
                 .get("/users/two-factor/recover")
                 .query(&query)
@@ -452,7 +498,14 @@ impl AccountsClient {
                 .json()
                 .await
         })
-        .await?)
+        .await
+        .map_err(|error| match error.status_code() {
+            Some(404) => Error::SecondFactorSessionExpired,
+            Some(400) if matches!(two_factor_type, TwoFactorType::Passkey) => {
+                Error::TwoFactorRecoveryNotConfigured
+            }
+            _ => error.into(),
+        })
     }
 
     pub async fn remove_two_factor(
@@ -466,7 +519,11 @@ impl AccountsClient {
             .send()
             .await?
             .error_for_code()
-            .await?
+            .await
+            .map_err(|error| match error.status_code() {
+                Some(404) => Error::SecondFactorSessionExpired,
+                _ => error.into(),
+            })?
             .json()
             .await?)
     }
@@ -554,6 +611,59 @@ mod tests {
                 .with_user_agent("ente-accounts-test"),
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn send_otp_classifies_account_errors() {
+        let cases = [
+            (
+                "login",
+                404,
+                "USER_NOT_REGISTERED",
+                Some(Error::NotRegistered),
+            ),
+            (
+                "signup",
+                409,
+                "USER_ALREADY_REGISTERED",
+                Some(Error::AlreadyRegistered),
+            ),
+            (
+                "login",
+                404,
+                "USER_SIGNUP_INCOMPLETE",
+                Some(Error::SignupIncomplete),
+            ),
+            ("change", 403, "", Some(Error::EmailAlreadyInUse)),
+            ("signup", 403, "", None),
+            ("login", 404, "UNEXPECTED", None),
+            ("login", 500, "USER_NOT_REGISTERED", None),
+        ];
+        for (purpose, status, code, expected) in cases {
+            let mut server = Server::new_async().await;
+            let response = server
+                .mock("POST", "/users/ott")
+                .with_status(status)
+                .with_body(serde_json::json!({"code": code}).to_string())
+                .expect(1)
+                .create_async()
+                .await;
+            let error = make_client(server.url())
+                .send_otp("user@example.org", purpose, false)
+                .await
+                .unwrap_err();
+            if let Some(expected) = expected {
+                assert_eq!(
+                    std::mem::discriminant(&error),
+                    std::mem::discriminant(&expected)
+                );
+            } else {
+                assert!(
+                    matches!(error, Error::Http(http) if http.status_code() == Some(status as u16))
+                );
+            }
+            response.assert_async().await;
+        }
     }
 
     #[tokio::test]

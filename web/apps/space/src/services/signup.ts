@@ -1,33 +1,28 @@
 import {
     replaceSavedLocalUser,
     savedOriginalKeyAttributes,
+    savedPartialLocalUser,
     saveIsFirstLogin,
     saveJustSignedUp,
     saveKeyAttributes,
     saveOriginalKeyAttributes,
     stashReferralSource,
     stashSRPSetupAttributes,
-    unstashAfterUseSRPSetupAttributes,
     unstashReferralSource,
 } from "ente-accounts/services/accounts-db";
 import {
+    completePendingSignup,
     generateSRPSetupAttributes,
-    getAndSaveSRPAttributes,
 } from "ente-accounts/services/srp";
 import {
     generateAndSaveInteractiveKeyAttributes,
     generateKeysAndAttributes,
     sendOTT,
+    unlockAccountWithKey,
     verifyEmail,
     type KeyAttributes,
 } from "ente-accounts/services/user";
-import { isMuseumHTTPError } from "ente-base/http";
-import { spaceAuthError, spaceAuthErrorMessage } from "services/auth-error";
-import {
-    decryptSpaceBootstrapAuthToken,
-    putSpaceSignupKeyAttributes,
-    setupSpaceSignupSRP,
-} from "services/bootstrap-auth";
+import { spaceAuthError } from "services/auth-error";
 import {
     createSpaceBrowserSession,
     getOrCreateSpaceRootKey,
@@ -83,15 +78,19 @@ const verifiedSignupAuthToken = async ({
     masterKey: string;
     token?: string;
 }) => {
-    if (token) return token;
-    if (encryptedToken) {
-        return decryptSpaceBootstrapAuthToken(
-            encryptedToken,
-            keyAttributes,
+    if (!token && !encryptedToken)
+        throw spaceAuthError("signup_session_expired");
+    return (
+        await unlockAccountWithKey(
+            {
+                id: savedPartialLocalUser()!.id!,
+                token,
+                encryptedToken,
+                keyAttributes,
+            },
             masterKey,
-        );
-    }
-    throw spaceAuthError("signup_session_expired");
+        )
+    ).token;
 };
 
 export const completeSpaceSignup = async (email: string, code: string) => {
@@ -138,15 +137,8 @@ export const completeSpaceSignup = async (email: string, code: string) => {
             masterKey,
             token,
         });
-        await putSpaceSignupKeyAttributes(
-            originalKeyAttributes,
-            bootstrapAuthToken,
-        );
-        await unstashAfterUseSRPSetupAttributes((srpSetupAttributes) =>
-            setupSpaceSignupSRP(srpSetupAttributes, bootstrapAuthToken),
-        );
-        await getAndSaveSRPAttributes(email);
     }
+    await completePendingSignup(email, bootstrapAuthToken);
 
     const spaceRootKey = await getOrCreateSpaceRootKey(
         masterKey,
@@ -159,13 +151,3 @@ export const completeSpaceSignup = async (email: string, code: string) => {
 
 export const resendSpaceSignupCode = (email: string) =>
     sendOTT(email.trim(), "signup");
-
-export const spaceSignupErrorMessage = async (error: unknown) => {
-    if (await isMuseumHTTPError(error, 409, "USER_ALREADY_REGISTERED")) {
-        return "This email already has an account. Please sign in.";
-    }
-    return spaceAuthErrorMessage(
-        error,
-        "Couldn't create account. Please try again.",
-    );
-};

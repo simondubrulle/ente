@@ -251,6 +251,18 @@ impl Api {
         *self.auth.write().unwrap_or_else(PoisonError::into_inner) = auth;
     }
 
+    pub fn with_auth(&self, auth: Auth) -> Self {
+        Self {
+            http: self.http.clone(),
+            origin: self.origin.clone(),
+            client_package: self.client_package.clone(),
+            client_version: self.client_version.clone(),
+            #[cfg(not(target_arch = "wasm32"))]
+            user_agent: self.user_agent.clone(),
+            auth: RwLock::new(Some(auth)),
+        }
+    }
+
     pub fn get(&self, path: &str) -> RequestBuilder {
         self.request(Method::GET, path)
     }
@@ -532,7 +544,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn api_sends_client_and_auth_headers() {
+    async fn api_sends_client_headers_and_scopes_auth() {
         let mut server = Server::new_async().await;
         let mock = server
             .mock("GET", "/ping")
@@ -543,12 +555,22 @@ mod tests {
             .create_async()
             .await;
 
-        let api = api(&server, Some(Auth::User("tok".into())));
-        let response = api.ping().await.unwrap();
+        let public_mock = server
+            .mock("GET", "/ping")
+            .match_header("x-client-package", "io.ente.test")
+            .match_header("x-auth-token", mockito::Matcher::Missing)
+            .with_body(r#"{"message":"public","id":"abc"}"#)
+            .create_async()
+            .await;
+        let public_api = api(&server, None);
+        let authorized = public_api.with_auth(Auth::User("tok".into()));
+        let response = authorized.ping().await.unwrap();
 
         mock.assert_async().await;
         assert_eq!(response.message, "pong");
         assert_eq!(response.id, "abc");
+        assert_eq!(public_api.ping().await.unwrap().message, "public");
+        public_mock.assert_async().await;
     }
 
     #[tokio::test]

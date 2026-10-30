@@ -8,31 +8,13 @@ import {
     recoveryKeyToMnemonic,
 } from "../index";
 import {
-    authDeriveSrpLoginKey,
-    authGenerateInteractiveKek,
     authGenerateSrpSetup,
     cryptoGenerateKey,
 } from "../pkg/ente_prelogin_wasm.js";
 
-test("generates an interactive kek bundle", async () => {
-    const generated = authGenerateInteractiveKek(
-        "correct horse battery staple",
-    );
-
-    expect(Buffer.from(generated.key, "base64")).toHaveLength(32);
-    expect(Buffer.from(generated.salt, "base64")).toHaveLength(16);
-    expect(generated.memLimit).toBe(67_108_864);
-    expect(generated.opsLimit).toBe(2);
+test("rejects unsupported password derivation limits", async () => {
     await expect(
-        deriveKey(
-            "correct horse battery staple",
-            generated.salt,
-            generated.opsLimit,
-            generated.memLimit,
-        ),
-    ).resolves.toBe(generated.key);
-    await expect(
-        deriveKey("password", generated.salt, 5, 2 ** 32),
+        deriveKey("password", Buffer.alloc(16).toString("base64"), 5, 2 ** 32),
     ).rejects.toThrow("Password derivation exceeds supported resource limits");
 });
 
@@ -41,7 +23,6 @@ test("generates SRP setup attributes from a kek", () => {
     const generated = authGenerateSrpSetup(kek, "test-user-id");
 
     expect(Buffer.from(generated.srpSalt, "base64")).toHaveLength(16);
-    expect(authDeriveSrpLoginKey(kek)).toBe(generated.loginSubKey);
     expect(Buffer.from(generated.loginSubKey, "base64")).toHaveLength(16);
     expect(Buffer.from(generated.srpVerifier, "base64").length).toBeGreaterThan(
         0,
@@ -140,16 +121,19 @@ test("recovers TOTP and passkey through Rust with the existing wire format", asy
             status = 404;
             await expect(get()).rejects.toMatchObject({
                 name: "session_expired",
-                status,
+            });
+            status = 400;
+            await expect(get()).rejects.toMatchObject({
+                name:
+                    factor == "passkey"
+                        ? "two_factor_recovery_not_configured"
+                        : "Error",
             });
             status = 403;
-            await expect(get()).rejects.toMatchObject({
-                name: "Error",
-                status,
-            });
+            await expect(get()).rejects.toMatchObject({ name: "Error" });
             status = 500;
             const calls = fetch.mock.calls.length;
-            await expect(recover(key)).rejects.toMatchObject({ status });
+            await expect(recover(key)).rejects.toMatchObject({ name: "Error" });
             expect(fetch).toHaveBeenCalledTimes(calls + 1);
             client.free();
         }
