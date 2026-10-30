@@ -1,7 +1,11 @@
+use std::collections::HashMap;
+
 use ente_location::{CityMatch, Coordinate};
 
 use super::calendar::{LocalDate, MICROS_PER_DAY, MICROS_PER_SECOND};
+use super::output::ClipMemoryType;
 use crate::location::LocationIndex;
+use crate::ml_store::Result;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct MemoryFile {
@@ -19,6 +23,7 @@ pub struct MemoriesRequest {
     pub excluded_collection_ids: Vec<i64>,
     pub shown_trips: Vec<ShownTrip>,
     pub cached_trips: Vec<CachedTrip>,
+    pub shown_clip_memories: Vec<ShownClipMemory>,
     pub surface_all: bool,
     pub local_gallery_mode: bool,
     pub seed: u64,
@@ -28,6 +33,12 @@ pub struct MemoriesRequest {
 pub struct ShownTrip {
     pub key: Option<String>,
     pub location: Coordinate,
+    pub last_time_shown: i64,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub struct ShownClipMemory {
+    pub kind: ClipMemoryType,
     pub last_time_shown: i64,
 }
 
@@ -62,10 +73,20 @@ impl Period {
     }
 }
 
-pub trait PhotoSignals {
+pub struct MlInputs<'m> {
+    pub clip: &'m dyn ClipVectors,
+    pub face_weights: HashMap<i64, u32>,
+}
+
+pub trait ClipVectors {
+    fn matches(&self, query: &[f32], min_similarity: f32) -> Result<Vec<(i64, f32)>>;
+    fn vector(&self, file_id: i64) -> Result<Option<Vec<f32>>>;
+}
+
+pub(super) trait PhotoSignals {
     fn face_weight(&self, file_id: i64) -> u32;
     fn nostalgia(&self, file_id: i64) -> Option<f32>;
-    fn similarity(&self, file_id: i64, other_file_id: i64) -> Option<f32>;
+    fn similarity(&self, file_id: i64, other_file_id: i64) -> Result<Option<f32>>;
 }
 
 pub trait CityLookup {
