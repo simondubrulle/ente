@@ -25,6 +25,9 @@ impl Error {
             Self::Accounts(ente_accounts::Error::IncorrectRecoveryKey) => {
                 Some("incorrect_recovery_key")
             }
+            Self::Accounts(ente_accounts::Error::MalformedRecoveryKey) => {
+                Some("malformed_recovery_key")
+            }
             Self::Accounts(ente_accounts::Error::Http(http)) if http.status_code() == Some(404) => {
                 Some("session_expired")
             }

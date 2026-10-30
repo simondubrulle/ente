@@ -8,6 +8,7 @@ use flutter_rust_bridge::frb;
 #[frb(non_opaque)]
 pub enum AccountsError {
     IncorrectRecoveryKey,
+    MalformedRecoveryKey,
     SessionExpired,
     Other { message: String },
 }
@@ -16,6 +17,7 @@ impl From<Error> for AccountsError {
     fn from(error: Error) -> Self {
         match error {
             Error::IncorrectRecoveryKey => Self::IncorrectRecoveryKey,
+            Error::MalformedRecoveryKey => Self::MalformedRecoveryKey,
             Error::Http(ref http) if http.status_code() == Some(404) => Self::SessionExpired,
             _ => Self::Other {
                 message: ente_core::error::chain(&error),

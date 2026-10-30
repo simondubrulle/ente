@@ -1,3 +1,4 @@
+import 'package:ente_base/models/two_factor.dart';
 import "package:ente_components/ente_components.dart";
 import "package:ente_strings/ente_strings.dart";
 import 'package:flutter/material.dart';
@@ -123,10 +124,9 @@ class _RecoveryPageState extends State<RecoveryPage> {
     } catch (e) {
       await dialog.hide();
       if (!mounted) return;
-      String errMessage = context.strings.incorrectRecoveryKeyBody;
-      if (e is AssertionError) {
-        errMessage = '$errMessage : ${e.message}';
-      }
+      final errMessage = e == const AccountsError.malformedRecoveryKey()
+          ? context.strings.invalidRecoveryKey
+          : context.strings.incorrectRecoveryKeyBody;
       if (!mounted) return;
       // ignore: unawaited_futures
       showAlertBottomSheet(

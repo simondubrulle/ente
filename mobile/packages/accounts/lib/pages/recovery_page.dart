@@ -52,15 +52,13 @@ class _RecoveryPageState extends State<RecoveryPage> {
       );
     } catch (e) {
       await dialog.hide();
-      String errMessage = 'The recovery key you entered is incorrect';
-      if (e is AssertionError) {
-        errMessage = '$errMessage : ${e.message}';
-      }
       if (mounted) {
         await showAlertBottomSheet(
           context,
           title: context.strings.incorrectRecoveryKey,
-          message: errMessage,
+          message: e == const AccountsError.malformedRecoveryKey()
+              ? context.strings.invalidRecoveryKey
+              : context.strings.theRecoveryKeyYouEnteredIsIncorrect,
           assetPath: 'assets/warning-grey.png',
         );
       }
