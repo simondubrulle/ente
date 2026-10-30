@@ -1,10 +1,3 @@
-#[expect(
-    dead_code,
-    reason = "The memories text embeddings generator uses only part of the shared ML helpers"
-)]
-#[path = "../tests/support/mod.rs"]
-mod support;
-
 use std::fmt::Write as _;
 use std::path::Path;
 use std::process::Command;
@@ -13,8 +6,8 @@ use anyhow::{Context, Result, bail};
 use ente_assets::AssetStore;
 use ente_ml::assets::ensure_clip_text;
 use ente_ml::indexing::{RunClipTextRequest, run_clip_text};
-use support::ml_indexing::{asset_cache_dir, load_onnx_runtime};
 
+const ASSET_CACHE: &str = "../../.cache/assets";
 const OUTPUT: &str = "../photos/src/memories/text_embeddings.rs";
 const DIMENSIONS: usize = 512;
 const I8_LIMIT: f32 = 127.0;
@@ -183,8 +176,9 @@ const CLIP_MEMORY_TYPES: [(&str, &str); 48] = [
 
 #[tokio::main(flavor = "current_thread")]
 async fn main() -> Result<()> {
-    load_onnx_runtime().await?;
-    let cache = asset_cache_dir()?;
+    std::env::var_os("ORT_DYLIB_PATH").context("set ORT_DYLIB_PATH to an ONNX Runtime library")?;
+    let manifest_dir = Path::new(env!("CARGO_MANIFEST_DIR"));
+    let cache = manifest_dir.join(ASSET_CACHE);
     let paths = ensure_clip_text(&AssetStore::new(cache.clone()), &cache).await?;
     let embed = |text: &str| -> Result<Vec<i8>> {
         let result = run_clip_text(RunClipTextRequest {
@@ -201,7 +195,7 @@ async fn main() -> Result<()> {
         clip_memory_types.push((name, embed(query)?));
     }
 
-    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(OUTPUT);
+    let path = manifest_dir.join(OUTPUT);
     std::fs::write(&path, render(&nostalgia, &clip_memory_types)?)
         .with_context(|| format!("write {}", path.display()))?;
     let rustfmt = Command::new("rustfmt")
