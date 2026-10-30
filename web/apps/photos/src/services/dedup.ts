@@ -104,7 +104,6 @@ export const removeSelectedDuplicateGroups = async (
             group.items.map(({ file, collectionIDs }) => ({
                 fileId: file.id,
                 collectionIds: [...collectionIDs],
-                // Cached files can predate numeric-caption normalization.
                 caption: FilePublicMagicMetadataData.shape.caption.parse(
                     file.pubMagicMetadata?.data.caption,
                 ),
