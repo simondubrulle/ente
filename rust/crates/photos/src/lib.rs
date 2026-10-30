@@ -6,6 +6,7 @@ pub mod face_clustering;
 pub mod files;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod location;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod memories;
 pub mod metadata;
 #[cfg(not(target_arch = "wasm32"))]
