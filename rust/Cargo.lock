@@ -2631,6 +2631,7 @@ dependencies = [
  "ente-legacy",
  "ente-locker",
  "flutter_rust_bridge",
+ "hex",
 ]
 
 [[package]]
