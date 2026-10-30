@@ -25,6 +25,7 @@ import "package:photos/services/ignored_files_service.dart";
 import "package:photos/services/sync/import/diff.dart";
 import "package:photos/services/sync/import/local_assets.dart";
 import "package:photos/services/sync/import/model.dart";
+import "package:photos/services/sync/local_sync_scheduler.dart";
 import "package:photos/services/sync/origin_fetch_tracker.dart";
 import "package:shared_preferences/shared_preferences.dart";
 import "package:synchronized/synchronized.dart";
@@ -34,7 +35,8 @@ class LocalSyncService {
   final _logger = Logger("LocalSyncService");
   final _db = FilesDB.instance;
   late SharedPreferences _prefs;
-  Completer<void>? _existingSync;
+  late final _syncOperation = LocalSyncOperation(_sync);
+  late final _changeSyncScheduler = LocalChangeSyncScheduler(_syncLocalChanges);
   late Debouncer _changeCallbackDebouncer;
   StreamSubscription<PermissionGrantedEvent>? _permissionGrantedSubscription;
   bool _isChangeCallbackRegistered = false;
@@ -69,13 +71,23 @@ class LocalSyncService {
             if (isLocalGalleryMode) {
               // Local gallery onboarding grants permission without explicitly
               // invoking SyncService, so trigger local import right away.
-              unawaited(checkAndSync());
+              checkAndSync().ignore();
             }
           });
     }
   }
 
-  Future<void> sync() async {
+  Future<void> sync() {
+    final existingSync = _syncOperation.current;
+    if (existingSync != null) {
+      _logger.warning("Sync already in progress, skipping.");
+      return existingSync;
+    }
+
+    return _syncOperation.run();
+  }
+
+  Future<void> _sync() async {
     if (!permissionService.hasGrantedPermissions()) {
       _logger.info("Skipping local sync since permission has not been granted");
       return;
@@ -92,11 +104,6 @@ class LocalSyncService {
       }
     }
     _registerChangeCallback();
-    if (_existingSync != null) {
-      _logger.warning("Sync already in progress, skipping.");
-      return _existingSync!.future;
-    }
-    _existingSync = Completer<void>();
     final int ownerID = Configuration.instance.getUserIDV2();
 
     // Local sync must not race downloads; that can create incorrect FilesDB
@@ -160,9 +167,6 @@ class LocalSyncService {
       final duration = Duration(microseconds: endTime - startTime);
       _logger.info("Load took " + duration.inMilliseconds.toString() + "ms");
     });
-
-    _existingSync?.complete();
-    _existingSync = null;
   }
 
   Future<bool> _refreshDeviceFolderCountAndCover({
@@ -491,20 +495,29 @@ class LocalSyncService {
     PhotoManager.addChangeCallback((value) async {
       _logger.info("Something changed on disk");
       _changeCallbackDebouncer.run(() async {
-        unawaited(checkAndSync());
+        checkAndSync().ignore();
       });
     });
     PhotoManager.startChangeNotify();
   }
 
-  Future<void> checkAndSync() async {
-    if (_existingSync != null) {
-      await _existingSync!.future;
-    }
-    if (permissionService.hasGrantedLimitedPermissions()) {
-      unawaited(syncAll());
-    } else {
-      unawaited(sync().then((value) => _refreshDeviceFolderCountAndCover()));
+  Future<void> checkAndSync() => _changeSyncScheduler.request();
+
+  Future<void> _syncLocalChanges() async {
+    try {
+      final existingSync = _syncOperation.current;
+      if (existingSync != null) {
+        await existingSync;
+      }
+      if (permissionService.hasGrantedLimitedPermissions()) {
+        await syncAll();
+      } else {
+        await sync();
+        await _refreshDeviceFolderCountAndCover();
+      }
+    } catch (error, stackTrace) {
+      _logger.severe("Failed to sync local photo changes", error, stackTrace);
+      rethrow;
     }
   }
 }
