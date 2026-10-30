@@ -30,25 +30,26 @@ fn require_srp_m2(auth_response: &AuthResponse) -> Result<&str> {
 
 pub struct AccountsClient {
     pub(crate) api: Api,
-    client_package: String,
+    config: AccountsClientConfig,
 }
 
 impl AccountsClient {
     pub fn new(config: AccountsClientConfig) -> Result<Self> {
+        Ok(Self::with_http(Http::new()?, config))
+    }
+
+    fn with_http(http: Http, mut config: AccountsClientConfig) -> Self {
         let api = Api::new(
-            Http::new()?,
+            http,
             ApiConfig {
-                origin: config.origin,
+                origin: config.origin.clone(),
                 client_package: Some(config.client_package.clone()),
-                client_version: config.client_version,
-                user_agent: config.user_agent,
-                auth: config.auth_token.map(Auth::User),
+                client_version: config.client_version.clone(),
+                user_agent: config.user_agent.clone(),
+                auth: config.auth_token.take().map(Auth::User),
             },
         );
-        Ok(Self {
-            api,
-            client_package: config.client_package,
-        })
+        Self { api, config }
     }
 
     pub fn set_auth_token(&self, auth_token: Option<String>) {
@@ -56,14 +57,14 @@ impl AccountsClient {
     }
 
     pub fn with_auth_token(&self, auth_token: String) -> Self {
-        Self {
-            api: self.api.with_auth(Auth::User(auth_token)),
-            client_package: self.client_package.clone(),
-        }
+        Self::with_http(
+            self.api.http().clone(),
+            self.config.clone().with_auth_token(auth_token),
+        )
     }
 
     pub fn client_package(&self) -> &str {
-        &self.client_package
+        &self.config.client_package
     }
 
     pub async fn email(&self) -> Result<String> {
@@ -611,6 +612,41 @@ mod tests {
                 .with_user_agent("ente-accounts-test"),
         )
         .unwrap()
+    }
+
+    #[tokio::test]
+    async fn with_auth_token_preserves_client_settings_and_scopes_auth() {
+        let mut server = Server::new_async().await;
+        let public = AccountsClient::new(
+            AccountsClientConfig::new("io.ente.photos")
+                .with_origin(server.url())
+                .with_client_version("1.0.0")
+                .with_user_agent("ente-accounts-test"),
+        )
+        .unwrap();
+        let authorized = public.with_auth_token("tok".into());
+
+        for (client, auth) in [
+            (&authorized, mockito::Matcher::Exact("tok".into())),
+            (&public, mockito::Matcher::Missing),
+        ] {
+            let request = server
+                .mock("GET", "/users/details/v2")
+                .match_query(mockito::Matcher::UrlEncoded(
+                    "memoryCount".into(),
+                    "false".into(),
+                ))
+                .match_header("x-auth-token", auth)
+                .match_header("x-client-package", "io.ente.photos")
+                .match_header("x-client-version", "1.0.0")
+                .match_header("user-agent", "ente-accounts-test")
+                .with_body(r#"{"email":"user@example.org"}"#)
+                .create_async()
+                .await;
+            assert_eq!(client.client_package(), "io.ente.photos");
+            assert_eq!(client.email().await.unwrap(), "user@example.org");
+            request.assert_async().await;
+        }
     }
 
     #[tokio::test]
