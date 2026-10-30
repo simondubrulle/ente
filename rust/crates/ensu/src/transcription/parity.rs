@@ -156,10 +156,11 @@ fn check_legacy(transcriber: &Transcriber, corpus: &Path, vad: &Path, cases: &[C
 }
 
 #[test]
-#[ignore = "requires ENSU_TEST_TRANSCRIPTION_MODEL, ENSU_TEST_TRANSCRIPTION_CORPUS and ENSU_TEST_VAD_MODEL"]
+#[ignore = "requires ENSU_TEST_TRANSCRIPTION_FIXTURE, ENSU_TEST_TRANSCRIPTION_MODEL, ENSU_TEST_TRANSCRIPTION_CORPUS and ENSU_TEST_VAD_MODEL"]
 fn real_model_text_and_word_timestamps_match_reference() {
+    let fixture_path = std::env::var("ENSU_TEST_TRANSCRIPTION_FIXTURE").unwrap();
     let fixture: Fixture =
-        serde_json::from_str(include_str!("../../tests/data/parakeet-parity.json")).unwrap();
+        serde_json::from_reader(std::fs::File::open(fixture_path).unwrap()).unwrap();
     let model_dir = PathBuf::from(std::env::var("ENSU_TEST_TRANSCRIPTION_MODEL").unwrap());
     let corpus = PathBuf::from(std::env::var("ENSU_TEST_TRANSCRIPTION_CORPUS").unwrap());
     for (name, expected) in &fixture.models {
