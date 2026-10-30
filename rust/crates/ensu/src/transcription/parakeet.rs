@@ -208,6 +208,10 @@ fn argmax(values: &[f32]) -> Result<usize> {
     Ok(best)
 }
 
+fn attaches_to_previous_word(piece: &str) -> bool {
+    regex!(r"\A[\p{P}--[¿¡\p{Ps}\p{Pi}]]").is_match(piece)
+}
+
 fn render(emissions: &[Emission], vocabulary: &[String]) -> Transcript {
     let mut transcript = Transcript::default();
     let mut after_standalone_marker = false;
@@ -224,7 +228,7 @@ fn render(emissions: &[Emission], vocabulary: &[String]) -> Transcript {
         }
         let starts_word = piece.starts_with(' ')
             || transcript.words.is_empty()
-            || (after_standalone_marker && !regex!(r"\A\p{P}").is_match(&piece));
+            || (after_standalone_marker && !attaches_to_previous_word(&piece));
         after_standalone_marker = false;
         if starts_word {
             transcript.words.push(TimedWord {
@@ -341,7 +345,7 @@ mod tests {
     }
 
     #[test]
-    fn standalone_markers_start_words_unless_punctuation_follows() {
+    fn standalone_markers_start_words_unless_closing_punctuation_follows() {
         let vocabulary = vec![
             "▁at".into(),
             "▁".into(),
@@ -351,8 +355,10 @@ mod tests {
             "$".into(),
             "5".into(),
             ",".into(),
+            "¿".into(),
+            "qué".into(),
         ];
-        let tokens = [0, 1, 2, 3, 1, 4, 1, 5, 6, 1, 7];
+        let tokens = [0, 1, 2, 3, 1, 4, 1, 5, 6, 1, 7, 1, 8, 9];
         let emissions: Vec<_> = tokens
             .into_iter()
             .enumerate()
@@ -363,7 +369,7 @@ mod tests {
             .into_iter()
             .map(|word| word.text)
             .collect();
-        assert_eq!(words, ["at", "10", "р", "$5,"]);
+        assert_eq!(words, ["at", "10", "р", "$5,", "¿qué"]);
     }
 
     #[test]
