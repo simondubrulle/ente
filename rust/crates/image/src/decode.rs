@@ -72,12 +72,16 @@ impl DecodedDynamicImage {
 pub fn decode_image_from_path(image_path: &str) -> ImageResult<DecodedImage> {
     let decoded_dynamic = decode_with_image_crate(image_path)?;
     let (decoded_dynamic, orientation) = decoded_dynamic.into_srgb();
-    let oriented = orient_decoded_image(
-        DynamicImage::ImageRgb8(decoded_dynamic.into_rgb8()),
-        image_path,
-        orientation,
-    )
-    .into_rgb8();
+    let oriented = if decoded_dynamic.color().bytes_per_pixel() > 3 {
+        orient_decoded_image(
+            DynamicImage::ImageRgb8(decoded_dynamic.into_rgb8()),
+            image_path,
+            orientation,
+        )
+        .into_rgb8()
+    } else {
+        orient_decoded_image(decoded_dynamic, image_path, orientation).into_rgb8()
+    };
 
     Ok(DecodedImage {
         dimensions: Dimensions {
@@ -91,12 +95,16 @@ pub fn decode_image_from_path(image_path: &str) -> ImageResult<DecodedImage> {
 pub fn decode_image_from_bytes(image_bytes: &[u8]) -> ImageResult<DecodedImage> {
     let decoded_dynamic = decode_bytes_with_image_crate(image_bytes)?;
     let (decoded_dynamic, orientation) = decoded_dynamic.into_srgb();
-    let oriented = orient_decoded_image_from_bytes(
-        DynamicImage::ImageRgb8(decoded_dynamic.into_rgb8()),
-        image_bytes,
-        orientation,
-    )
-    .into_rgb8();
+    let oriented = if decoded_dynamic.color().bytes_per_pixel() > 3 {
+        orient_decoded_image_from_bytes(
+            DynamicImage::ImageRgb8(decoded_dynamic.into_rgb8()),
+            image_bytes,
+            orientation,
+        )
+        .into_rgb8()
+    } else {
+        orient_decoded_image_from_bytes(decoded_dynamic, image_bytes, orientation).into_rgb8()
+    };
 
     Ok(DecodedImage {
         dimensions: Dimensions {
@@ -908,6 +916,22 @@ mod tests {
         assert_eq!(decoded.dimensions.width, 1);
         assert_eq!(decoded.dimensions.height, 2);
         assert_eq!(decoded.rgb, vec![255, 0, 0, 0, 255, 0]);
+    }
+
+    #[test]
+    fn decode_applies_orientation_to_grayscale_before_rgb_expansion() {
+        let mut encoded = Vec::new();
+        let mut encoder = PngEncoder::new(&mut encoded);
+        encoder.set_exif_metadata(exif_orientation(6)).unwrap();
+        encoder
+            .write_image(&[255, 0], 2, 1, ColorType::L8.into())
+            .unwrap();
+
+        let decoded = decode_image_from_bytes(&encoded).unwrap();
+
+        assert_eq!(decoded.dimensions.width, 1);
+        assert_eq!(decoded.dimensions.height, 2);
+        assert_eq!(decoded.rgb, vec![255, 255, 255, 0, 0, 0]);
     }
 
     fn encode_rgb8_png_with_icc(pixel: [u8; 3], icc_profile: Vec<u8>) -> Vec<u8> {
