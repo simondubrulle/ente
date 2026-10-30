@@ -1,11 +1,15 @@
+use std::cmp::Ordering;
 use std::collections::{BTreeMap, HashSet};
+use std::convert::Infallible;
 
 use super::calendar::MICROS_PER_MINUTE;
 use super::input::PhotoSignals;
 use super::photo::{Photo, sort_chronologically};
 use super::rng::Rng;
+use crate::ml_store::Result;
 
 const DEFAULT_SELECTION_SIZE: usize = 10;
+const TOP_MATCHES: usize = 50;
 const MINIMUM_TIME_GAP: i64 = 10 * MICROS_PER_MINUTE;
 const NEAR_DUPLICATE_SIMILARITY: f32 = 0.80;
 const FACE_WEIGHT_SCORE: f64 = 1000.0;
@@ -40,7 +44,7 @@ impl<'s> Selector<'s> {
         &mut self,
         photos: Vec<&'p Photo>,
         preferred_size: Option<usize>,
-    ) -> Vec<&'p Photo> {
+    ) -> Result<Vec<&'p Photo>> {
         self.select(photos, preferred_size, false)
     }
 
@@ -48,8 +52,43 @@ impl<'s> Selector<'s> {
         &mut self,
         photos: Vec<&'p Photo>,
         size: usize,
-    ) -> Vec<&'p Photo> {
+    ) -> Result<Vec<&'p Photo>> {
         self.select(photos, Some(size), true)
+    }
+
+    pub(super) fn best_matches<'p>(
+        &mut self,
+        mut matches: Vec<(&'p Photo, f32)>,
+    ) -> Result<Vec<&'p Photo>> {
+        matches.sort_by(by_similarity);
+        matches.truncate(TOP_MATCHES);
+        self.rng.shuffle(&mut matches);
+        let total = matches.len();
+        let mut selected: Vec<(&Photo, f32)> = Vec::with_capacity(DEFAULT_SELECTION_SIZE);
+        let mut chosen: Vec<&Photo> = Vec::with_capacity(DEFAULT_SELECTION_SIZE);
+        let mut skipped = 0;
+        for (photo, similarity) in matches {
+            if chosen.len() >= DEFAULT_SELECTION_SIZE {
+                break;
+            }
+            let rejected = is_too_close(photo, &chosen)
+                || (total - skipped > DEFAULT_SELECTION_SIZE
+                    && self.signals.map_or(Ok(false), |signals| {
+                        is_near_duplicate(photo, &chosen, signals)
+                    })?);
+            if rejected {
+                skipped += 1;
+                continue;
+            }
+            selected.push((photo, similarity));
+            chosen.push(photo);
+        }
+        selected.sort_by(by_similarity);
+        Ok(selected.into_iter().map(|(photo, _)| photo).collect())
+    }
+
+    pub(super) fn shuffle<T>(&mut self, items: &mut [T]) {
+        self.rng.shuffle(items);
     }
 
     pub(super) fn sample_across_years<'p>(
@@ -70,7 +109,7 @@ impl<'s> Selector<'s> {
             years.truncate(size);
             years.sort_by_key(|year| year[0].date.year);
         }
-        let mut selected = round_robin(&years, size, |_, _, _| true);
+        let Ok(mut selected) = round_robin(&years, size, |_, _, _| Ok::<_, Infallible>(true));
         sort_chronologically(&mut selected);
         selected
     }
@@ -80,11 +119,11 @@ impl<'s> Selector<'s> {
         mut photos: Vec<&'p Photo>,
         preferred_size: Option<usize>,
         over_time: bool,
-    ) -> Vec<&'p Photo> {
+    ) -> Result<Vec<&'p Photo>> {
         sort_chronologically(&mut photos);
         let mut size = preferred_size.unwrap_or(DEFAULT_SELECTION_SIZE);
         if photos.len() <= size {
-            return photos;
+            return Ok(photos);
         }
         let year_count = photos
             .iter()
@@ -101,17 +140,17 @@ impl<'s> Selector<'s> {
             {
                 size = year_count * 3;
                 if photos.len() < size {
-                    return photos;
+                    return Ok(photos);
                 }
             }
             Spread::AcrossYears
         };
         let mut selected = match self.signals {
-            Some(signals) => ranked(&photos, size, spread, signals),
+            Some(signals) => ranked(&photos, size, spread, signals)?,
             None => self.random(&photos, size, spread),
         };
         sort_chronologically(&mut selected);
-        selected
+        Ok(selected)
     }
 
     fn random<'p>(&mut self, photos: &[&'p Photo], size: usize, spread: Spread) -> Vec<&'p Photo> {
@@ -122,9 +161,10 @@ impl<'s> Selector<'s> {
         for year in &mut years {
             self.rng.shuffle(year);
         }
-        round_robin(&years, size, |_, photo, selected| {
-            !is_too_close(photo, selected)
-        })
+        let Ok(selected) = round_robin(&years, size, |_, photo, selected| {
+            Ok::<_, Infallible>(!is_too_close(photo, selected))
+        });
+        selected
     }
 
     fn random_over_time<'p>(&mut self, photos: &[&'p Photo], size: usize) -> Vec<&'p Photo> {
@@ -163,7 +203,7 @@ fn ranked<'p>(
     size: usize,
     spread: Spread,
     signals: &dyn PhotoSignals,
-) -> Vec<&'p Photo> {
+) -> Result<Vec<&'p Photo>> {
     let candidates: Vec<Candidate> = photos
         .iter()
         .map(|&photo| Candidate {
@@ -183,7 +223,7 @@ fn ranked_flat<'p>(
     mut candidates: Vec<Candidate<'p>>,
     size: usize,
     signals: &dyn PhotoSignals,
-) -> Vec<&'p Photo> {
+) -> Result<Vec<&'p Photo>> {
     sort_by_score(&mut candidates);
     let total = candidates.len();
     let mut selected: Vec<&Photo> = Vec::with_capacity(size);
@@ -195,32 +235,33 @@ fn ranked_flat<'p>(
         let photo = candidate.photo;
         if !selected.is_empty()
             && (is_too_close(photo, &selected)
-                || (total - skipped > size && is_near_duplicate(photo, &selected, signals)))
+                || (total - skipped > size && is_near_duplicate(photo, &selected, signals)?))
         {
             skipped += 1;
             continue;
         }
         selected.push(photo);
     }
-    selected
+    Ok(selected)
 }
 
 fn ranked_over_time<'p>(
     candidates: Vec<Candidate<'p>>,
     size: usize,
     signals: &dyn PhotoSignals,
-) -> Vec<&'p Photo> {
+) -> Result<Vec<&'p Photo>> {
     if is_single_moment(&candidates, |candidate| candidate.photo.creation_time) {
         return ranked_flat(candidates, size, signals);
     }
     let mut selected: Vec<&Photo> = Vec::with_capacity(size);
     for mut bucket in time_buckets(&candidates, size, |candidate| candidate.photo.creation_time) {
         sort_by_score(&mut bucket);
-        let distinct: Vec<Candidate> = bucket
-            .iter()
-            .copied()
-            .filter(|candidate| !is_near_duplicate(candidate.photo, &selected, signals))
-            .collect();
+        let mut distinct: Vec<Candidate> = Vec::new();
+        for &candidate in &bucket {
+            if !is_near_duplicate(candidate.photo, &selected, signals)? {
+                distinct.push(candidate);
+            }
+        }
         let pool = if distinct.is_empty() {
             bucket
         } else {
@@ -244,21 +285,21 @@ fn ranked_over_time<'p>(
             if selected.len() >= size {
                 break;
             }
-            if !is_near_duplicate(candidate.photo, &selected, signals)
-                && !is_too_close(candidate.photo, &selected)
+            if !is_too_close(candidate.photo, &selected)
+                && !is_near_duplicate(candidate.photo, &selected, signals)?
             {
                 selected.push(candidate.photo);
             }
         }
     }
-    selected
+    Ok(selected)
 }
 
 fn ranked_across_years<'p>(
     candidates: Vec<Candidate<'p>>,
     size: usize,
     signals: &dyn PhotoSignals,
-) -> Vec<&'p Photo> {
+) -> Result<Vec<&'p Photo>> {
     let total = candidates.len();
     let mut years: BTreeMap<i32, Vec<Candidate>> = BTreeMap::new();
     for candidate in candidates {
@@ -278,32 +319,34 @@ fn ranked_across_years<'p>(
     let mut skipped = 0;
     round_robin(&years, size, |round, photo, selected| {
         let rejected = is_too_close(photo, selected)
-            || (round > 0 && total - skipped > size && is_near_duplicate(photo, selected, signals));
+            || (round > 0
+                && total - skipped > size
+                && is_near_duplicate(photo, selected, signals)?);
         if rejected {
             skipped += 1;
         }
-        !rejected
+        Ok(!rejected)
     })
 }
 
-fn round_robin<'p>(
+fn round_robin<'p, E>(
     years: &[Vec<&'p Photo>],
     size: usize,
-    mut accept: impl FnMut(usize, &Photo, &[&'p Photo]) -> bool,
-) -> Vec<&'p Photo> {
+    mut accept: impl FnMut(usize, &Photo, &[&'p Photo]) -> std::result::Result<bool, E>,
+) -> std::result::Result<Vec<&'p Photo>, E> {
     let rounds = years.iter().map(Vec::len).max().unwrap_or(0);
     let mut selected = Vec::with_capacity(size);
     for round in 0..rounds {
         for photo in years.iter().filter_map(|year| year.get(round)) {
             if selected.len() >= size {
-                return selected;
+                return Ok(selected);
             }
-            if accept(round, photo, &selected) {
+            if accept(round, photo, &selected)? {
                 selected.push(*photo);
             }
         }
     }
-    selected
+    Ok(selected)
 }
 
 fn by_year<'p>(photos: &[&'p Photo]) -> BTreeMap<i32, Vec<&'p Photo>> {
@@ -328,6 +371,12 @@ fn time_buckets<T: Copy>(items: &[T], count: usize, time: impl Fn(&T) -> i64) ->
     buckets
 }
 
+fn by_similarity((a, a_similarity): &(&Photo, f32), (b, b_similarity): &(&Photo, f32)) -> Ordering {
+    b_similarity
+        .total_cmp(a_similarity)
+        .then_with(|| (a.creation_time, a.id).cmp(&(b.creation_time, b.id)))
+}
+
 fn sort_by_score(candidates: &mut [Candidate]) {
     candidates.sort_by(|a, b| {
         b.score.total_cmp(&a.score).then_with(|| {
@@ -346,12 +395,20 @@ fn is_too_close(photo: &Photo, selected: &[&Photo]) -> bool {
         .any(|other| (photo.creation_time - other.creation_time).abs() < MINIMUM_TIME_GAP)
 }
 
-fn is_near_duplicate(photo: &Photo, selected: &[&Photo], signals: &dyn PhotoSignals) -> bool {
-    selected.iter().any(|other| {
-        signals
-            .similarity(photo.id, other.id)
+fn is_near_duplicate(
+    photo: &Photo,
+    selected: &[&Photo],
+    signals: &dyn PhotoSignals,
+) -> Result<bool> {
+    for other in selected {
+        if signals
+            .similarity(photo.id, other.id)?
             .is_some_and(|similarity| similarity > NEAR_DUPLICATE_SIMILARITY)
-    })
+        {
+            return Ok(true);
+        }
+    }
+    Ok(false)
 }
 
 #[cfg(test)]
@@ -362,6 +419,7 @@ mod tests {
     use crate::memories::input::{MemoryFile, PhotoSignals};
     use crate::memories::photo::{Photo, prepare};
     use crate::memories::tests::{file, micros};
+    use crate::ml_store::Result;
 
     #[derive(Default)]
     struct Signals {
@@ -379,13 +437,13 @@ mod tests {
             self.nostalgia.get(&file_id).copied()
         }
 
-        fn similarity(&self, file_id: i64, other_file_id: i64) -> Option<f32> {
+        fn similarity(&self, file_id: i64, other_file_id: i64) -> Result<Option<f32>> {
             let pair = (file_id.min(other_file_id), file_id.max(other_file_id));
-            Some(if self.near_duplicates.contains(&pair) {
+            Ok(Some(if self.near_duplicates.contains(&pair) {
                 0.95
             } else {
                 0.1
-            })
+            }))
         }
     }
 
@@ -414,7 +472,9 @@ mod tests {
             near_duplicates: HashSet::from([(14, 15)]),
         };
 
-        let selected = Selector::new(Some(&signals), 0).best(photos.iter().collect(), None);
+        let selected = Selector::new(Some(&signals), 0)
+            .best(photos.iter().collect(), None)
+            .unwrap();
 
         assert_eq!(ids(&selected), [3, 5, 6, 7, 8, 9, 10, 11, 13, 15]);
     }
@@ -441,7 +501,9 @@ mod tests {
         let photos = prepare(&six_years_of_four_photos());
         let signals = Signals::default();
 
-        let selected = Selector::new(Some(&signals), 0).best(photos.iter().collect(), None);
+        let selected = Selector::new(Some(&signals), 0)
+            .best(photos.iter().collect(), None)
+            .unwrap();
 
         assert_three_per_year(&selected);
     }
@@ -451,18 +513,41 @@ mod tests {
         let photos = prepare(&six_years_of_four_photos());
         let signals = Signals::default();
 
-        let random = Selector::new(None, 0).best(photos.iter().collect(), Some(20));
-        let ranked = Selector::new(Some(&signals), 0).best(photos.iter().collect(), Some(20));
+        let random = Selector::new(None, 0)
+            .best(photos.iter().collect(), Some(20))
+            .unwrap();
+        let ranked = Selector::new(Some(&signals), 0)
+            .best(photos.iter().collect(), Some(20))
+            .unwrap();
 
         assert_three_per_year(&random);
         assert_eq!(ranked.len(), 20);
     }
 
     #[test]
+    fn picks_over_time_take_the_best_photo_per_period_unless_it_repeats_an_earlier_pick() {
+        let photos = prepare(&daily(1, "2024-01-01T12:00:00", 30));
+        let signals = Signals {
+            face_weights: HashMap::from([(5, 10)]),
+            nostalgia: (1..=30).map(|id| (id, id as f32 / 100.0)).collect(),
+            near_duplicates: HashSet::from([(5, 9)]),
+        };
+
+        let selected = Selector::new(Some(&signals), 0)
+            .best_over_time(photos.iter().collect(), 10)
+            .unwrap();
+
+        assert_eq!(ids(&selected), [3, 5, 8, 12, 15, 18, 21, 24, 27, 30]);
+    }
+
+    #[test]
     fn random_picks_spread_over_time_and_follow_the_seed() {
         let photos = prepare(&daily(0, "2024-01-01T12:00:00", 40));
-        let pick =
-            |seed| ids(&Selector::new(None, seed).best_over_time(photos.iter().collect(), 10));
+        let pick = |seed| {
+            ids(&Selector::new(None, seed)
+                .best_over_time(photos.iter().collect(), 10)
+                .unwrap())
+        };
 
         let selected = pick(5);
 
@@ -479,7 +564,7 @@ mod tests {
         let photos = prepare(&daily(0, "2024-01-01T12:00:00", 5));
         let reversed: Vec<&Photo> = photos.iter().rev().collect();
 
-        let selected = Selector::new(None, 0).best(reversed, None);
+        let selected = Selector::new(None, 0).best(reversed, None).unwrap();
 
         assert_eq!(ids(&selected), [0, 1, 2, 3, 4]);
     }

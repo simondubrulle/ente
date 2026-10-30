@@ -44,6 +44,7 @@
     "rust/crates/location/src/dispute.rs": ["clippy::expect_used"],
     "rust/crates/location/src/lib.rs": ["clippy::expect_used"],
     "rust/crates/location/src/urban.rs": ["clippy::expect_used"],
+    "rust/crates/ml/examples/memories_text_embeddings.rs": ["dead_code"],
     "rust/crates/ml/examples/ml_goldens.rs": ["dead_code"],
     "rust/crates/ml/examples/ocr.rs": ["dead_code"],
     "rust/crates/ml/src/assets.rs": ["clippy::expect_used"],

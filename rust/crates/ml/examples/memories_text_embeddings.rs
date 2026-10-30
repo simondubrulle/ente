@@ -1,0 +1,279 @@
+#[expect(
+    dead_code,
+    reason = "The memories text embeddings generator uses only part of the shared ML helpers"
+)]
+#[path = "../tests/support/mod.rs"]
+mod support;
+
+use std::fmt::Write as _;
+use std::path::Path;
+use std::process::Command;
+
+use anyhow::{Context, Result, bail};
+use ente_assets::AssetStore;
+use ente_ml::assets::ensure_clip_text;
+use ente_ml::indexing::{RunClipTextRequest, run_clip_text};
+use support::ml_indexing::{asset_cache_dir, load_onnx_runtime};
+
+const OUTPUT: &str = "../photos/src/memories/text_embeddings.rs";
+const DIMENSIONS: usize = 512;
+const I8_LIMIT: f32 = 127.0;
+const NOSTALGIA: &str = "Photo of a precious and nostalgic memory radiating warmth, vibrant energy, or quiet beauty — alive with color, light, or emotion";
+const CLIP_MEMORY_TYPES: [(&str, &str); 48] = [
+    (
+        "Sunrise",
+        "Photo of an absolutely stunning sunrise or sunset",
+    ),
+    ("Mountains", "Photo of a beautiful mountain range"),
+    ("Greenery", "Photo of lush greenery"),
+    ("Beach", "Photo of a beautiful beach"),
+    ("City", "Beautiful photo showing a metropolitan city"),
+    ("Moon", "Photo of a beautiful moon"),
+    ("OnTheRoad", "Photo of a nostalgic road trip"),
+    ("Food", "Photo of delicious looking food"),
+    ("Pets", "Photo of cute pets"),
+    (
+        "Festivities",
+        "Photo capturing a joyful celebration or festival",
+    ),
+    (
+        "SnowAdventures",
+        "Photo of a cozy winter adventure in the snow",
+    ),
+    (
+        "Waterfalls",
+        "Photo of a majestic waterfall cascading through nature",
+    ),
+    (
+        "Wildlife",
+        "Photo of a magnificent wild animal in its natural habitat",
+    ),
+    ("Flowers", "Photo of vibrant blooming flowers in a garden"),
+    (
+        "NightLights",
+        "Photo of dazzling city lights glowing at night",
+    ),
+    (
+        "Architecture",
+        "Photo showcasing striking architectural design or landmark",
+    ),
+    (
+        "AutumnColors",
+        "Photo of trees glowing with vibrant autumn colors",
+    ),
+    (
+        "DesertDreams",
+        "Photo of sweeping desert dunes under golden light",
+    ),
+    (
+        "Stargazing",
+        "Photo of a brilliant night sky filled with stars or the Milky Way",
+    ),
+    (
+        "Lakeside",
+        "Photo of a serene lake reflecting the surrounding landscape",
+    ),
+    ("RainyDays", "Photo capturing the cozy mood of a rainy day"),
+    (
+        "SportsAction",
+        "Photo of thrilling sports action frozen in motion",
+    ),
+    (
+        "StreetArt",
+        "Photo showcasing vibrant street art or graffiti murals",
+    ),
+    (
+        "FamilyMoments",
+        "Photo capturing heartwarming moments with family",
+    ),
+    (
+        "Fireworks",
+        "Photo of dazzling fireworks bursting in the sky",
+    ),
+    (
+        "HistoricSites",
+        "Photo of an awe-inspiring historical monument or landmark",
+    ),
+    (
+        "TropicalParadise",
+        "Photo of a dreamy tropical paradise with turquoise water and palm trees",
+    ),
+    (
+        "ForestTrails",
+        "Photo of a peaceful forest trail bathed in soft light",
+    ),
+    (
+        "CitySunsets",
+        "Photo of a vibrant sunset casting colors over a city skyline",
+    ),
+    (
+        "ColorfulMarkets",
+        "Photo of a bustling market overflowing with colorful stalls",
+    ),
+    ("CozyCafes", "Photo of a cozy cafe scene with warm ambience"),
+    (
+        "VintageVibes",
+        "Photo with a charming vintage aesthetic or retro details",
+    ),
+    (
+        "AerialViews",
+        "Photo captured from above showing sweeping aerial views",
+    ),
+    (
+        "ArtisticPortraits",
+        "Photo of an expressive artistic portrait",
+    ),
+    (
+        "StreetFood",
+        "Photo of mouthwatering street food being prepared or served",
+    ),
+    (
+        "RiverCruises",
+        "Photo of a scenic river cruise or boat drifting along the water",
+    ),
+    (
+        "PlayfulKids",
+        "Photo capturing joyful kids playing and laughing",
+    ),
+    (
+        "CoastalCliffs",
+        "Photo of dramatic coastal cliffs meeting the sea",
+    ),
+    (
+        "CandidLaughter",
+        "Photo capturing candid laughter, joy, and shared smiles",
+    ),
+    (
+        "GroupSelfies",
+        "Photo of friends or family gathered for a fun group selfie",
+    ),
+    (
+        "BirthdayJoy",
+        "Photo of a birthday celebration with cake, candles, and happy faces",
+    ),
+    (
+        "WeddingMoments",
+        "Photo capturing a wedding moment full of love, celebration, and togetherness",
+    ),
+    (
+        "GoldenHourPortraits",
+        "Photo of a beautiful portrait taken in warm golden hour light",
+    ),
+    (
+        "ConcertNights",
+        "Photo of a live concert, music performance, or crowd under stage lights",
+    ),
+    (
+        "PoolDays",
+        "Photo of a fun summer day at the pool with splashes and sunshine",
+    ),
+    (
+        "PicnicDays",
+        "Photo of a relaxed picnic outdoors with food, blankets, and loved ones",
+    ),
+    (
+        "CampingMoments",
+        "Photo of a camping trip with tents, campfires, or cozy outdoor moments",
+    ),
+    (
+        "BabySmiles",
+        "Photo capturing a baby smiling, laughing, or sharing a tender family moment",
+    ),
+];
+
+#[tokio::main(flavor = "current_thread")]
+async fn main() -> Result<()> {
+    load_onnx_runtime().await?;
+    let cache = asset_cache_dir()?;
+    let paths = ensure_clip_text(&AssetStore::new(cache.clone()), &cache).await?;
+    let embed = |text: &str| -> Result<Vec<i8>> {
+        let result = run_clip_text(RunClipTextRequest {
+            text: text.to_owned(),
+            model_path: paths.model.to_string_lossy().into_owned(),
+            vocab_path: paths.vocab.to_string_lossy().into_owned(),
+        })
+        .with_context(|| format!("embed {text:?}"))?;
+        quantize(&result.embedding).with_context(|| format!("quantize {text:?}"))
+    };
+    let nostalgia = embed(NOSTALGIA)?;
+    let mut clip_memory_types = Vec::with_capacity(CLIP_MEMORY_TYPES.len());
+    for (name, query) in CLIP_MEMORY_TYPES {
+        clip_memory_types.push((name, embed(query)?));
+    }
+
+    let path = Path::new(env!("CARGO_MANIFEST_DIR")).join(OUTPUT);
+    std::fs::write(&path, render(&nostalgia, &clip_memory_types)?)
+        .with_context(|| format!("write {}", path.display()))?;
+    let rustfmt = Command::new("rustfmt")
+        .args(["--edition", "2024"])
+        .arg(&path)
+        .status()
+        .with_context(|| format!("run rustfmt on {}", path.display()))?;
+    if !rustfmt.success() {
+        bail!("rustfmt failed on {}", path.display());
+    }
+    println!("wrote {}", path.display());
+    Ok(())
+}
+
+fn quantize(embedding: &[f32]) -> Result<Vec<i8>> {
+    if embedding.len() != DIMENSIONS {
+        bail!("expected {DIMENSIONS} dimensions, got {}", embedding.len());
+    }
+    let max_abs = embedding
+        .iter()
+        .fold(0.0f32, |max_abs, value| max_abs.max(value.abs()));
+    if !max_abs.is_normal() {
+        bail!("embedding has no usable magnitude");
+    }
+    let scale = max_abs / I8_LIMIT;
+    Ok(embedding
+        .iter()
+        .map(|value| (value / scale).round().clamp(-I8_LIMIT, I8_LIMIT) as i8)
+        .collect())
+}
+
+fn render(nostalgia: &[i8], clip_memory_types: &[(&str, Vec<i8>)]) -> Result<String> {
+    let mut source = String::from(
+        "use super::output::ClipMemoryType;\n\
+         use crate::ml_db::CLIP_EMBEDDING_DIMENSIONS;\n\n\
+         pub(super) type TextEmbedding = [i8; CLIP_EMBEDDING_DIMENSIONS];\n\n",
+    );
+    writeln!(
+        source,
+        "pub(super) static NOSTALGIA: TextEmbedding = {};\n",
+        array(nostalgia)
+    )?;
+    source.push_str(
+        "impl ClipMemoryType {\n    pub(super) fn embedding(self) -> &'static TextEmbedding {\n        match self {\n",
+    );
+    for (name, _) in clip_memory_types {
+        writeln!(source, "Self::{name} => &{},", static_name(name))?;
+    }
+    source.push_str("}\n}\n}\n");
+    for (name, embedding) in clip_memory_types {
+        writeln!(
+            source,
+            "\nstatic {}: TextEmbedding = {};",
+            static_name(name),
+            array(embedding)
+        )?;
+    }
+    Ok(source)
+}
+
+fn array(values: &[i8]) -> String {
+    let values: Vec<String> = values.iter().map(i8::to_string).collect();
+    format!("[{}]", values.join(", "))
+}
+
+fn static_name(name: &str) -> String {
+    let mut static_name = String::new();
+    for (index, character) in name.chars().enumerate() {
+        if index > 0 && character.is_ascii_uppercase() {
+            static_name.push('_');
+        }
+        static_name.push(character.to_ascii_uppercase());
+    }
+    static_name
+}
