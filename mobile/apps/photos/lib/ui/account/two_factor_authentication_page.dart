@@ -1,4 +1,4 @@
-import "package:ente_base/models/two_factor.dart";
+import "package:ente_base/models/accounts.dart";
 import 'package:ente_components/ente_components.dart';
 import "package:ente_strings/ente_strings.dart";
 import 'package:flutter/material.dart';
@@ -9,8 +9,13 @@ import 'package:photos/ui/lifecycle_event_handler.dart';
 
 class TwoFactorAuthenticationPage extends StatefulWidget {
   final String sessionID;
+  final Uint8List? keyEncryptionKey;
 
-  const TwoFactorAuthenticationPage(this.sessionID, {super.key});
+  const TwoFactorAuthenticationPage(
+    this.sessionID, {
+    this.keyEncryptionKey,
+    super.key,
+  });
 
   @override
   State<TwoFactorAuthenticationPage> createState() =>
@@ -105,7 +110,12 @@ class _TwoFactorAuthenticationPageState
   }
 
   Future<void> _verifyTwoFactorCode(String code) async {
-    await UserService.instance.verifyTwoFactor(context, widget.sessionID, code);
+    await UserService.instance.verifyTwoFactor(
+      context,
+      widget.sessionID,
+      code,
+      keyEncryptionKey: widget.keyEncryptionKey,
+    );
     if (!mounted) return;
     if (ModalRoute.of(context)?.isCurrent ?? false) {
       _pinController.clear();

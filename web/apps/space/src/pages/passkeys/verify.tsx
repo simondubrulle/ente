@@ -2,6 +2,7 @@ import { SpacePageMeta } from "components/PageMeta";
 import { SpaceRouteFallback } from "components/RouteFallback";
 import { savedPartialLocalUser } from "ente-accounts/services/accounts-db";
 import { openPasskeyVerificationURL } from "ente-accounts/services/passkey";
+import { isNamedError } from "ente-base/error";
 import log from "ente-base/log";
 import React, { useCallback, useEffect, useState } from "react";
 import {
@@ -149,9 +150,11 @@ const Page: React.FC = () => {
 };
 
 const passkeyErrorMessage = (error: unknown) =>
-    spaceAuthErrorMessage(
-        error,
-        "Couldn't check passkey status. Please try again.",
-    );
+    isNamedError(error, "session_expired")
+        ? "Passkey session expired. Please sign in again."
+        : spaceAuthErrorMessage(
+              error,
+              "Couldn't check passkey status. Please try again.",
+          );
 
 export default Page;

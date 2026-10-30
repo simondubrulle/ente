@@ -8,6 +8,7 @@ use uuid::Uuid;
 
 use super::*;
 
+const GB: i64 = 1 << 30;
 const PASSWORD: &str = "disposable-cli-integration-password";
 
 #[test]
@@ -120,6 +121,55 @@ fn auth_login_refresh_and_offline_export_across_processes() -> TestResult {
         ]));
         assert!(success(home.run(&export)).stdout.is_empty());
         Ok(())
+    })
+}
+
+#[test]
+fn usage_reports_server_figures_and_plan_expiry() -> TestResult {
+    Museum::run(|museum| {
+        tokio::runtime::Runtime::new()?.block_on(async {
+            let origin = museum.endpoint();
+            let email = format!("usage-{}@example.org", Uuid::new_v4());
+            let owner = create_account(origin, &email).await;
+            let (album, key) = create_album(origin, &owner, "Usage", "album").await;
+            let original = b"original photo bytes from Museum";
+            upload_fixture(
+                origin,
+                &owner,
+                album,
+                &key,
+                original,
+                json!({"title": "usage.jpg", "fileType": 0, "creationTime": 1_700_000_000_000_000i64, "modificationTime": 1_700_000_000_000_000i64}),
+            )
+            .await;
+            let home = TestHome::new();
+            login(&home, "photos", &email, &["--host", origin, "--no-input"]);
+            let usage = home.json(&["photos", "usage"]);
+            assert_eq!(usage["email"], email);
+            assert_eq!(usage["files"], 1);
+            assert_eq!(usage["planBytes"], 10 * GB);
+            assert_eq!(usage["planActive"], true);
+            assert_eq!(usage["family"], Value::Null);
+            let (used, total, bonus) = (
+                usage["usedBytes"].as_i64().unwrap(),
+                usage["totalBytes"].as_i64().unwrap(),
+                usage["bonusBytes"].as_i64().unwrap(),
+            );
+            assert!(used >= original.len() as i64, "{usage}");
+            assert_eq!(total, 10 * GB + bonus);
+            assert_eq!(usage["freeBytes"], total - used);
+            museum.execute_sql(&format!(
+                "UPDATE subscriptions SET expiry_time = 1 WHERE user_id = {}",
+                owner.user_id
+            ))?;
+            let expired = home.json(&["photos", "usage"]);
+            assert_eq!(expired["planActive"], false);
+            assert_eq!(expired["planExpiresAt"], "1970-01-01T00:00:00.000001Z");
+            assert_eq!(expired["totalBytes"], total);
+            let plain = String::from_utf8(success(home.run(&["photos", "usage"])).stdout)?;
+            assert!(plain.contains("Status  expired\n"), "{plain}");
+            Ok(())
+        })
     })
 }
 
@@ -959,7 +1009,7 @@ pub(super) async fn create_account(origin: &str, email: &str) -> AuthenticatedAc
     let client =
         AccountsClient::new(AccountsClientConfig::new("io.ente.photos").with_origin(origin))
             .unwrap();
-    client.send_otp(email, "signup").await.unwrap();
+    client.send_otp(email, "signup", false).await.unwrap();
     let response = client
         .verify_email(email, HARDCODED_OTT, Some("testAccount"))
         .await

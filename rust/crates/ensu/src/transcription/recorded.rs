@@ -1,7 +1,7 @@
 use std::ops::Range;
 use std::time::Duration;
 
-use transcribe_rs::vad::Vad;
+use super::vad::Vad;
 
 use super::{LiveControl, LiveEvent, LiveTranscription, StreamNormalizer, Transcriber};
 use crate::voice::{AlignedWord, RecognitionUpdate, Result, TranscriptBoundary, VoiceError};
@@ -291,9 +291,9 @@ impl LiveTranscription {
 
 #[cfg(test)]
 mod tests {
+    use super::super::vad::EnergyVad;
     use super::*;
     use crate::voice::CaptureFormat;
-    use transcribe_rs::vad::EnergyVad;
 
     #[test]
     fn recorded_decoding_bounds_windows_preserves_tails_and_stops_on_cancel() {

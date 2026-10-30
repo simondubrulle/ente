@@ -107,6 +107,26 @@ ente photos file list --type video --min-size 500MB
 
 A file must match every filter you pass. `--sort created` lists the newest files first and `--sort size` the largest first; add `--reverse` for the opposite order. Files with an unknown size sort as the smallest, and ties keep ID order. Without `--sort`, files are listed by ID.
 
+## Check storage and file count
+
+```sh
+ente photos usage
+```
+
+```
+Email   alice@example.com
+Total   20 GB
+Used    3.61 GB
+Free    16.39 GB
+Plan    10 GB
+Status  active
+Bonus   10 GB
+Files   339
+Family  none
+```
+
+`Total` is the plan plus bonuses such as referrals, `Used` and `Files` are what Photos holds, and `Status` says whether the plan is active or expired. In a family the plan and total are the family admin's, and `Family` lists its members, followed by the shared totals and your own limit when the admin has set one.
+
 ## Read as JSON
 
 Lists return arrays and `view` returns one object. IDs are strings; timestamps are RFC 3339 strings in UTC.
@@ -116,11 +136,12 @@ Lists return arrays and `view` returns one object. IDs are strings; timestamps a
 | `album list`, `album view` | `id`, `name`, `type` (`album`, `folder`, `favorites`, `uncategorized`, `defaultHidden`, `quicklink`), `visibility` (`visible`, `archived`, `hidden`), `ownerId`, `updatedAt`                                                                                                     |
 | `file list`, `file view`   | `id`, `name`, `type` (`image`, `video`, `livephoto`), `ownerId`, `albumIds`, `createdAt`, `updatedAt`; nullable `modifiedAt`, `location` (`latitude`, `longitude`), `caption`, `hash`, `dateTime`, `offsetTime`, `visibility`, `durationSeconds`, `width`, `height`, `sizeBytes` |
 | `file download`            | `id`, `output`, `bytes`                                                                                                                                                                                                                                                          |
+| `usage`                    | `email`, `planExpiresAt`, `planActive`, `totalBytes`, `usedBytes`, `freeBytes`, `planBytes`, `bonusBytes`; nullable `files`, `family` (`usedBytes`, `storageBytes`, `members`: `email`, `status`, `admin`, `usedBytes`, `storageLimitBytes`)                        |
 | `export`                   | See [Automation](./automation.md#export-summary)                                                                                                                                                                                                                                 |
 
 ## Read offline
 
-`album list`, `album view`, `file list` and `file view` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Export and download need the network.
+`album list`, `album view`, `file list` and `file view` work with `--offline` using the metadata an earlier online run synced. An online `album list` syncs albums only; run `file list` online for each album whose files you want to read offline. Export, download and usage need the network.
 
 ## Limits
 

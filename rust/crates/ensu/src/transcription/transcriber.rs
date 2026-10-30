@@ -1,23 +1,21 @@
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
-use transcribe_rs::onnx::Quantization;
-use transcribe_rs::onnx::parakeet::{ParakeetModel, ParakeetParams, TimestampGranularity};
-use transcribe_rs::{OrtAccelerator, TranscriptionResult, get_ort_accelerator};
-
 use super::graph_cache::{GRAPHS, GraphCache, LoadPlan, SOURCES};
+use super::parakeet::{Parakeet, Transcript};
+use super::vad::Vad;
 use crate::transcription::audio::extract_speech_from_pcm16;
 use crate::transcription::{Result, TranscriptionError};
 
 pub struct Transcriber {
     model_dir: PathBuf,
     vad_model_path: PathBuf,
-    loaded: Mutex<Option<ParakeetModel>>,
+    loaded: Mutex<Option<Parakeet>>,
     graph_cache: Option<GraphCache>,
 }
 
 impl Transcriber {
-    pub(crate) fn live_vad(&self) -> crate::voice::Result<Box<dyn transcribe_rs::vad::Vad>> {
+    pub(crate) fn live_vad(&self) -> crate::voice::Result<Box<dyn Vad>> {
         let metadata = std::fs::metadata(&self.vad_model_path).map_err(|error| {
             if error.kind() == std::io::ErrorKind::NotFound {
                 crate::voice::VoiceError::VadNotDownloaded
@@ -29,7 +27,7 @@ impl Transcriber {
             return Err(crate::voice::VoiceError::VadNotDownloaded);
         }
         super::SileroV4Vad::new(&self.vad_model_path, 0.3)
-            .map(|vad| Box::new(vad) as Box<dyn transcribe_rs::vad::Vad>)
+            .map(|vad| Box::new(vad) as Box<dyn Vad>)
             .map_err(|error| super::voice_error("Load voice activity model", error))
     }
 
@@ -120,13 +118,7 @@ impl Transcriber {
             self.graph_cache.as_ref(),
             true,
         )?;
-        let result = model.transcribe_with(
-            &speech,
-            &ParakeetParams {
-                timestamp_granularity: Some(TimestampGranularity::Segment),
-                ..Default::default()
-            },
-        )?;
+        let result = model.transcribe(&speech)?;
         Ok(super::text::filter_transcription_output(&result.text))
     }
 
@@ -161,24 +153,20 @@ impl Transcriber {
         aligned_words(result, samples.len())
     }
 
-    fn lock(&self) -> MutexGuard<'_, Option<ParakeetModel>> {
+    fn lock(&self) -> MutexGuard<'_, Option<Parakeet>> {
         self.loaded.lock().unwrap_or_else(PoisonError::into_inner)
     }
 }
 
 fn decode_window(
-    model: &mut ParakeetModel,
+    model: &mut Parakeet,
     samples: &[f32],
     is_cancelled: &mut impl FnMut() -> bool,
-) -> Result<Option<TranscriptionResult>> {
+) -> Result<Option<Transcript>> {
     if is_cancelled() {
         return Ok(None);
     }
-    let params = ParakeetParams {
-        timestamp_granularity: Some(TimestampGranularity::Word),
-        ..Default::default()
-    };
-    let mut result = model.transcribe_with(samples, &params)?;
+    let mut result = model.transcribe(samples)?;
     if is_cancelled() {
         return Ok(None);
     }
@@ -192,19 +180,18 @@ fn decode_window(
         let mut padded = Vec::with_capacity(samples.len() + padding);
         padded.extend_from_slice(samples);
         padded.resize(samples.len() + padding, 0.0);
-        result = model.transcribe_with(&padded, &params)?;
+        result = model.transcribe(&padded)?;
     }
     Ok((!is_cancelled()).then_some(result))
 }
 
 fn aligned_words(
-    result: TranscriptionResult,
+    result: Transcript,
     samples: usize,
 ) -> crate::voice::Result<Vec<crate::voice::AlignedWord>> {
     use crate::voice::{AlignedWord, VoiceError};
     result
-        .segments
-        .ok_or(VoiceError::UnstableTranscript)?
+        .words
         .into_iter()
         .map(|word| {
             if !word.start.is_finite()
@@ -224,11 +211,11 @@ fn aligned_words(
 }
 
 fn ensure_loaded<'a>(
-    loaded: &'a mut Option<ParakeetModel>,
+    loaded: &'a mut Option<Parakeet>,
     model_dir: &Path,
     cache: Option<&GraphCache>,
     may_build: bool,
-) -> Result<&'a mut ParakeetModel> {
+) -> Result<&'a mut Parakeet> {
     match loaded {
         Some(model) => Ok(model),
         slot => {
@@ -237,10 +224,6 @@ fn ensure_loaded<'a>(
                     return Err(TranscriptionError::NotDownloaded);
                 }
             }
-            let cache = cache.filter(|_| {
-                get_ort_accelerator() == OrtAccelerator::CpuOnly
-                    || OrtAccelerator::available() == [OrtAccelerator::CpuOnly]
-            });
             let result = if let Some(cache) = cache {
                 let configuration = format!(
                     "{};cpu;parallel=true;intra=auto;threads={}",
@@ -260,7 +243,7 @@ fn ensure_loaded<'a>(
     }
 }
 
-fn load_plan(model_dir: &Path, plan: LoadPlan<'_>) -> Result<ParakeetModel> {
+fn load_plan(model_dir: &Path, plan: LoadPlan<'_>) -> Result<Parakeet> {
     use ort::session::builder::GraphOptimizationLevel;
     let directory = match plan {
         LoadPlan::Source { save_to: None } => model_dir,
@@ -280,7 +263,7 @@ fn load_plan(model_dir: &Path, plan: LoadPlan<'_>) -> Result<ParakeetModel> {
             directory
         }
     };
-    Ok(ParakeetModel::load(directory, &Quantization::Int8)?)
+    Parakeet::load(directory)
 }
 
 #[cfg(test)]
