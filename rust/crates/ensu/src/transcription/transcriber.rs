@@ -287,8 +287,32 @@ mod tests {
             Err(TranscriptionError::NotDownloaded)
         ));
     }
-}
 
-#[cfg(test)]
-#[path = "parity.rs"]
-mod parity;
+    #[test]
+    #[ignore = "requires ENSU_TEST_TRANSCRIPTION_MODEL"]
+    fn quantized_model_loads_from_source_and_cached_graphs() {
+        let model_dir = PathBuf::from(std::env::var("ENSU_TEST_TRANSCRIPTION_MODEL").unwrap());
+        let transcriber = Transcriber::new(&model_dir, model_dir.join("vad.onnx"));
+        transcriber.load_model().unwrap();
+        assert!(transcriber.lock().is_some());
+        transcriber.unload_model();
+
+        let directory = tempfile::tempdir().unwrap();
+        let cache = GraphCache::new(directory.path().to_path_buf(), "test-device".into());
+        for cached in [false, true] {
+            let model = cache
+                .load(&model_dir, ort::info(), true, |plan| {
+                    match &plan {
+                        LoadPlan::Source { save_to } => {
+                            assert!(!cached);
+                            assert!(save_to.is_some());
+                        }
+                        LoadPlan::Cached { .. } => assert!(cached),
+                    }
+                    load_plan(&model_dir, plan)
+                })
+                .unwrap();
+            drop(model);
+        }
+    }
+}
