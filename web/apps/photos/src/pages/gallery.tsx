@@ -1405,7 +1405,7 @@ const Page: React.FC = () => {
 
             dispatch({ type: "showCollectionSummary", collectionSummaryID });
         },
-        [dispatch, remoteFilesPull],
+        [],
     );
 
     useEffect(() => {
@@ -1426,12 +1426,7 @@ const Page: React.FC = () => {
                 authenticateUser,
                 handleShowCollectionSummaryWithID,
             ),
-        [
-            authenticateUser,
-            handleShowCollectionSummaryWithID,
-            barMode,
-            lastAuthenticationForHiddenTimestamp,
-        ],
+        [authenticateUser, handleShowCollectionSummaryWithID, barMode],
     );
 
     const handleSelectSearchOption = useCallback(
@@ -1512,7 +1507,7 @@ const Page: React.FC = () => {
             dispatch({ type: "exitSearch", shouldExitSearchMode: true });
             setCleanupView(view);
         },
-        [closeCollectionMap, closeSlideshow, dispatch],
+        [closeCollectionMap, closeSlideshow],
     );
 
     const handleShowPeople = useCallback(
@@ -1540,7 +1535,7 @@ const Page: React.FC = () => {
             context: undefined,
         });
         dispatch({ type: "showPeople" });
-    }, [dispatch]);
+    }, []);
 
     const handleShowAlbumOverview = useCallback(
         (filter: AlbumFilter) => {
@@ -1568,7 +1563,7 @@ const Page: React.FC = () => {
         });
         setAlbumFilter(filter);
         dispatch({ type: "showAlbumOverview", albumFilter: filter });
-    }, [albumOpenedFromOverview, collectionSummary?.id, dispatch]);
+    }, [albumOpenedFromOverview, collectionSummary?.id]);
 
     const handleChangeBarMode = useCallback(
         (mode: GalleryBarMode) => {
@@ -1692,7 +1687,7 @@ const Page: React.FC = () => {
                 collectionSummaryID: collectionID,
             });
         },
-        [closeCollectionMap, dispatch],
+        [closeCollectionMap],
     );
 
     const handleSelectPerson = useCallback(
@@ -1702,7 +1697,7 @@ const Page: React.FC = () => {
             closeCollectionMap();
             dispatch({ type: "showPerson", personID });
         },
-        [closeCollectionMap, dispatch],
+        [closeCollectionMap],
     );
 
     const handleOpenCollectionSelector = useCallback(
