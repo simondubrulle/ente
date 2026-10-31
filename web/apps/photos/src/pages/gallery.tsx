@@ -33,6 +33,7 @@ import {
 import { AlbumsOverview } from "@/components/gallery/AlbumsOverview";
 import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
+import { LinksView } from "@/components/gallery/LinksView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import {
     PhotosNavigationContext,
@@ -43,7 +44,6 @@ import {
     type PhotosNavigationShellHandle,
 } from "@/components/gallery/PhotosNavigationShell";
 import type { PlaceSelection } from "@/components/gallery/PlacesList";
-import { PublicLinkDetails } from "@/components/gallery/PublicLinkDetails";
 import {
     albumShortcutCollectionID,
     findCollectionCreatingIfNeeded,
@@ -408,28 +408,6 @@ const Page: React.FC = () => {
                 }),
             ),
         [quickLinks, normalCollectionSummaries],
-    );
-    const selectedLink = quickLinks.find(({ id }) => id === selectedLinkID);
-    const selectedLinkSummary =
-        selectedLink && linkSummaries.get(selectedLink.id);
-    const selectedLinkFiles = useMemo(
-        () =>
-            selectedLinkID === undefined
-                ? []
-                : state.collectionFiles.filter(
-                      ({ id, collectionID }) =>
-                          collectionID === selectedLinkID &&
-                          !hiddenFileIDs.has(id) &&
-                          !tempDeletedFileIDs.has(id) &&
-                          !tempHiddenFileIDs.has(id),
-                  ),
-        [
-            selectedLinkID,
-            state.collectionFiles,
-            hiddenFileIDs,
-            tempDeletedFileIDs,
-            tempHiddenFileIDs,
-        ],
     );
     const activePerson =
         state.view?.type == "people" ? state.view.activePerson : undefined;
@@ -2321,31 +2299,25 @@ const Page: React.FC = () => {
                     ) : cleanupView === "large-files" ? (
                         <LargeFilesView onRemoteFilesPull={remoteFilesPull} />
                     ) : !isInSearchMode && barMode == "links" ? (
-                        selectedLink ? (
-                            <PublicLinkDetails
-                                key={selectedLink.id}
-                                collection={selectedLink}
-                                fileCount={
-                                    selectedLinkSummary?.fileCount ??
-                                    selectedLinkFiles.length
-                                }
-                                files={selectedLinkFiles}
-                                user={user}
-                                setBlockingLoad={setBlockingLoad}
-                                onRemotePull={remotePull}
-                                coverFile={selectedLinkSummary?.coverFile}
-                            />
-                        ) : (
-                            <AlbumsOverview
-                                albums={sidebarCollectionSummaries}
-                                title={t("links")}
-                                filter="links"
-                                searchQuery={albumSearchQuery}
-                                sortBy={collectionsSortBy}
-                                onCreateAlbum={showAlbumNameInput}
-                                onRemotePull={remotePull}
-                            />
-                        )
+                        <LinksView
+                            user={user}
+                            collections={state.collections}
+                            collectionFiles={state.collectionFiles}
+                            collectionSummaries={normalCollectionSummaries}
+                            hiddenCollectionIDs={hiddenCollectionIDs}
+                            hiddenFileIDs={hiddenFileIDs}
+                            tempDeletedFileIDs={tempDeletedFileIDs}
+                            tempHiddenFileIDs={tempHiddenFileIDs}
+                            uncategorizedCollectionSummaryID={
+                                state.uncategorizedCollectionSummaryID
+                            }
+                            selectedLinkID={selectedLinkID}
+                            searchQuery={albumSearchQuery}
+                            sortBy={collectionsSortBy}
+                            onCreateAlbum={showAlbumNameInput}
+                            setBlockingLoad={setBlockingLoad}
+                            onRemotePull={remotePull}
+                        />
                     ) : !isInSearchMode &&
                       !isFirstLoad &&
                       !state.collectionFiles.length &&
