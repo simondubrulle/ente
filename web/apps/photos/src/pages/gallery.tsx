@@ -24,7 +24,6 @@ import {
     type AlbumDetails,
 } from "@/components/collections/EditAlbumDetailsDialog";
 import { GalleryBarAndListHeader } from "@/components/collections/GalleryBarAndListHeader";
-import { slideshowFiles } from "@/components/collections/album-slideshow";
 import {
     GalleryEmptyState,
     PeopleConsentDialog,
@@ -48,6 +47,7 @@ import {
     showCollectionSummaryWithAuthentication,
 } from "@/components/gallery/helpers";
 import { useGalleryAuthentication } from "@/components/gallery/hooks/use-gallery-authentication";
+import { useGallerySlideshow } from "@/components/gallery/hooks/use-gallery-slideshow";
 import { useSubscriptionCompletionRedirect } from "@/components/gallery/hooks/use-subscription-completion-redirect";
 import {
     useGalleryReducer,
@@ -223,13 +223,6 @@ const Page: React.FC = () => {
         [],
     );
     const [isFileViewerOpen, setIsFileViewerOpen] = useState(false);
-    const [slideshow, setSlideshow] = useState<{
-        files: EnteFile[];
-        title: string;
-        collectionID: number;
-    }>();
-    const closeSlideshow = useCallback(() => setSlideshow(undefined), []);
-
     const [pendingFileNavigation, setPendingFileNavigation] = useState<{
         fileIndex: number;
         sidebar?: FileViewerInitialSidebar;
@@ -487,37 +480,13 @@ const Page: React.FC = () => {
         tempDeletedFileIDs,
         tempHiddenFileIDs,
     ]);
-    const startSlideshow = useCallback(() => {
-        if (!activeCollection) return;
-        const files = slideshowFiles(activeCollectionFiles);
-        if (!files.length) {
-            showNotification({
-                color: "primary",
-                title: t("no_photos_found_here"),
-            });
-            return;
-        }
-        setSlideshow({
-            files,
-            title: activeCollectionSummary?.name ?? activeCollection.name,
-            collectionID: activeCollection.id,
-        });
-    }, [
+    const { slideshow, startSlideshow, closeSlideshow } = useGallerySlideshow({
         activeCollection,
         activeCollectionFiles,
-        activeCollectionSummary?.name,
-        showNotification,
-    ]);
-
-    useEffect(() => {
-        if (
-            slideshow &&
-            (slideshow.collectionID !== activeCollection?.id ||
-                isInSearchMode ||
-                !user)
-        )
-            closeSlideshow();
-    }, [slideshow, activeCollection?.id, isInSearchMode, user, closeSlideshow]);
+        activeCollectionSummary,
+        isInSearchMode,
+        user,
+    });
 
     const mapFileSource = useMemo(
         () => ({
