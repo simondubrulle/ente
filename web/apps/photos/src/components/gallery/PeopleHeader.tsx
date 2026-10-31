@@ -97,19 +97,18 @@ import type {
 } from "ente-new/photos/services/ml/people";
 import { t } from "i18next";
 import React, { useEffect, useReducer, useState } from "react";
-import type { GalleryBarImplProps } from "./BarImpl";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 
-type PeopleHeaderProps = Pick<
-    GalleryBarImplProps,
-    "people" | "onSelectPerson"
-> & { person: Person; onBack: () => void };
+interface PeopleHeaderProps {
+    people: Person[];
+    person: Person;
+}
 
 export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
     people,
-    onSelectPerson,
     person,
-    onBack,
 }) => {
+    const { backToPeople } = usePhotosNavigation();
     return (
         <GalleryItemsHeaderAdapter
             sx={{ display: "flex", alignItems: "center", gap: 2 }}
@@ -117,7 +116,7 @@ export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
             <Tooltip title={t("go_back")}>
                 <IconButton
                     aria-label={t("go_back")}
-                    onClick={onBack}
+                    onClick={backToPeople}
                     sx={{
                         display: { xs: "none", sm: "inline-flex" },
                         width: 32,
@@ -137,10 +136,7 @@ export const PeopleHeader: React.FC<PeopleHeaderProps> = ({
                         <CGroupPersonHeader person={person} />
                     )
                 ) : (
-                    <ClusterPersonHeader
-                        person={person}
-                        {...{ people, onSelectPerson }}
-                    />
+                    <ClusterPersonHeader person={person} people={people} />
                 )}
             </SpacedRow>
         </GalleryItemsHeaderAdapter>
@@ -305,14 +301,12 @@ const IgnoredPersonHeader: React.FC<IgnoredPersonHeaderProps> = ({
     );
 };
 
-type ClusterPersonHeaderProps = Pick<
-    PeopleHeaderProps,
-    "people" | "onSelectPerson"
-> & { person: ClusterPerson };
+type ClusterPersonHeaderProps = Pick<PeopleHeaderProps, "people"> & {
+    person: ClusterPerson;
+};
 
 const ClusterPersonHeader: React.FC<ClusterPersonHeaderProps> = ({
     people,
-    onSelectPerson,
     person,
 }) => {
     const cluster = person.cluster;
@@ -366,24 +360,22 @@ const ClusterPersonHeader: React.FC<ClusterPersonHeaderProps> = ({
 
             <AddPersonDialog
                 {...addPersonVisibilityProps}
-                {...{ people, onSelectPerson, cluster }}
+                {...{ people, cluster }}
             />
         </>
     );
 };
 
 type AddPersonDialogProps = ModalVisibilityProps &
-    Pick<PeopleHeaderProps, "people" | "onSelectPerson"> & {
-        cluster: FaceCluster;
-    };
+    Pick<PeopleHeaderProps, "people"> & { cluster: FaceCluster };
 
 const AddPersonDialog: React.FC<AddPersonDialogProps> = ({
     open,
     onClose,
     people,
-    onSelectPerson,
     cluster,
 }) => {
+    const { selectPerson: onSelectPerson } = usePhotosNavigation();
     const isFullScreen = useMediaQuery(collectionDialogFullScreenQuery);
 
     const [openNameInput, setOpenNameInput] = useState(false);

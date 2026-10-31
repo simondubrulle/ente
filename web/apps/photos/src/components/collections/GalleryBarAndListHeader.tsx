@@ -39,9 +39,6 @@ type GalleryBarAndListHeaderProps = {
     activeCollection: Collection | undefined;
     activePerson: Person | undefined;
     people: Person[];
-    setActiveCollectionID: (collectionID: number) => void;
-    onSelectPerson: (personID: string) => void;
-    onBackToPeople: () => void;
     setFileListHeader: (header: FileListHeaderOrFooter) => void;
     hasActiveFileSelection: boolean;
 } & Pick<
@@ -50,9 +47,7 @@ type GalleryBarAndListHeaderProps = {
     | "onRemotePull"
     | "onAddSaveGroup"
     | "onEditAlbumDetails"
-    | "onShowMap"
     | "onCollectionSlideshow"
-    | "onBackToAlbums"
     | "showBackToAlbums"
 > &
     Pick<
@@ -69,10 +64,8 @@ export const GalleryBarAndListHeader: React.FC<
     collectionSummary,
     albums,
     activeCollection,
-    setActiveCollectionID,
     setBlockingLoad,
     people,
-    onSelectPerson,
     isActiveCollectionDownloadInProgress,
     hasActiveFileSelection,
     activePerson,
@@ -81,12 +74,9 @@ export const GalleryBarAndListHeader: React.FC<
     onRemotePull,
     onEditAlbumDetails,
     onAddSaveGroup,
-    onShowMap,
     onCollectionSlideshow,
     setFileListHeader,
-    onBackToAlbums,
     showBackToAlbums,
-    onBackToPeople,
 }) => {
     const { show: showCollectionShare, props: collectionShareVisibilityProps } =
         useModalVisibility();
@@ -139,20 +129,15 @@ export const GalleryBarAndListHeader: React.FC<
                                     : "section_archive",
                             )}
                             albums={albums}
-                            onSelectAlbum={setActiveCollectionID}
-                            onBack={onBackToAlbums}
                         />
                     )}
                     <CollectionHeader
                         {...{
                             activeCollection,
-                            setActiveCollectionID,
                             isActiveCollectionDownloadInProgress,
                             onRemotePull,
                             onAddSaveGroup,
-                            onShowMap,
                             onCollectionSlideshow,
-                            onBackToAlbums,
                             showBackToAlbums,
                         }}
                         collectionSummary={collectionSummary}
@@ -172,12 +157,7 @@ export const GalleryBarAndListHeader: React.FC<
                     />
                 </GalleryItemsHeaderAdapter>
             ) : activePerson ? (
-                <PeopleHeader
-                    onBack={onBackToPeople}
-                    person={activePerson}
-                    people={people}
-                    onSelectPerson={onSelectPerson}
-                />
+                <PeopleHeader person={activePerson} people={people} />
             ) : (
                 <></>
             ),
@@ -202,11 +182,8 @@ export const GalleryBarAndListHeader: React.FC<
         hasActiveFileSelection,
         onRemotePull,
         onAddSaveGroup,
-        onShowMap,
         onCollectionSlideshow,
-        onBackToAlbums,
         showBackToAlbums,
-        onBackToPeople,
         onEditAlbumDetails,
         albumDescription,
         descriptionHeight,

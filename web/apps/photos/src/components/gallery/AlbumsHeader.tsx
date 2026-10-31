@@ -6,22 +6,17 @@ import { useState } from "react";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { FixedSizeList, type ListChildComponentProps } from "react-window";
 import { AlbumTile } from "./AlbumTile";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 
 interface AlbumsHeaderProps {
     title: string;
     albums: CollectionSummary[];
-    onSelectAlbum: (id: number) => void;
-    onBack: () => void;
 }
 
 export const albumsHeaderHeight = 311;
 
-export const AlbumsHeader = ({
-    title,
-    albums,
-    onSelectAlbum,
-    onBack,
-}: AlbumsHeaderProps) => {
+export const AlbumsHeader = ({ title, albums }: AlbumsHeaderProps) => {
+    const { backToAlbums } = usePhotosNavigation();
     const [scrollOffset, setScrollOffset] = useState(0);
 
     return (
@@ -38,7 +33,7 @@ export const AlbumsHeader = ({
                 <Tooltip title={t("go_back")}>
                     <IconButton
                         aria-label={t("go_back")}
-                        onClick={onBack}
+                        onClick={backToAlbums}
                         sx={{ width: 32, height: 32 }}
                     >
                         <ArrowBackIcon sx={{ fontSize: 20 }} />
@@ -74,7 +69,7 @@ export const AlbumsHeader = ({
                                 height={200}
                                 itemCount={albums.length}
                                 itemSize={162}
-                                itemData={{ albums, onSelectAlbum }}
+                                itemData={{ albums }}
                                 itemKey={(index, data) =>
                                     data.albums[index]!.id
                                 }
@@ -107,17 +102,16 @@ export const AlbumsHeader = ({
 const HeaderAlbumTile = ({
     index,
     style,
-    data: { albums, onSelectAlbum },
+    data: { albums },
     isScrolling,
-}: ListChildComponentProps<
-    Pick<AlbumsHeaderProps, "albums" | "onSelectAlbum">
->) => {
+}: ListChildComponentProps<Pick<AlbumsHeaderProps, "albums">>) => {
+    const { selectCollection } = usePhotosNavigation();
     const album = albums[index]!;
     return (
         <div style={style}>
             <AlbumTile
                 album={album}
-                onSelectAlbum={onSelectAlbum}
+                onSelectAlbum={selectCollection}
                 isScrolling={isScrolling}
                 showBadges={false}
                 countLabel={t("photos_count", { count: album.fileCount })}

@@ -8,6 +8,10 @@ import {
     GalleryBarImpl,
     type GalleryBarImplProps,
 } from "../src/components/gallery/BarImpl";
+import {
+    PhotosNavigationContext,
+    type PhotosNavigationActions,
+} from "../src/components/gallery/PhotosNavigationContext";
 import { useAlbumNavigationData } from "../src/components/gallery/use-album-navigation-data";
 
 const viewport = vi.hoisted(() => ({ scrollToEnd: false }));
@@ -116,16 +120,28 @@ const renderSearch = (
         collapsed: false,
         mobileDrawerProps: { open: false, onClose: vi.fn() },
         onAlbumSearchQueryChange: vi.fn(),
-        onShowAlbumOverview: vi.fn(),
-        onShowPeopleOverview: vi.fn(),
-        onShowLinksOverview: vi.fn(),
-        onShowCollectionSummary: vi.fn(),
-        onSelectCollectionID: vi.fn(),
         onCreateAlbum: vi.fn(),
         onChangeCollectionsSortBy: vi.fn(),
         onChangePeopleSortBy: vi.fn(),
-        onSelectPerson: vi.fn(),
-        onSelectPlace: vi.fn(),
+    };
+    const navigation: PhotosNavigationActions = {
+        goHome: vi.fn(),
+        changeMode: vi.fn(() => true),
+        showLibraryMap: vi.fn(),
+        showCollectionMap: vi.fn(),
+        selectPlace: vi.fn(),
+        showCollectionSummary: vi.fn(() => Promise.resolve(true)),
+        selectCollection: vi.fn(),
+        selectCollectionFromViewer: vi.fn(),
+        openOverviewAlbum: vi.fn(),
+        showAlbumOverview: vi.fn(),
+        backToAlbums: vi.fn(),
+        showLinksOverview: vi.fn(() => true),
+        showPeople: vi.fn(() => true),
+        selectPerson: vi.fn(),
+        backToPeople: vi.fn(),
+        selectSearchOption: vi.fn(),
+        showCleanupView: vi.fn(),
     };
     const Sidebar = () => {
         const data = useAlbumNavigationData({
@@ -134,11 +150,13 @@ const renderSearch = (
         });
         return (
             <ThemeProvider theme={photosTheme}>
-                <GalleryBarImpl
-                    {...props}
-                    {...data}
-                    collectionSummaries={data.sidebarCollectionSummaries}
-                />
+                <PhotosNavigationContext.Provider value={navigation}>
+                    <GalleryBarImpl
+                        {...props}
+                        {...data}
+                        collectionSummaries={data.sidebarCollectionSummaries}
+                    />
+                </PhotosNavigationContext.Provider>
             </ThemeProvider>
         );
     };
