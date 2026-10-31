@@ -47,6 +47,7 @@ import {
     performCollectionOp,
     showCollectionSummaryWithAuthentication,
 } from "@/components/gallery/helpers";
+import { useSubscriptionCompletionRedirect } from "@/components/gallery/hooks/use-subscription-completion-redirect";
 import {
     useGalleryReducer,
     type GalleryBarMode,
@@ -57,7 +58,6 @@ import {
     notifyUnsupportedSharedFavoritesDialogAttributes,
     trashFilesDialogAttributes,
 } from "@/components/utils/dialog-attributes";
-import { useSubscriptionCompletionRedirect } from "@/components/utils/use-subscription-completion-redirect";
 import exportService from "@/services/export";
 import { processPendingAlbumJoin } from "@/services/join-album";
 import {
