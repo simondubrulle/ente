@@ -32,7 +32,6 @@ import {
 } from "@/components/gallery";
 import { AlbumsOverview } from "@/components/gallery/AlbumsOverview";
 import { DuplicatesView } from "@/components/gallery/DuplicatesView";
-import { GalleryDownloadStatusNotifications } from "@/components/gallery/GalleryDownloadStatusNotifications";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import {
@@ -102,6 +101,7 @@ import {
 import { savedAuthToken } from "ente-base/token";
 import type { Location } from "ente-base/types";
 import { initContacts, pullContacts } from "ente-contacts";
+import { DownloadStatusNotifications } from "ente-gallery/components/DownloadStatusNotifications";
 import { FullScreenDropZone } from "ente-gallery/components/FullScreenDropZone";
 import type { UploadTypeSelectorIntent } from "ente-gallery/components/Upload";
 import {
@@ -2080,6 +2080,19 @@ const Page: React.FC = () => {
         () => handleChangeBarMode("links"),
         [handleChangeBarMode],
     );
+    const handleDownloadStatusNotificationsShowCollectionSummary = useCallback(
+        (
+            collectionSummaryID: number | undefined,
+            isHiddenCollectionSummary: boolean | undefined,
+        ) => {
+            void showCollectionSummary(
+                collectionSummaryID,
+                isHiddenCollectionSummary,
+            );
+        },
+        [showCollectionSummary],
+    );
+
     const navigationActions = useMemo<PhotosNavigationActions>(
         () => ({
             goHome: handleGoHome,
@@ -2177,8 +2190,11 @@ const Page: React.FC = () => {
                         findCollectionCreatingIfNeeded(state.collections, id)
                     }
                 />
-                <GalleryDownloadStatusNotifications
+                <DownloadStatusNotifications
                     {...{ saveGroups, onRemoveSaveGroup }}
+                    onShowCollectionSummary={
+                        handleDownloadStatusNotificationsShowCollectionSummary
+                    }
                 />
                 <FixCreationTime
                     {...fixCreationTimeVisibilityProps}
