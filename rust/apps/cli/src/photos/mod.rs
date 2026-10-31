@@ -1,19 +1,25 @@
 mod export;
+mod places;
 pub mod replica;
 
 use std::{cmp::Ordering, io::Seek, path::Path};
 
 use anyhow::{Context, Result, ensure};
 use ente_core::Session;
+use ente_location::Coordinate;
 use ente_photos::files::{self, File, Kind};
 use serde_json::json;
 
 use crate::{
     api,
-    args::{AlbumCommand, App, FileCommand, FileQuery, FileSort, FileType, Options, PhotosCommand},
+    args::{
+        AlbumCommand, App, FileCommand, FileQuery, FileSort, FileType, Options, PhotosCommand,
+        PlaceCommand,
+    },
     core_db::SqliteResult,
     db, home,
     output::{self, AlbumView, FileView, MAX_CANDIDATES, select},
+    usage,
 };
 use replica::Replica;
 
@@ -21,6 +27,7 @@ pub async fn run(command: PhotosCommand, selected: Option<&str>, options: &Optio
     match command {
         PhotosCommand::Api(args) => return api::run(App::Photos, args, selected, options).await,
         PhotosCommand::Export(args) => return export::run(args, selected, options).await,
+        PhotosCommand::Usage => return usage::photos(selected, options).await,
         _ => {}
     }
     ensure!(
@@ -48,10 +55,13 @@ pub async fn run(command: PhotosCommand, selected: Option<&str>, options: &Optio
         );
     }
     match command {
-        PhotosCommand::Api(_) | PhotosCommand::Export(_) => unreachable!(),
+        PhotosCommand::Api(_) | PhotosCommand::Export(_) | PhotosCommand::Usage => unreachable!(),
         PhotosCommand::Album { command } => album(command, &replica, options),
         PhotosCommand::File { album, command } => {
             file(command, album.as_deref(), &session, &mut replica, options).await
+        }
+        PhotosCommand::Place { album, command } => {
+            place(command, album.as_deref(), &session, &mut replica, options).await
         }
     }
 }
@@ -102,13 +112,12 @@ fn album(command: AlbumCommand, replica: &Replica<'_>, options: &Options) -> Res
     }
 }
 
-async fn file(
-    command: FileCommand,
+async fn sync_files(
     album: Option<&str>,
     session: &Session,
     replica: &mut Replica<'_>,
     options: &Options,
-) -> Result<()> {
+) -> Result<(Option<i64>, bool)> {
     let mut incomplete = false;
     let albums =
         replica.collections(album, album.map(|_| (MAX_CANDIDATES + 1) as i64), |rows| {
@@ -149,7 +158,25 @@ async fn file(
     } else {
         replica.sync_files(session, &albums).await?;
     }
-    let album_id = album.map(|_| albums[0].id);
+    Ok((album.map(|_| albums[0].id), incomplete))
+}
+
+async fn file(
+    command: FileCommand,
+    album: Option<&str>,
+    session: &Session,
+    replica: &mut Replica<'_>,
+    options: &Options,
+) -> Result<()> {
+    let (album_id, mut incomplete) = sync_files(album, session, replica, options).await?;
+    let placed = match &command {
+        FileCommand::List { query, .. } if query.place.is_some() || query.country.is_some() => {
+            let index = places::open(options.offline).await?;
+            let located = located(replica, album_id, |_, _| {})?;
+            Some(places::matching(&index, query, &located)?)
+        }
+        _ => None,
+    };
     let find = |selector: &str| {
         let entry = replica.files(
             album_id,
@@ -176,7 +203,9 @@ async fn file(
                     Err(error) => return Some(Err(error.into())),
                 };
                 let listed = entry.file.and_then(|file| {
-                    if !matches(&query, &file) {
+                    if !matches(&query, &file)
+                        || placed.as_ref().is_some_and(|ids| !ids.contains(&file.id))
+                    {
                         return Ok(None);
                     }
                     let key = SortKey {
@@ -253,6 +282,48 @@ async fn file(
     }?;
     ensure!(!incomplete, "file results are incomplete");
     Ok(())
+}
+
+async fn place(
+    command: PlaceCommand,
+    album: Option<&str>,
+    session: &Session,
+    replica: &mut Replica<'_>,
+    options: &Options,
+) -> Result<()> {
+    let (album_id, mut incomplete) = sync_files(album, session, replica, options).await?;
+    let PlaceCommand::List { countries, list } = command;
+    let index = places::open(options.offline).await?;
+    let located = located(replica, album_id, |id, error| {
+        eprintln!("file {id}: {error:#}");
+        incomplete = true;
+    })?;
+    let coordinates = located
+        .into_iter()
+        .map(|(_, coordinate)| coordinate)
+        .collect::<Vec<_>>();
+    places::list(&index, &coordinates, countries, &list, options.json)?;
+    ensure!(!incomplete, "place results are incomplete");
+    Ok(())
+}
+
+fn located(
+    replica: &Replica<'_>,
+    album_id: Option<i64>,
+    mut failed: impl FnMut(i64, anyhow::Error),
+) -> Result<Vec<(i64, Coordinate)>> {
+    replica.files(album_id, None, None, |rows| {
+        let mut located = Vec::new();
+        for row in rows {
+            let entry = row?;
+            match entry.file {
+                Ok(file) => located
+                    .extend(places::coordinate(&file).map(|coordinate| (file.id, coordinate))),
+                Err(error) => failed(entry.id, error),
+            }
+        }
+        Ok(located)
+    })
 }
 
 struct SortKey {

@@ -3,7 +3,11 @@ use std::{fmt::Display, io::Write};
 use anyhow::{Context, Result, bail};
 use chrono::{DateTime, SecondsFormat};
 use dialoguer::console::{Alignment, measure_text_width, pad_str};
-use ente_accounts::admin::{Subscription, User, UserDetails};
+use ente_accounts::{
+    admin::{Subscription, User, UserDetails},
+    details::AccountDetails,
+};
+use ente_location::{CityMatch, CountryGroup};
 use ente_photos::{
     collections::{Collection, Visibility},
     files::File,
@@ -125,6 +129,48 @@ impl FileView {
             size_bytes: file.size,
             visibility: file.visibility.map(Visibility::name),
         })
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CityView {
+    name: String,
+    country: String,
+    country_code: String,
+    latitude: f32,
+    longitude: f32,
+    file_count: usize,
+}
+
+impl From<CityMatch> for CityView {
+    fn from(group: CityMatch) -> Self {
+        Self {
+            name: group.city.name,
+            country: group.city.country_name,
+            country_code: group.city.country_code.to_string(),
+            latitude: group.city.latitude as f32,
+            longitude: group.city.longitude as f32,
+            file_count: group.coordinate_indices.len(),
+        }
+    }
+}
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CountryView {
+    name: String,
+    code: String,
+    file_count: usize,
+}
+
+impl CountryView {
+    pub fn new(name: &str, group: &CountryGroup) -> Self {
+        Self {
+            name: name.to_owned(),
+            code: group.country.to_string(),
+            file_count: group.coordinate_indices.len(),
+        }
     }
 }
 
@@ -280,6 +326,48 @@ pub fn files(
     )
 }
 
+pub fn cities(
+    cities: impl Iterator<Item = CityView>,
+    args: &ListArgs,
+    as_json: bool,
+) -> Result<()> {
+    list(
+        cities.map(Ok),
+        args,
+        as_json,
+        ["CITY", "COUNTRY", "FILES"],
+        "No places.",
+        |city| {
+            [
+                escape_controls(&city.name),
+                escape_controls(&city.country),
+                city.file_count.to_string(),
+            ]
+        },
+    )
+}
+
+pub fn countries(
+    countries: impl Iterator<Item = CountryView>,
+    args: &ListArgs,
+    as_json: bool,
+) -> Result<()> {
+    list(
+        countries.map(Ok),
+        args,
+        as_json,
+        ["COUNTRY", "CODE", "FILES"],
+        "No places.",
+        |country| {
+            [
+                escape_controls(&country.name),
+                country.code,
+                country.file_count.to_string(),
+            ]
+        },
+    )
+}
+
 pub fn file(file: &FileView) -> Result<()> {
     let mut fields = vec![
         ("Name", escape_controls(&file.name)),
@@ -365,6 +453,79 @@ pub fn admin_user(details: &UserDetails, as_json: bool) -> Result<()> {
     write_fields(&fields)
 }
 
+pub fn usage(details: &AccountDetails, as_json: bool) -> Result<()> {
+    let active = details.plan_active();
+    if as_json {
+        let family = details.family().map(|family| {
+            json_value!({
+                "usedBytes": family.usage(),
+                "storageBytes": details.total_storage(),
+                "members": family.members.iter().map(|member| json_value!({
+                    "email": member.email, "status": member.status, "admin": member.is_admin,
+                    "usedBytes": member.usage, "storageLimitBytes": member.storage_limit,
+                })).collect::<Vec<_>>(),
+            })
+        });
+        return json(&json_value!({
+            "email": details.email,
+            "totalBytes": details.total_storage(),
+            "usedBytes": details.usage,
+            "freeBytes": details.free_storage(),
+            "planBytes": details.plan_storage(),
+            "bonusBytes": details.storage_bonus,
+            "planActive": active,
+            "planExpiresAt": timestamp(details.plan_expiry_time())?,
+            "files": details.file_count,
+            "family": family,
+        }));
+    }
+    let mut fields = vec![
+        ("Email", escape_controls(&details.email)),
+        ("Total", size(details.total_storage())),
+        ("Used", size(details.usage)),
+        ("Free", size(details.free_storage())),
+        ("Plan", size(details.plan_storage())),
+        (
+            "Status",
+            if active { "active" } else { "expired" }.to_owned(),
+        ),
+        ("Bonus", size(details.storage_bonus)),
+        (
+            "Files",
+            details
+                .file_count
+                .map_or("unknown".to_owned(), |count| count.to_string()),
+        ),
+    ];
+    match details.family() {
+        Some(family) => {
+            let members = family
+                .members
+                .iter()
+                .map(|member| {
+                    let mut label = escape_controls(&member.email);
+                    if member.is_admin {
+                        label.push_str(" (admin)");
+                    } else if member.status != "ACCEPTED" {
+                        label.push_str(&format!(" ({})", member.status.to_lowercase()));
+                    }
+                    label
+                })
+                .collect::<Vec<_>>();
+            fields.extend([
+                ("Family", members.join(", ")),
+                ("Family used", size(family.usage())),
+                ("Family storage", size(details.total_storage())),
+            ]);
+            if let Some(limit) = details.family_member().and_then(|m| m.storage_limit) {
+                fields.push(("Your limit", size(limit)));
+            }
+        }
+        None => fields.push(("Family", "none".to_owned())),
+    }
+    write_fields(&fields)
+}
+
 pub fn storage_size(bytes: i64) -> String {
     scaled_size(
         bytes,
@@ -393,6 +554,23 @@ fn scaled_size(bytes: i64, units: &[(&str, i64)]) -> String {
             let size = format!("{:.2}", bytes as f64 / divisor as f64);
             return format!(
                 "{} {unit} ({bytes} bytes)",
+                size.trim_end_matches('0').trim_end_matches('.')
+            );
+        }
+    }
+    format!("{bytes} bytes")
+}
+
+fn size(bytes: i64) -> String {
+    for (unit, divisor) in [
+        ("TB", 1024_i64.pow(4)),
+        ("GB", 1024_i64.pow(3)),
+        ("MB", 1024_i64.pow(2)),
+    ] {
+        if bytes >= divisor {
+            let size = format!("{:.2}", bytes as f64 / divisor as f64);
+            return format!(
+                "{} {unit}",
                 size.trim_end_matches('0').trim_end_matches('.')
             );
         }

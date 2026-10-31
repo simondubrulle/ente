@@ -2,7 +2,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{self, TryRecvError};
 use std::time::Duration;
 
-use transcribe_rs::vad::Vad;
+use super::vad::Vad;
 
 use super::{StreamNormalizer, Transcriber};
 use crate::voice::{
@@ -344,8 +344,8 @@ impl LiveTranscription {
 
 #[cfg(test)]
 mod tests {
+    use super::super::vad::EnergyVad;
     use super::*;
-    use transcribe_rs::vad::EnergyVad;
 
     fn stream() -> LiveTranscription {
         LiveTranscription::new(CaptureFormat {
@@ -531,7 +531,6 @@ mod tests {
     #[test]
     fn model_initialization_failures_preserve_causes_and_close_capture() {
         use super::super::TranscriptionError;
-        use transcribe_rs::TranscribeError;
 
         for (error, expected) in [
             (TranscriptionError::NotDownloaded, VoiceError::NotDownloaded),
@@ -540,19 +539,21 @@ mod tests {
                 VoiceError::VadNotDownloaded,
             ),
             (
-                TranscribeError::Io(std::io::ErrorKind::StorageFull.into()).into(),
+                std::io::Error::from(std::io::ErrorKind::StorageFull).into(),
                 VoiceError::StorageFull,
             ),
             (
-                TranscribeError::Io(std::io::Error::other("injected I/O failure")).into(),
+                std::io::Error::other("injected I/O failure").into(),
                 VoiceError::Io("Load transcription model: injected I/O failure".into()),
             ),
             (
-                TranscribeError::Audio("injected audio failure".into()).into(),
+                TranscriptionError::InvalidAudio("injected audio failure".into()),
                 VoiceError::InvalidAudio("Load transcription model: injected audio failure".into()),
             ),
             (
-                TranscribeError::Inference("injected initialization failure".into()).into(),
+                TranscriptionError::Transcribe(
+                    "inference error: injected initialization failure".into(),
+                ),
                 VoiceError::ProcessingFailed(
                     "Load transcription model: inference error: injected initialization failure"
                         .into(),

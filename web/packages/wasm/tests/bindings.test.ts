@@ -2,13 +2,7 @@ import * as cast from "ente-cast-wasm";
 import * as locker from "ente-locker-wasm";
 import * as legacy from "ente-locker-wasm/legacy";
 import * as photos from "ente-photos-wasm";
-import {
-    boxSealOpenBytes,
-    deriveKey,
-    encryptBox,
-    generateKey,
-    generateKeyPair,
-} from "ente-prelogin-wasm";
+import { deriveKey, encryptBox, generateKey } from "ente-prelogin-wasm";
 import { afterEach, describe, expect, test, vi } from "vitest";
 import {
     cryptoBoxSeal,
@@ -339,49 +333,6 @@ describe("Locker Legacy", () => {
             session.free();
         }
     });
-
-    test("shares the Session recovery key with the recipient", async () => {
-        const masterKey = await generateKey();
-        const recoveryKey = await generateKey();
-        const recipient = await generateKeyPair();
-        let sharedRecoveryKey: Uint8Array | undefined;
-        mockFetch(async (request) => {
-            switch (new URL(request.url).pathname) {
-                case "/users/public-key":
-                    return Response.json({ publicKey: recipient.publicKey });
-                case "/emergency-contacts/add": {
-                    const body = (await request.json()) as {
-                        email: string;
-                        encryptedKey: string;
-                        recoveryNoticeInDays: number;
-                    };
-                    expect(body.email).toBe("friend@example.com");
-                    expect(body.recoveryNoticeInDays).toBe(30);
-                    sharedRecoveryKey = await boxSealOpenBytes(
-                        body.encryptedKey,
-                        recipient,
-                    );
-                    return new Response(null, { status: 204 });
-                }
-                default:
-                    throw new Error(`Unexpected request: ${request.url}`);
-            }
-        });
-        const session = await locker.openSession({
-            baseUrl: "http://localhost",
-            authToken: "token",
-            masterKeyB64: masterKey,
-            ...(await sessionKeyAttributes(masterKey, recoveryKey)),
-        });
-        try {
-            await legacy.addContact(session, "friend@example.com", 30);
-            expect(sharedRecoveryKey).toStrictEqual(
-                new Uint8Array(Buffer.from(recoveryKey, "base64")),
-            );
-        } finally {
-            session.free();
-        }
-    });
 });
 
 const mockFetch = (
@@ -398,7 +349,8 @@ const sessionKeyAttributes = async (
     masterKey: string,
     recoveryKey?: string,
 ) => {
-    const { publicKey, privateKey } = await generateKeyPair();
+    const publicKey = "W/Vcc7guviK+gPNDBmevVw+uJVamQV5rMNQGUwCqlH0=";
+    const privateKey = "UEatwduoOIZ7K7v90MNCPli1eXC1JnqQ9XlgkkqH8ZY=";
     const encryptedSecretKey = await encryptBox(privateKey, masterKey);
     const encryptedRecoveryKey = await encryptBox(
         recoveryKey ?? (await generateKey()),

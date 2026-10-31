@@ -24,7 +24,6 @@ import {
     type AlbumDetails,
 } from "@/components/collections/EditAlbumDetailsDialog";
 import { GalleryBarAndListHeader } from "@/components/collections/GalleryBarAndListHeader";
-import { slideshowFiles } from "@/components/collections/album-slideshow";
 import {
     GalleryEmptyState,
     PeopleConsentDialog,
@@ -47,6 +46,9 @@ import {
     performCollectionOp,
     showCollectionSummaryWithAuthentication,
 } from "@/components/gallery/helpers";
+import { useGalleryAuthentication } from "@/components/gallery/hooks/use-gallery-authentication";
+import { useGallerySlideshow } from "@/components/gallery/hooks/use-gallery-slideshow";
+import { useSubscriptionCompletionRedirect } from "@/components/gallery/hooks/use-subscription-completion-redirect";
 import {
     useGalleryReducer,
     type GalleryBarMode,
@@ -77,8 +79,6 @@ import {
 import { stashRedirect } from "ente-accounts/services/redirect";
 import { isSessionInvalid } from "ente-accounts/services/session";
 import { ensureLocalUser } from "ente-accounts/services/user";
-import { isDesktop } from "ente-base/app";
-import type { MiniDialogAttributes } from "ente-base/components/MiniDialog";
 import { Notification } from "ente-base/components/Notification";
 import { SingleInputDialog } from "ente-base/components/SingleInputDialog";
 import { TranslucentLoadingOverlay } from "ente-base/components/loaders";
@@ -118,7 +118,6 @@ import {
     useUserDetailsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
 import { masterKeyFromSession } from "ente-new/photos/services/account-keys";
-import { reauthenticateWithAppLock } from "ente-new/photos/services/app-lock";
 import {
     addToCollection,
     addToFavoritesCollection,
@@ -175,15 +174,11 @@ import {
     initSettings,
     updateMapEnabled,
 } from "ente-new/photos/services/settings";
-import {
-    redirectToCustomerPortal,
-    savedUserDetailsOrTriggerPull,
-    verifyStripeSubscription,
-} from "ente-new/photos/services/user-details";
+import { savedUserDetailsOrTriggerPull } from "ente-new/photos/services/user-details";
 import { usePhotosAppContext } from "ente-new/photos/types/context";
 import { PromiseQueue } from "ente-utils/promise";
 import { t } from "i18next";
-import { useRouter, type NextRouter } from "next/router";
+import { useRouter } from "next/router";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { FileWithPath } from "react-dropzone";
 import { Trans } from "react-i18next";
@@ -228,13 +223,6 @@ const Page: React.FC = () => {
         [],
     );
     const [isFileViewerOpen, setIsFileViewerOpen] = useState(false);
-    const [slideshow, setSlideshow] = useState<{
-        files: EnteFile[];
-        title: string;
-        collectionID: number;
-    }>();
-    const closeSlideshow = useCallback(() => setSlideshow(undefined), []);
-
     const [pendingFileNavigation, setPendingFileNavigation] = useState<{
         fileIndex: number;
         sidebar?: FileViewerInitialSidebar;
@@ -301,10 +289,8 @@ const Page: React.FC = () => {
     );
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
         useModalVisibility();
-    const {
-        show: showAuthenticateUser,
-        props: authenticateUserVisibilityProps,
-    } = useModalVisibility();
+    const { authenticateUser, authenticateUserDialogProps } =
+        useGalleryAuthentication();
     const { show: showAlbumNameInput, props: albumNameInputVisibilityProps } =
         useModalVisibility();
     const { show: showEditLocation, props: editLocationVisibilityProps } =
@@ -340,44 +326,6 @@ const Page: React.FC = () => {
         open: boolean;
         url?: string;
     }>({ open: false });
-
-    const onAuthenticateCallback = useRef<
-        ((didAuthenticate: boolean) => void) | undefined
-    >(undefined);
-
-    const authenticateUserWithPasswordModal = useCallback(
-        () =>
-            new Promise<boolean>((resolve) => {
-                onAuthenticateCallback.current = resolve;
-                showAuthenticateUser();
-            }),
-        [],
-    );
-
-    const authenticateUser = useCallback(async () => {
-        if (!isDesktop) return authenticateUserWithPasswordModal();
-
-        const reauthResult = await reauthenticateWithAppLock();
-        if (reauthResult === "authenticated") return true;
-        if (reauthResult === "cancelled") return false;
-
-        return authenticateUserWithPasswordModal();
-    }, [authenticateUserWithPasswordModal]);
-
-    const handleCloseAuthenticateUser = useCallback(() => {
-        authenticateUserVisibilityProps.onClose();
-        if (onAuthenticateCallback.current) {
-            onAuthenticateCallback.current(false);
-            onAuthenticateCallback.current = undefined;
-        }
-    }, [authenticateUserVisibilityProps.onClose]);
-
-    const handleAuthenticate = useCallback(() => {
-        if (onAuthenticateCallback.current) {
-            onAuthenticateCallback.current(true);
-            onAuthenticateCallback.current = undefined;
-        }
-    }, []);
 
     const {
         user,
@@ -532,37 +480,13 @@ const Page: React.FC = () => {
         tempDeletedFileIDs,
         tempHiddenFileIDs,
     ]);
-    const startSlideshow = useCallback(() => {
-        if (!activeCollection) return;
-        const files = slideshowFiles(activeCollectionFiles);
-        if (!files.length) {
-            showNotification({
-                color: "primary",
-                title: t("no_photos_found_here"),
-            });
-            return;
-        }
-        setSlideshow({
-            files,
-            title: activeCollectionSummary?.name ?? activeCollection.name,
-            collectionID: activeCollection.id,
-        });
-    }, [
+    const { slideshow, startSlideshow, closeSlideshow } = useGallerySlideshow({
         activeCollection,
         activeCollectionFiles,
-        activeCollectionSummary?.name,
-        showNotification,
-    ]);
-
-    useEffect(() => {
-        if (
-            slideshow &&
-            (slideshow.collectionID !== activeCollection?.id ||
-                isInSearchMode ||
-                !user)
-        )
-            closeSlideshow();
-    }, [slideshow, activeCollection?.id, isInSearchMode, user, closeSlideshow]);
+        activeCollectionSummary,
+        isInSearchMode,
+        user,
+    });
 
     const mapFileSource = useMemo(
         () => ({
@@ -774,15 +698,7 @@ const Page: React.FC = () => {
         if (!activeCollectionSummary) closeCollectionMap();
     }, [activeCollectionSummary, closeCollectionMap]);
 
-    useEffect(() => {
-        if (router.isReady && haveMasterKeyInSession()) {
-            void handleSubscriptionCompletionRedirectIfNeeded(
-                showMiniDialog,
-                showLoadingBar,
-                router,
-            );
-        }
-    }, [router.isReady]);
+    useSubscriptionCompletionRedirect();
 
     useEffect(() => {
         updateSearchCollectionsAndFiles(
@@ -856,7 +772,7 @@ const Page: React.FC = () => {
             uploadTypeSelectorView ||
             openCollectionSelector ||
             fixCreationTimeVisibilityProps.open ||
-            authenticateUserVisibilityProps.open ||
+            authenticateUserDialogProps.open ||
             albumNameInputVisibilityProps.open ||
             editAlbumDetailsVisibilityProps.open ||
             isFileViewerOpen ||
@@ -2545,11 +2461,7 @@ const Page: React.FC = () => {
                         onSubmit={handleEditAlbumDetails}
                     />
                 )}
-                <AuthenticateUser
-                    open={authenticateUserVisibilityProps.open}
-                    onClose={handleCloseAuthenticateUser}
-                    onAuthenticate={handleAuthenticate}
-                />
+                <AuthenticateUser {...authenticateUserDialogProps} />
             </FullScreenDropZone>
             <SingleInputDialog
                 {...albumNameInputVisibilityProps}
@@ -2599,68 +2511,6 @@ const Page: React.FC = () => {
 };
 
 export default Page;
-
-const handleSubscriptionCompletionRedirectIfNeeded = async (
-    showMiniDialog: (attributes: MiniDialogAttributes) => void,
-    showLoadingBar: () => void,
-    router: NextRouter,
-) => {
-    const { session_id: sessionID, status, reason } = router.query;
-
-    if (status == "success") {
-        try {
-            const subscription = await verifyStripeSubscription(sessionID);
-            showMiniDialog({
-                title: t("thank_you"),
-                message: (
-                    <Trans
-                        i18nKey="subscription_purchase_success"
-                        values={{ date: subscription.expiryTime }}
-                    />
-                ),
-                continue: { text: t("ok") },
-                cancel: false,
-            });
-        } catch (e) {
-            log.error("Subscription verification failed", e);
-            showMiniDialog(
-                errorDialogAttributes(t("subscription_verification_error")),
-            );
-        }
-    } else if (status == "fail") {
-        log.error(`Subscription purchase failed`, reason);
-        switch (reason) {
-            case "canceled":
-                showMiniDialog({
-                    message: t("subscription_purchase_cancelled"),
-                    continue: { text: t("ok"), color: "primary" },
-                    cancel: false,
-                });
-                break;
-            case "requires_payment_method":
-            case "authentication_failed":
-                showMiniDialog({
-                    title: t("update_payment_method"),
-                    message:
-                        reason == "authentication_failed"
-                            ? t("payment_method_authentication_failed")
-                            : t("update_payment_method_message"),
-                    continue: {
-                        text: t("update_payment_method"),
-                        action: () => {
-                            showLoadingBar();
-                            return redirectToCustomerPortal();
-                        },
-                    },
-                });
-                break;
-            default:
-                showMiniDialog(
-                    errorDialogAttributes(t("subscription_purchase_failed")),
-                );
-        }
-    }
-};
 
 const createAppDownloadFooter = (): FileListHeaderOrFooter => ({
     component: (

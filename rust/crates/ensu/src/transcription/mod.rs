@@ -2,6 +2,7 @@ mod audio;
 mod graph_cache;
 mod live;
 mod normalize;
+mod parakeet;
 mod recorded;
 mod session;
 mod text;
@@ -44,17 +45,6 @@ impl From<std::io::Error> for TranscriptionError {
     }
 }
 
-impl From<transcribe_rs::TranscribeError> for TranscriptionError {
-    fn from(value: transcribe_rs::TranscribeError) -> Self {
-        match value {
-            transcribe_rs::TranscribeError::ModelNotFound(_) => Self::NotDownloaded,
-            transcribe_rs::TranscribeError::Audio(detail) => Self::InvalidAudio(detail),
-            transcribe_rs::TranscribeError::Io(error) => error.into(),
-            error => Self::Transcribe(error.to_string()),
-        }
-    }
-}
-
 impl<R> From<ort::Error<R>> for TranscriptionError {
     fn from(value: ort::Error<R>) -> Self {
         Self::Transcribe(value.to_string())
@@ -84,3 +74,17 @@ fn voice_error(operation: &str, error: impl Into<TranscriptionError>) -> crate::
 }
 
 pub type Result<T> = std::result::Result<T, TranscriptionError>;
+
+fn environment() -> Result<ort::environment::Environment> {
+    static ENVIRONMENT: std::sync::Mutex<Option<ort::environment::Environment>> =
+        std::sync::Mutex::new(None);
+    let mut current = ENVIRONMENT
+        .lock()
+        .unwrap_or_else(std::sync::PoisonError::into_inner);
+    if let Some(environment) = current.as_ref() {
+        return Ok(environment.clone());
+    }
+    let environment = ort::init().build()?;
+    *current = Some(environment.clone());
+    Ok(environment)
+}

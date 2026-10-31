@@ -375,6 +375,17 @@ Examples:
   ente photos export ~/Pictures/Ente --album Holidays --account personal"
     )]
     Export(PhotosExportArgs),
+    #[command(about = "Show storage usage, plan status and file count")]
+    #[command(
+        after_long_help = "Reads your account details from the server; requires network access.
+In a family, the plan and total are the family admin's, and a member limit set by the admin caps your free space.
+JSON fields: email, planExpiresAt (UTC), planActive, totalBytes, usedBytes, freeBytes, planBytes, bonusBytes, files, family.
+planActive is false once the plan has expired; an expired personal plan still counts in totalBytes, as in the apps.
+files is null when the server has no count.
+family is null outside a family; otherwise it contains usedBytes, storageBytes and members.
+Each member has email, status, admin, usedBytes and storageLimitBytes (null without a cap)."
+    )]
+    Usage,
     #[command(about = "Manage albums")]
     Album {
         #[command(subcommand)]
@@ -391,6 +402,18 @@ Examples:
         album: Option<String>,
         #[command(subcommand)]
         command: FileCommand,
+    },
+    #[command(about = "See where your files were taken")]
+    Place {
+        #[arg(
+            long,
+            global = true,
+            value_name = "ALBUM",
+            help = "Limit to an album ID or exact name"
+        )]
+        album: Option<String>,
+        #[command(subcommand)]
+        command: PlaceCommand,
     },
 }
 
@@ -618,6 +641,22 @@ pub struct FileQuery {
     pub no_location: bool,
     #[arg(
         long,
+        value_name = "TEXT",
+        value_parser = nonempty_search,
+        help = "Include files taken in a city whose name contains TEXT",
+        long_help = "Include files taken in a city whose name contains TEXT, ignoring case and accent marks. If one of the cities `place list` shows for the same --album is named exactly TEXT, only cities with that name match. Type letters such as ł or ø as `place list` shows them. Downloads location data on first use; see `place list --help`."
+    )]
+    pub place: Option<String>,
+    #[arg(
+        long,
+        value_name = "COUNTRY",
+        value_parser = nonempty_search,
+        help = "Include files taken in a country, given by code or name",
+        long_help = "Include files taken in the country with this two-letter code, such as PT, or this full English name. UK also selects the United Kingdom (GB); an unknown two-letter code is an error. Other text includes every country whose English name contains it. Names ignore case and accent marks, and are the ones `place list --countries` shows. Downloads location data on first use; see `place list --help`."
+    )]
+    pub country: Option<String>,
+    #[arg(
+        long,
         value_name = "SIZE",
         value_parser = min_file_size,
         help = "Include files of at least this size, e.g. 100MB",
@@ -642,6 +681,27 @@ pub struct FileQuery {
     pub sort: Option<FileSort>,
     #[arg(long, requires = "sort", help = "Reverse the --sort order")]
     pub reverse: bool,
+}
+
+const PLACE_HELP: &str = "Refreshes file metadata first; --offline reads previously synced data.
+Groups files by their location and lists the most files first. Files without a location,
+or whose location matches no city (or with --countries, no country), are not counted.
+--country uses the groups --countries shows, which can differ from a city's country:
+photos in French Guiana count under France.
+On first use, downloads about 7 MB of location data and keeps it in the CLI home for all accounts.
+With --json, returns an array. City fields: name, country, countryCode (strings);
+latitude, longitude of the city (numbers); fileCount (integer). With --countries: name, code (strings); fileCount (integer).";
+
+#[derive(Subcommand)]
+pub enum PlaceCommand {
+    #[command(about = "List the cities or countries where your files were taken")]
+    #[command(after_long_help = PLACE_HELP)]
+    List {
+        #[arg(long, help = "List countries instead of cities")]
+        countries: bool,
+        #[command(flatten)]
+        list: ListArgs,
+    },
 }
 
 #[derive(Clone, Copy, ValueEnum)]

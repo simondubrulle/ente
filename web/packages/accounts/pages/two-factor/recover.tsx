@@ -82,16 +82,10 @@ const Page: React.FC<RecoverPageProps> = ({ twoFactorType = "totp" }) => {
                     );
                 } catch (e) {
                     log.error("Second factor recovery page setup failed", e);
-                    const status =
-                        e instanceof Error && "status" in e
-                            ? e.status
-                            : undefined;
                     if (isNamedError(e, "session_expired")) {
                         logout();
                     } else if (
-                        typeof status === "number" &&
-                        status >= 400 &&
-                        status <= 499
+                        isNamedError(e, "two_factor_recovery_not_configured")
                     ) {
                         showContactSupportDialog({ action: router.back });
                     } else {
