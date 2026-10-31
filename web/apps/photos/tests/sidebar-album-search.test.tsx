@@ -9,7 +9,7 @@ import {
     type GalleryBarImplProps,
 } from "../src/components/gallery/BarImpl";
 import {
-    PhotosNavigationProvider,
+    PhotosNavigationContext,
     type PhotosNavigationActions,
 } from "../src/components/gallery/PhotosNavigationContext";
 import { useAlbumNavigationData } from "../src/components/gallery/use-album-navigation-data";
@@ -150,13 +150,13 @@ const renderSearch = (
         });
         return (
             <ThemeProvider theme={photosTheme}>
-                <PhotosNavigationProvider value={navigation}>
+                <PhotosNavigationContext.Provider value={navigation}>
                     <GalleryBarImpl
                         {...props}
                         {...data}
                         collectionSummaries={data.sidebarCollectionSummaries}
                     />
-                </PhotosNavigationProvider>
+                </PhotosNavigationContext.Provider>
             </ThemeProvider>
         );
     };

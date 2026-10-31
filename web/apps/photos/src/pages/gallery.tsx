@@ -35,7 +35,7 @@ import { DuplicatesView } from "@/components/gallery/DuplicatesView";
 import { LargeFilesView } from "@/components/gallery/LargeFilesView";
 import { PeopleOverview } from "@/components/gallery/PeopleOverview";
 import {
-    PhotosNavigationProvider,
+    PhotosNavigationContext,
     type PhotosNavigationActions,
 } from "@/components/gallery/PhotosNavigationContext";
 import {
@@ -2158,7 +2158,7 @@ const Page: React.FC = () => {
     );
 
     return (
-        <PhotosNavigationProvider value={navigationActions}>
+        <PhotosNavigationContext.Provider value={navigationActions}>
             <FullScreenDropZone
                 message={
                     watchFolderView
@@ -2559,7 +2559,7 @@ const Page: React.FC = () => {
                 files={selectedFilesInView}
                 onConfirm={handleEditLocationConfirm}
             />
-        </PhotosNavigationProvider>
+        </PhotosNavigationContext.Provider>
     );
 };
 

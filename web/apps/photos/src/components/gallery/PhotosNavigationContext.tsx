@@ -30,18 +30,15 @@ export interface PhotosNavigationActions {
     showCleanupView: (view: "large-files" | "duplicates") => void;
 }
 
-const PhotosNavigationContext = createContext<
+export const PhotosNavigationContext = createContext<
     PhotosNavigationActions | undefined
 >(undefined);
 
-export const PhotosNavigationProvider = PhotosNavigationContext.Provider;
-
-// eslint-disable-next-line react-refresh/only-export-components
 export const usePhotosNavigation = (): PhotosNavigationActions => {
     const actions = useContext(PhotosNavigationContext);
     if (!actions) {
         throw new Error(
-            "usePhotosNavigation must be used within PhotosNavigationProvider",
+            "usePhotosNavigation must be used within PhotosNavigationContext.Provider",
         );
     }
     return actions;
