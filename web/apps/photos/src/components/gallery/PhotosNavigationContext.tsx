@@ -1,0 +1,48 @@
+import type { AlbumFilter } from "@/utils/album-filters";
+import type { SearchOption } from "ente-new/photos/services/search/types";
+import { createContext, useContext } from "react";
+import type { PlaceSelection } from "./PlacesList";
+import type { GalleryBarMode } from "./reducer";
+
+export interface PhotosNavigationActions {
+    goHome: () => void;
+    changeMode: (mode: GalleryBarMode) => boolean;
+    showLibraryMap: () => void;
+    showCollectionMap: () => void;
+    selectPlace: (place: PlaceSelection | undefined) => void;
+    showCollectionSummary: (
+        id: number | undefined,
+        isHidden?: boolean,
+    ) => Promise<boolean>;
+    selectCollection: (id: number) => void;
+    selectCollectionFromViewer: (id: number) => void;
+    openOverviewAlbum: (id: number) => void;
+    showAlbumOverview: (filter: AlbumFilter) => void;
+    backToAlbums: () => void;
+    showLinksOverview: () => boolean;
+    showPeople: (onNavigate?: () => void) => boolean;
+    selectPerson: (id: string) => void;
+    backToPeople: () => void;
+    selectSearchOption: (
+        option: SearchOption | undefined,
+        options?: { shouldExitSearchMode?: boolean },
+    ) => void;
+    showCleanupView: (view: "large-files" | "duplicates") => void;
+}
+
+const PhotosNavigationContext = createContext<
+    PhotosNavigationActions | undefined
+>(undefined);
+
+export const PhotosNavigationProvider = PhotosNavigationContext.Provider;
+
+// eslint-disable-next-line react-refresh/only-export-components
+export const usePhotosNavigation = (): PhotosNavigationActions => {
+    const actions = useContext(PhotosNavigationContext);
+    if (!actions) {
+        throw new Error(
+            "usePhotosNavigation must be used within PhotosNavigationProvider",
+        );
+    }
+    return actions;
+};

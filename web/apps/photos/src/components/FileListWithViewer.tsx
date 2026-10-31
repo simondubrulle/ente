@@ -1,4 +1,5 @@
 import type { RemotePullOpts } from "@/components/gallery";
+import { usePhotosNavigation } from "@/components/gallery/PhotosNavigationContext";
 import { downloadAndSaveFiles } from "@/services/save";
 import { uploadManager } from "@/services/upload-manager";
 import { fileTimelineDateString } from "@/utils/file";
@@ -84,8 +85,6 @@ export type FileListWithViewerProps = {
         | "onToggleFavorite"
         | "onFileVisibilityUpdate"
         | "onSendLink"
-        | "onSelectCollection"
-        | "onSelectPerson"
     >;
 
 export const FileListWithViewer: React.FC<FileListWithViewerProps> = ({
@@ -131,8 +130,6 @@ export const FileListWithViewer: React.FC<FileListWithViewerProps> = ({
     onFileVisibilityUpdate,
     onSendLink,
     onMarkTempDeleted,
-    onSelectCollection,
-    onSelectPerson,
     onAddFileToCollection,
     onScroll,
     onVisibleDateChange,
@@ -141,6 +138,10 @@ export const FileListWithViewer: React.FC<FileListWithViewerProps> = ({
     pendingHighlightCommentID,
     onPendingNavigationConsumed,
 }) => {
+    const {
+        selectCollectionFromViewer: onSelectCollection,
+        selectPerson: onSelectPerson,
+    } = usePhotosNavigation();
     const [openFileViewer, setOpenFileViewer] = useState(false);
     const [currentIndex, setCurrentIndex] = useState(0);
     const [initialSidebar, setInitialSidebar] = useState<

@@ -52,26 +52,21 @@ import {
     type GalleryBarPresentationProps,
 } from "./BarImpl";
 import { NavigationSlide } from "./NavigationSlide";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 import type { GalleryBarMode } from "./reducer";
 import { useNavigationContentMotion } from "./use-navigation-content-motion";
 
 type GalleryNavigation = Omit<
     GalleryBarImplProps,
-    | keyof GalleryBarPresentationProps
-    | "mode"
-    | "onCreateAlbum"
-    | "onSelectPerson"
+    keyof GalleryBarPresentationProps | "mode" | "onCreateAlbum"
 > & { onRemotePull: (opts?: RemotePullOpts) => Promise<void> };
 
 type PhotosNavigationShellProps = SearchBarProps & {
     onSidebar: () => void;
     onUpload: () => void;
-    onHome: () => void;
-    onShowMap: () => void;
     isMapView: boolean;
     isMapSelected: boolean;
     mode: GalleryBarMode;
-    onChangeMode: (mode: GalleryBarMode) => boolean;
 };
 
 export interface PhotosNavigationShellHandle {
@@ -86,7 +81,6 @@ export const PhotosNavigationShell: React.FC<
             alternateHeader: ReactNode;
             galleryNavigation: GalleryNavigation | undefined;
             collectionNameByID: Map<number, string>;
-            onShowCleanupView: (view: "large-files" | "duplicates") => void;
             onAuthenticateUser: () => Promise<boolean>;
         }
     >
@@ -96,11 +90,12 @@ export const PhotosNavigationShell: React.FC<
     alternateHeader,
     galleryNavigation,
     collectionNameByID,
-    onShowCleanupView,
     onAuthenticateUser,
     children,
     ...props
 }) => {
+    const { changeMode, showLibraryMap, selectCollection, showCleanupView } =
+        usePhotosNavigation();
     const { show: showSidebar, props: sidebarVisibilityProps } =
         useModalVisibility();
     const [pendingSidebarAction, setPendingSidebarAction] =
@@ -141,21 +136,12 @@ export const PhotosNavigationShell: React.FC<
             setNavigationCollapsed((collapsed) => !collapsed);
         }
     };
-    const { onSelectCollectionID } = galleryNavigation ?? {};
-    const { onSelectPerson } = props;
-    const selectCollection = useCallback(
+    const selectCreatedCollection = useCallback(
         (id: number) => {
-            onSelectCollectionID?.(id);
+            if (galleryNavigation) selectCollection(id);
             closeMobileNavigation();
         },
-        [onSelectCollectionID, closeMobileNavigation],
-    );
-    const selectPerson = useCallback(
-        (id: string) => {
-            onSelectPerson(id);
-            closeMobileNavigation();
-        },
-        [onSelectPerson, closeMobileNavigation],
+        [galleryNavigation, selectCollection, closeMobileNavigation],
     );
     const { show: showAlbumNameInput, props: albumNameInputVisibilityProps } =
         useModalVisibility();
@@ -173,7 +159,7 @@ export const PhotosNavigationShell: React.FC<
     const handleChangeMode = (mode: GalleryBarMode) => {
         if (mode == "people" && !mobile) {
             closeMobileNavigation();
-            props.onChangeMode(mode);
+            changeMode(mode);
             return;
         }
         const reopeningSection =
@@ -198,7 +184,7 @@ export const PhotosNavigationShell: React.FC<
             }
             return;
         }
-        if (!props.onChangeMode(mode)) return;
+        if (!changeMode(mode)) return;
         setNavigationCollapsed(false);
         if (mobile) showMobileNavigation();
     };
@@ -209,12 +195,6 @@ export const PhotosNavigationShell: React.FC<
             collapsed={!panelOpen}
             mobileDrawerProps={mobileDrawerProps}
             onCreateAlbum={openAlbumCreation}
-            onSelectCollectionID={selectCollection}
-            onSelectPlace={(place) => {
-                galleryNavigation.onSelectPlace(place);
-                closeMobileNavigation();
-            }}
-            onSelectPerson={selectPerson}
         />
     );
     return (
@@ -291,7 +271,7 @@ export const PhotosNavigationShell: React.FC<
                                 isSettingsOpen={sidebarVisibilityProps.open}
                                 onSidebar={() => showSettings()}
                                 onShowMap={() => {
-                                    props.onShowMap();
+                                    showLibraryMap();
                                     setNavigationCollapsed(false);
                                     if (mobile) showMobileNavigation();
                                 }}
@@ -337,7 +317,7 @@ export const PhotosNavigationShell: React.FC<
                                 {...albumNameInputVisibilityProps}
                                 isHidden={createInHiddenSection}
                                 onRemotePull={galleryNavigation.onRemotePull}
-                                onSelectCollectionID={selectCollection}
+                                onSelectCollectionID={selectCreatedCollection}
                             />
                         </>
                     )}
@@ -378,8 +358,8 @@ export const PhotosNavigationShell: React.FC<
                 {...sidebarVisibilityProps}
                 pendingAction={pendingSidebarAction}
                 onActionHandled={handleSidebarActionHandled}
-                onShowLargeFiles={() => onShowCleanupView("large-files")}
-                onShowDuplicates={() => onShowCleanupView("duplicates")}
+                onShowLargeFiles={() => showCleanupView("large-files")}
+                onShowDuplicates={() => showCleanupView("duplicates")}
                 collectionNameByID={collectionNameByID}
                 onAuthenticateUser={onAuthenticateUser}
                 setLoading={setSettingsLoading}
@@ -468,18 +448,15 @@ const NormalHeaderContents: React.FC<
 };
 
 const NormalNavigationRail: React.FC<
-    Omit<
-        PhotosNavigationShellProps,
-        "onUpload" | "onChangeMode" | "isMapView"
-    > & {
+    Omit<PhotosNavigationShellProps, "onUpload" | "isMapView"> & {
         onChangeMode: (mode: GalleryBarMode) => void;
+        onShowMap: () => void;
         isHome: boolean;
         opensDialog: boolean;
         navigationOpen: boolean;
     }
 > = ({
     onSidebar,
-    onHome,
     onShowMap,
     isMapSelected,
     mode,
@@ -490,7 +467,7 @@ const NormalNavigationRail: React.FC<
     ...props
 }) => (
     <>
-        <HomeButton onClick={onHome} selected={isHome} />
+        <HomeButton selected={isHome} />
         <SearchBar {...props} />
         <Box
             aria-hidden
@@ -605,34 +582,34 @@ const NormalNavigationRail: React.FC<
     </>
 );
 
-const HomeButton: React.FC<ButtonishProps & { selected: boolean }> = ({
-    onClick,
-    selected,
-}) => (
-    <Tooltip title={ut("Home")}>
-        <FocusVisibleButton
-            color="secondary"
-            aria-label={ut("Home")}
-            aria-pressed={selected}
-            onClick={onClick}
-            sx={{
-                minWidth: 0,
-                width: 38,
-                height: 38,
-                p: 0,
-                borderRadius: "12px",
-                color: "text.base",
-                '&[aria-pressed="true"]': {
-                    color: "#FFFFFF",
-                    bgcolor: "accent.main",
-                    "&:hover": { bgcolor: "accent.main" },
-                },
-            }}
-        >
-            <HugeiconsIcon icon={Home01Icon} size={20} strokeWidth={1.8} />
-        </FocusVisibleButton>
-    </Tooltip>
-);
+const HomeButton: React.FC<{ selected: boolean }> = ({ selected }) => {
+    const { goHome } = usePhotosNavigation();
+    return (
+        <Tooltip title={ut("Home")}>
+            <FocusVisibleButton
+                color="secondary"
+                aria-label={ut("Home")}
+                aria-pressed={selected}
+                onClick={goHome}
+                sx={{
+                    minWidth: 0,
+                    width: 38,
+                    height: 38,
+                    p: 0,
+                    borderRadius: "12px",
+                    color: "text.base",
+                    '&[aria-pressed="true"]': {
+                        color: "#FFFFFF",
+                        bgcolor: "accent.main",
+                        "&:hover": { bgcolor: "accent.main" },
+                    },
+                }}
+            >
+                <HugeiconsIcon icon={Home01Icon} size={20} strokeWidth={1.8} />
+            </FocusVisibleButton>
+        </Tooltip>
+    );
+};
 
 const UploadButton: React.FC<ButtonishProps> = ({ onClick }) => {
     const disabled = uploadManager.isUploadInProgress();
