@@ -47,6 +47,7 @@ import {
     performCollectionOp,
     showCollectionSummaryWithAuthentication,
 } from "@/components/gallery/helpers";
+import { useGalleryAuthentication } from "@/components/gallery/hooks/use-gallery-authentication";
 import { useSubscriptionCompletionRedirect } from "@/components/gallery/hooks/use-subscription-completion-redirect";
 import {
     useGalleryReducer,
@@ -78,7 +79,6 @@ import {
 import { stashRedirect } from "ente-accounts/services/redirect";
 import { isSessionInvalid } from "ente-accounts/services/session";
 import { ensureLocalUser } from "ente-accounts/services/user";
-import { isDesktop } from "ente-base/app";
 import { Notification } from "ente-base/components/Notification";
 import { SingleInputDialog } from "ente-base/components/SingleInputDialog";
 import { TranslucentLoadingOverlay } from "ente-base/components/loaders";
@@ -118,7 +118,6 @@ import {
     useUserDetailsSnapshot,
 } from "ente-new/photos/components/utils/use-snapshot";
 import { masterKeyFromSession } from "ente-new/photos/services/account-keys";
-import { reauthenticateWithAppLock } from "ente-new/photos/services/app-lock";
 import {
     addToCollection,
     addToFavoritesCollection,
@@ -297,10 +296,8 @@ const Page: React.FC = () => {
     );
     const { show: showFixCreationTime, props: fixCreationTimeVisibilityProps } =
         useModalVisibility();
-    const {
-        show: showAuthenticateUser,
-        props: authenticateUserVisibilityProps,
-    } = useModalVisibility();
+    const { authenticateUser, authenticateUserDialogProps } =
+        useGalleryAuthentication();
     const { show: showAlbumNameInput, props: albumNameInputVisibilityProps } =
         useModalVisibility();
     const { show: showEditLocation, props: editLocationVisibilityProps } =
@@ -336,44 +333,6 @@ const Page: React.FC = () => {
         open: boolean;
         url?: string;
     }>({ open: false });
-
-    const onAuthenticateCallback = useRef<
-        ((didAuthenticate: boolean) => void) | undefined
-    >(undefined);
-
-    const authenticateUserWithPasswordModal = useCallback(
-        () =>
-            new Promise<boolean>((resolve) => {
-                onAuthenticateCallback.current = resolve;
-                showAuthenticateUser();
-            }),
-        [],
-    );
-
-    const authenticateUser = useCallback(async () => {
-        if (!isDesktop) return authenticateUserWithPasswordModal();
-
-        const reauthResult = await reauthenticateWithAppLock();
-        if (reauthResult === "authenticated") return true;
-        if (reauthResult === "cancelled") return false;
-
-        return authenticateUserWithPasswordModal();
-    }, [authenticateUserWithPasswordModal]);
-
-    const handleCloseAuthenticateUser = useCallback(() => {
-        authenticateUserVisibilityProps.onClose();
-        if (onAuthenticateCallback.current) {
-            onAuthenticateCallback.current(false);
-            onAuthenticateCallback.current = undefined;
-        }
-    }, [authenticateUserVisibilityProps.onClose]);
-
-    const handleAuthenticate = useCallback(() => {
-        if (onAuthenticateCallback.current) {
-            onAuthenticateCallback.current(true);
-            onAuthenticateCallback.current = undefined;
-        }
-    }, []);
 
     const {
         user,
@@ -844,7 +803,7 @@ const Page: React.FC = () => {
             uploadTypeSelectorView ||
             openCollectionSelector ||
             fixCreationTimeVisibilityProps.open ||
-            authenticateUserVisibilityProps.open ||
+            authenticateUserDialogProps.open ||
             albumNameInputVisibilityProps.open ||
             editAlbumDetailsVisibilityProps.open ||
             isFileViewerOpen ||
@@ -2533,11 +2492,7 @@ const Page: React.FC = () => {
                         onSubmit={handleEditAlbumDetails}
                     />
                 )}
-                <AuthenticateUser
-                    open={authenticateUserVisibilityProps.open}
-                    onClose={handleCloseAuthenticateUser}
-                    onAuthenticate={handleAuthenticate}
-                />
+                <AuthenticateUser {...authenticateUserDialogProps} />
             </FullScreenDropZone>
             <SingleInputDialog
                 {...albumNameInputVisibilityProps}
