@@ -69,8 +69,6 @@ interface CollectionMapProps extends Pick<
     | "onVisualFeedback"
     | "fileNormalCollectionIDs"
     | "collectionNameByID"
-    | "onSelectCollection"
-    | "onSelectPerson"
     | "emailByUserID"
 > {
     selectedPlace?: PlaceSelection;
@@ -1007,8 +1005,6 @@ export const CollectionMap: React.FC<CollectionMapProps> = ({
     onVisualFeedback,
     fileNormalCollectionIDs,
     collectionNameByID,
-    onSelectCollection,
-    onSelectPerson,
     mapFileSource,
     emailByUserID,
 }) => {
@@ -1165,8 +1161,6 @@ export const CollectionMap: React.FC<CollectionMapProps> = ({
                     onRemoteFilesPull={onRemoteFilesPull}
                     fileNormalCollectionIDs={fileNormalCollectionIDs}
                     collectionNameByID={collectionNameByID}
-                    onSelectCollection={onSelectCollection}
-                    onSelectPerson={onSelectPerson}
                     emailByUserID={emailByUserID}
                 />
                 <Box sx={{ width: "100%", height: "100%" }}>
@@ -1218,8 +1212,6 @@ interface CollectionSidebarProps {
     onRemoteFilesPull?: FileListWithViewerProps["onRemoteFilesPull"];
     fileNormalCollectionIDs?: FileListWithViewerProps["fileNormalCollectionIDs"];
     collectionNameByID?: FileListWithViewerProps["collectionNameByID"];
-    onSelectCollection?: FileListWithViewerProps["onSelectCollection"];
-    onSelectPerson?: FileListWithViewerProps["onSelectPerson"];
     emailByUserID: FileListWithViewerProps["emailByUserID"];
 }
 
@@ -1243,8 +1235,6 @@ function CollectionSidebar({
     onRemoteFilesPull,
     fileNormalCollectionIDs,
     collectionNameByID,
-    onSelectCollection,
-    onSelectPerson,
     emailByUserID,
 }: CollectionSidebarProps) {
     const emptySelected = useMemo<SelectedState>(
@@ -1318,8 +1308,6 @@ function CollectionSidebar({
                             onRemoteFilesPull={onRemoteFilesPull}
                             fileNormalCollectionIDs={fileNormalCollectionIDs}
                             collectionNameByID={collectionNameByID}
-                            onSelectCollection={onSelectCollection}
-                            onSelectPerson={onSelectPerson}
                             emailByUserID={emailByUserID}
                             enableImageEditing={false}
                             enableDownload={true}

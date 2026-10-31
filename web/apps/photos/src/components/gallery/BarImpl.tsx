@@ -46,6 +46,7 @@ import { wait } from "ente-utils/promise";
 import { t } from "i18next";
 import React, {
     memo,
+    useCallback,
     useEffect,
     useId,
     useMemo,
@@ -59,6 +60,7 @@ import {
     areEqual,
     type ListChildComponentProps,
 } from "react-window";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 import { PlacesList, type PlaceSelection } from "./PlacesList";
 import type { GalleryBarMode } from "./reducer";
 
@@ -71,22 +73,13 @@ export interface GalleryBarImplProps extends GalleryBarPresentationProps {
     mode: GalleryBarMode;
     placesFiles?: EnteFile[];
     selectedPlace?: PlaceSelection;
-    onSelectPlace: (place: PlaceSelection | undefined) => void;
     albumFilter: AlbumFilter;
     albumSearchQuery: string;
     onAlbumSearchQueryChange: (query: string) => void;
-    onShowAlbumOverview: (filter: AlbumFilter) => void;
-    onShowPeopleOverview: () => void;
-    onShowLinksOverview: () => void;
     collectionSummaries: CollectionSummary[];
     visibleAlbumFilters: typeof albumFilters;
     uncategorizedCollectionSummaryID: number;
-    onShowCollectionSummary: (
-        collectionSummaryID: number,
-        isHiddenCollectionSummary?: boolean,
-    ) => Promise<boolean>;
     activeCollectionID: number | undefined;
-    onSelectCollectionID: (collectionID: number) => void;
     onCreateAlbum: () => void;
     collectionsSortBy: CollectionsSortBy;
     onChangeCollectionsSortBy: (by: CollectionsSortBy) => void;
@@ -94,26 +87,19 @@ export interface GalleryBarImplProps extends GalleryBarPresentationProps {
     onChangePeopleSortBy: (by: PeopleSortBy) => void;
     people: Person[];
     activePerson: Person | undefined;
-    onSelectPerson: (personID: string) => void;
 }
 
 export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     mode,
     placesFiles,
     selectedPlace,
-    onSelectPlace,
     albumFilter,
     albumSearchQuery,
     onAlbumSearchQueryChange,
-    onShowAlbumOverview,
-    onShowPeopleOverview,
-    onShowLinksOverview,
     collectionSummaries,
     visibleAlbumFilters,
     uncategorizedCollectionSummaryID,
-    onShowCollectionSummary,
     activeCollectionID,
-    onSelectCollectionID,
     onCreateAlbum,
     collectionsSortBy,
     onChangeCollectionsSortBy,
@@ -121,10 +107,40 @@ export const GalleryBarImpl: React.FC<GalleryBarImplProps> = ({
     onChangePeopleSortBy,
     people,
     activePerson,
-    onSelectPerson,
     collapsed,
     mobileDrawerProps,
 }) => {
+    const {
+        selectCollection,
+        selectPerson,
+        selectPlace,
+        showAlbumOverview: onShowAlbumOverview,
+        showPeople: onShowPeopleOverview,
+        showLinksOverview: onShowLinksOverview,
+        showCollectionSummary: onShowCollectionSummary,
+    } = usePhotosNavigation();
+    const { onClose: closeMobileNavigation } = mobileDrawerProps;
+    const onSelectCollectionID = useCallback(
+        (id: number) => {
+            selectCollection(id);
+            closeMobileNavigation();
+        },
+        [selectCollection, closeMobileNavigation],
+    );
+    const onSelectPerson = useCallback(
+        (id: string) => {
+            selectPerson(id);
+            closeMobileNavigation();
+        },
+        [selectPerson, closeMobileNavigation],
+    );
+    const onSelectPlace = useCallback(
+        (place: PlaceSelection | undefined) => {
+            selectPlace(place);
+            closeMobileNavigation();
+        },
+        [selectPlace, closeMobileNavigation],
+    );
     const mobile = useMediaQuery(useTheme().breakpoints.down("md"));
     const titleID = useId();
     const listRef = useRef<FixedSizeList | null>(null);

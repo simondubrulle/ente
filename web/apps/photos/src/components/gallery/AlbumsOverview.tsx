@@ -25,6 +25,7 @@ import {
     AlbumTile,
     AlbumTileCover as Cover,
 } from "./AlbumTile";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 
 interface AlbumsOverviewProps {
     albums: CollectionSummary[];
@@ -32,7 +33,6 @@ interface AlbumsOverviewProps {
     filter: AlbumFilter | "links";
     searchQuery: string;
     sortBy: CollectionsSortBy;
-    onSelectAlbum: (id: number) => void;
     onCreateAlbum: () => void;
     onRemotePull: (opts?: RemotePullOpts) => Promise<void>;
 }
@@ -43,10 +43,12 @@ export const AlbumsOverview = ({
     filter,
     searchQuery,
     sortBy,
-    onSelectAlbum,
     onCreateAlbum,
     onRemotePull,
 }: AlbumsOverviewProps) => {
+    const { selectCollection, openOverviewAlbum } = usePhotosNavigation();
+    const onSelectAlbum =
+        filter == "links" ? selectCollection : openOverviewAlbum;
     const compact = useMediaQuery(useTheme().breakpoints.down("md"));
     const listRef = useRef<FixedSizeList>(null);
     const [listElement, setListElement] = useState<HTMLDivElement | null>(null);

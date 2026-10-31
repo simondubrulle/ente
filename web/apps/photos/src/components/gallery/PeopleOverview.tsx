@@ -19,18 +19,18 @@ import { useMemo, useState } from "react";
 import AutoSizer from "react-virtualized-auto-sizer";
 import { VariableSizeList, type ListChildComponentProps } from "react-window";
 import { PeopleEmptyState } from ".";
+import { usePhotosNavigation } from "./PhotosNavigationContext";
 
 export const PeopleOverview = ({
     people,
     allPeople,
     peopleSortBy,
-    onSelectPerson,
 }: {
     people: Person[];
     allPeople: Person[];
     peopleSortBy: PeopleSortBy;
-    onSelectPerson: (id: string) => void;
 }) => {
+    const { selectPerson: onSelectPerson } = usePhotosNavigation();
     const mobile = useMediaQuery(useTheme().breakpoints.down("md"));
     const [showingAllPeople, setShowingAllPeople] = useState(false);
     const sortedPeople = useMemo(
