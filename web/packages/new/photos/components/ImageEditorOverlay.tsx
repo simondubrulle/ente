@@ -2,13 +2,14 @@
    All the bangs shouldn't be needed with better types / restructuring. */
 /* eslint-disable @typescript-eslint/no-unnecessary-condition */
 /* eslint-disable react-hooks/exhaustive-deps */
-/* eslint-disable @typescript-eslint/prefer-promise-reject-errors */
 
 import ChevronRightIcon from "@mui/icons-material/ChevronRight";
 import CloseIcon from "@mui/icons-material/Close";
 import CropIcon from "@mui/icons-material/Crop";
 import DownloadIcon from "@mui/icons-material/Download";
 import MenuIcon from "@mui/icons-material/Menu";
+import RestartAltIcon from "@mui/icons-material/RestartAlt";
+import SaveOutlinedIcon from "@mui/icons-material/SaveOutlined";
 import {
     Backdrop,
     Box,
@@ -55,6 +56,16 @@ import {
     editorIconButtonSx,
 } from "./ImageEditor.styles";
 
+import {
+    awaitLatestEditorRender,
+    editorPreviewSize,
+    renderEditorCanvas,
+    transformEditorCanvas,
+    type EditorAdjustments,
+    type EditorTransform,
+} from "./ImageEditor.render";
+import { ImageEditorFilters } from "./ImageEditorFilters";
+
 export type ImageEditorOverlayProps = ModalVisibilityProps & {
     file: EnteFile;
     onSaveEditedCopy: (
@@ -72,7 +83,7 @@ const filterDefaultValues = {
     invert: false,
 };
 
-type OperationTab = "crop" | "transform" | "colors";
+type OperationTab = "crop" | "transform" | "colors" | "filters";
 
 interface CropBoxProps {
     x: number;
@@ -92,6 +103,15 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
     const canvasRef = useRef<HTMLCanvasElement | null>(null);
     const originalSizeCanvasRef = useRef<HTMLCanvasElement | null>(null);
     const parentRef = useRef<HTMLDivElement | null>(null);
+
+    const sourceImageRef = useRef<HTMLImageElement | null>(null);
+    const transformedRef = useRef(false);
+    const loadRevisionRef = useRef(0);
+    const actionBusyRef = useRef(false);
+    const [editorBusy, setEditorBusy] = useState(false);
+    const filterRenderRef = useRef<Promise<void>>(Promise.resolve());
+    const filterRevisionRef = useRef(0);
+    const [selectedFilter, setSelectedFilter] = useState("None");
 
     const [fileURL, setFileURL] = useState<string | undefined>(undefined);
     const [mimeType, setMIMEType] = useState<string | undefined>(undefined);
@@ -117,8 +137,6 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
     const [canvasLoading, setCanvasLoading] = useState(false);
 
     const [showControls, setShowControls] = useState(true);
-
-    const [previewCanvasScale, setPreviewCanvasScale] = useState(0);
 
     const [cropBox, setCropBox] = useState<CropBoxProps>({
         x: 0,
@@ -242,26 +260,62 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
         });
     };
 
+    const adjustments: EditorAdjustments = {
+        preset: selectedFilter,
+        brightness,
+        contrast,
+        saturation,
+        blur,
+        invert,
+    };
+
     useEffect(() => {
-        if (!canvasRef.current) {
+        const canvas = canvasRef.current;
+        const image = sourceImageRef.current;
+        if (!open || !canvas || !image || !fileURL || transformedRef.current)
             return;
-        }
-        try {
-            void applyFilters([
-                canvasRef.current,
-                originalSizeCanvasRef.current!,
-            ]).catch((e: unknown) => log.error("Error applying filters", e));
-            setColoursAdjusted(
+        const revision = ++filterRevisionRef.current;
+        const rendering = new Promise<void>((resolve, reject) => {
+            requestAnimationFrame(() => {
+                if (revision !== filterRevisionRef.current) {
+                    resolve();
+                    return;
+                }
+                const bounds = canvas.getBoundingClientRect();
+                void renderEditorCanvas(canvas, image, adjustments, {
+                    blurScale:
+                        Math.min(canvas.width, canvas.height) /
+                        Math.max(1, Math.min(bounds.width, bounds.height)),
+                    isCurrent: () => revision === filterRevisionRef.current,
+                }).then(resolve, reject);
+            });
+        });
+        filterRenderRef.current = rendering;
+        void rendering.catch((e: unknown) => {
+            if (!(e instanceof DOMException && e.name === "AbortError"))
+                log.error("Error applying filters", e);
+        });
+        setColoursAdjusted(
+            selectedFilter !== "None" ||
                 brightness !== filterDefaultValues.brightness ||
-                    contrast !== filterDefaultValues.contrast ||
-                    blur !== filterDefaultValues.blur ||
-                    saturation !== filterDefaultValues.saturation ||
-                    invert !== filterDefaultValues.invert,
-            );
-        } catch (e) {
-            log.error("Error applying filters", e);
-        }
-    }, [brightness, contrast, blur, saturation, invert, canvasRef, fileURL]);
+                contrast !== filterDefaultValues.contrast ||
+                blur !== filterDefaultValues.blur ||
+                saturation !== filterDefaultValues.saturation ||
+                invert !== filterDefaultValues.invert,
+        );
+        return () => {
+            filterRevisionRef.current++;
+        };
+    }, [
+        open,
+        brightness,
+        contrast,
+        blur,
+        saturation,
+        invert,
+        selectedFilter,
+        fileURL,
+    ]);
 
     useEffect(() => {
         const canvas = canvasRef.current;
@@ -339,54 +393,21 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
         return () => observer.disconnect();
     }, [open, currentTab, canvasLoading, fileURL]);
 
-    const applyFilters = async (canvases: HTMLCanvasElement[]) => {
-        try {
-            for (const canvas of canvases) {
-                const blurSizeRatio =
-                    Math.min(canvas.width, canvas.height) /
-                    Math.max(
-                        1,
-                        Math.min(
-                            canvasRef.current!.getBoundingClientRect().width,
-                            canvasRef.current!.getBoundingClientRect().height,
-                        ),
-                    );
-                const blurRadius = blurSizeRatio * blur;
-                const filterString = `brightness(${brightness}%) contrast(${contrast}%) blur(${blurRadius}px) saturate(${saturation}%) invert(${
-                    invert ? 1 : 0
-                })`;
-                const ctx = canvas.getContext("2d")!;
-                ctx.imageSmoothingEnabled = false;
-
-                ctx.filter = filterString;
-
-                const image = new Image();
-                image.src = fileURL!;
-
-                await new Promise((resolve, reject) => {
-                    image.onload = () => {
-                        try {
-                            ctx.clearRect(0, 0, canvas.width, canvas.height);
-                            ctx.save();
-                            ctx.drawImage(
-                                image,
-                                0,
-                                0,
-                                canvas.width,
-                                canvas.height,
-                            );
-                            ctx.restore();
-                            resolve(true);
-                        } catch (e) {
-                            reject(e);
-                        }
-                    };
-                });
-            }
-        } catch (e) {
-            log.error("Error applying filters", e);
-            throw e;
-        }
+    const renderFullResolution = async (revision: number) => {
+        const image = sourceImageRef.current!;
+        const canvas = originalSizeCanvasRef.current!;
+        const bounds = canvasRef.current!.getBoundingClientRect();
+        canvas.width = image.width;
+        canvas.height = image.height;
+        await renderEditorCanvas(canvas, image, adjustments, {
+            blurScale:
+                Math.min(image.width, image.height) /
+                Math.max(1, Math.min(bounds.width, bounds.height)),
+            tiled: true,
+            isCurrent: () =>
+                revision === filterRevisionRef.current &&
+                sourceImageRef.current === image,
+        });
     };
 
     useEffect(() => {
@@ -396,6 +417,9 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
     }, [currentRotationAngle]);
 
     const resetFilters = () => {
+        filterRevisionRef.current++;
+        transformedRef.current = false;
+        setSelectedFilter("None");
         setBrightness(100);
         setContrast(100);
         setBlur(0);
@@ -404,86 +428,74 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
     };
 
     const loadCanvas = async () => {
+        const revision = ++loadRevisionRef.current;
         try {
             if (
                 !canvasRef.current ||
                 !parentRef.current ||
                 !originalSizeCanvasRef.current
-            ) {
+            )
                 return;
-            }
-
             setCanvasLoading(true);
-
             resetFilters();
             setCurrentRotationAngle(0);
-
-            const img = new Image();
-            const ctx = canvasRef.current.getContext("2d")!;
-            ctx.imageSmoothingEnabled = false;
-            if (!fileURL) {
+            let sourceURL = fileURL;
+            if (!sourceURL) {
                 const sourceURLs =
                     await downloadManager.renderableSourceURLs(file);
-                if (sourceURLs.type != "image") {
+                if (sourceURLs.type !== "image")
                     throw new Error("Image editor invoked for non-image file");
-                }
-                img.src = sourceURLs.imageURL;
-                setFileURL(sourceURLs.imageURL);
+                sourceURL = sourceURLs.imageURL;
                 setMIMEType(sourceURLs.mimeType);
-            } else {
-                img.src = fileURL;
             }
-
-            await new Promise((resolve, reject) => {
-                img.onload = () => {
-                    try {
-                        setPreviewCanvasScale(1);
-
-                        const width = img.width;
-                        const height = img.height;
-                        canvasRef.current!.width = width;
-                        canvasRef.current!.height = height;
-
-                        ctx?.drawImage(img, 0, 0, width, height);
-
-                        originalSizeCanvasRef.current!.width = img.width;
-                        originalSizeCanvasRef.current!.height = img.height;
-
-                        const oSCtx =
-                            originalSizeCanvasRef.current!.getContext("2d");
-
-                        oSCtx?.drawImage(img, 0, 0, img.width, img.height);
-
-                        setTransformationPerformed(false);
-                        setColoursAdjusted(false);
-
-                        setCanvasLoading(false);
-
-                        setStartX(0);
-                        setStartY(0);
-                        setIsDragging(false);
-                        setIsGrowing(false);
-
-                        resolve(true);
-                    } catch (e) {
-                        reject(e);
-                    }
-                };
-                img.onerror = (e) => {
-                    reject(e);
-                };
-            });
+            const image =
+                sourceImageRef.current?.src === sourceURL
+                    ? sourceImageRef.current
+                    : await new Promise<HTMLImageElement>((resolve, reject) => {
+                          const image = new Image();
+                          image.onload = () => resolve(image);
+                          image.onerror = reject;
+                          image.src = sourceURL;
+                      });
+            if (revision !== loadRevisionRef.current) return;
+            sourceImageRef.current = image;
+            const size = editorPreviewSize(image.width, image.height);
+            const canvas = canvasRef.current;
+            canvas.width = size.width;
+            canvas.height = size.height;
+            const context = canvas.getContext("2d")!;
+            context.imageSmoothingEnabled =
+                size.width !== image.width || size.height !== image.height;
+            context.drawImage(image, 0, 0, size.width, size.height);
+            originalSizeCanvasRef.current.width =
+                originalSizeCanvasRef.current.height = 1;
+            setFileURL(sourceURL);
+            setTransformationPerformed(false);
+            setColoursAdjusted(false);
+            setStartX(0);
+            setStartY(0);
+            setIsDragging(false);
+            setIsGrowing(false);
         } catch (e) {
             log.error("Error loading canvas", e);
+        } finally {
+            if (revision === loadRevisionRef.current) setCanvasLoading(false);
         }
     };
 
     useEffect(() => {
         if (!open || !file) return;
         void loadCanvas();
+        return () => {
+            loadRevisionRef.current++;
+            filterRevisionRef.current++;
+        };
     }, [open, file]);
 
     const handleClose = () => {
+        loadRevisionRef.current++;
+        filterRevisionRef.current++;
+        sourceImageRef.current = null;
         setFileURL(undefined);
         onClose();
     };
@@ -500,40 +512,73 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
         return <></>;
     }
 
-    const getEditedFile = async () => {
-        const originalSizeCanvas = originalSizeCanvasRef.current!;
-        const originalFileName = fileFileName(file);
-        return canvasToFile(originalSizeCanvas, originalFileName, mimeType);
-    };
-
-    const downloadEditedPhoto = async () => {
-        if (!canvasRef.current) return;
-
-        const f = await getEditedFile();
-        saveAsFileAndRevokeObjectURL(URL.createObjectURL(f), f.name);
-    };
-
-    const saveCopyToEnte = async () => {
-        if (!canvasRef.current) return;
+    const runEditorAction = async (action: () => Promise<void>) => {
+        if (canvasLoading || actionBusyRef.current) return false;
+        actionBusyRef.current = true;
+        setEditorBusy(true);
         try {
-            const collections = await savedCollections();
-            const collection = collections.find(
-                (c) => c.id == file.collectionID,
-            );
-            if (onSaveEditedCopy(await getEditedFile(), collection!, file)) {
-                setFileURL(undefined);
-            }
+            await action();
+            return true;
         } catch (e) {
-            log.error("Error saving copy to ente", e);
+            if (!(e instanceof DOMException && e.name === "AbortError"))
+                log.error("Error editing image", e);
+            return false;
+        } finally {
+            actionBusyRef.current = false;
+            setEditorBusy(false);
         }
     };
 
+    const handleTransform = (transform: EditorTransform) =>
+        runEditorAction(async () => {
+            await awaitLatestEditorRender(() => filterRenderRef.current);
+            const revision = ++filterRevisionRef.current;
+            if (!transformedRef.current) await renderFullResolution(revision);
+            if (revision !== filterRevisionRef.current)
+                throw new DOMException("Transform cancelled", "AbortError");
+            transformEditorCanvas(canvasRef.current!, transform);
+            transformEditorCanvas(originalSizeCanvasRef.current!, transform);
+            transformedRef.current = true;
+            setTransformationPerformed(true);
+            setCurrentTab((tab) =>
+                tab === "colors" || tab === "filters" ? "transform" : tab,
+            );
+        });
+
+    const getEditedFile = async () => {
+        await awaitLatestEditorRender(() => filterRenderRef.current);
+        if (!transformedRef.current)
+            await renderFullResolution(++filterRevisionRef.current);
+        return canvasToFile(
+            originalSizeCanvasRef.current!,
+            fileFileName(file),
+            mimeType,
+        );
+    };
+
+    const downloadEditedPhoto = () =>
+        runEditorAction(async () => {
+            const edited = await getEditedFile();
+            saveAsFileAndRevokeObjectURL(
+                URL.createObjectURL(edited),
+                edited.name,
+            );
+        });
+
+    const saveCopyToEnte = () =>
+        runEditorAction(async () => {
+            const collections = await savedCollections();
+            const collection = collections.find(
+                (c) => c.id === file.collectionID,
+            );
+            if (onSaveEditedCopy(await getEditedFile(), collection!, file))
+                handleClose();
+        });
+
     const menuProps = {
-        originalSizeCanvasRef,
         canvasRef,
-        setCanvasLoading,
-        canvasLoading,
-        setTransformationPerformed,
+        canvasLoading: canvasLoading || editorBusy,
+        onTransform: handleTransform,
         setCurrentTab,
     };
 
@@ -578,7 +623,7 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                     height: "100%",
                     boxSizing: "border-box",
                     borderRadius: "20px",
-                    backgroundColor: "background.default",
+                    backgroundColor: "background.paper",
                     overflow: "hidden",
                     display: "flex",
                     flexDirection: "column",
@@ -638,8 +683,8 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                                 position: "relative",
                             }}
                         >
-                            {(!fileURL || canvasLoading) && (
-                                <CircularProgress />
+                            {(!fileURL || canvasLoading || editorBusy) && (
+                                <CircularProgress sx={{ zIndex: 1 }} />
                             )}
 
                             <canvas
@@ -694,6 +739,7 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                     sx={{ justifyContent: "space-between", flexShrink: 0 }}
                 >
                     <IconButton
+                        disabled={editorBusy}
                         aria-label={t("hide")}
                         sx={editorIconButtonSx}
                         onClick={() => {
@@ -702,13 +748,25 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                     >
                         <ChevronRightIcon />
                     </IconButton>
-                    <IconButton
-                        aria-label={t("close")}
-                        sx={editorIconButtonSx}
-                        onClick={handleCloseWithConfirmation}
-                    >
-                        <CloseIcon />
-                    </IconButton>
+                    <Stack direction="row" spacing={1}>
+                        <IconButton
+                            aria-label={t("reset")}
+                            title={t("reset")}
+                            sx={editorIconButtonSx}
+                            disabled={canvasLoading || editorBusy}
+                            onClick={() => void loadCanvas()}
+                        >
+                            <RestartAltIcon />
+                        </IconButton>
+                        <IconButton
+                            disabled={editorBusy}
+                            aria-label={t("close")}
+                            sx={editorIconButtonSx}
+                            onClick={handleCloseWithConfirmation}
+                        >
+                            <CloseIcon />
+                        </IconButton>
+                    </Stack>
                 </Stack>
                 <Stack direction="row" sx={{ mt: 2, mb: 2, flexShrink: 0 }}>
                     <Tabs
@@ -716,24 +774,54 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                             width: "100%",
                             "& .MuiTab-root": {
                                 flex: 1,
+                                minWidth: 0,
+                                px: 0.5,
                                 textTransform: "none",
                             },
                         }}
                         value={currentTab}
                         onChange={(_, value: OperationTab) => {
+                            if (canvasLoading || actionBusyRef.current) return;
+                            if (
+                                transformedRef.current &&
+                                (value === "colors" || value === "filters")
+                            )
+                                return;
                             setCurrentTab(value);
                         }}
                     >
-                        <Tab label={t("crop")} value="crop" />
-                        <Tab label={t("transform")} value="transform" />
+                        <Tab
+                            label={t("crop")}
+                            value="crop"
+                            disabled={canvasLoading || editorBusy}
+                        />
+                        <Tab
+                            label={t("transform")}
+                            value="transform"
+                            disabled={canvasLoading || editorBusy}
+                        />
                         <Tab
                             label={t("colors")}
                             value="colors"
-                            disabled={transformationPerformed}
+                            disabled={
+                                canvasLoading ||
+                                editorBusy ||
+                                transformationPerformed
+                            }
+                        />
+                        <Tab
+                            label={t("filters")}
+                            value="filters"
+                            disabled={
+                                canvasLoading ||
+                                editorBusy ||
+                                transformationPerformed
+                            }
                         />
                     </Tabs>
                 </Stack>
                 <Box
+                    inert={canvasLoading || editorBusy}
                     sx={{
                         flex: { xs: "0 0 auto", md: "1 1 auto" },
                         minHeight: 0,
@@ -744,14 +832,28 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                     {currentTab == "crop" && (
                         <CropMenu
                             {...menuProps}
-                            previewScale={previewCanvasScale}
-                            cropBoxProps={cropBox}
                             cropBoxRef={cropBoxRef}
                             resetCropBox={resetCropBox}
                         />
                     )}
                     {currentTab == "transform" && (
                         <TransformMenu {...menuProps} />
+                    )}
+                    {currentTab == "filters" && (
+                        <ImageEditorFilters
+                            fileURL={fileURL}
+                            selected={selectedFilter}
+                            adjustments={{
+                                brightness,
+                                contrast,
+                                saturation,
+                                blur,
+                                invert,
+                            }}
+                            previewCanvasRef={canvasRef}
+                            disabled={canvasLoading || editorBusy}
+                            onSelect={setSelectedFilter}
+                        />
                     )}
                     {currentTab == "colors" && (
                         <ColoursMenu
@@ -769,34 +871,26 @@ export const ImageEditorOverlay: React.FC<ImageEditorOverlayProps> = ({
                     )}
                 </Box>
                 <Stack spacing={1} sx={{ pt: 2, flexShrink: 0 }}>
-                    <Stack direction="row" spacing={1}>
-                        <Button
-                            sx={editorActionSx(false)}
-                            disabled={canvasLoading}
-                            onClick={() => void loadCanvas()}
-                        >
-                            {t("reset")}
-                        </Button>
-                        <Button
-                            sx={editorActionSx(true)}
-                            color="accent"
-                            variant="contained"
-                            disabled={
-                                canvasLoading ||
-                                (!transformationPerformed && !coloursAdjusted)
-                            }
-                            onClick={saveCopyToEnte}
-                        >
-                            {t("save_a_copy_to_ente")}
-                        </Button>
-                    </Stack>
                     <Button
-                        size="small"
-                        variant="text"
-                        sx={{ color: "text.muted" }}
+                        sx={editorActionSx(true)}
+                        color="accent"
+                        variant="contained"
+                        startIcon={<SaveOutlinedIcon />}
+                        disabled={
+                            canvasLoading ||
+                            editorBusy ||
+                            (!transformationPerformed && !coloursAdjusted)
+                        }
+                        onClick={saveCopyToEnte}
+                    >
+                        {t("save_a_copy_to_ente")}
+                    </Button>
+                    <Button
+                        sx={editorActionSx(false)}
                         startIcon={<DownloadIcon />}
                         disabled={
                             canvasLoading ||
+                            editorBusy ||
                             (!transformationPerformed && !coloursAdjusted)
                         }
                         onClick={downloadEditedPhoto}
@@ -855,103 +949,57 @@ const canvasToFile = async (
 
 interface CommonMenuProps {
     canvasRef: RefObject<HTMLCanvasElement | null>;
-    originalSizeCanvasRef: RefObject<HTMLCanvasElement | null>;
-    setTransformationPerformed: (v: boolean) => void;
     canvasLoading: boolean;
-    setCanvasLoading: (v: boolean) => void;
+    onTransform: (transform: EditorTransform) => Promise<boolean>;
     setCurrentTab: (tab: OperationTab) => void;
 }
 
 type CropMenuProps = CommonMenuProps & {
-    previewScale: number;
-    cropBoxProps: CropBoxProps;
     cropBoxRef: RefObject<HTMLDivElement | null>;
     resetCropBox: () => void;
 };
 
-const CropMenu: React.FC<CropMenuProps> = (props) => {
-    const {
-        canvasRef,
-        originalSizeCanvasRef,
-        canvasLoading,
-        setCanvasLoading,
-        setTransformationPerformed,
-        setCurrentTab,
-    } = props;
-
-    return (
-        <>
-            <RowButtonGroupTitle>{t("freehand")}</RowButtonGroupTitle>
-            <RowButtonGroup sx={{ mb: "0.5rem" }}>
-                <RowButton
-                    disabled={canvasLoading}
-                    startIcon={<CropIcon />}
-                    label={t("apply_crop")}
-                    onClick={() => {
-                        if (!props.cropBoxRef.current || !canvasRef.current)
-                            return;
-
-                        const { x1, x2, y1, y2 } = getCropRegionArgs(
-                            props.cropBoxRef.current,
-                            canvasRef.current,
-                        );
-                        setCanvasLoading(true);
-                        setTransformationPerformed(true);
-                        cropRegionOfCanvas(canvasRef.current, x1, y1, x2, y2);
-                        cropRegionOfCanvas(
-                            originalSizeCanvasRef.current!,
-                            x1 / props.previewScale,
-                            y1 / props.previewScale,
-                            x2 / props.previewScale,
-                            y2 / props.previewScale,
-                        );
-                        props.resetCropBox();
-                        setCanvasLoading(false);
-
+const CropMenu: React.FC<CropMenuProps> = ({
+    canvasRef,
+    canvasLoading,
+    onTransform,
+    setCurrentTab,
+    cropBoxRef,
+    resetCropBox,
+}) => (
+    <>
+        <RowButtonGroupTitle>{t("freehand")}</RowButtonGroupTitle>
+        <RowButtonGroup sx={{ mb: "0.5rem" }}>
+            <RowButton
+                disabled={canvasLoading}
+                startIcon={<CropIcon />}
+                label={t("apply_crop")}
+                onClick={async () => {
+                    const canvas = canvasRef.current;
+                    if (!cropBoxRef.current || !canvas) return;
+                    const { x1, x2, y1, y2 } = getCropRegionArgs(
+                        cropBoxRef.current,
+                        canvas,
+                    );
+                    const clamp = (value: number) =>
+                        Math.max(0, Math.min(1, value));
+                    if (
+                        await onTransform({
+                            type: "crop",
+                            left: clamp(x1 / canvas.width),
+                            top: clamp(y1 / canvas.height),
+                            right: clamp(x2 / canvas.width),
+                            bottom: clamp(y2 / canvas.height),
+                        })
+                    ) {
+                        resetCropBox();
                         setCurrentTab("transform");
-                    }}
-                />
-            </RowButtonGroup>
-        </>
-    );
-};
-
-const cropRegionOfCanvas = (
-    canvas: HTMLCanvasElement,
-    topLeftX: number,
-    topLeftY: number,
-    bottomRightX: number,
-    bottomRightY: number,
-    scale = 1,
-) => {
-    const context = canvas.getContext("2d");
-    if (!context || !canvas) return;
-    context.imageSmoothingEnabled = false;
-
-    const width = (bottomRightX - topLeftX) * scale;
-    const height = (bottomRightY - topLeftY) * scale;
-
-    const img = new Image();
-    img.src = canvas.toDataURL();
-    img.onload = () => {
-        context.clearRect(0, 0, canvas.width, canvas.height);
-
-        canvas.width = width;
-        canvas.height = height;
-
-        context.drawImage(
-            img,
-            topLeftX,
-            topLeftY,
-            width,
-            height,
-            0,
-            0,
-            width,
-            height,
-        );
-    };
-};
+                    }
+                }}
+            />
+        </RowButtonGroup>
+    </>
+);
 
 const getCropRegionArgs = (
     cropBoxEle: HTMLDivElement,
@@ -1099,180 +1147,9 @@ const presetAspectRatios = [
 ];
 
 const TransformMenu: React.FC<CommonMenuProps> = ({
-    canvasRef,
-    originalSizeCanvasRef,
     canvasLoading,
-    setCanvasLoading,
-    setTransformationPerformed,
+    onTransform,
 }) => {
-    const cropCanvas = (
-        canvas: HTMLCanvasElement,
-        widthRatio: number,
-        heightRatio: number,
-    ) => {
-        const context = canvas.getContext("2d");
-
-        const aspectRatio = widthRatio / heightRatio;
-
-        if (!context || !canvas) return;
-        context.imageSmoothingEnabled = false;
-
-        const img = new Image();
-        img.src = canvas.toDataURL();
-        img.onload = () => {
-            const sourceWidth = img.width;
-            const sourceHeight = img.height;
-
-            let sourceX = 0;
-            let sourceY = 0;
-
-            if (sourceWidth / sourceHeight > aspectRatio) {
-                sourceX = (sourceWidth - sourceHeight * aspectRatio) / 2;
-            } else {
-                sourceY = (sourceHeight - sourceWidth / aspectRatio) / 2;
-            }
-
-            const newWidth = sourceWidth - 2 * sourceX;
-            const newHeight = sourceHeight - 2 * sourceY;
-
-            context.clearRect(0, 0, canvas.width, canvas.height);
-
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            context.drawImage(
-                img,
-                sourceX,
-                sourceY,
-                newWidth,
-                newHeight,
-                0,
-                0,
-                newWidth,
-                newHeight,
-            );
-        };
-    };
-
-    const flipCanvas = (
-        canvas: HTMLCanvasElement,
-        direction: "vertical" | "horizontal",
-    ) => {
-        const context = canvas.getContext("2d");
-        if (!context || !canvas) return;
-        context.resetTransform();
-        context.imageSmoothingEnabled = false;
-        const img = new Image();
-        img.src = canvas.toDataURL();
-
-        img.onload = () => {
-            context.clearRect(0, 0, canvas.width, canvas.height);
-
-            context.save();
-
-            if (direction == "horizontal") {
-                context.translate(canvas.width, 0);
-                context.scale(-1, 1);
-            } else {
-                context.translate(0, canvas.height);
-                context.scale(1, -1);
-            }
-
-            context.drawImage(img, 0, 0, canvas.width, canvas.height);
-
-            context.restore();
-        };
-    };
-
-    const rotateCanvas = (canvas: HTMLCanvasElement, angle: number) => {
-        const context = canvas?.getContext("2d");
-        if (!context || !canvas) return;
-        context.imageSmoothingEnabled = false;
-
-        const image = new Image();
-        image.src = canvas.toDataURL();
-
-        image.onload = () => {
-            context.clearRect(0, 0, canvas.width, canvas.height);
-
-            context.save();
-
-            const radians = (angle * Math.PI) / 180;
-            const sin = Math.sin(radians);
-            const cos = Math.cos(radians);
-            const newWidth =
-                Math.abs(image.width * cos) + Math.abs(image.height * sin);
-            const newHeight =
-                Math.abs(image.width * sin) + Math.abs(image.height * cos);
-
-            canvas.width = newWidth;
-            canvas.height = newHeight;
-
-            context.translate(canvas.width / 2, canvas.height / 2);
-            context.rotate(radians);
-
-            context.drawImage(
-                image,
-                -image.width / 2,
-                -image.height / 2,
-                image.width,
-                image.height,
-            );
-
-            context.restore();
-        };
-    };
-
-    const createCropHandler =
-        (widthRatio: number, heightRatio: number) => () => {
-            try {
-                setCanvasLoading(true);
-                cropCanvas(canvasRef.current!, widthRatio, heightRatio);
-                cropCanvas(
-                    originalSizeCanvasRef.current!,
-                    widthRatio,
-                    heightRatio,
-                );
-                setCanvasLoading(false);
-                setTransformationPerformed(true);
-            } catch (e) {
-                log.error(
-                    `crop handler failed - ${JSON.stringify({
-                        widthRatio,
-                        heightRatio,
-                    })}`,
-                    e,
-                );
-            }
-        };
-    const createRotationHandler = (rotation: "left" | "right") => () => {
-        try {
-            setCanvasLoading(true);
-            rotateCanvas(canvasRef.current!, rotation == "left" ? -90 : 90);
-            rotateCanvas(
-                originalSizeCanvasRef.current!,
-                rotation == "left" ? -90 : 90,
-            );
-            setCanvasLoading(false);
-            setTransformationPerformed(true);
-        } catch (e) {
-            log.error(`rotation handler (${rotation}) failed`, e);
-        }
-    };
-
-    const createFlipCanvasHandler =
-        (direction: "vertical" | "horizontal") => () => {
-            try {
-                setCanvasLoading(true);
-                flipCanvas(canvasRef.current!, direction);
-                flipCanvas(originalSizeCanvasRef.current!, direction);
-                setCanvasLoading(false);
-                setTransformationPerformed(true);
-            } catch (e) {
-                log.error(`flip handler ${direction} failed`, e);
-            }
-        };
-
     return (
         <Stack spacing={2.5}>
             <Box>
@@ -1288,7 +1165,13 @@ const TransformMenu: React.FC<CommonMenuProps> = ({
                         <RowButtonGroup key={`${width}:${height}`}>
                             <RowButton
                                 disabled={canvasLoading}
-                                onClick={createCropHandler(width, height)}
+                                onClick={() =>
+                                    void onTransform({
+                                        type: "aspect-ratio",
+                                        width,
+                                        height,
+                                    })
+                                }
                                 startIcon={
                                     <Box
                                         sx={{
@@ -1329,13 +1212,23 @@ const TransformMenu: React.FC<CommonMenuProps> = ({
                     <RowButton
                         disabled={canvasLoading}
                         label={t("rotate_left") + " 90°"}
-                        onClick={createRotationHandler("left")}
+                        onClick={() =>
+                            void onTransform({
+                                type: "rotate",
+                                direction: "left",
+                            })
+                        }
                     />
                     <RowButtonDivider />
                     <RowButton
                         disabled={canvasLoading}
                         label={t("rotate_right") + " 90°"}
-                        onClick={createRotationHandler("right")}
+                        onClick={() =>
+                            void onTransform({
+                                type: "rotate",
+                                direction: "right",
+                            })
+                        }
                     />
                 </RowButtonGroup>
             </Box>
@@ -1345,13 +1238,23 @@ const TransformMenu: React.FC<CommonMenuProps> = ({
                     <RowButton
                         disabled={canvasLoading}
                         label={t("flip_horizontally")}
-                        onClick={createFlipCanvasHandler("horizontal")}
+                        onClick={() =>
+                            void onTransform({
+                                type: "flip",
+                                direction: "horizontal",
+                            })
+                        }
                     />
                     <RowButtonDivider />
                     <RowButton
                         disabled={canvasLoading}
                         label={t("flip_vertically")}
-                        onClick={createFlipCanvasHandler("vertical")}
+                        onClick={() =>
+                            void onTransform({
+                                type: "flip",
+                                direction: "vertical",
+                            })
+                        }
                     />
                 </RowButtonGroup>
             </Box>
