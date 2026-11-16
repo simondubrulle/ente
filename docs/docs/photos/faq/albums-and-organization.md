@@ -21,6 +21,10 @@ Ente does not currently support dragging photos and videos into a custom order w
 2. Open the three-dot menu.
 3. Select **Sort by** and choose an option.
 
+### Can I sort my home timeline oldest first? {#timeline-sort}
+
+No. The home timeline always shows your newest photos first, by the date each photo was taken. To see photos oldest first, open an album, open the three-dot menu, select **Sort by** and choose **Oldest first**.
+
 ### Can Ente albums be nested? {#nested-albums}
 
 No, Ente albums cannot be nested currently. When you upload a nested folder structure using the "Separate albums" option, Ente will create a separate album for each nested folder, but these albums themselves will not be nested - they will all appear as top-level albums.
@@ -349,7 +353,7 @@ A photo may appear in both Hidden and a hidden album if you first add it to Hidd
 
 ### How do I archive photos in Ente? {#how-to-archive}
 
-Long press to select the photo(s) you want to archive, then select "Archive" from the bottom menu. To archive an entire album, open the album, tap the three dots menu, and select "Archive album". You can view archived content anytime by going to the "Archive" section (no authentication required).
+Long press to select the photo(s) you want to archive, pull up the selection menu, then tap "Archive". To archive an entire album, open the album, tap the three dots menu, and select "Archive album". You can view archived content anytime by going to the "Archive" section (no authentication required).
 
 ### Can I hide an album's photos from my timeline? {#album-off-timeline}
 

@@ -21,27 +21,37 @@ import "package:photos/ui/rewind/widgets/rewind_keyframes.dart";
 import "package:photos/ui/rewind/widgets/rewind_numbers.dart";
 import "package:photos/ui/rewind/widgets/rewind_photo.dart";
 import "package:photos/ui/rewind/widgets/rewind_photo_frames.dart";
+import "package:photos/ui/rewind/widgets/rewind_photo_gallery.dart";
 import "package:photos/ui/rewind/widgets/rewind_stage.dart";
 import "package:photos/ui/rewind/widgets/rewind_swap_in.dart";
 import "package:photos/ui/rewind/widgets/rewind_text.dart";
 import "package:photos/ui/rewind/widgets/rewind_wave.dart";
 
-typedef PlaceStamp = ({rust.RewindCity city, EnteFile? photo});
+typedef PlaceStamp = ({
+  rust.RewindCity city,
+  EnteFile? photo,
+  List<EnteFile> extras,
+  List<EnteFile> gallery,
+});
 
 class PlacesQuizPage extends RewindPage {
-  PlacesQuizPage(this.places, this.stamps)
+  PlacesQuizPage(this.places, this.stamps, {required this.showDistance})
     : _board = _shuffledBoard(stamps.map((stamp) => stamp.city.name));
 
   static const pageKey = "places";
 
   final rust.Places places;
   final List<PlaceStamp> stamps;
+  final bool showDistance;
   final List<_Slot> _board;
   int? _guess;
   var _played = false;
 
   @override
   String get key => pageKey;
+
+  @override
+  Duration? get reelHold => const Duration(milliseconds: 3000);
 
   @override
   void resetAnswer() {
@@ -128,7 +138,8 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
   static const _crownMs = _rankMs + 3 * _rankGapMs + 700;
   static const _doneMs = _rankMs + 3 * _rankGapMs + 1300;
 
-  late var _phase = widget.page._played ? _Phase.done : _Phase.pick;
+  late final _reel = RewindPageScope.reelOf(context);
+  late var _phase = !_reel && widget.page._played ? _Phase.done : _Phase.pick;
   late final _replayed = _phase == _Phase.done;
   final _timers = <Timer>[];
   Timer? _invite;
@@ -140,18 +151,26 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
 
   List<_Slot> get _board => widget.page._board;
 
-  int? get _guess => widget.page._guess;
+  int? get _guess => _reel ? null : widget.page._guess;
 
   @override
   void initState() {
     super.initState();
-    _syncInvite();
+    _sync();
   }
 
   @override
   void didUpdateWidget(_PlacesQuiz oldWidget) {
     super.didUpdateWidget(oldWidget);
-    _syncInvite();
+    _sync();
+  }
+
+  void _sync() {
+    if (!_reel) {
+      _syncInvite();
+    } else if (widget.isActive && _phase == _Phase.pick) {
+      _phase = _Phase.reveal;
+    }
   }
 
   @override
@@ -249,6 +268,8 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
                 data: MediaQuery.of(context).copyWith(disableAnimations: true),
                 child: podium,
               )
+            else if (_reel)
+              podium
             else ...[
               RewindStage(children: _boardLayers()),
               RewindWaveReveal(
@@ -415,8 +436,19 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
     );
   }
 
-  Widget _stamp(int rank, _Slot slot, Size size, double lift) {
-    final photo = _stamps[rank].photo;
+  bool _opensGallery(int rank) =>
+      _phase == _Phase.done && _stamps[rank].gallery.length > 1;
+
+  Widget _stamp(int rank, _Slot slot, Size size, double lift) =>
+      _stampOf(_stamps[rank].photo, rank, slot, size, lift);
+
+  Widget _stampOf(
+    EnteFile? photo,
+    int rank,
+    _Slot slot,
+    Size size,
+    double lift,
+  ) {
     return SizedBox.fromSize(
       size: size,
       child: RewindStamp(
@@ -425,7 +457,7 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
             : RewindPhoto(
                 photo,
                 placeholder: const Color(0xFFD9D9D9),
-                zoomable: _phase == _Phase.done,
+                zoomable: _phase == _Phase.done && !_opensGallery(rank),
               ),
         label: _stamps[rank].city.name,
         portrait: slot.portrait,
@@ -459,10 +491,29 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
 
   int _rankDelay(int rank) => _rankMs + (2 - rank) * _rankGapMs;
 
+  static const _fans = [
+    (dx: -16.0, dy: 2.0, turn: -13.0),
+    (dx: 15.0, dy: 0.0, turn: 11.0),
+  ];
+
+  EdgeInsets _fanReach(int rank, Size size) {
+    final unit = size.width / 139.6;
+    var side = 0.0;
+    var rise = 0.0;
+    for (final fan in _fans.take(_stamps[rank].extras.length)) {
+      final turn = fan.turn.abs() * pi / 180;
+      side = max(side, size.height * sin(turn) + fan.dx.abs() * unit);
+      rise = max(rise, size.width / 2 * sin(turn) + fan.dy.abs() * unit);
+    }
+    return EdgeInsets.symmetric(horizontal: side, vertical: rise);
+  }
+
   Widget _podiumStamp(int rank, Rect rect, bool revealed) {
     final slot = _Slot.podium[rank];
+    final reach = _fanReach(rank, rect.size);
+    final stamp = Offset(reach.left, reach.top) & rect.size;
     return Positioned.fromRect(
-      rect: rect,
+      rect: reach.inflateRect(rect),
       child: _leave(
         rect.center.dy,
         RewindKeyframes(
@@ -471,12 +522,94 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
           durationMs: 760,
           curve: const Cubic(0.2, 0.9, 0.3, 1.25),
           poses: const [RewindPose(0, scale: 1.14, turn: -4), RewindPose(1)],
-          child: Transform.rotate(
-            angle: slot.turn * pi / 180,
-            child: _stamp(rank, slot, rect.size, 4),
+          child: GestureDetector(
+            onTap: _opensGallery(rank) ? () => _showGallery(rank) : null,
+            child: Transform.rotate(
+              angle: slot.turn * pi / 180,
+              child: Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  for (final (i, photo)
+                      in _stamps[rank].extras.indexed.toList().reversed)
+                    Positioned.fromRect(
+                      rect: stamp,
+                      child: _fannedStamp(
+                        photo,
+                        rank,
+                        i,
+                        slot,
+                        rect.size,
+                        revealed,
+                      ),
+                    ),
+                  Positioned.fromRect(
+                    rect: stamp,
+                    child: _stamp(rank, slot, rect.size, 4),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
+    );
+  }
+
+  void _showGallery(int rank) {
+    final stamp = _stamps[rank];
+    final photo = stamp.photo;
+    const width = 168.0;
+    showRewindPhotoGallery(
+      context,
+      header: Transform.rotate(
+        angle: -3 * pi / 180,
+        child: RewindStamp(
+          photo: photo == null
+              ? const ColoredBox(color: Color(0xFFD9D9D9))
+              : RewindPhoto(
+                  photo,
+                  placeholder: const Color(0xFFD9D9D9),
+                  zoomable: false,
+                ),
+          label: stamp.city.country.isEmpty
+              ? stamp.city.name
+              : stamp.city.country,
+          width: width,
+        ),
+      ),
+      headerSize: const Size(width, width * 93.9 / 139.6),
+      title: stamp.city.name,
+      photos: stamp.gallery,
+    );
+  }
+
+  Widget _fannedStamp(
+    EnteFile photo,
+    int rank,
+    int index,
+    _Slot slot,
+    Size size,
+    bool revealed,
+  ) {
+    final fan = _fans[index % _fans.length];
+    final reach = size.width / 139.6;
+    return RewindKeyframes(
+      active: revealed,
+      delayMs: _rankDelay(rank) + 140 + 110 * index,
+      durationMs: 620,
+      curve: const Cubic(0.2, 0.9, 0.3, 1.35),
+      origin: Alignment.bottomCenter,
+      poses: [
+        const RewindPose(0, scale: 0.96),
+        RewindPose(
+          1,
+          dx: fan.dx * reach,
+          dy: fan.dy * reach,
+          turn: fan.turn,
+          scale: 0.96,
+        ),
+      ],
+      child: _stampOf(photo, rank, slot, size, 3),
     );
   }
 
@@ -604,7 +737,7 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
 
   List<Widget> _head(bool revealed) {
     final places = widget.page.places;
-    final travelled = places.distanceKm > 0;
+    final travelled = widget.page.showDistance && places.distanceKm > 0;
     final winner = _stamps.first.city;
     Widget swap(Widget child) => RewindKeyframes(
       active: revealed,
@@ -626,9 +759,13 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
         child: _leave(
           110,
           swap(
-            Text(
-              travelled ? "YOUR PHOTOS TRAVELLED" : "YOUR TOP PLACE",
-              style: RewindTextStyles.display(17, letterSpacing: 0.3),
+            RewindVoice(
+              you: travelled ? "YOUR PHOTOS TRAVELLED" : "YOUR TOP PLACE",
+              me: travelled ? "MY PHOTOS TRAVELLED" : "MY TOP PLACE",
+              builder: (text) => Text(
+                text,
+                style: RewindTextStyles.display(17, letterSpacing: 0.3),
+              ),
             ),
           ),
         ),
@@ -690,6 +827,6 @@ class _PlacesQuizState extends State<_PlacesQuiz> {
           "${winner.name} won with $winning.";
     }
     return "${pick.name} had ${rewindCount(pick.photoCount)}. "
-        "${winner.name} ran away with ${rewindCount(winner.photoCount)}.";
+        "${winner.name} won with $winning.";
   }
 }

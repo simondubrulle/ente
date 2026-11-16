@@ -53,11 +53,13 @@ Jump to a category:
 - [How do I reset my password if I lost it?](/photos/faq/account-creation#reset-password)
 - [Can I change my password later?](/photos/faq/account-creation#change-password-later)
 - [Does Ente support two-factor authentication (2FA)?](/photos/faq/account-creation#2fa)
+- [Why does Ente reject my codes when I set up two-factor authentication?](/photos/faq/account-creation#2fa-setup-code-rejected)
 - [Can I use passkeys instead of passwords?](/photos/faq/account-creation#use-passkeys)
 - [What happens if I lose my passkey?](/photos/faq/account-creation#lost-passkey)
 - [I'm not receiving the verification code email](/photos/faq/account-creation#verification-code)
 - [What if I lose access to my email address?](/photos/faq/account-creation#lost-email)
 - [I forgot which email address I used for Ente. How do I find it?](/photos/faq/account-creation#forgot-account-email)
+- [Why does Ente say "Account setup incomplete"?](/photos/faq/account-creation#account-setup-incomplete)
 
 ## Albums and Organization
 
@@ -66,6 +68,7 @@ Jump to a category:
 ### Albums
 
 - [How do I change an album's cover or description?](/photos/faq/albums-and-organization#edit-album-details)
+- [Can I sort my home timeline oldest first?](/photos/faq/albums-and-organization#timeline-sort)
 - [Can Ente albums be nested?](/photos/faq/albums-and-organization#nested-albums)
 - [What happens when I upload a nested folder structure?](/photos/faq/albums-and-organization#nested-folders)
 - [Can I sync a folder with multiple subfolders?](/photos/faq/albums-and-organization#sync-subfolders)
@@ -142,6 +145,7 @@ Jump to a category:
 - [Can I back up only some photos from a folder, not the whole folder?](/photos/faq/backup-and-sync#backup-selected-photos)
 - [Can I backup over mobile data or only WiFi?](/photos/faq/backup-and-sync#mobile-data)
 - [Why is my initial backup taking so long?](/photos/faq/backup-and-sync#initial-backup-slow)
+- [Why does Backup mode say "No backup in progress"?](/photos/faq/backup-and-sync#backup-mode-no-backup)
 - [What happens if my backup is interrupted?](/photos/faq/backup-and-sync#backup-interrupted)
 - [Do deleted photos on my device also delete from Ente?](/photos/faq/backup-and-sync#deletion-sync)
 - [Understanding Ente's backup vs. sync paradigm](/photos/faq/backup-and-sync#backup-vs-sync)
@@ -153,6 +157,7 @@ Jump to a category:
 - [How can I check my backup status?](/photos/faq/backup-and-sync#check-backup-status)
 - [Will turning Optimize iPhone Storage back on upload my photos again?](/photos/faq/backup-and-sync#optimize-storage-reupload)
 - [Does Ente backup Live Photos from iPhone?](/photos/faq/backup-and-sync#live-photos-backup)
+- [Why do my Live Photos show up as a separate photo and video?](/photos/faq/backup-and-sync#live-photo-not-paired)
 - [Can I save just the still image from a Live Photo or remove its motion clip?](/photos/faq/backup-and-sync#live-photo-still-only)
 - [Can I pick photos from Ente in other apps?](/photos/faq/backup-and-sync#pick-photos-in-other-apps)
 - [Can I open photos from my camera app in Ente?](/photos/faq/backup-and-sync#open-camera-photos-in-ente)
@@ -168,6 +173,7 @@ Jump to a category:
 ### Desktop Backup (Watch Folders)
 
 - [How do watch folders work?](/photos/faq/backup-and-sync#how-watch-folders-work)
+- [Why does Ente upload photos again after I download or export them on desktop?](/photos/faq/backup-and-sync#download-into-watched-folder)
 - [What are watch folders?](/photos/faq/backup-and-sync#what-are-watch-folders)
 - [How do I set up watch folders?](/photos/faq/backup-and-sync#set-up-watch-folders)
 - [Can I watch multiple folders at once?](/photos/faq/backup-and-sync#watch-multiple-folders)
@@ -253,6 +259,7 @@ Jump to a category:
 
 ### Importing from Google Photos
 
+- [Why didn't Ente bring over all my Google Photos on my phone?](/photos/faq/migration#google-photos-not-imported)
 - [Can I import Google Takeout on my phone or on the web?](/photos/faq/migration#takeout-desktop-only)
 - [How much Ente storage do I need when importing my Google Photos Takeout?](/photos/faq/migration#google-takeout-storage)
 - [I imported Google Takeout, but the same photos are on my Android phone. How do I avoid uploading them again?](/photos/faq/migration#takeout-android-existing-photos)
@@ -260,6 +267,10 @@ Jump to a category:
 ## Search and Discovery
 
 [View complete Search and Discovery FAQ →](/photos/faq/search-and-discovery)
+
+### General Search
+
+- [How do I view only photos, videos or Live Photos?](/photos/faq/search-and-discovery#filter-by-file-type)
 
 ### Map View
 
@@ -398,6 +409,7 @@ Jump to a category:
 ### Student Discounts
 
 - [Does Ente offer discounts to students?](/photos/faq/storage-and-plans#student-discount)
+- [Do existing subscribers get a renewal discount?](/photos/faq/storage-and-plans#renewal-discount)
 
 ### Discount Codes and Referrals
 

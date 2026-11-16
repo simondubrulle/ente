@@ -3,8 +3,8 @@ use std::io::{BufRead, Seek};
 use image::{DynamicImage, ImageBuffer, metadata::Orientation};
 
 use crate::{
-    BoundedDecodeOptions, BoundedDecodedImage, DecodedImage, Dimensions, ImageError, ImageResult,
-    bounded::{target_dimensions, too_large},
+    BoundedDecodeOptions, BoundedDecodedImage, Dimensions, ImageError, ImageResult,
+    bounded::{MAX_SOURCE_PIXELS, oriented_output, target_dimensions, too_large},
     color_management::IccConverter,
     resample::Downsampler,
 };
@@ -13,7 +13,6 @@ pub(crate) const SIGNATURE: &[u8] = b"\x89PNG\r\n\x1a\n";
 const DECODER_BYTES: usize = 32 * 1024 * 1024;
 const MAX_ROW_BYTES: u64 = 4 * 1024 * 1024;
 const MAX_SOURCE_HEIGHT: u32 = 512 * 1024;
-const MAX_SOURCE_PIXELS: u64 = 256_000_000;
 pub(crate) const ADAM7: [(u32, u32, u32, u32); 7] = [
     (0, 0, 8, 8),
     (4, 0, 8, 8),
@@ -91,32 +90,7 @@ pub(crate) fn decode<R: BufRead + Seek>(
         return Err(ImageError::Decode("PNG contains unexpected rows".into()));
     }
     reader.finish().map_err(png_error)?;
-    let rgb = output.finish();
-    let buffer = image::RgbImage::from_raw(target.width, target.height, rgb)
-        .ok_or_else(|| ImageError::Postprocess("invalid bounded PNG buffer".into()))?;
-    let mut image = DynamicImage::ImageRgb8(buffer);
-    image.apply_orientation(orientation);
-    let image = image.into_rgb8();
-    let original_dimensions = match orientation {
-        Orientation::Rotate90
-        | Orientation::Rotate270
-        | Orientation::Rotate90FlipH
-        | Orientation::Rotate270FlipH => Dimensions {
-            width: source.height,
-            height: source.width,
-        },
-        _ => source,
-    };
-    Ok(BoundedDecodedImage {
-        image: DecodedImage {
-            dimensions: Dimensions {
-                width: image.width(),
-                height: image.height(),
-            },
-            rgb: image.into_raw(),
-        },
-        original_dimensions,
-    })
+    oriented_output(output.finish(), source, target, orientation)
 }
 
 fn row_rgb(
@@ -195,7 +169,9 @@ mod tests {
     use crate::{
         ImageInput,
         bounded::tests::options,
-        color_management::tests::{localized_text, profile_with_text},
+        color_management::tests::{
+            localized_text, lookup_table, lookup_table_with_inputs, profile_with_tag,
+        },
         decode::decode_image_from_bytes,
         decode_bounded,
         memory_budget::MemoryBudget,
@@ -415,23 +391,29 @@ mod tests {
     }
 
     #[test]
-    fn profiles_with_excessive_localized_text_are_skipped_within_the_budget() {
+    fn profiles_that_expand_when_parsed_are_skipped_within_the_budget() {
         let pixels = (0..64 * 64 * 3).map(|i| (i * 71) as u8).collect::<Vec<_>>();
-        let mut info = rgb_info(64, 64, false);
-        info.icc_profile = Some(Cow::Owned(profile_with_text(
-            &[*b"desc"],
-            &localized_text(4096, 65_536),
-        )));
-        let bytes = fixture(info, &pixels);
-        let budget = MemoryBudget::new(4 * 1024 * 1024);
-        let bounded =
-            budget.enter(|| decode_bounded(ImageInput::Bytes(&bytes), options(6000)).unwrap());
-        assert!(!budget.is_exceeded());
-        assert_eq!(bounded.image.rgb, pixels);
-        let budget = MemoryBudget::new(4 * 1024 * 1024);
-        let full = budget.enter(|| decode_image_from_bytes(&bytes).unwrap());
-        assert!(!budget.is_exceeded());
-        assert_eq!(full.rgb, pixels);
+        let lookup_tables = [
+            *b"A2B0", *b"A2B1", *b"A2B2", *b"B2A0", *b"B2A1", *b"B2A2", *b"gamt",
+        ];
+        for profile in [
+            profile_with_tag(&[*b"desc"], &localized_text(4096, 65_536)),
+            profile_with_tag(&lookup_tables, &lookup_table(96, 4_000)),
+            profile_with_tag(&lookup_tables, &lookup_table_with_inputs(96, 4_000)),
+        ] {
+            let mut info = rgb_info(64, 64, false);
+            info.icc_profile = Some(Cow::Owned(profile));
+            let bytes = fixture(info, &pixels);
+            let budget = MemoryBudget::new(4 * 1024 * 1024);
+            let bounded =
+                budget.enter(|| decode_bounded(ImageInput::Bytes(&bytes), options(6000)).unwrap());
+            assert!(!budget.is_exceeded());
+            assert_eq!(bounded.image.rgb, pixels);
+            let budget = MemoryBudget::new(4 * 1024 * 1024);
+            let full = budget.enter(|| decode_image_from_bytes(&bytes).unwrap());
+            assert!(!budget.is_exceeded());
+            assert_eq!(full.rgb, pixels);
+        }
     }
 
     #[test]
@@ -553,7 +535,7 @@ mod tests {
         for (width, height) in [
             (1, 524_289),
             (1, u32::MAX),
-            (16_000, 16_001),
+            (22_361, 22_361),
             (65_536, 65_536),
         ] {
             for interlaced in [false, true] {
@@ -581,7 +563,7 @@ mod tests {
 
     #[test]
     fn source_dimension_limits_allow_boundary_headers() {
-        for (width, height) in [(1, 524_288), (524_288, 1), (16_000, 16_000)] {
+        for (width, height) in [(1, 524_288), (524_288, 1), (22_360, 22_360)] {
             for interlaced in [false, true] {
                 let mut bytes = Vec::new();
                 ::png::Encoder::with_info(&mut bytes, rgb_info(width, height, interlaced))

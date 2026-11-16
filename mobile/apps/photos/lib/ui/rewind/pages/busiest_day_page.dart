@@ -5,6 +5,7 @@ import "package:photos/models/file/file.dart";
 import "package:photos/services/rewind/rewind_edition.dart";
 import "package:photos/src/rust/api/rewind_api.dart" as rust;
 import "package:photos/ui/rewind/shell/rewind_page.dart";
+import "package:photos/ui/rewind/shell/rewind_page_scope.dart";
 import "package:photos/ui/rewind/shell/rewind_share.dart";
 import "package:photos/ui/rewind/theme/rewind_colors.dart";
 import "package:photos/ui/rewind/theme/rewind_motion.dart";
@@ -63,7 +64,8 @@ class BusiestDayPage extends RewindPage {
     required bool isActive,
   }) {
     final month = _months[(day.month - 1).clamp(0, 11)];
-    final kicker = "On ${_ordinal(day.day)} $month, you took";
+    final onDay = "On ${_ordinal(day.day)} $month";
+    final kicker = "$onDay, you took";
     final count = rewindCount(day.photoCount);
     const line = "A memorable day indeed!";
     final date = "${day.day} ${month.substring(0, 3)} ${RewindEdition.year}"
@@ -75,7 +77,7 @@ class BusiestDayPage extends RewindPage {
     final lower = split
         ? [for (var i = 1; i < photos.length; i += 2) photos[i]]
         : [...photos.skip(1), ...photos.take(1)];
-    final covered = ModalRoute.of(context)?.isCurrent == false;
+    final covered = RewindPageScope.coveredOf(context);
     return RewindShareable(
       child: _HoldToPause(
         builder: (context, held) => Stack(
@@ -125,12 +127,16 @@ class BusiestDayPage extends RewindPage {
                       position: position,
                       active: isActive,
                       delayMs: 900,
-                      child: Text(
-                        kicker.toUpperCase(),
-                        style: RewindTextStyles.display(
-                          20,
-                          height: 1.15,
-                          letterSpacing: 0.3,
+                      child: RewindVoice(
+                        you: kicker.toUpperCase(),
+                        me: "$onDay, I took".toUpperCase(),
+                        builder: (text) => Text(
+                          text,
+                          style: RewindTextStyles.display(
+                            20,
+                            height: 1.15,
+                            letterSpacing: 0.3,
+                          ),
                         ),
                       ),
                     ),
@@ -143,14 +149,31 @@ class BusiestDayPage extends RewindPage {
                       active: isActive,
                       preset: RewindPreset.slap,
                       delayMs: 1050,
-                      child: RewindOutlinedText(
-                        count,
-                        style: RewindTextStyles.numeral(
-                          104,
-                          color: RewindColors.white,
-                        ),
-                        outline: 3.5,
-                        shadow: const Offset(5, 6),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.baseline,
+                        textBaseline: TextBaseline.alphabetic,
+                        children: [
+                          RewindOutlinedText(
+                            count,
+                            style: RewindTextStyles.numeral(
+                              104,
+                              color: RewindColors.white,
+                            ),
+                            outline: 3.5,
+                            shadow: const Offset(5, 6),
+                          ),
+                          const SizedBox(width: 12),
+                          RewindOutlinedText(
+                            day.photoCount == 1 ? "PHOTO" : "PHOTOS",
+                            style: RewindTextStyles.display(
+                              44,
+                              color: RewindColors.white,
+                            ),
+                            outline: 2.5,
+                            shadow: const Offset(2.5, 3),
+                          ),
+                        ],
                       ),
                     ),
                     RewindRevealLayer(
