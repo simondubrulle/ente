@@ -11,6 +11,7 @@ import "package:photos/ui/rewind/pages/colour_page.dart";
 import "package:photos/ui/rewind/pages/cover_page.dart";
 import "package:photos/ui/rewind/pages/crowd_favourite_page.dart";
 import "package:photos/ui/rewind/pages/favourites_page.dart";
+import "package:photos/ui/rewind/pages/finale_page.dart";
 import "package:photos/ui/rewind/pages/globe_page.dart";
 import "package:photos/ui/rewind/pages/mosaic_page.dart";
 import "package:photos/ui/rewind/pages/new_faces_page.dart";
@@ -75,6 +76,7 @@ List<RewindChapter> rewindChapters(
   _mosaic(report),
   _badge(report.badge),
   _scrapbook(report),
+  _finale(report),
 ];
 
 List<RewindChapter> rewindPhotoCardChapters(rust.RewindReport report) => [
@@ -202,11 +204,22 @@ RewindChapter _mosaic(rust.RewindReport report) =>
         ),
         _ => null,
       };
+      final familiar = switch (mosaic.clusterId) {
+        final id? when me?.crop == null && favourite?.crop == null =>
+          await media.cluster(id, mosaic.clusterFaceIds),
+        _ => null,
+      };
       return [
         MosaicPage(
           files: files,
-          subject: me?.crop ?? favourite?.crop,
-          subjectName: me?.crop == null ? favourite?.name : null,
+          subject: me?.crop ?? favourite?.crop ?? familiar?.crop,
+          subjectName: me?.crop != null
+              ? null
+              : favourite?.crop != null
+              ? favourite?.name
+              : familiar?.crop != null
+              ? MosaicPage.familiarFace
+              : null,
         ),
       ];
     });
@@ -419,3 +432,23 @@ RewindChapter _scrapbook(rust.RewindReport report) {
     ];
   });
 }
+
+RewindChapter _finale(rust.RewindReport report) =>
+    RewindChapter(const [FinalePage.pageKey], (media) async {
+      final best = switch (report.scrapbook?.fileIds) {
+        final ids? => media.glimpses(ids, 12),
+        null => const <EnteFile>[],
+      };
+      final more = switch (report.mosaic?.fileIds ?? report.totals?.fileIds) {
+        final ids? => media.glimpses(ids, 36),
+        null => const <EnteFile>[],
+      };
+      final seen = Set<EnteFile>.identity()..addAll(best);
+      return [
+        FinalePage([
+          ...best,
+          for (final file in more)
+            if (seen.add(file)) file,
+        ]),
+      ];
+    });
