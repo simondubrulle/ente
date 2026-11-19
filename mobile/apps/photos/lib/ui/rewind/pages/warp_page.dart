@@ -14,6 +14,7 @@ import "package:photos/ui/rewind/theme/rewind_colors.dart";
 import "package:photos/ui/rewind/theme/rewind_text_styles.dart";
 import "package:photos/ui/rewind/widgets/rewind_hint.dart";
 import "package:photos/ui/rewind/widgets/rewind_numbers.dart";
+import "package:photos/ui/rewind/widgets/rewind_photo.dart";
 import "package:photos/ui/rewind/widgets/rewind_photo_frames.dart";
 import "package:photos/ui/rewind/widgets/rewind_pixels.dart";
 import "package:photos/ui/rewind/widgets/rewind_stage.dart";
@@ -142,7 +143,7 @@ class WarpPage extends RewindPage {
           first: first,
           landing: landing,
           photo: photo,
-          active: isActive,
+          active: isActive && !RewindPageScope.coveredOf(context),
           position: position,
         ),
       ),
@@ -178,6 +179,7 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
   static const _pixelsPerUnit = 90.0;
   static const _touchTop = 70.0;
   static const _touchBottom = 770.0;
+  static const _flyAbove = 700.0;
   static const _rollSpan = 140.0;
   static const _rollCoastMs = 520.0;
   static const _detent = pi / 3;
@@ -200,6 +202,8 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
   late final _Course _course = _Course(
     (widget.walls?.length ?? 0) ~/ _Course.sides,
   );
+  final _landingPhoto = GlobalKey<RewindPhotoState>();
+  final _pickedPhoto = GlobalKey<RewindPhotoState>();
 
   var _last = Duration.zero;
   var _ms = 0.0;
@@ -238,6 +242,8 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
       _held || (!_piloted && !_landed) || _velocity != 0 || _rollRate != 0;
 
   bool get _idle => _piloted && !_held && _pace < 0.04;
+
+  bool get _canPick => widget.walls != null && (_piloted || _landed);
 
   @override
   void didChangeDependencies() {
@@ -363,9 +369,6 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
     _velocity = -pixelsPerSecond / _pixelsPerUnit / 1000;
   }
 
-  bool _yields(bool deeper) =>
-      _picked == null && (deeper ? _landed : _travelled <= 0.002);
-
   void _listenForFlight(_FlightRecognizer recognizer) {
     recognizer.onStart = (_) => _takeOver();
     recognizer.onUpdate = (details) => _flyBy(details.delta.dy);
@@ -476,20 +479,29 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
     if (status == AnimationStatus.dismissed) setState(() => _picked = null);
   }
 
+  Rect _printAt(Offset center) => Rect.fromCenter(
+    center: center,
+    width: _printWidth,
+    height: _printWidth * 1.22,
+  );
+
   void _tap(Offset at) {
     if (_picked != null) {
-      _release();
+      if (_pull.status.isForwardOrCompleted &&
+          _printAt(_pickedAt).contains(at)) {
+        _pickedPhoto.currentState?.zoom();
+      } else {
+        _release();
+      }
       return;
     }
-    final onFirst =
-        _landed &&
-        Rect.fromCenter(
-          center: _Course.vanish,
-          width: _printWidth,
-          height: _printWidth * 1.22,
-        ).contains(at);
-    final panel = onFirst ? null : _course.panelAt(at, _travelled, _roll);
+    if (_landed && _printAt(_Course.vanish).contains(at)) {
+      _landingPhoto.currentState?.zoom();
+      return;
+    }
+    final panel = _canPick ? _course.panelAt(at, _travelled, _roll) : null;
     if (panel == null) {
+      if (!_landed) return;
       final navigator = RewindPageScope.navigatorOf(context);
       at.dx < RewindStage.size.width / 3
           ? navigator?.previous()
@@ -526,7 +538,7 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
     );
     final picked = _picked;
     final pulled = Curves.easeOutCubic.transform(_pull.value);
-    final canPick = walls != null && (_piloted || landed);
+    final canPick = _canPick;
     final forward = _piloted && _heading < 0;
     final hint = _hint(landed, sinceLanding, canPick);
     return Stack(
@@ -585,6 +597,7 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
                                     photo: widget.photo(
                                       widget.first,
                                       decoded: widget.landing?[widget.first],
+                                      key: _landingPhoto,
                                     ),
                                     caption: WarpPage.dated(
                                       WarpPage.taken(widget.first),
@@ -621,7 +634,10 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
                                     scale: 0.14 + 0.86 * pulled,
                                     child: _Print(
                                       width: _printWidth,
-                                      photo: widget.photo(walls.files[picked]),
+                                      photo: widget.photo(
+                                        walls.files[picked],
+                                        key: _pickedPhoto,
+                                      ),
                                       caption: WarpPage.dated(
                                         WarpPage.taken(walls.files[picked]),
                                       ),
@@ -739,7 +755,7 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
                   gestures: {
                     _FlightRecognizer:
                         GestureRecognizerFactoryWithHandlers<_FlightRecognizer>(
-                          () => _FlightRecognizer(yields: _yields),
+                          () => _FlightRecognizer(above: _flyAbove - _touchTop),
                           _listenForFlight,
                         ),
                     HorizontalDragGestureRecognizer:
@@ -755,11 +771,10 @@ class _FlightState extends State<_Flight> with TickerProviderStateMixin {
                                 LongPressGestureRecognizer(duration: _holdFor),
                             _listenForHold,
                           ),
-                    if (canPick)
-                      TapGestureRecognizer:
-                          GestureRecognizerFactoryWithHandlers<
-                            TapGestureRecognizer
-                          >(TapGestureRecognizer.new, _listenForTap),
+                    TapGestureRecognizer:
+                        GestureRecognizerFactoryWithHandlers<
+                          TapGestureRecognizer
+                        >(TapGestureRecognizer.new, _listenForTap),
                   },
                 ),
               ),
@@ -1382,38 +1397,11 @@ class _Tube extends CustomPainter {
 }
 
 class _FlightRecognizer extends VerticalDragGestureRecognizer {
-  _FlightRecognizer({required this.yields});
+  _FlightRecognizer({required this.above});
 
-  static const _decideAfter = 3.0;
-
-  final bool Function(bool deeper) yields;
-  var _moved = 0.0;
-  var _decided = false;
+  final double above;
 
   @override
-  void addAllowedPointer(PointerDownEvent event) {
-    _moved = 0;
-    _decided = false;
-    super.addAllowedPointer(event);
-  }
-
-  @override
-  void acceptGesture(int pointer) {
-    _decided = true;
-    super.acceptGesture(pointer);
-  }
-
-  @override
-  void handleEvent(PointerEvent event) {
-    if (!_decided && event is PointerMoveEvent) {
-      _moved += event.delta.dy;
-      if (_moved.abs() > _decideAfter && yields(_moved < 0)) {
-        _decided = true;
-        resolve(GestureDisposition.rejected);
-        stopTrackingPointer(event.pointer);
-        return;
-      }
-    }
-    super.handleEvent(event);
-  }
+  bool isPointerAllowed(PointerEvent event) =>
+      event.localPosition.dy < above && super.isPointerAllowed(event);
 }
