@@ -73,6 +73,9 @@ class FavouritesPage extends RewindPage {
   Duration? get reelHold => const Duration(milliseconds: 7100);
 
   @override
+  Duration? get clipHold => reelHold;
+
+  @override
   Widget build(
     BuildContext context,
     double position, {
@@ -241,10 +244,10 @@ class _FavouritesState extends State<_Favourites> {
     final covered = RewindPageScope.coveredOf(context);
     final media = MediaQuery.of(context);
     final title = capturing
-        ? "MY FAVOURITE"
+        ? "MY FAVORITE"
         : RewindPageScope.reelOf(context)
-        ? "MY FAVOURITES"
-        : "YOUR FAVOURITES";
+        ? "MY FAVORITES"
+        : "YOUR FAVORITES";
     return MediaQuery(
       data: media.copyWith(
         disableAnimations: media.disableAnimations || capturing,
@@ -254,7 +257,7 @@ class _FavouritesState extends State<_Favourites> {
         children: [
           _backdrop(),
           Semantics(
-            label: "Your favourites. $_line",
+            label: "Your favorites. $_line",
             child: ExcludeSemantics(
               child: RewindStage(
                 children: [

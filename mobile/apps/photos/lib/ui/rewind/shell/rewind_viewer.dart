@@ -1,5 +1,7 @@
 import "dart:async";
+import "dart:math";
 
+import "package:flutter/gestures.dart";
 import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:logging/logging.dart";
@@ -119,7 +121,7 @@ class _RewindViewerState extends State<RewindViewer>
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: Colors.black,
-      body: LayoutBuilder(builder: _buildPager),
+      body: _MinimumTouchSlop(child: LayoutBuilder(builder: _buildPager)),
     );
   }
 
@@ -208,11 +210,27 @@ class _RewindViewerState extends State<RewindViewer>
         videoKey: _videoButton,
         onClose: () => Navigator.of(context).maybePop(),
         onShare: card == null ? null : () => _share(page, card, layout),
-        onShareVideo: index < widget.pages.length - 1 || page.hasOwnVideoButton
-            ? null
-            : () => shareVideo(shareButtonRect(context, _videoButton)),
+        onShareVideo: _videoAction(context, index, card),
       ),
     );
+  }
+
+  VoidCallback? _videoAction(
+    BuildContext context,
+    int index,
+    RewindShareCard? card,
+  ) {
+    final page = widget.pages[index];
+    if (index == widget.pages.length - 1 && !page.hasOwnVideoButton) {
+      return () => shareVideo(shareButtonRect(context, _videoButton));
+    }
+    if (card == null ||
+        page.clipHold == null ||
+        MediaQuery.disableAnimationsOf(context)) {
+      return null;
+    }
+    return () =>
+        unawaited(_shareClip(page, shareButtonRect(context, _videoButton)));
   }
 
   ScrollController _controllerFor(double height) {
@@ -284,6 +302,8 @@ class _RewindViewerState extends State<RewindViewer>
       controller.jumpTo(step * height);
       return;
     }
+    final passing = _targetStep;
+    if (passing != null && step > passing) _settle(passing);
     _targetStep = step;
     unawaited(
       controller
@@ -332,6 +352,28 @@ class _RewindViewerState extends State<RewindViewer>
     }
   }
 
+  Future<void> _shareClip(RewindPage page, Rect? origin) async {
+    if (_sharing) return;
+    _sharing = true;
+    try {
+      await shareRewindClip(
+        context,
+        page: page,
+        loadMedia: widget.loadVideoMedia,
+        track: _music.track,
+        origin: origin,
+      );
+    } catch (error, stackTrace) {
+      _logger.warning(
+        "Failed to share the ${page.key} clip",
+        error,
+        stackTrace,
+      );
+    } finally {
+      _sharing = false;
+    }
+  }
+
   void _refreshChrome() {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (mounted) setState(() {});
@@ -358,6 +400,25 @@ class _RewindViewerState extends State<RewindViewer>
     } finally {
       _sharing = false;
     }
+  }
+}
+
+class _MinimumTouchSlop extends StatelessWidget {
+  const _MinimumTouchSlop({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final media = MediaQuery.of(context);
+    return MediaQuery(
+      data: media.copyWith(
+        gestureSettings: DeviceGestureSettings(
+          touchSlop: max(kTouchSlop, media.gestureSettings.touchSlop ?? 0),
+        ),
+      ),
+      child: child,
+    );
   }
 }
 
@@ -391,4 +452,19 @@ class _PagerPosition extends ScrollPositionWithSingleContext {
 
   @override
   bool get shouldIgnorePointer => false;
+
+  @override
+  ScrollHoldController hold(VoidCallback holdCancelCallback) {
+    if (activity?.isScrolling ?? false) return _KeepTurning(holdCancelCallback);
+    return super.hold(holdCancelCallback);
+  }
+}
+
+class _KeepTurning implements ScrollHoldController {
+  const _KeepTurning(this.onCancel);
+
+  final VoidCallback onCancel;
+
+  @override
+  void cancel() => onCancel();
 }

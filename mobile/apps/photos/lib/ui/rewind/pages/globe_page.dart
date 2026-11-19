@@ -60,6 +60,9 @@ class GlobePage extends RewindPage {
   Duration? get reelHold => Duration(milliseconds: 1450 + _reelJourney.round());
 
   @override
+  Duration? get clipHold => reelHold;
+
+  @override
   List<EnteFile> get reelThumbnails => [for (final photo in photos) ?photo];
 
   @override
@@ -79,9 +82,9 @@ class GlobePage extends RewindPage {
   }) {
     final km = globe.distanceKm;
     final lap = km >= earthKm
-        ? "That’s ${(km / earthKm).toStringAsFixed(1)} times around the Earth."
-        : "That’s ${max(1, (100 * km / earthKm).round())}% of the way "
-              "around the Earth.";
+        ? "That’s ${(km / earthKm).toStringAsFixed(1)} laps around the globe."
+        : "That’s ${max(1, (100 * km / earthKm).round())}% of a lap "
+              "around the globe.";
     return Stack(
       fit: StackFit.expand,
       children: [
@@ -129,7 +132,7 @@ class GlobePage extends RewindPage {
               ),
             ),
             Semantics(
-              label: "Your photos flew ${rewindCount(km)} kilometres. $body",
+              label: "Your photos flew ${rewindCount(km)} kilometers. $body",
               child: ExcludeSemantics(
                 child: RewindStage(
                   children: [
