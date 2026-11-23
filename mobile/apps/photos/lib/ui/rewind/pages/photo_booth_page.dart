@@ -6,12 +6,14 @@ import "package:flutter/material.dart";
 import "package:flutter/services.dart";
 import "package:flutter_svg/flutter_svg.dart";
 import "package:photos/models/file/file.dart";
+import "package:photos/services/rewind/rewind_edition.dart";
 import "package:photos/ui/rewind/shell/rewind_page.dart";
 import "package:photos/ui/rewind/shell/rewind_page_scope.dart";
 import "package:photos/ui/rewind/shell/rewind_share.dart";
 import "package:photos/ui/rewind/story/rewind_face.dart";
 import "package:photos/ui/rewind/theme/rewind_assets.dart";
 import "package:photos/ui/rewind/theme/rewind_colors.dart";
+import "package:photos/ui/rewind/theme/rewind_motion.dart";
 import "package:photos/ui/rewind/theme/rewind_text_styles.dart";
 import "package:photos/ui/rewind/widgets/rewind_backdrop.dart";
 import "package:photos/ui/rewind/widgets/rewind_entrance.dart";
@@ -36,13 +38,13 @@ class PhotoBoothPage extends RewindPage {
     (key: "people_booth", you: "YOUR NO. 1", me: "MY NO. 1"),
     (
       key: "people_booth_2",
-      you: "ALWAYS IN THE PICTURE",
-      me: "ALWAYS IN THE PICTURE",
+      you: "ALWAYS BY YOUR SIDE",
+      me: "ALWAYS BY MY SIDE",
     ),
     (
       key: "people_booth_3",
-      you: "NEVER OUT OF FRAME",
-      me: "NEVER OUT OF FRAME",
+      you: "${RewindEdition.year} WAS BETTER WITH",
+      me: "${RewindEdition.year} WAS BETTER WITH",
     ),
   ];
   static final pageKeys = [for (final billing in _billings) billing.key];
@@ -57,8 +59,11 @@ class PhotoBoothPage extends RewindPage {
   String get key => _billings[place].key;
 
   @override
-  Duration? get reelHold =>
-      place == 0 ? const Duration(milliseconds: 3300) : null;
+  Duration? get reelHold => place == 0
+      ? const Duration(
+          milliseconds: _Booth.printedMs + RewindMotion.reelReadingMs,
+        )
+      : null;
 
   @override
   Duration get clipHold => _Booth.clipHold(photos);
@@ -358,7 +363,9 @@ class _BoothState extends State<_Booth> with TickerProviderStateMixin {
       _controller.value * _controller.duration!.inMilliseconds;
 
   bool get _autoDrops =>
-      _strips.length > 1 && !_still && (!_clip || _prints < _strips.length - 1);
+      _strips.length > 1 &&
+      !_still &&
+      (_clip ? _prints < _strips.length - 1 : !_reel);
 
   double get _tug =>
       _tugDistance * Curves.easeInOutCubic.transform(_tugging.value);

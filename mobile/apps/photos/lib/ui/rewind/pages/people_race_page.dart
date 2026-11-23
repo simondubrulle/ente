@@ -7,12 +7,14 @@ import "package:flutter/services.dart";
 import "package:flutter_svg/flutter_svg.dart";
 import "package:photos/models/file/file.dart";
 import "package:photos/src/rust/api/rewind_api.dart" as rust;
+import "package:photos/ui/rewind/pages/setup_pages.dart";
 import "package:photos/ui/rewind/shell/rewind_page.dart";
 import "package:photos/ui/rewind/shell/rewind_page_scope.dart";
 import "package:photos/ui/rewind/shell/rewind_share.dart";
 import "package:photos/ui/rewind/story/rewind_face.dart";
 import "package:photos/ui/rewind/theme/rewind_assets.dart";
 import "package:photos/ui/rewind/theme/rewind_colors.dart";
+import "package:photos/ui/rewind/theme/rewind_motion.dart";
 import "package:photos/ui/rewind/theme/rewind_text_styles.dart";
 import "package:photos/ui/rewind/widgets/rewind_backdrop.dart";
 import "package:photos/ui/rewind/widgets/rewind_confetti.dart";
@@ -37,16 +39,18 @@ class PeopleRacePage extends RewindPage {
   String get key => pageKey;
 
   @override
-  Duration? get reelHold => const Duration(milliseconds: 4500);
+  Duration? get reelHold =>
+      _raceThen(_PeopleRaceState._settleMs + RewindMotion.reelReadingMs);
 
   @override
-  Duration? get clipHold => Duration(
-    milliseconds:
-        (_PeopleRaceState._clipLeadMs +
-                12 * _PeopleRaceState._monthMsLive +
-                _PeopleRaceState._clipEndMs)
-            .round(),
-  );
+  Duration? get clipHold =>
+      _raceThen(_PeopleRaceState._clipLeadMs + _PeopleRaceState._clipEndMs);
+
+  static Duration _raceThen(double ms) =>
+      Duration(milliseconds: (12 * _PeopleRaceState._monthMs + ms).round());
+
+  @override
+  RewindPage get clipIntro => peopleSetupPage;
 
   @override
   List<EnteFile> get reelThumbnails => const [];
@@ -118,16 +122,13 @@ class _PeopleRaceState extends State<_PeopleRace>
   static const _rampMs = 350.0;
   static const _laneMs = 700.0;
   static const _speed = 0.75;
-  static const _monthMsLive = 470.0;
+  static const _monthMs = 470.0;
+  static const _settleMs = 750.0;
   static const _clipLeadMs = 2000.0;
-  static const _clipEndMs = 5750.0;
+  static const _clipEndMs = _settleMs + 5000;
 
   late final _reel = RewindPageScope.reelOf(context);
   late final _clip = RewindPageScope.clipOf(context);
-  late final _monthMs = RewindPageScope.reelPaceOf(context)
-      ? 280.0
-      : _monthMsLive;
-  late final _settleFrames = _reel ? 18 : 36;
   late final _leadMs = _clip ? _clipLeadMs : 0.0;
   late final Ticker _ticker = createTicker(_tick);
   late final List<_Lane> _lanes;
@@ -135,11 +136,10 @@ class _PeopleRaceState extends State<_PeopleRace>
   late final _replayed = _phase == _Phase.done;
   late var _order = List.of(widget.page._start);
   late var _cue = _question;
-  late var _cueDetail = _reel ? "" : "Make a guess 👀";
+  late var _cueDetail = _reel ? "" : "Tap a face to guess.";
   var _world = 0.0;
   var _speedFactor = 0.0;
   var _lastMs = 0.0;
-  var _settling = 0;
   final _timers = <Timer>[];
 
   List<RaceRunner> get _runners => widget.page.runners;
@@ -214,11 +214,11 @@ class _PeopleRaceState extends State<_PeopleRace>
     if (nowMs < 0) return;
     final dt = _lastMs == 0 ? 16.0 : min(50.0, nowMs - _lastMs);
     _lastMs = nowMs;
-    final raceMs = 12 * _monthMs;
-    if (_settling == 0) {
+    const raceMs = 12 * _monthMs;
+    if (nowMs < raceMs) {
       _speedFactor = min(1, nowMs / _rampMs);
     } else {
-      _speedFactor *= _clip ? pow(0.86, dt / 16).toDouble() : 0.86;
+      _speedFactor *= pow(0.86, dt / 16).toDouble();
     }
     _world += dt * _speedFactor;
     for (final lane in _lanes) {
@@ -257,7 +257,10 @@ class _PeopleRaceState extends State<_PeopleRace>
     for (final (rank, runner) in _order.indexed) {
       _steer(_lanes[runner], _rankLanes[rank], nowMs);
     }
-    if (t >= 1 && ++_settling >= _settleFrames) {
+    if (nowMs >= raceMs + _settleMs) {
+      for (final lane in _lanes) {
+        lane.x = lane.goal;
+      }
       _ticker.stop();
       _finish();
     }
