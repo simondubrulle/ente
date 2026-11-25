@@ -8,7 +8,6 @@ import "package:ente_components/hugeicons.dart";
 import 'package:ente_lock_screen/local_authentication_service.dart';
 import 'package:ente_pure_utils/ente_pure_utils.dart';
 import "package:ente_strings/ente_strings.dart";
-import 'package:extended_image/extended_image.dart';
 import "package:flutter/foundation.dart";
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -376,16 +375,19 @@ class _BodyState extends State<_Body> {
             child: ValueListenableBuilder(
               builder: (BuildContext context, int selectedIndex, _) {
                 if (widget.config.mode == DetailPageMode.selection) {
+                  final onBack = widget.config.onBackPressed;
                   return AppBar(
                     backgroundColor: context.componentColors.backgroundBase,
                     foregroundColor: context.componentColors.textBase,
                     elevation: 0,
                     centerTitle: true,
-                    leading: IconButton(
-                      icon: const Icon(Icons.close),
-                      tooltip: context.strings.close,
-                      onPressed: () => Navigator.of(context).pop(),
-                    ),
+                    leading: onBack == null
+                        ? IconButton(
+                            icon: const Icon(Icons.close),
+                            tooltip: context.strings.close,
+                            onPressed: () => Navigator.of(context).pop(),
+                          )
+                        : BackButton(onPressed: () => onBack(context)),
                     title: Text(
                       widget.config.selectionLimit == null
                           ? context.strings.selectedCount(count: _files!.length)
@@ -563,7 +565,7 @@ class _BodyState extends State<_Body> {
                   files: _files!,
                   previewIndex: _filmstripCoordinator.previewIndex,
                 ),
-              if (widget.config.mode == DetailPageMode.full)
+              if (widget.config.mode == DetailPageMode.full && !isGuestView)
                 ValueListenableBuilder<int?>(
                   valueListenable: _filmstripCoordinator.previewIndex,
                   builder: (context, previewIndex, child) => AbsorbPointer(
@@ -904,19 +906,19 @@ class _BodyState extends State<_Body> {
         );
         return;
       }
-      final imageProvider = ExtendedFileImageProvider(
-        ioFile,
-        cacheRawData: true,
-      );
-      if (!mounted) return;
-      await precacheImage(imageProvider, context);
+      final imageBytes = await ioFile.readAsBytes();
+      if (!mounted) {
+        await dialog.hide();
+        return;
+      }
+      await precacheImage(MemoryImage(imageBytes), context);
       await dialog.hide();
       if (!mounted) return;
       replacePage(
         context,
         ImageEditorPage(
           originalFile: file,
-          file: ioFile,
+          imageBytes: imageBytes,
           detailPageConfig: widget.config.copyWith(
             files: _files,
             selectedIndex: _selectedIndexNotifier.value,
