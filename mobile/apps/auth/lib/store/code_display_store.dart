@@ -1,6 +1,6 @@
 import 'package:ente_auth/models/code.dart';
 import 'package:ente_auth/services/authenticator_service.dart';
-import 'package:ente_auth/services/watch/service.dart';
+import 'package:ente_auth/services/preference_service.dart';
 import 'package:ente_auth/store/code_store.dart';
 import 'package:ente_auth/utils/dialog_util.dart';
 import 'package:ente_pure_utils/ente_pure_utils.dart';
@@ -95,7 +95,12 @@ class CodeDisplayStore {
       if (code.isTrashed) continue;
       tags.addAll(code.display.tags);
     }
-    return tags.toList()..sort(compareNames);
+    return orderTags(tags, PreferenceService.instance.tagOrder());
+  }
+
+  Future<void> saveTagOrder(List<String> shown) async {
+    final preferences = PreferenceService.instance;
+    await preferences.setTagOrder(mergeTagOrder(preferences.tagOrder(), shown));
   }
 
   Future<void> showDeleteTagDialog(BuildContext context, String tag) async {
@@ -105,12 +110,14 @@ class CodeDisplayStore {
     await showChoiceActionSheet(
       context,
       title: l10n.deleteTagTitle,
-      body: WatchService.sharedTags.contains(tag)
-          ? '${l10n.deleteTagMessage}\n\n${l10n.watchDeleteTagNotice}'
-          : l10n.deleteTagMessage,
+      body: l10n.deleteTagMessage,
       firstButtonLabel: l10n.delete,
       isCritical: true,
       firstButtonOnTap: () async {
+        final order = PreferenceService.instance.tagOrder();
+        if (order.remove(tag)) {
+          await PreferenceService.instance.setTagOrder(order);
+        }
         final relevantCodes = await _getCodesByTag(tag);
 
         final tasks = <Future<AddResult>>[];
@@ -127,7 +134,6 @@ class CodeDisplayStore {
         }
 
         final results = await Future.wait(tasks);
-        await WatchService.onTagDeleted(tag);
         if (results.any((r) => r != AddResult.duplicate) &&
             AuthenticatorService.instance.getAccountMode() ==
                 AccountMode.online) {
@@ -148,22 +154,6 @@ class CodeDisplayStore {
       onSubmit: (value) async {
         final updatedTag = value.trim();
         if (updatedTag.isEmpty || updatedTag == tag) return;
-        final destinationExists = (await getAllTags()).contains(updatedTag);
-        if (!context.mounted) return;
-        if (WatchService.tagRenameExpandsSharing(
-          tag,
-          updatedTag,
-          destinationExists: destinationExists,
-        )) {
-          await showChoiceActionSheet(
-            context,
-            title: context.strings.editTag,
-            body: context.strings.watchRenameIntoSharedTagNotice,
-            firstButtonLabel: context.strings.save,
-            firstButtonOnTap: () => editTag(tag, updatedTag),
-          );
-          return;
-        }
         await editTag(tag, updatedTag);
       },
     );
@@ -179,6 +169,16 @@ class CodeDisplayStore {
   }
 
   Future<void> editTag(String previousTag, String updatedTag) async {
+    final order = PreferenceService.instance.tagOrder();
+    final index = order.indexOf(previousTag);
+    if (index != -1) {
+      if (order.contains(updatedTag)) {
+        order.removeAt(index);
+      } else {
+        order[index] = updatedTag;
+      }
+      await PreferenceService.instance.setTagOrder(order);
+    }
     final relevantCodes = await _getCodesByTag(previousTag);
 
     final tasks = <Future<AddResult>>[];
@@ -196,10 +196,24 @@ class CodeDisplayStore {
     }
 
     final results = await Future.wait(tasks);
-    await WatchService.onTagRenamed(previousTag, updatedTag);
     if (results.any((r) => r != AddResult.duplicate) &&
         AuthenticatorService.instance.getAccountMode() == AccountMode.online) {
       AuthenticatorService.instance.onlineSync().ignore();
     }
   }
+}
+
+List<String> orderTags(Set<String> tags, List<String> saved) {
+  final ordered = saved.where(tags.contains).toList();
+  final rest = tags.difference(ordered.toSet()).toList()..sort(compareNames);
+  return [...ordered, ...rest];
+}
+
+List<String> mergeTagOrder(List<String> saved, List<String> shown) {
+  final visible = shown.toSet();
+  var next = 0;
+  final merged = [
+    for (final tag in saved) visible.contains(tag) ? shown[next++] : tag,
+  ];
+  return [...merged, ...shown.skip(next)];
 }
